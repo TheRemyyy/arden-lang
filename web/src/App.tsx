@@ -1,4 +1,4 @@
-﻿import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { Suspense, lazy } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { Header } from './components/Header';
@@ -13,10 +13,10 @@ export default function App() {
     const isDocsPage = location.pathname.startsWith('/docs');
 
     return (
-        <div className="min-h-screen bg-[#09090b] flex flex-col">        
+        <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
             <Header />
             <main className="flex-grow">
-                <Suspense fallback={<div className="flex-1 bg-[#09090b]" />}>
+                <Suspense fallback={<div className="flex-1 bg-[#0a0a0a]" />}>
                   <Routes>
                       <Route path="/" element={<Home />} />
                       <Route path="/docs/*" element={<Docs />} />
