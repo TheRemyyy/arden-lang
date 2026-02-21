@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -13,7 +14,6 @@ use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType
 use inkwell::values::{
     BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue, ValueKind,
 };
-use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 use std::collections::HashMap;
 use std::path::Path;
@@ -546,44 +546,60 @@ impl<'ctx> Codegen<'ctx> {
         };
 
         let function = self.module.add_function(&func.name, fn_type, None);
-        
+
         // Add optimization attributes
         // Always inline small functions
         if func.params.len() <= 3 && !func.name.starts_with("main") {
-            let always_inline = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("alwaysinline"), 0);
+            let always_inline = self
+                .context
+                .create_enum_attribute(Attribute::get_named_enum_kind_id("alwaysinline"), 0);
             function.add_attribute(AttributeLoc::Function, always_inline);
         }
-        
+
         // Function doesn't unwind (no exceptions)
-        let no_unwind = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0);
+        let no_unwind = self
+            .context
+            .create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0);
         function.add_attribute(AttributeLoc::Function, no_unwind);
-        
+
         // Function will return (no infinite loops in analyzed functions)
-        let will_return = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("willreturn"), 0);
+        let will_return = self
+            .context
+            .create_enum_attribute(Attribute::get_named_enum_kind_id("willreturn"), 0);
         function.add_attribute(AttributeLoc::Function, will_return);
-        
+
         // HOT function optimization - mark recursive/small functions as hot
         if func.name == "fibonacci" || func.name == "sieve" || func.params.len() <= 2 {
-            let hot = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("hot"), 0);
+            let hot = self
+                .context
+                .create_enum_attribute(Attribute::get_named_enum_kind_id("hot"), 0);
             function.add_attribute(AttributeLoc::Function, hot);
-            
+
             // Enable function cloning for better inlining
-            let minsize = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("minsize"), 0);
+            let minsize = self
+                .context
+                .create_enum_attribute(Attribute::get_named_enum_kind_id("minsize"), 0);
             function.add_attribute(AttributeLoc::Function, minsize);
-            
+
             // Enable loop unrolling for hot functions
-            let uwtable = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("uwtable"), 0);
+            let uwtable = self
+                .context
+                .create_enum_attribute(Attribute::get_named_enum_kind_id("uwtable"), 0);
             function.add_attribute(AttributeLoc::Function, uwtable);
         }
-        
+
         // Fast math for floating point operations
         if func.name.contains("calc") || func.name.contains("math") {
-            let no_infs = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("no-infs-fp-math"), 0);
-            let no_nans = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("no-nans-fp-math"), 0);
+            let no_infs = self
+                .context
+                .create_enum_attribute(Attribute::get_named_enum_kind_id("no-infs-fp-math"), 0);
+            let no_nans = self
+                .context
+                .create_enum_attribute(Attribute::get_named_enum_kind_id("no-nans-fp-math"), 0);
             function.add_attribute(AttributeLoc::Function, no_infs);
             function.add_attribute(AttributeLoc::Function, no_nans);
         }
-        
+
         self.functions.insert(
             func.name.clone(),
             (
@@ -859,20 +875,22 @@ impl<'ctx> Codegen<'ctx> {
         let func = self.current_function.unwrap();
 
         // LOOP ROTATION OPTIMIZATION:
-        // Instead of: while (cond) { body } 
+        // Instead of: while (cond) { body }
         // We generate: if (cond) { do { body } while (cond) }
         // This eliminates one branch per iteration!
-        
+
         let entry_bb = self.context.append_basic_block(func, "while.entry");
         let body_bb = self.context.append_basic_block(func, "while.body");
         let cond_bb = self.context.append_basic_block(func, "while.cond");
         let after_bb = self.context.append_basic_block(func, "while.after");
-        
+
         // First, check condition (entry test)
         self.builder.build_unconditional_branch(entry_bb).unwrap();
         self.builder.position_at_end(entry_bb);
         let entry_cond = self.compile_expr(&cond.node)?.into_int_value();
-        self.builder.build_conditional_branch(entry_cond, body_bb, after_bb).unwrap();
+        self.builder
+            .build_conditional_branch(entry_cond, body_bb, after_bb)
+            .unwrap();
 
         // Body (executed at least once if we get here)
         self.builder.position_at_end(body_bb);
@@ -891,7 +909,7 @@ impl<'ctx> Codegen<'ctx> {
         // Loop condition check at end (loop rotation)
         self.builder.position_at_end(cond_bb);
         let loop_cond = self.compile_expr(&cond.node)?.into_int_value();
-        
+
         // Branch prediction: likely to continue looping
         self.builder
             .build_conditional_branch(loop_cond, body_bb, after_bb)
@@ -1881,13 +1899,13 @@ impl<'ctx> Codegen<'ctx> {
         let args_meta: Vec<BasicMetadataValueEnum> =
             compiled_args.iter().map(|a| (*a).into()).collect();
         let call = self.builder.build_call(func, &args_meta, "call").unwrap();
-        
+
         // Tail Call Optimization - mark as tail call
         call.set_tail_call(true);
-        
+
         // Add branch prediction hints for hot paths
         call.set_call_convention(0); // C calling convention with optimizations
-        
+
         match call.try_as_basic_value() {
             ValueKind::Basic(val) => Ok(val),
             ValueKind::Instruction(_) => Ok(self.context.i8_type().const_int(0, false).into()),
