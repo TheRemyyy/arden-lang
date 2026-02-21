@@ -13,6 +13,7 @@ use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType
 use inkwell::values::{
     BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue, ValueKind,
 };
+use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 use std::collections::HashMap;
 use std::path::Path;
@@ -545,6 +546,22 @@ impl<'ctx> Codegen<'ctx> {
         };
 
         let function = self.module.add_function(&func.name, fn_type, None);
+        
+        // Add optimization attributes
+        // Always inline small functions
+        if func.params.len() <= 3 && !func.name.starts_with("main") {
+            let always_inline = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("alwaysinline"), 0);
+            function.add_attribute(AttributeLoc::Function, always_inline);
+        }
+        
+        // Function doesn't unwind (no exceptions)
+        let no_unwind = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0);
+        function.add_attribute(AttributeLoc::Function, no_unwind);
+        
+        // Function will return (no infinite loops in analyzed functions)
+        let will_return = self.context.create_enum_attribute(Attribute::get_named_enum_kind_id("willreturn"), 0);
+        function.add_attribute(AttributeLoc::Function, will_return);
+        
         self.functions.insert(
             func.name.clone(),
             (
@@ -6398,9 +6415,9 @@ impl<'ctx> Codegen<'ctx> {
         let machine = target
             .create_target_machine(
                 &triple,
-                "generic",
-                "",
-                OptimizationLevel::Default,
+                "native",
+                "+avx2,+fma",
+                OptimizationLevel::Aggressive,
                 RelocMode::Default,
                 CodeModel::Default,
             )
