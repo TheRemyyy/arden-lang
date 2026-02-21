@@ -1,10 +1,9 @@
-// Main without import - should it find helper()?
+// Main WITH import - should PASS
 package main;
 
-// NO import statement!
+import utils.helper;
 
 function main(): None {
-    // Try to use helper without import
     result: String = helper();
     println(result);
     return None;

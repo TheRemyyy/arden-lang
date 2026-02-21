@@ -3,6 +3,7 @@
 mod ast;
 mod borrowck;
 mod codegen;
+mod import_check;
 mod lexer;
 mod namespace;
 mod parser;
@@ -12,12 +13,15 @@ mod typeck;
 use clap::{Parser as ClapParser, Subcommand};
 use colored::*;
 use inkwell::context::Context;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::ast::{Decl, ImportDecl, Program};
 use crate::borrowck::BorrowChecker;
 use crate::codegen::Codegen;
+use crate::import_check::ImportChecker;
 use crate::parser::Parser;
 use crate::project::{ProjectConfig, find_project_root};
 use crate::typeck::TypeChecker;
@@ -222,7 +226,7 @@ opt_level = "3"
     Ok(())
 }
 
-/// Build the current project
+/// Build the current project with proper namespace checking
 fn build_project(release: bool, emit_llvm: bool, do_check: bool) -> Result<(), String> {
     let project_root = find_project_root(&std::env::current_dir().unwrap())
         .ok_or_else(|| format!("{}: No apex.toml found. Are you in a project directory?\nRun `apex new <name>` to create a new project.",
@@ -239,14 +243,75 @@ fn build_project(release: bool, emit_llvm: bool, do_check: bool) -> Result<(), S
         config.name.cyan(),
         config.version.dimmed());
     
-    let opt_level = if release { "3" } else { &config.opt_level };
-    
-    // Compile all files
+    // Phase 1: Parse all files and extract namespace information
     let files = config.get_source_files(&project_root);
-    let entry_path = config.get_entry_path(&project_root);
+    let mut parsed_files: Vec<(PathBuf, String, Program, Vec<ImportDecl>)> = Vec::new();
+    let mut global_function_map: HashMap<String, String> = HashMap::new(); // func_name -> namespace
     
-    // For now, merge all files into a single program
-    // In the future, we could do proper module compilation
+    for file in &files {
+        let source = fs::read_to_string(file)
+            .map_err(|e| format!("{}: Failed to read '{}': {}", 
+                "error".red().bold(),
+                file.display(),
+                e))?;
+        
+        let filename = file.file_name().unwrap().to_str().unwrap_or("unknown.apex");
+        
+        // Parse the file
+        let tokens = lexer::tokenize(&source)
+            .map_err(|e| format!("{}: Lexer error in {}: {}", "error".red().bold(), filename, e))?;
+        
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program()
+            .map_err(|e| format!("{}: Parse error in {}: {}", "error".red().bold(), filename, e.message))?;
+        
+        // Extract namespace from package declaration
+        let namespace = program.package.clone()
+            .unwrap_or_else(|| "global".to_string());
+        
+        // Extract imports
+        let imports: Vec<ImportDecl> = program.declarations.iter()
+            .filter_map(|d| match &d.node {
+                Decl::Import(import) => Some(import.clone()),
+                _ => None,
+            })
+            .collect();
+        
+        // Extract function definitions for global map
+        for decl in &program.declarations {
+            if let Decl::Function(func) = &decl.node {
+                global_function_map.insert(func.name.clone(), namespace.clone());
+            }
+        }
+        
+        parsed_files.push((file.clone(), namespace, program, imports));
+    }
+    
+    // Phase 2: Check imports for each file
+    if do_check {
+        println!("{} Checking imports...", "→".cyan());
+        
+        for (file, namespace, program, imports) in &parsed_files {
+            let mut checker = ImportChecker::new(
+                global_function_map.clone(),
+                namespace.clone(),
+                imports.clone(),
+            );
+            
+            if let Err(errors) = checker.check_program(program) {
+                let filename = file.file_name().unwrap().to_str().unwrap_or("unknown");
+                eprintln!("{} Import errors in {}:", "error".red().bold(), filename);
+                for err in errors {
+                    eprintln!("  → {}", err.format());
+                }
+                return Err("Import check failed".to_string());
+            }
+        }
+    }
+    
+    // Phase 3: Merge source files (keeping original names for now)
+    // TODO: Implement name mangling in codegen for proper namespace separation
+    let entry_path = config.get_entry_path(&project_root);
     let mut combined_source = String::new();
     let mut is_first_file = true;
     
@@ -266,6 +331,11 @@ fn build_project(release: bool, emit_llvm: bool, do_check: bool) -> Result<(), S
             
             // Skip package declarations from non-entry files
             if trimmed.starts_with("package ") && !is_first_file {
+                continue;
+            }
+            
+            // Skip import declarations (they're already checked)
+            if trimmed.starts_with("import ") {
                 continue;
             }
             
