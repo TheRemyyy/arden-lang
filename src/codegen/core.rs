@@ -568,37 +568,9 @@ impl<'ctx> Codegen<'ctx> {
             .create_enum_attribute(Attribute::get_named_enum_kind_id("willreturn"), 0);
         function.add_attribute(AttributeLoc::Function, will_return);
 
-        // HOT function optimization - mark recursive/small functions as hot
-        if func.name == "fibonacci" || func.name == "sieve" || func.params.len() <= 2 {
-            let hot = self
-                .context
-                .create_enum_attribute(Attribute::get_named_enum_kind_id("hot"), 0);
-            function.add_attribute(AttributeLoc::Function, hot);
 
-            // Enable function cloning for better inlining
-            let minsize = self
-                .context
-                .create_enum_attribute(Attribute::get_named_enum_kind_id("minsize"), 0);
-            function.add_attribute(AttributeLoc::Function, minsize);
 
-            // Enable loop unrolling for hot functions
-            let uwtable = self
-                .context
-                .create_enum_attribute(Attribute::get_named_enum_kind_id("uwtable"), 0);
-            function.add_attribute(AttributeLoc::Function, uwtable);
-        }
 
-        // Fast math for floating point operations
-        if func.name.contains("calc") || func.name.contains("math") {
-            let no_infs = self
-                .context
-                .create_enum_attribute(Attribute::get_named_enum_kind_id("no-infs-fp-math"), 0);
-            let no_nans = self
-                .context
-                .create_enum_attribute(Attribute::get_named_enum_kind_id("no-nans-fp-math"), 0);
-            function.add_attribute(AttributeLoc::Function, no_infs);
-            function.add_attribute(AttributeLoc::Function, no_nans);
-        }
 
         self.functions.insert(
             func.name.clone(),
@@ -1902,9 +1874,6 @@ impl<'ctx> Codegen<'ctx> {
 
         // Tail Call Optimization - mark as tail call
         call.set_tail_call(true);
-
-        // Add branch prediction hints for hot paths
-        call.set_call_convention(0); // C calling convention with optimizations
 
         match call.try_as_basic_value() {
             ValueKind::Basic(val) => Ok(val),
