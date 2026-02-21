@@ -1,6 +1,5 @@
 //! Apex Programming Language Compiler
 
-mod apex_std;
 mod ast;
 mod borrowck;
 mod codegen;
@@ -10,7 +9,6 @@ mod namespace;
 mod parser;
 mod project;
 mod stdlib;
-mod test_runner;
 mod typeck;
 
 use clap::{Parser as ClapParser, Subcommand};

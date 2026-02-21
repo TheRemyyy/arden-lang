@@ -7,8 +7,8 @@ on:
     branches: [ main, master ]
 
 jobs:
-  test-rust:
-    name: Rust Tests
+  test:
+    name: Test
     runs-on: ubuntu-latest
     
     steps:
@@ -35,7 +35,7 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run Rust unit tests
+      - name: Run tests
         run: cargo test --verbose
 
       - name: Check formatting
@@ -43,42 +43,6 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy -- -D warnings
-
-  test-apex:
-    name: Apex Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install LLVM
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21 all
-          sudo apt-get install -y llvm-21-dev libpolly-21-dev
-          echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build compiler
-        run: cargo build --release
-
-      - name: Run Apex tests
-        run: |
-          chmod +x scripts/test.sh
-          ./scripts/test.sh
 
   check-examples:
     name: Check Examples
@@ -99,110 +63,26 @@ jobs:
           sudo apt-get install -y llvm-21-dev libpolly-21-dev
           echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Build compiler
         run: cargo build --release
 
       - name: Check and run all examples
         run: |
-          chmod +x scripts/check_examples.sh
-          ./scripts/check_examples.sh
+          # Single-file examples
+          for file in examples/*.apex; do
+            echo "Checking $file..."
+            cargo run --release -- check "$file"
+            echo "Running $file..."
+            cargo run --release -- run "$file"
+          done
+          
+          # Multi-file projects
+          for project in examples/multi_file_project examples/multi_file_depth_project examples/test_no_import; do
+            if [ -d "$project" ]; then
+              echo "Testing project $project..."
+              cd "$project"
+              ../../target/release/apex-compiler run
+              cd ../..
+            fi
+          done
 
-  stdlib-tests:
-    name: Standard Library Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install LLVM
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21 all
-          sudo apt-get install -y llvm-21-dev libpolly-21-dev
-          echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build compiler
-        run: cargo build --release
-
-      - name: Run stdlib tests
-        run: |
-          chmod +x scripts/test_stdlib.sh
-          ./scripts/test_stdlib.sh
-
-  build-release:
-    name: Build Release Binaries
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install LLVM (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21 all
-          sudo apt-get install -y llvm-21-dev libpolly-21-dev
-          echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
-
-      - name: Install LLVM (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install llvm@21
-          echo "LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)" >> $GITHUB_ENV
-
-      - name: Install LLVM (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          choco install llvm --version=21.0.0
-          echo "LLVM_SYS_211_PREFIX=C:\Program Files\LLVM" >> $env:GITHUB_ENV
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build release
-        run: cargo build --release
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: apex-compiler-${{ matrix.os }}
-          path: |
-            target/release/apex-compiler
-            target/release/apex-compiler.exe
