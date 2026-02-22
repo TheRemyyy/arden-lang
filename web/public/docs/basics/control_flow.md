@@ -50,7 +50,16 @@ Iterates over a range or collection.
 for (i in 5) {
     println("Iteration {i}");
 }
+
+// Using Range<T> explicitly
+r: Range<Integer> = range(1, 10, 2);  // 1, 3, 5, 7, 9
+while (r.has_next()) {
+    val: Integer = r.next();
+    println(to_string(val));
+}
 ```
+
+See [Range Types](../features/ranges.md) for more details on ranges.
 
 **Collection iteration:**
 

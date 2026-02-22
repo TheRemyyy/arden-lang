@@ -55,6 +55,7 @@ pub enum ResolvedType {
     Rc(Box<ResolvedType>),
     Arc(Box<ResolvedType>),
     Task(Box<ResolvedType>),
+    Range(Box<ResolvedType>),
     Function(Vec<ResolvedType>, Box<ResolvedType>),
     /// Type variable for inference
     TypeVar(usize),
@@ -101,6 +102,7 @@ impl std::fmt::Display for ResolvedType {
             ResolvedType::Rc(inner) => write!(f, "Rc<{}>", inner),
             ResolvedType::Arc(inner) => write!(f, "Arc<{}>", inner),
             ResolvedType::Task(inner) => write!(f, "Task<{}>", inner),
+            ResolvedType::Range(inner) => write!(f, "Range<{}>", inner),
             ResolvedType::Function(params, ret) => {
                 write!(f, "(")?;
                 for (i, p) in params.iter().enumerate() {
@@ -1269,6 +1271,19 @@ impl TypeChecker {
                 }
                 Some(ResolvedType::None)
             }
+            "range" => {
+                // range(start, end) -> Range<Integer> or range(start, end, step) -> Range<Integer>
+                if args.len() < 2 || args.len() > 3 {
+                    self.error("range() requires 2 or 3 arguments: range(start, end) or range(start, end, step)".to_string(), span.clone());
+                }
+                for arg in args {
+                    let t = self.check_expr(&arg.node, arg.span.clone());
+                    if !matches!(t, ResolvedType::Integer | ResolvedType::Float) {
+                        self.error("range() arguments must be Integer or Float".to_string(), span.clone());
+                    }
+                }
+                Some(ResolvedType::Range(Box::new(ResolvedType::Integer)))
+            }
             // File I/O
             "File__read" => {
                 self.check_arg_count(name, args, 1, span.clone());
@@ -1699,6 +1714,20 @@ impl TypeChecker {
                     ResolvedType::Unknown
                 }
             },
+            ResolvedType::Range(inner) => match method {
+                "has_next" => {
+                    self.check_arg_count(method, args, 0, span);
+                    ResolvedType::Boolean
+                }
+                "next" => {
+                    self.check_arg_count(method, args, 0, span);
+                    (**inner).clone()
+                }
+                _ => {
+                    self.error(format!("Unknown Range method: {}", method), span);
+                    ResolvedType::Unknown
+                }
+            },
             _ => {
                 self.error(format!("Cannot call method on type {}", obj_type), span);
                 ResolvedType::Unknown
@@ -1826,7 +1855,13 @@ impl TypeChecker {
             Type::String => ResolvedType::String,
             Type::Char => ResolvedType::Char,
             Type::None => ResolvedType::None,
-            Type::Named(name) => ResolvedType::Class(name.clone()),
+            Type::Named(name) => {
+                // Check for built-in types that might be parsed as Named
+                match name.as_str() {
+                    "Range" => ResolvedType::Class("Range".to_string()),
+                    _ => ResolvedType::Class(name.clone()),
+                }
+            }
             Type::Option(inner) => ResolvedType::Option(Box::new(self.resolve_type(inner))),
             Type::Result(ok, err) => ResolvedType::Result(
                 Box::new(self.resolve_type(ok)),
@@ -1844,6 +1879,7 @@ impl TypeChecker {
             Type::Rc(inner) => ResolvedType::Rc(Box::new(self.resolve_type(inner))),
             Type::Arc(inner) => ResolvedType::Arc(Box::new(self.resolve_type(inner))),
             Type::Task(inner) => ResolvedType::Task(Box::new(self.resolve_type(inner))),
+            Type::Range(inner) => ResolvedType::Range(Box::new(self.resolve_type(inner))),
             Type::Function(params, ret) => ResolvedType::Function(
                 params.iter().map(|p| self.resolve_type(p)).collect(),
                 Box::new(self.resolve_type(ret)),
@@ -1879,6 +1915,9 @@ impl TypeChecker {
                     }
                     "Task" if args.len() == 1 => {
                         ResolvedType::Task(Box::new(self.resolve_type(&args[0])))
+                    }
+                    "Range" if args.len() == 1 => {
+                        ResolvedType::Range(Box::new(self.resolve_type(&args[0])))
                     }
                     _ => ResolvedType::Class(name.clone()),
                 }

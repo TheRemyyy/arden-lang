@@ -227,6 +227,8 @@ pub enum Type {
     Arc(Box<Type>), // Arc<T> - atomic reference counted
     // Async types
     Task(Box<Type>), // Task<T> - async task
+    // Range type
+    Range(Box<Type>), // Range<T> - for range(start, end)
 }
 
 impl Type {

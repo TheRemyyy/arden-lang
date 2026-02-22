@@ -114,7 +114,9 @@ impl<'ctx> Codegen<'ctx> {
             // Args functions
             "Args__get" | "Args__len" |
             // Assertion functions
-            "assert" | "assert_eq" | "assert_ne" | "assert_true" | "assert_false" | "fail"
+            "assert" | "assert_eq" | "assert_ne" | "assert_true" | "assert_false" | "fail" |
+            // Range function
+            "range"
         )
     }
 
@@ -287,6 +289,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             // Task<T> - currently represented as T in the stub implementation
             Type::Task(inner) => self.llvm_type(inner),
+            // Range<T> - represented as a struct { start, end, step }
+            Type::Range(_) => self.context.ptr_type(AddressSpace::default()).into(),
         }
     }
 
@@ -1977,6 +1981,11 @@ impl<'ctx> Codegen<'ctx> {
                         return self.compile_result_method(name, method, args);
                     }
                 }
+                Type::Range(_) => {
+                    if let Expr::Ident(name) = object {
+                        return self.compile_range_method(name, method, args);
+                    }
+                }
                 _ => {}
             }
         }
@@ -3298,6 +3307,21 @@ impl<'ctx> Codegen<'ctx> {
                     .build_call(exit_fn, &[code_i32.into()], "")
                     .unwrap();
                 Ok(None) // void function
+            }
+            "range" => {
+                // range(start, end) or range(start, end, step)
+                // Returns a Range struct { start, end, step, current }
+                let start = self.compile_expr(&args[0].node)?;
+                let end = self.compile_expr(&args[1].node)?;
+                let step = if args.len() == 3 {
+                    self.compile_expr(&args[2].node)?
+                } else {
+                    self.context.i64_type().const_int(1, false).into()
+                };
+                
+                // Allocate and initialize Range struct
+                let range_ptr = self.create_range(start, end, step)?;
+                Ok(Some(range_ptr.into()))
             }
 
             // File I/O

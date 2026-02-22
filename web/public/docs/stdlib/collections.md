@@ -91,3 +91,58 @@ Returns the number of key-value pairs in the map.
 ```apex
 count: Integer = scores.length();
 ```
+
+## Range`<T>`
+
+`Range<T>` represents a sequence of values from start to end (exclusive) with a specified step. It's an iterator-based type for efficient numeric sequences.
+
+### Creating Ranges
+
+```apex
+// Basic range (step defaults to 1)
+r: Range<Integer> = range(0, 5);     // 0, 1, 2, 3, 4
+
+// Range with custom step
+r = range(0, 10, 2);                  // 0, 2, 4, 6, 8
+
+// Counting down
+r = range(10, 0, -1);                 // 10, 9, 8, ..., 1
+```
+
+### Range Methods
+
+#### `has_next(): Boolean`
+
+Returns `true` if there are more elements to iterate over.
+
+```apex
+r = range(0, 5);
+while (r.has_next()) {
+    // Iterates 5 times
+}
+```
+
+#### `next(): T`
+
+Returns the current value and advances the iterator.
+
+```apex
+r = range(0, 5);
+val: Integer = r.next();  // Returns 0
+val = r.next();           // Returns 1
+```
+
+### Example: Sum of 1 to N
+
+```apex
+function sum_to_n(n: Integer): Integer {
+    mut sum: Integer = 0;
+    r: Range<Integer> = range(1, n + 1);
+    while (r.has_next()) {
+        sum = sum + r.next();
+    }
+    return sum;
+}
+```
+
+See [Range Types](../features/ranges.md) for detailed documentation.

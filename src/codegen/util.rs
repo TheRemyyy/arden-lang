@@ -8,7 +8,7 @@ use crate::ast::{
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue, ValueKind};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 
@@ -1226,5 +1226,220 @@ impl<'ctx> Codegen<'ctx> {
             true,
         );
         self.module.add_function(name, sprintf_type, None)
+    }
+
+    // === Range Implementation ===
+
+    /// Get or create the Range struct type: { i64 start, i64 end, i64 step, i64 current }
+    pub fn get_range_type(&self) -> StructType<'ctx> {
+        let range_name = "Range";
+        if let Some(s) = self.module.get_struct_type(range_name) {
+            return s;
+        }
+        let range_type = self.context.struct_type(
+            &[
+                self.context.i64_type().into(), // start
+                self.context.i64_type().into(), // end
+                self.context.i64_type().into(), // step
+                self.context.i64_type().into(), // current
+            ],
+            false,
+        );
+        range_type.set_body(
+            &[
+                self.context.i64_type().into(),
+                self.context.i64_type().into(),
+                self.context.i64_type().into(),
+                self.context.i64_type().into(),
+            ],
+            false,
+        );
+        range_type
+    }
+
+    /// Create a new Range instance
+    pub fn create_range(
+        &mut self,
+        start: BasicValueEnum<'ctx>,
+        end: BasicValueEnum<'ctx>,
+        step: BasicValueEnum<'ctx>,
+    ) -> Result<PointerValue<'ctx>> {
+        let range_type = self.get_range_type();
+        let malloc = self.get_or_declare_malloc();
+        
+        // Allocate memory for Range struct
+        let size = range_type.size_of().unwrap();
+        let alloc_call = self.builder.build_call(malloc, &[size.into()], "range_alloc").unwrap();
+        let range_ptr = match alloc_call.try_as_basic_value() {
+            ValueKind::Basic(inkwell::values::BasicValueEnum::PointerValue(p)) => p,
+            _ => return Err(CodegenError::new("malloc should return pointer")),
+        };
+        
+        // Initialize fields - use i32 for GEP indices as required by LLVM
+        let i32_type = self.context.i32_type();
+        let zero = i32_type.const_int(0, false);
+        let one = i32_type.const_int(1, false);
+        let two = i32_type.const_int(2, false);
+        let three = i32_type.const_int(3, false);
+        
+        // Store start
+        let start_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, zero], "range_start_ptr").unwrap()
+        };
+        self.builder.build_store(start_ptr, start).unwrap();
+        
+        // Store end
+        let end_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, one], "range_end_ptr").unwrap()
+        };
+        self.builder.build_store(end_ptr, end).unwrap();
+        
+        // Store step
+        let step_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, two], "range_step_ptr").unwrap()
+        };
+        self.builder.build_store(step_ptr, step).unwrap();
+        
+        // Store current = start
+        let current_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, three], "range_current_ptr").unwrap()
+        };
+        self.builder.build_store(current_ptr, start).unwrap();
+        
+        Ok(range_ptr)
+    }
+
+    /// Get the next value from a Range iterator
+    /// Returns (value, has_more) tuple
+    pub fn range_next(
+        &mut self,
+        range_ptr: PointerValue<'ctx>,
+    ) -> Result<(BasicValueEnum<'ctx>, BasicValueEnum<'ctx>)> {
+        let range_type = self.get_range_type();
+        let i64_type = self.context.i64_type();
+        let i32_type = self.context.i32_type();
+        let zero = i32_type.const_int(0, false);
+        let one = i32_type.const_int(1, false);
+        let two = i32_type.const_int(2, false);
+        let three = i32_type.const_int(3, false);
+        
+        // Load current value
+        let current_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, three], "current_ptr").unwrap()
+        };
+        let current = self.builder.build_load(i64_type, current_ptr, "current").unwrap();
+        
+        // Load step
+        let step_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, two], "step_ptr").unwrap()
+        };
+        let step = self.builder.build_load(i64_type, step_ptr, "step").unwrap();
+        
+        // Calculate next: current + step
+        let next_val = self.builder.build_int_add(current.into_int_value(), step.into_int_value(), "next").unwrap();
+        self.builder.build_store(current_ptr, next_val).unwrap();
+        
+        // Load end to check if we're done
+        let end_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, one], "end_ptr").unwrap()
+        };
+        let end = self.builder.build_load(i64_type, end_ptr, "end").unwrap();
+        
+        // Load step to determine comparison direction
+        let step_val = step.into_int_value();
+        let step_is_positive = self.builder.build_int_compare(
+            inkwell::IntPredicate::SGT,
+            step_val,
+            i64_type.const_int(0, false),
+            "step_positive"
+        ).unwrap();
+        
+        // has_more = step > 0 ? current < end : current > end
+        let cmp_positive = self.builder.build_int_compare(
+            inkwell::IntPredicate::SLT,
+            current.into_int_value(),
+            end.into_int_value(),
+            "cmp_pos"
+        ).unwrap();
+        
+        let cmp_negative = self.builder.build_int_compare(
+            inkwell::IntPredicate::SGT,
+            current.into_int_value(),
+            end.into_int_value(),
+            "cmp_neg"
+        ).unwrap();
+        
+        let has_more = self.builder.build_select(
+            step_is_positive,
+            cmp_positive,
+            cmp_negative,
+            "has_more"
+        ).unwrap();
+        
+        Ok((current, has_more))
+    }
+
+    /// Check if Range has more elements
+    pub fn range_has_next(
+        &mut self,
+        range_ptr: PointerValue<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let range_type = self.get_range_type();
+        let i64_type = self.context.i64_type();
+        let i32_type = self.context.i32_type();
+        let zero = i32_type.const_int(0, false);
+        let one = i32_type.const_int(1, false);
+        let two = i32_type.const_int(2, false);
+        let three = i32_type.const_int(3, false);
+        
+        // Load current
+        let current_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, three], "current_ptr").unwrap()
+        };
+        let current = self.builder.build_load(i64_type, current_ptr, "current").unwrap();
+        
+        // Load end
+        let end_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, one], "end_ptr").unwrap()
+        };
+        let end = self.builder.build_load(i64_type, end_ptr, "end").unwrap();
+        
+        // Load step
+        let step_ptr = unsafe {
+            self.builder.build_gep(range_type, range_ptr, &[zero, two], "step_ptr").unwrap()
+        };
+        let step = self.builder.build_load(i64_type, step_ptr, "step").unwrap();
+        
+        // Check step direction
+        let step_is_positive = self.builder.build_int_compare(
+            inkwell::IntPredicate::SGT,
+            step.into_int_value(),
+            i64_type.const_int(0, false),
+            "step_positive"
+        ).unwrap();
+        
+        // Compare based on direction
+        let cmp_positive = self.builder.build_int_compare(
+            inkwell::IntPredicate::SLT,
+            current.into_int_value(),
+            end.into_int_value(),
+            "cmp_pos"
+        ).unwrap();
+        
+        let cmp_negative = self.builder.build_int_compare(
+            inkwell::IntPredicate::SGT,
+            current.into_int_value(),
+            end.into_int_value(),
+            "cmp_neg"
+        ).unwrap();
+        
+        let has_more = self.builder.build_select(
+            step_is_positive,
+            cmp_positive,
+            cmp_negative,
+            "has_more"
+        ).unwrap();
+        
+        Ok(has_more)
     }
 }

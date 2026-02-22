@@ -51,6 +51,7 @@ Detailed documentation is available in the `docs/` directory:
 - **[Classes](docs/features/classes.md)**: OOP features.
 - **[Interfaces](docs/features/interfaces.md)**: Polymorphism.
 - **[Enums](docs/features/enums.md)**: ADTs and pattern matching.
+- **[Ranges](docs/features/ranges.md)**: Iterator-based numeric sequences.
 - **[Modules](docs/features/modules.md)**: Code organization.
 
 ### Advanced

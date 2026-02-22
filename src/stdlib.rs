@@ -87,6 +87,7 @@ impl StdLib {
         functions.insert("to_string".to_string(), "builtin".to_string());
         functions.insert("length".to_string(), "builtin".to_string());
         functions.insert("exit".to_string(), "builtin".to_string());
+        functions.insert("range".to_string(), "builtin".to_string());
 
         Self { functions }
     }

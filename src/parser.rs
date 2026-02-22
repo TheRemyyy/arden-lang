@@ -103,6 +103,7 @@ impl<'src> Parser<'src> {
             Type::Rc(inner) => format!("Rc<{}>", self.format_type(inner)),
             Type::Arc(inner) => format!("Arc<{}>", self.format_type(inner)),
             Type::Task(inner) => format!("Task<{}>", self.format_type(inner)),
+            Type::Range(inner) => format!("Range<{}>", self.format_type(inner)),
             Type::Function(params, ret) => {
                 let params_str = params
                     .iter()
@@ -584,6 +585,9 @@ impl<'src> Parser<'src> {
                 "Task" if type_args.len() == 1 => {
                     Ok(Type::Task(Box::new(type_args.into_iter().next().unwrap())))
                 }
+                "Range" if type_args.len() == 1 => {
+                    Ok(Type::Range(Box::new(type_args.into_iter().next().unwrap())))
+                }
                 _ => Ok(Type::Generic(name.to_string(), type_args)),
             }
         } else {
@@ -852,6 +856,9 @@ impl<'src> Parser<'src> {
                         }
                         "Task" if type_args.len() == 1 => {
                             Type::Task(Box::new(type_args.into_iter().next().unwrap()))
+                        }
+                        "Range" if type_args.len() == 1 => {
+                            Type::Range(Box::new(type_args.into_iter().next().unwrap()))
                         }
                         _ => Type::Generic(name, type_args),
                     }

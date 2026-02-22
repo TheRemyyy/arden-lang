@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### ✨ New Features
 
+- **Range Type**: Full iterator-based range type for numeric sequences
+  - `Range<T>` generic type with `range(start, end)` and `range(start, end, step)` functions
+  - Iterator protocol with `has_next()` and `next()` methods
+  - Support for ascending and descending ranges (negative steps)
+  - LLVM struct-based implementation with heap allocation
+  - New example: `examples/25_range_types.apex`
+  - Documentation: `docs/features/ranges.md`
+
 - **Testing Framework**: Full testing framework with attributes and assertions
   - `@Test` attribute to mark test functions
   - `@Ignore` attribute to skip tests (with optional reason: `@Ignore("not ready")`)
@@ -29,6 +37,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Color-coded error output with source location
 
 ### 🔧 Technical
+
+- **Range Type Implementation**:
+  - Added `Type::Range(Box<Type>)` to AST
+  - Added `ResolvedType::Range(Box<ResolvedType>)` to typeck
+  - Parser support for `Range<T>` syntax
+  - LLVM codegen: struct `{ i64, i64, i64, i64 }` (start, end, step, current)
+  - `create_range()`, `range_has_next()`, `range_next()` helper functions
+  - `compile_range_method()` for method calls
 
 - Added `test_runner.rs` module for test discovery and execution
 - Added `Attribute` enum to AST for function annotations
@@ -56,7 +72,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Full `cargo fmt` and `cargo clippy` compliance
 
 ### 📊 Stats
-- 32/32 tests passing
+- 34/34 tests passing
 - Zero clippy warnings
 
 ## [1.3.0] - Multi-File & Namespace System - 2026-02-21
