@@ -1609,9 +1609,10 @@ impl<'ctx> Codegen<'ctx> {
         let var_ptr = var.ptr;
         let i64_type = self.context.i64_type();
         let ptr_type = self.context.ptr_type(AddressSpace::default());
-        
+
         // Load the range pointer from the variable alloca
-        let range_ptr = self.builder
+        let range_ptr = self
+            .builder
             .build_load(ptr_type, var_ptr, "range_ptr")
             .unwrap()
             .into_pointer_value();
@@ -1620,7 +1621,7 @@ impl<'ctx> Codegen<'ctx> {
         let one = i32_type.const_int(1, false);
         let two = i32_type.const_int(2, false);
         let three = i32_type.const_int(3, false);
-        
+
         // Get range struct type: { i64, i64, i64, i64 }
         let range_type = self.context.struct_type(
             &[
@@ -1631,19 +1632,14 @@ impl<'ctx> Codegen<'ctx> {
             ],
             false,
         );
-        
+
         // Range struct layout: { start: i64, end: i64, step: i64, current: i64 }
         match method {
             "has_next" => {
                 // Load step
                 let step_ptr = unsafe {
                     self.builder
-                        .build_gep(
-                            range_type,
-                            range_ptr,
-                            &[zero, two],
-                            "step_ptr",
-                        )
+                        .build_gep(range_type, range_ptr, &[zero, two], "step_ptr")
                         .unwrap()
                 };
                 let step = self
@@ -1651,16 +1647,11 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(i64_type, step_ptr, "step")
                     .unwrap()
                     .into_int_value();
-                
+
                 // Load current
                 let current_ptr = unsafe {
                     self.builder
-                        .build_gep(
-                            range_type,
-                            range_ptr,
-                            &[zero, three],
-                            "current_ptr",
-                        )
+                        .build_gep(range_type, range_ptr, &[zero, three], "current_ptr")
                         .unwrap()
                 };
                 let current = self
@@ -1668,16 +1659,11 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(i64_type, current_ptr, "current")
                     .unwrap()
                     .into_int_value();
-                
+
                 // Load end
                 let end_ptr = unsafe {
                     self.builder
-                        .build_gep(
-                            range_type,
-                            range_ptr,
-                            &[zero, one],
-                            "end_ptr",
-                        )
+                        .build_gep(range_type, range_ptr, &[zero, one], "end_ptr")
                         .unwrap()
                 };
                 let end = self
@@ -1685,58 +1671,38 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(i64_type, end_ptr, "end")
                     .unwrap()
                     .into_int_value();
-                
+
                 // Check if step > 0: current < end
                 // Check if step < 0: current > end
                 let zero_i64 = i64_type.const_int(0, false);
                 let step_positive = self
                     .builder
-                    .build_int_compare(
-                        inkwell::IntPredicate::SGT,
-                        step,
-                        zero_i64,
-                        "step_positive",
-                    )
+                    .build_int_compare(inkwell::IntPredicate::SGT, step, zero_i64, "step_positive")
                     .unwrap();
-                
+
                 let current_lt_end = self
                     .builder
-                    .build_int_compare(
-                        inkwell::IntPredicate::SLT,
-                        current,
-                        end,
-                        "current_lt_end",
-                    )
+                    .build_int_compare(inkwell::IntPredicate::SLT, current, end, "current_lt_end")
                     .unwrap();
-                
+
                 let current_gt_end = self
                     .builder
-                    .build_int_compare(
-                        inkwell::IntPredicate::SGT,
-                        current,
-                        end,
-                        "current_gt_end",
-                    )
+                    .build_int_compare(inkwell::IntPredicate::SGT, current, end, "current_gt_end")
                     .unwrap();
-                
+
                 // Select based on step direction
                 let result = self
                     .builder
                     .build_select(step_positive, current_lt_end, current_gt_end, "has_next")
                     .unwrap();
-                
+
                 Ok(result.into_int_value().into())
             }
             "next" => {
                 // Load current
                 let current_ptr = unsafe {
                     self.builder
-                        .build_gep(
-                            range_type,
-                            range_ptr,
-                            &[zero, three],
-                            "current_ptr",
-                        )
+                        .build_gep(range_type, range_ptr, &[zero, three], "current_ptr")
                         .unwrap()
                 };
                 let current = self
@@ -1744,16 +1710,11 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(i64_type, current_ptr, "current")
                     .unwrap()
                     .into_int_value();
-                
+
                 // Load step
                 let step_ptr = unsafe {
                     self.builder
-                        .build_gep(
-                            range_type,
-                            range_ptr,
-                            &[zero, two],
-                            "step_ptr",
-                        )
+                        .build_gep(range_type, range_ptr, &[zero, two], "step_ptr")
                         .unwrap()
                 };
                 let step = self
@@ -1761,20 +1722,23 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(i64_type, step_ptr, "step")
                     .unwrap()
                     .into_int_value();
-                
+
                 // Increment current: current + step
                 let new_current = self
                     .builder
                     .build_int_add(current, step, "new_current")
                     .unwrap();
-                
+
                 // Store new current
                 self.builder.build_store(current_ptr, new_current).unwrap();
-                
+
                 // Return old current
                 Ok(current.into())
             }
-            _ => Err(CodegenError::new(format!("Unknown Range method: {}", method))),
+            _ => Err(CodegenError::new(format!(
+                "Unknown Range method: {}",
+                method
+            ))),
         }
     }
 }

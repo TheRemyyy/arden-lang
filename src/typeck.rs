@@ -1279,7 +1279,10 @@ impl TypeChecker {
                 for arg in args {
                     let t = self.check_expr(&arg.node, arg.span.clone());
                     if !matches!(t, ResolvedType::Integer | ResolvedType::Float) {
-                        self.error("range() arguments must be Integer or Float".to_string(), span.clone());
+                        self.error(
+                            "range() arguments must be Integer or Float".to_string(),
+                            span.clone(),
+                        );
                     }
                 }
                 Some(ResolvedType::Range(Box::new(ResolvedType::Integer)))

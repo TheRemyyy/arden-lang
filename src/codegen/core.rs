@@ -3318,7 +3318,7 @@ impl<'ctx> Codegen<'ctx> {
                 } else {
                     self.context.i64_type().const_int(1, false).into()
                 };
-                
+
                 // Allocate and initialize Range struct
                 let range_ptr = self.create_range(start, end, step)?;
                 Ok(Some(range_ptr.into()))
