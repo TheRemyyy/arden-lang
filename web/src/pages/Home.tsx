@@ -42,7 +42,7 @@ export function Home() {
                         Apex is a modern systems language built on LLVM. It gives teams low-level control and practical tooling without turning everyday development into a fight.
                     </p>
                     <div className="flex flex-wrap gap-3 pt-2">
-                        <Link to="/docs/overview.md" className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 text-sm font-semibold text-black transition hover:bg-zinc-200">
+                        <Link to="/docs/overview" className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 text-sm font-semibold text-black transition hover:bg-zinc-200">
                             Get started
                             <ArrowRight size={16} />
                         </Link>
@@ -60,20 +60,20 @@ export function Home() {
                 <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
                     <div className="rounded-2xl border border-zinc-700 bg-[#111111] p-6">
                         <div className="mb-4 flex items-center justify-between">
-                            <p className="text-sm font-medium text-zinc-200">Compiler Snapshot</p>
-                            <span className="rounded-md bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-300">stable</span>
+                            <p className="text-sm font-medium text-zinc-200">Range Iterator</p>
+                            <span className="rounded-md bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-300">v1.3.2</span>
                         </div>
                         <div className="rounded-xl border border-zinc-700 bg-[#0d0d0d] p-5">
                             <pre className="overflow-x-auto text-sm leading-7 text-zinc-300">
                                 <code>
-                                    <div>fn bootstrap_runtime() -&gt; Task&lt;usize&gt; {'{'}</div>
-                                    <div className="pl-4">workers: List&lt;Int&gt; = List&lt;Int&gt;();</div>
-                                    <div className="pl-4">workers.push(8);</div>
-                                    <div className="pl-4">match (workers.get(0)) {'{'}</div>
-                                    <div className="pl-8">8 =&gt; println("Runtime ready"),</div>
-                                    <div className="pl-8">_ =&gt; exit(1)</div>
+                                    <div>import std.io.*;</div>
+                                    <div></div>
+                                    <div>function main(): None {'{'}</div>
+                                    <div className="pl-4">r: Range&lt;Integer&gt; = range(0, 10, 2);</div>
+                                    <div className="pl-4">while (r.has_next()) {'{'}</div>
+                                    <div className="pl-8">println(to_string(r.next()));</div>
                                     <div className="pl-4">{'}'}</div>
-                                    <div className="pl-4">return workers.length();</div>
+                                    <div className="pl-4">return None;</div>
                                     <div>{'}'}</div>
                                 </code>
                             </pre>
