@@ -10,6 +10,7 @@ pub struct ImportError {
     pub function_name: String,
     pub defined_in: String,
     pub used_in: String,
+    #[allow(dead_code)]
     pub span: Span,
     pub suggestion: Option<String>,
 }
@@ -31,6 +32,7 @@ impl ImportError {
 }
 
 /// Calculate Levenshtein distance between two strings
+#[allow(clippy::needless_range_loop)]
 fn levenshtein_distance(a: &str, b: &str) -> usize {
     let len_a = a.chars().count();
     let len_b = b.chars().count();

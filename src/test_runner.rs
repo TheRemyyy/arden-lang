@@ -13,6 +13,7 @@ use colored::*;
 
 /// Represents a discovered test
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Test {
     pub name: String,
     pub function: FunctionDecl,
@@ -40,6 +41,7 @@ pub struct TestDiscovery {
 
 /// Test execution result
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct TestResult {
     pub suite_name: String,
     pub test_name: String,
@@ -50,6 +52,7 @@ pub struct TestResult {
 
 /// Overall test run summary
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct TestSummary {
     pub total: usize,
     pub passed: usize,
@@ -132,13 +135,14 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
 
 /// Check if function has a specific attribute
 fn has_attribute(attributes: &[Attribute], target: Attribute) -> bool {
-    attributes.iter().any(|attr| match (attr, &target) {
-        (Attribute::Test, Attribute::Test) => true,
-        (Attribute::Before, Attribute::Before) => true,
-        (Attribute::After, Attribute::After) => true,
-        (Attribute::BeforeAll, Attribute::BeforeAll) => true,
-        (Attribute::AfterAll, Attribute::AfterAll) => true,
-        _ => false,
+    attributes.iter().any(|attr| {
+        matches!((attr, &target),
+            (Attribute::Test, Attribute::Test)
+                | (Attribute::Before, Attribute::Before)
+                | (Attribute::After, Attribute::After)
+                | (Attribute::BeforeAll, Attribute::BeforeAll)
+                | (Attribute::AfterAll, Attribute::AfterAll)
+        )
     })
 }
 
@@ -153,6 +157,7 @@ fn get_ignore_reason(attributes: &[Attribute]) -> Option<String> {
 }
 
 /// Generate test runner code for compilation
+#[allow(dead_code)]
 pub fn generate_test_runner(discovery: &TestDiscovery) -> String {
     let mut code = String::new();
 
@@ -369,6 +374,7 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
 }
 
 /// Generate runner code for a single test suite
+#[allow(dead_code)]
 fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
     code.push_str(&format!("    // Test Suite: {}\n", suite.name));
     code.push_str("    println(\"\\n--- Running Tests ---\");\n");
@@ -483,6 +489,7 @@ pub fn print_discovery(discovery: &TestDiscovery) {
 }
 
 /// Print test summary
+#[allow(dead_code)]
 pub fn print_summary(summary: &TestSummary) {
     println!();
     println!("{}", "========================================".cyan());
