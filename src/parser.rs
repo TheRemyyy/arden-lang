@@ -155,12 +155,17 @@ impl<'src> Parser<'src> {
     fn parse_declaration(&mut self) -> ParseResult<Spanned<Decl>> {
         let start = self.current_span().start;
 
+        // Parse attributes if present
+        let attributes = self.parse_attributes()?;
+
         let decl = match self.current() {
-            Some(Token::Function) | Some(Token::Async) => Decl::Function(self.parse_function()?),
-            Some(Token::Class) => Decl::Class(self.parse_class()?),
-            Some(Token::Enum) => Decl::Enum(self.parse_enum()?),
-            Some(Token::Interface) => Decl::Interface(self.parse_interface()?),
-            Some(Token::Module) => Decl::Module(self.parse_module()?),
+            Some(Token::Function) | Some(Token::Async) => {
+                Decl::Function(self.parse_function(attributes)?)
+            }
+            Some(Token::Class) => Decl::Class(self.parse_class(attributes)?),
+            Some(Token::Enum) => Decl::Enum(self.parse_enum(attributes)?),
+            Some(Token::Interface) => Decl::Interface(self.parse_interface(attributes)?),
+            Some(Token::Module) => Decl::Module(self.parse_module(attributes)?),
             Some(Token::Import) => Decl::Import(self.parse_import()?),
             Some(Token::Package) => {
                 // Package is handled at program level, skip here
@@ -179,6 +184,61 @@ impl<'src> Parser<'src> {
 
         let end = self.current_span().start;
         Ok(Spanned::new(decl, start..end))
+    }
+
+    /// Parse attributes (e.g., @Test, @Ignore)
+    fn parse_attributes(&mut self) -> ParseResult<Vec<Attribute>> {
+        let mut attributes = Vec::new();
+
+        while self.check(&Token::At) {
+            self.advance(); // consume @
+            let attr_name = self.parse_ident()?;
+
+            let attr = match attr_name.as_str() {
+                "Test" => Attribute::Test,
+                "Ignore" => {
+                    // Optional reason: @Ignore("reason")
+                    let reason = if self.check(&Token::LParen) {
+                        self.advance();
+                        let reason_str = self.parse_string_literal()?;
+                        self.eat(&Token::RParen)?;
+                        Some(reason_str)
+                    } else {
+                        None
+                    };
+                    Attribute::Ignore(reason)
+                }
+                "Before" => Attribute::Before,
+                "After" => Attribute::After,
+                "BeforeAll" => Attribute::BeforeAll,
+                "AfterAll" => Attribute::AfterAll,
+                _ => {
+                    return Err(ParseError::new(
+                        format!("Unknown attribute: @{}", attr_name),
+                        self.current_span(),
+                    ));
+                }
+            };
+
+            attributes.push(attr);
+        }
+
+        Ok(attributes)
+    }
+
+    /// Parse a string literal
+    fn parse_string_literal(&mut self) -> ParseResult<String> {
+        match self.current() {
+            Some(Token::String(s)) => {
+                let s = s.to_string();
+                self.advance();
+                Ok(s)
+            }
+            _ => Err(ParseError::new(
+                format!("Expected string literal, found {:?}", self.current()),
+                self.current_span(),
+            )),
+        }
     }
 
     /// Parse visibility modifier if present
@@ -246,7 +306,7 @@ impl<'src> Parser<'src> {
         Ok(params)
     }
 
-    fn parse_function(&mut self) -> ParseResult<FunctionDecl> {
+    fn parse_function(&mut self, attributes: Vec<Attribute>) -> ParseResult<FunctionDecl> {
         let visibility = self.parse_visibility();
 
         let is_async = if self.check(&Token::Async) {
@@ -277,10 +337,11 @@ impl<'src> Parser<'src> {
             body,
             is_async,
             visibility,
+            attributes,
         })
     }
 
-    fn parse_class(&mut self) -> ParseResult<ClassDecl> {
+    fn parse_class(&mut self, _attributes: Vec<Attribute>) -> ParseResult<ClassDecl> {
         let visibility = self.parse_visibility();
 
         self.eat(&Token::Class)?;
@@ -325,7 +386,8 @@ impl<'src> Parser<'src> {
                     destructor = Some(self.parse_destructor()?);
                 }
                 Some(Token::Function) | Some(Token::Async) => {
-                    let mut method = self.parse_function()?;
+                    let method_attrs = self.parse_attributes()?;
+                    let mut method = self.parse_function(method_attrs)?;
                     method.visibility = member_visibility;
                     methods.push(method);
                 }
@@ -402,7 +464,7 @@ impl<'src> Parser<'src> {
         Ok(Constructor { params, body })
     }
 
-    fn parse_enum(&mut self) -> ParseResult<EnumDecl> {
+    fn parse_enum(&mut self, _attributes: Vec<Attribute>) -> ParseResult<EnumDecl> {
         let visibility = self.parse_visibility();
 
         self.eat(&Token::Enum)?;
@@ -529,7 +591,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn parse_interface(&mut self) -> ParseResult<InterfaceDecl> {
+    fn parse_interface(&mut self, _attributes: Vec<Attribute>) -> ParseResult<InterfaceDecl> {
         let visibility = self.parse_visibility();
 
         self.eat(&Token::Interface)?;
@@ -590,7 +652,7 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn parse_module(&mut self) -> ParseResult<ModuleDecl> {
+    fn parse_module(&mut self, _attributes: Vec<Attribute>) -> ParseResult<ModuleDecl> {
         self.eat(&Token::Module)?;
         let name = self.parse_ident()?;
         self.eat(&Token::LBrace)?;
@@ -1766,5 +1828,106 @@ impl<'src> Parser<'src> {
                 self.current_span(),
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::tokenize;
+
+    fn parse_source(source: &str) -> Result<Program, ParseError> {
+        let tokens = tokenize(source).map_err(|e| ParseError::new(e, 0..0))?;
+        let mut parser = Parser::new(tokens);
+        parser.parse_program()
+    }
+
+    #[test]
+    fn test_parse_test_attribute() {
+        let source = r#"
+            package test;
+            
+            @Test
+            function testAddition(): Integer {
+                return 2 + 2;
+            }
+        "#;
+
+        let program = parse_source(source).expect("Should parse successfully");
+        assert_eq!(program.declarations.len(), 1);
+
+        match &program.declarations[0].node {
+            Decl::Function(func) => {
+                assert_eq!(func.name, "testAddition");
+                assert_eq!(func.attributes.len(), 1);
+                assert_eq!(func.attributes[0], Attribute::Test);
+            }
+            _ => panic!("Expected function declaration"),
+        }
+    }
+
+    #[test]
+    fn test_parse_ignore_attribute_with_reason() {
+        let source = r#"
+            package test;
+            
+            @Test
+            @Ignore("Not implemented yet")
+            function testDivision(): Integer {
+                return 10 / 2;
+            }
+        "#;
+
+        let program = parse_source(source).expect("Should parse successfully");
+
+        match &program.declarations[0].node {
+            Decl::Function(func) => {
+                assert_eq!(func.attributes.len(), 2);
+                assert_eq!(func.attributes[0], Attribute::Test);
+                assert_eq!(
+                    func.attributes[1],
+                    Attribute::Ignore(Some("Not implemented yet".to_string()))
+                );
+            }
+            _ => panic!("Expected function declaration"),
+        }
+    }
+
+    #[test]
+    fn test_parse_function_without_attributes() {
+        let source = r#"
+            package test;
+            
+            function normalFunction(): Integer {
+                return 42;
+            }
+        "#;
+
+        let program = parse_source(source).expect("Should parse successfully");
+
+        match &program.declarations[0].node {
+            Decl::Function(func) => {
+                assert_eq!(func.name, "normalFunction");
+                assert!(func.attributes.is_empty());
+            }
+            _ => panic!("Expected function declaration"),
+        }
+    }
+
+    #[test]
+    fn test_unknown_attribute_error() {
+        let source = r#"
+            package test;
+            
+            @Unknown
+            function testFunc(): Integer {
+                return 42;
+            }
+        "#;
+
+        let result = parse_source(source);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("Unknown attribute"));
     }
 }

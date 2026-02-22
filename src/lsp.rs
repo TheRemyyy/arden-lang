@@ -62,10 +62,31 @@ impl Backend {
 
         // Keywords
         let keywords = vec![
-            "function", "class", "interface", "enum", "module",
-            "if", "else", "while", "for", "in", "return", "break", "continue",
-            "match", "mut", "let", "import", "package", "async", "await",
-            "public", "private", "protected", "constructor", "destructor",
+            "function",
+            "class",
+            "interface",
+            "enum",
+            "module",
+            "if",
+            "else",
+            "while",
+            "for",
+            "in",
+            "return",
+            "break",
+            "continue",
+            "match",
+            "mut",
+            "let",
+            "import",
+            "package",
+            "async",
+            "await",
+            "public",
+            "private",
+            "protected",
+            "constructor",
+            "destructor",
         ];
 
         for kw in keywords {
@@ -79,9 +100,8 @@ impl Backend {
 
         // Types
         let types = vec![
-            "Integer", "Float", "Boolean", "String", "Char", "None",
-            "Option", "Result", "List", "Map", "Set",
-            "Box", "Rc", "Arc", "Task",
+            "Integer", "Float", "Boolean", "String", "Char", "None", "Option", "Result", "List",
+            "Map", "Set", "Box", "Rc", "Arc", "Task",
         ];
 
         for ty in types {
@@ -114,7 +134,7 @@ impl Backend {
     fn get_hover(&self, doc: &Document, pos: Position) -> Option<Hover> {
         // Simple word-based hover
         let line = doc.text.lines().nth(pos.line as usize)?;
-        
+
         // Keywords documentation
         let keywords_docs: HashMap<&str, &str> = [
             ("function", "Define a function\n\n```apex\nfunction name(params): ReturnType {\n  // body\n}\n```"),

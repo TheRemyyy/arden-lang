@@ -145,6 +145,8 @@ pub enum Token<'src> {
     Ampersand,
     #[token("|")]
     Pipe,
+    #[token("@")]
+    At,
     #[token("..=")]
     DotDotEq,
     #[token("..")]

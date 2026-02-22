@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### ✨ New Features
 
+- **Testing Framework Attributes**: Added support for test annotations
+  - `@Test` attribute to mark test functions
+  - `@Ignore` attribute to skip tests (with optional reason: `@Ignore("not ready")`)
+  - `@Before`, `@After`, `@BeforeAll`, `@AfterAll` for test lifecycle (prepared)
+  - New example: `examples/24_test_attributes.apex`
+
 - **LSP (Language Server Protocol)**: Apex now has a built-in LSP server for IDE integration
   - New CLI command: `apex lsp` - Start the language server
   - Autocomplete support for keywords, types, and functions
@@ -21,6 +27,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🔧 Technical
 
+- Added `Attribute` enum to AST for function annotations
+- Added `@` token to lexer
+- Updated parser to parse attributes before function declarations
+- Added parser unit tests for attribute parsing
 - Added `lsp.rs` module with tower-lsp integration
 - Added fuzzy string matching for error suggestions
 - Updated `import_check.rs` with suggestion engine

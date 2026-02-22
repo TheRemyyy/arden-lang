@@ -54,6 +54,17 @@ pub struct GenericParam {
     pub bounds: Vec<String>, // extends Interface1, Interface2
 }
 
+/// Function attribute (e.g., @Test, @Ignore)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Attribute {
+    Test,
+    Ignore(Option<String>), // Optional reason
+    Before,
+    After,
+    BeforeAll,
+    AfterAll,
+}
+
 /// Complete program
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -96,6 +107,7 @@ pub struct FunctionDecl {
     pub body: Block,
     pub is_async: bool,
     pub visibility: Visibility,
+    pub attributes: Vec<Attribute>, // @Test, @Ignore, etc.
 }
 
 /// Parameter with ownership mode

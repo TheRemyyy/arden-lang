@@ -19,17 +19,13 @@ impl ImportError {
         let mut result = format!(
             "Function '{}' is defined in '{}' but not imported in '{}'\n  \
              Hint: Add 'import {}.{};' to the top of your file",
-            self.function_name, 
-            self.defined_in, 
-            self.used_in, 
-            self.defined_in, 
-            self.function_name
+            self.function_name, self.defined_in, self.used_in, self.defined_in, self.function_name
         );
-        
+
         if let Some(suggestion) = &self.suggestion {
             result.push_str(&format!("\n  Or did you mean: '{}'?", suggestion));
         }
-        
+
         result
     }
 }
@@ -38,19 +34,23 @@ impl ImportError {
 fn levenshtein_distance(a: &str, b: &str) -> usize {
     let len_a = a.chars().count();
     let len_b = b.chars().count();
-    
-    if len_a == 0 { return len_b; }
-    if len_b == 0 { return len_a; }
-    
+
+    if len_a == 0 {
+        return len_b;
+    }
+    if len_b == 0 {
+        return len_a;
+    }
+
     let mut matrix = vec![vec![0; len_b + 1]; len_a + 1];
-    
+
     for i in 0..=len_a {
         matrix[i][0] = i;
     }
     for j in 0..=len_b {
         matrix[0][j] = j;
     }
-    
+
     for (i, ca) in a.chars().enumerate() {
         for (j, cb) in b.chars().enumerate() {
             let cost = if ca == cb { 0 } else { 1 };
@@ -59,14 +59,14 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
                 .min(matrix[i][j] + cost);
         }
     }
-    
+
     matrix[len_a][len_b]
 }
 
 /// Find the closest matching string from candidates
 fn did_you_mean(name: &str, candidates: &[String]) -> Option<String> {
     let mut best_match: Option<(String, usize)> = None;
-    
+
     for candidate in candidates {
         let distance = levenshtein_distance(name, candidate);
         // Only suggest if distance is reasonable (<= 3 and less than half the length)
@@ -81,7 +81,7 @@ fn did_you_mean(name: &str, candidates: &[String]) -> Option<String> {
             }
         }
     }
-    
+
     best_match.map(|(s, _)| s)
 }
 
@@ -173,7 +173,7 @@ impl ImportChecker {
             if !self.imported_functions.contains(name) {
                 // Try to find a similar function name
                 let suggestion = did_you_mean(name, &self.available_functions);
-                
+
                 self.errors.push(ImportError {
                     function_name: name.to_string(),
                     defined_in: ns.clone(),
@@ -196,7 +196,7 @@ impl ImportChecker {
             if !self.imported_functions.contains(name) && !self.wildcard_imports.contains(ns) {
                 // Try to find a similar function name
                 let suggestion = did_you_mean(name, &self.available_functions);
-                
+
                 self.errors.push(ImportError {
                     function_name: name.to_string(),
                     defined_in: ns.clone(),
