@@ -57,8 +57,16 @@ impl ImportChecker {
                 let ns = path.trim_end_matches(".*");
                 wildcard_imports.push(ns.to_string());
 
-                // Add all functions from this namespace
+                // Add all functions from this namespace (user-defined)
                 for (func, func_ns) in &function_namespaces {
+                    if func_ns == ns {
+                        imported_functions.insert(func.clone());
+                    }
+                }
+
+                // Add all stdlib functions from this namespace
+                let stdlib = StdLib::new();
+                for (func, func_ns) in stdlib.get_functions() {
                     if func_ns == ns {
                         imported_functions.insert(func.clone());
                     }

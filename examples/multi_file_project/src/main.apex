@@ -1,6 +1,8 @@
 // Multi-file project example
 // Demonstrates using functions from other modules
 
+import std.io.*;
+
 function main(): None {
     println("=== Multi-File Project Demo ===");
     println("");

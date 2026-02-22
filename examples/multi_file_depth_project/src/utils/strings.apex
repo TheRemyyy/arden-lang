@@ -1,6 +1,8 @@
 // String utilities - namespace: utils.strings
 package utils.strings;
 
+import std.string.*;
+
 function repeat(s: String, times: Integer): String {
     mut result: String = "";
     mut i: Integer = 0;

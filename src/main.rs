@@ -30,7 +30,7 @@ use crate::typeck::TypeChecker;
 #[derive(ClapParser)]
 #[command(name = "apex")]
 #[command(author = "Remyyy")]
-#[command(version = "1.2.0")]
+#[command(version = "1.3.1")]
 #[command(about = "Apex Programming Language Compiler")]
 struct Cli {
     #[command(subcommand)]
@@ -419,13 +419,14 @@ fn build_project(_release: bool, emit_llvm: bool, do_check: bool) -> Result<(), 
     }
 
     // Compile combined source
+    // Note: Import checking is skipped here because it was already done in Phase 2
     let output_path = project_root.join(&config.output);
     compile_source(
         &combined_source,
         &entry_path,
         &output_path,
         emit_llvm,
-        do_check,
+        false, // Skip import checking - already done above
     )?;
 
     println!(

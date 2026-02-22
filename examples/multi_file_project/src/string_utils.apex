@@ -1,6 +1,8 @@
 // String utilities module
 // Provides string manipulation functions
 
+import std.string.*;
+
 function repeat(s: String, times: Integer): String {
     mut result: String = "";
     mut i: Integer = 0;

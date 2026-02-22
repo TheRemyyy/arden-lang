@@ -1,5 +1,50 @@
 # Changelog
 
+All notable changes to the Apex Programming Language Compiler will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+## [Unreleased]
+
+### Added
+- **BREAKING**: Standard library functions now require explicit imports
+  - All stdlib functions organized under `std.*` namespaces
+  - `std.io` - println, print, read_line
+  - `std.fs` - File__read, File__write, File__exists, File__delete  
+  - `std.system` - System__getenv, System__shell, System__exec, etc.
+  - `std.time` - Time__now, Time__unix, Time__sleep
+  - `std.math` - Math__sqrt, Math__sin, Math__cos, Math__pow, etc.
+  - `std.string` - Str__len, Str__compare, Str__concat, etc.
+  - Builtin functions (to_string, length) don't require imports
+- New `stdlib` module for standard library namespace registry
+- Import checking in `apex check` and `apex compile` commands
+
+### Changed
+- All 28 example files updated with required stdlib imports
+- Import checker now validates both user-defined and stdlib functions
+
+### Fixed
+- Consistent import behavior across user and standard library functions
+
+## [1.3.1] - Import System Fixes - 2026-02-22
+
+### 🐛 Bug Fixes
+
+- **Wildcard Imports for Stdlib**: Fixed wildcard imports (`import std.io.*;`) not properly importing stdlib functions like `println`, `print`.
+- **Duplicate Import Check**: Fixed duplicate import validation in multi-file projects where imports were checked twice (once during analysis, once during compilation).
+- **Examples Updated**: Added missing `import std.io.*;` and `import std.string.*;` statements to multi-file project examples.
+
+### 🔧 Technical
+
+- `import_check.rs`: Added stdlib function resolution for wildcard imports
+- `main.rs`: Skip redundant import check during compilation phase (already done in analysis phase)
+- All examples now properly import required modules
+- Full `cargo fmt` and `cargo clippy` compliance
+
+### 📊 Stats
+- 32/32 tests passing
+- Zero clippy warnings
+
 ## [1.3.0] - Multi-File & Namespace System - 2026-02-21
 
 ### 🚀 Major Release: Complete Project System

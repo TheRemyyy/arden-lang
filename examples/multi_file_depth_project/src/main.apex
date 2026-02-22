@@ -1,6 +1,9 @@
 // Main entry point - namespace: main
 package main;
 
+// Import std.io for println
+import std.io.*;
+
 // Import specific functions
 import utils.math.factorial;
 import utils.math.power;
