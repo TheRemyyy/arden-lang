@@ -4,9 +4,6 @@ All notable changes to the Apex Programming Language Compiler will be documented
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-### Fixed
-- Consistent import behavior across user and standard library functions
-
 ## [1.3.1] - Import System Fixes - 2026-02-22
 
 ### 🐛 Bug Fixes
