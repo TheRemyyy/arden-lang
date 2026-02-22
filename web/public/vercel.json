@@ -1,16 +1,7 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/docs/**/*.md",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "text/plain"
-        }
-      ]
-    }
+    { "source": "/docs/:path*", "destination": "/index.html" },
+    { "source": "/changelog", "destination": "/index.html" },
+    { "source": "/", "destination": "/index.html" }
   ]
 }
