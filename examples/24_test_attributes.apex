@@ -107,3 +107,30 @@ function cleanupTests(): None {
 function helperFunction(): Integer {
     return 42;
 }
+
+// Main function for direct execution (runs tests manually)
+function main(): None {
+    println("This file contains tests. Run with: apex test --path 24_test_attributes.apex");
+    println("Or run tests directly:");
+    println("");
+    
+    initTests();
+    setup();
+    testAddition();
+    teardown();
+    println("testAddition: PASS");
+    
+    setup();
+    testSubtraction();
+    teardown();
+    println("testSubtraction: PASS");
+    
+    setup();
+    testMultiplication();
+    teardown();
+    println("testMultiplication: PASS");
+    
+    cleanupTests();
+    
+    return None;
+}

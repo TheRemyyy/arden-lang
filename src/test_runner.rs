@@ -136,7 +136,8 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
 /// Check if function has a specific attribute
 fn has_attribute(attributes: &[Attribute], target: Attribute) -> bool {
     attributes.iter().any(|attr| {
-        matches!((attr, &target),
+        matches!(
+            (attr, &target),
             (Attribute::Test, Attribute::Test)
                 | (Attribute::Before, Attribute::Before)
                 | (Attribute::After, Attribute::After)
