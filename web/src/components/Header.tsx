@@ -14,10 +14,10 @@ export function Header() {
                 </div>
 
                 <nav className="hidden items-center gap-8 md:flex">
-                    <Link to="/docs/overview.md" className="text-sm font-medium text-zinc-300 transition-colors hover:text-white">
+                    <Link to="/docs/overview" className="text-sm font-medium text-zinc-300 transition-colors hover:text-white">
                         Documentation
                     </Link>
-                    <Link to="/docs/stdlib/overview.md" className="text-sm font-medium text-zinc-300 transition-colors hover:text-white">
+                    <Link to="/docs/stdlib/overview" className="text-sm font-medium text-zinc-300 transition-colors hover:text-white">
                         Standard Library
                     </Link>
                     <Link to="/changelog" className="text-sm font-medium text-zinc-300 transition-colors hover:text-white">
@@ -42,10 +42,10 @@ export function Header() {
 
             {isMenuOpen && (
                 <div className="fixed inset-0 top-16 z-40 flex flex-col gap-5 border-t border-zinc-800 bg-[#0a0a0a] p-6 md:hidden">
-                    <Link to="/docs/overview.md" className="text-base font-medium text-zinc-200 hover:text-white" onClick={() => setIsMenuOpen(false)}>
+                    <Link to="/docs/overview" className="text-base font-medium text-zinc-200 hover:text-white" onClick={() => setIsMenuOpen(false)}>
                         Documentation
                     </Link>
-                    <Link to="/docs/stdlib/overview.md" className="text-base font-medium text-zinc-200 hover:text-white" onClick={() => setIsMenuOpen(false)}>
+                    <Link to="/docs/stdlib/overview" className="text-base font-medium text-zinc-200 hover:text-white" onClick={() => setIsMenuOpen(false)}>
                         Standard Library
                     </Link>
                     <Link to="/changelog" className="text-base font-medium text-zinc-200 hover:text-white" onClick={() => setIsMenuOpen(false)}>
