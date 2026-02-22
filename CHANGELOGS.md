@@ -4,25 +4,6 @@ All notable changes to the Apex Programming Language Compiler will be documented
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
-
-### Added
-- **BREAKING**: Standard library functions now require explicit imports
-  - All stdlib functions organized under `std.*` namespaces
-  - `std.io` - println, print, read_line
-  - `std.fs` - File__read, File__write, File__exists, File__delete  
-  - `std.system` - System__getenv, System__shell, System__exec, etc.
-  - `std.time` - Time__now, Time__unix, Time__sleep
-  - `std.math` - Math__sqrt, Math__sin, Math__cos, Math__pow, etc.
-  - `std.string` - Str__len, Str__compare, Str__concat, etc.
-  - Builtin functions (to_string, length) don't require imports
-- New `stdlib` module for standard library namespace registry
-- Import checking in `apex check` and `apex compile` commands
-
-### Changed
-- All 28 example files updated with required stdlib imports
-- Import checker now validates both user-defined and stdlib functions
-
 ### Fixed
 - Consistent import behavior across user and standard library functions
 
