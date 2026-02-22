@@ -36,6 +36,7 @@ const NAV_ITEMS = [
             { title: 'Classes', path: '/docs/features/classes.md' },
             { title: 'Interfaces', path: '/docs/features/interfaces.md' },
             { title: 'Enums', path: '/docs/features/enums.md' },
+            { title: 'Ranges', path: '/docs/features/ranges.md' },
             { title: 'Modules', path: '/docs/features/modules.md' },
         ]
     },

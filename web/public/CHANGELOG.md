@@ -4,8 +4,6 @@ All notable changes to the Apex Programming Language Compiler will be documented
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
-
 ## [1.3.2] - Range Types - 2026-02-22
 
 ### ✨ New Features
