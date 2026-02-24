@@ -29,16 +29,16 @@ const features = [
 
 export function Home() {
     return (
-        <div className="min-h-screen bg-[#0a0a0a] text-zinc-100">
-            <section className="mx-auto grid w-full max-w-6xl gap-14 px-6 pb-24 pt-36 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+        <div className="min-h-screen overflow-x-hidden bg-[#0a0a0a] text-zinc-100">
+            <section className="mx-auto grid w-full max-w-6xl gap-14 overflow-hidden px-6 pb-24 pt-36 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="min-w-0 space-y-8">
                     <div className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-medium text-zinc-300">
                         Apex v1.1.4
                     </div>
-                    <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-white md:text-6xl">
+                    <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-white md:text-6xl break-words">
                         Build systems software with speed, safety, and less friction.
                     </h1>
-                    <p className="max-w-2xl text-lg leading-relaxed text-zinc-300">
+                    <p className="max-w-2xl text-lg leading-relaxed text-zinc-300 break-words">
                         Apex is a modern systems language built on LLVM. It gives teams low-level control and practical tooling without turning everyday development into a fight.
                     </p>
                     <div className="flex flex-wrap gap-3 pt-2">
@@ -57,14 +57,14 @@ export function Home() {
                     </div>
                 </motion.div>
 
-                <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+                <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="min-w-0">
                     <div className="rounded-2xl border border-zinc-700 bg-[#111111] p-6">
                         <div className="mb-4 flex items-center justify-between">
                             <p className="text-sm font-medium text-zinc-200">Range Iterator</p>
                             <span className="rounded-md bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-300">v1.3.2</span>
                         </div>
-                        <div className="rounded-xl border border-zinc-700 bg-[#0d0d0d] p-5 overflow-hidden">
-                            <pre className="overflow-x-auto text-sm leading-7 text-zinc-300 max-w-full">
+                        <div className="rounded-xl border border-zinc-700 bg-[#0d0d0d] p-5">
+                            <pre className="overflow-x-auto whitespace-pre-wrap break-words text-sm leading-7 text-zinc-300">
                                 <code>
                                     <div>import std.io.*;</div>
                                     <div></div>
