@@ -16,6 +16,8 @@ benchmark/bin/prime_count_rust
 benchmark/bin/sum_loop_apex
 benchmark/bin/sum_loop_c
 benchmark/bin/sum_loop_rust
+benchmark/results/latest.json
+benchmark/results/latest.md
 
 # Web
 web/node_modules
