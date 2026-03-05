@@ -1,22 +1,29 @@
 @echo off
 setlocal EnableDelayedExpansion
 
+set "SCRIPT_DIR=%~dp0"
+for %%I in ("%SCRIPT_DIR%..") do set "REPO_ROOT=%%~fI"
+
+pushd "%REPO_ROOT%" >nul
+
 echo ========================================
 echo      Apex Compiler Test Runner
 echo ========================================
 
 echo.
-echo [1/4] Building Compiler...
+echo [1/5] Building Compiler...
 cargo build --release
 if %ERRORLEVEL% NEQ 0 (
     echo Build failed!
+    popd >nul
     exit /b 1
 )
 
-set COMPILER=target\release\apex-compiler.exe
+set "COMPILER=%REPO_ROOT%\target\release\apex-compiler.exe"
 
 if not exist "%COMPILER%" (
     echo Compiler binary not found at %COMPILER%
+    popd >nul
     exit /b 1
 )
 
@@ -27,70 +34,66 @@ set PASS_COUNT=0
 
 REM Test single-file examples
 echo.
-echo [2/4] Running Single-File Examples...
+echo [2/5] Running Single-File Examples...
 echo.
 
-for %%f in (examples\*.apex) do (
+for %%f in ("%REPO_ROOT%\examples\*.apex") do (
     echo ----------------------------------------
     echo Testing %%f...
-    
+
     "%COMPILER%" run "%%f"
-    
+
     if !ERRORLEVEL! EQU 0 (
-        echo [PASS] %%f
+        echo [PASS] %%~nxf
         set /a PASS_COUNT+=1
     ) else (
-        echo [FAIL] %%f
+        echo [FAIL] %%~nxf
         set /a FAIL_COUNT+=1
     )
 )
 
-REM Test multi-file project (original)
+REM Test multi-file project (basic)
 echo.
-echo [3/4] Testing Multi-File Project (Basic)...
+echo [3/5] Testing Multi-File Project (Basic)...
 echo.
 
-if exist "examples\multi_file_project\apex.toml" (
-    echo ----------------------------------------
-    echo Testing examples\multi_file_project...
-    
-    cd examples\multi_file_project
-    ..\..\%COMPILER% run
-    
-    if !ERRORLEVEL! EQU 0 (
+if exist "%REPO_ROOT%\examples\multi_file_project\apex.toml" (
+    pushd "%REPO_ROOT%\examples\multi_file_project" >nul
+    "%COMPILER%" run
+    set TEST_EXIT=!ERRORLEVEL!
+    popd >nul
+
+    if !TEST_EXIT! EQU 0 (
         echo [PASS] multi_file_project
         set /a PASS_COUNT+=1
     ) else (
         echo [FAIL] multi_file_project
         set /a FAIL_COUNT+=1
     )
-    cd ..\..
 ) else (
-    echo Multi-file project not found, skipping...
+    echo multi_file_project not found, skipping...
 )
 
 REM Test multi-file project with Java-style namespaces
 echo.
-echo [4/4] Testing Java-Style Namespace Project...
+echo [4/5] Testing Java-Style Namespace Project...
 echo.
 
-if exist "examples\multi_file_depth_project\apex.toml" (
-    echo ----------------------------------------
-    echo Testing examples\multi_file_depth_project...
-    
-    cd examples\multi_file_depth_project
-    ..\..\%COMPILER% run
-    
-    if !ERRORLEVEL! EQU 0 (
-        echo [PASS] multi_file_depth_project (Java-style namespaces)
+if exist "%REPO_ROOT%\examples\multi_file_depth_project\apex.toml" (
+    pushd "%REPO_ROOT%\examples\multi_file_depth_project" >nul
+    "%COMPILER%" run
+    set TEST_EXIT=!ERRORLEVEL!
+    popd >nul
+
+    if !TEST_EXIT! EQU 0 (
+        echo [PASS] multi_file_depth_project
         set /a PASS_COUNT+=1
     ) else (
         echo [FAIL] multi_file_depth_project
         set /a FAIL_COUNT+=1
     )
-    cd ..\..
 ) else (
-    echo Java-style namespace project not found, skipping...
+    echo multi_file_depth_project not found, skipping...
 )
 
 REM Test no-import project
@@ -98,21 +101,21 @@ echo.
 echo [5/5] Testing No-Import Project (Global Scope)...
 echo.
 
-if exist "examples\test_no_import\apex.toml" (
-    echo ----------------------------------------
-    echo Testing examples\test_no_import...
-    
-    cd examples\test_no_import
-    ..\..\%COMPILER% run
-    
-    if !ERRORLEVEL! EQU 0 (
-        echo [PASS] test_no_import (global scope without imports)
+if exist "%REPO_ROOT%\examples\test_no_import\apex.toml" (
+    pushd "%REPO_ROOT%\examples\test_no_import" >nul
+    "%COMPILER%" run
+    set TEST_EXIT=!ERRORLEVEL!
+    popd >nul
+
+    if !TEST_EXIT! EQU 0 (
+        echo [PASS] test_no_import
         set /a PASS_COUNT+=1
     ) else (
         echo [FAIL] test_no_import
         set /a FAIL_COUNT+=1
     )
-    cd ..\..
+) else (
+    echo test_no_import not found, skipping...
 )
 
 echo.
@@ -121,6 +124,8 @@ echo Test Summary
 echo ========================================
 echo Passed: %PASS_COUNT%
 echo Failed: %FAIL_COUNT%
+
+popd >nul
 
 if %FAIL_COUNT% EQU 0 (
     echo ALL TESTS PASSED

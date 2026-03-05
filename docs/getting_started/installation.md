@@ -20,6 +20,20 @@ git clone https://github.com/TheRemyyy/apex-compiler.git
 cd apex-compiler
 ```
 
+### Fedora (LLVM 21)
+
+Install toolchain dependencies first:
+
+```bash
+sudo dnf install -y git clang lld cmake ninja-build make gcc gcc-c++ llvm llvm-devel llvm-libs
+```
+
+Then point `llvm-sys` to the installed LLVM prefix (usually `/usr` on Fedora):
+
+```bash
+export LLVM_SYS_211_PREFIX=/usr
+```
+
 ### 2. Build the Compiler
 
 Use Cargo to build the project in release mode:

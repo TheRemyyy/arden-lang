@@ -74,6 +74,14 @@ cargo build --release
 
 Add `target/release` to your PATH.
 
+## 🧪 Example Test Scripts
+
+Run all bundled examples with platform-specific scripts from the repo root:
+
+- **Windows**: `scripts\\test_examples.bat`
+- **Linux**: `bash scripts/test_examples_linux.sh`
+- **macOS**: `bash scripts/test_examples_macos.sh`
+
 ## 📁 Quick Start: Multi-File Project
 
 ```bash
