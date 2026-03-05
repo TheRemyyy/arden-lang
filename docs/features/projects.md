@@ -150,6 +150,8 @@ function factorial(n: Integer): Integer {
 }
 
 // src/main.apex
+import std.io.*;
+
 function main(): None {
     result: Integer = factorial(5);
     println("5! = " + to_string(result));

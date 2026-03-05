@@ -11,6 +11,8 @@ The `Args` object provides static methods for argument retrieval.
 Returns the total number of command-line arguments, including the program name itself at index 0.
 
 ```apex
+import std.io.*;
+
 count: Integer = Args.count();
 println("Received {count} arguments");
 ```
@@ -23,6 +25,8 @@ Returns the argument at the specified index as a `String`.
 - Indices `1` and above are user-provided arguments.
 
 ```apex
+import std.io.*;
+
 if (Args.count() > 1) {
     firstParam: String = Args.get(1);
     println("First argument: {firstParam}");

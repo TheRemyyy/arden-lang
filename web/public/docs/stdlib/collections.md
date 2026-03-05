@@ -79,6 +79,8 @@ score: Integer = scores.get("Alice");
 Returns `true` if the map contains the specified key.
 
 ```apex
+import std.io.*;
+
 if (scores.contains("Alice")) {
     println("Alice found");
 }

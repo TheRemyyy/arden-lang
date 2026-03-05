@@ -2,6 +2,9 @@
 
 Apex provides built-in functions for console I/O operations. These are compiler intrinsics that map directly to system calls.
 
+> For `print`, `println`, and `read_line`, add:
+> `import std.io.*;`
+
 ## Output Functions
 
 ### `print(message: String): None`
@@ -9,6 +12,8 @@ Apex provides built-in functions for console I/O operations. These are compiler 
 Prints a message to standard output *without* a newline character at the end.
 
 ```apex
+import std.io.*;
+
 print("Hello, ");
 println("World!"); // Output: Hello, World!
 ```
@@ -18,6 +23,8 @@ println("World!"); // Output: Hello, World!
 Prints a message to standard output followed by a newline character.
 
 ```apex
+import std.io.*;
+
 println("Status: OK");
 ```
 
@@ -28,6 +35,8 @@ println("Status: OK");
 Reads a line of text from standard input (stdin). Returns the string including the newline character (if present).
 
 ```apex
+import std.io.*;
+
 print("Enter name: ");
 name: String = read_line();
 println("Hello, " + name);
@@ -58,6 +67,8 @@ success: Boolean = File.write("output.txt", "Hello, Apex!");
 Checks if a file exists and is accessible.
 
 ```apex
+import std.io.*;
+
 if (File.exists("config.json")) {
     println("Config found");
 }

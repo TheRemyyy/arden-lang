@@ -1,6 +1,6 @@
 # Standard Library
 
-The Apex Standard Library (`std`) provides core functionality for building applications. It is compiled into the binary by default.
+The Apex Standard Library (`std`) provides core functionality for building applications.
 
 ## Modules
 
@@ -13,4 +13,13 @@ The Apex Standard Library (`std`) provides core functionality for building appli
 - [Collections](collections.md): Built-in List and Map types.
 - [I/O](io.md): Console input and output.
 
-> **Note**: The entire Standard Library is currently implemented as **compiler intrinsics**. This means functions like `Math.sqrt` or `Str.len` are compiled directly to efficient LLVM instructions or C runtime calls with zero overhead. There are no external `.apex` module files for the standard library yet.
+## Import Behavior (Important)
+
+The stdlib is implemented as **compiler intrinsics**, but import behavior is split:
+
+- `print`, `println`, and `read_line` are free functions in `std.io` and should be imported:
+  - `import std.io.*;` (or specific function imports).
+- Module-style APIs such as `Math.*`, `Str.*`, `Time.*`, `System.*`, `File.*`, and `Args.*` are intrinsic objects and are available directly in the current compiler.
+- Builtins like `to_string`, `range`, `exit`, and assertion helpers (`assert*`, `fail`) are available without import.
+
+There are no external `.apex` stdlib source files; calls are lowered directly by the compiler/codegen pipeline.

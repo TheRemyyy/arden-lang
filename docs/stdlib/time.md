@@ -33,6 +33,8 @@ timestamp: Integer = Time.unix();
 Suspends the execution of the current thread for the specified number of milliseconds.
 
 ```apex
+import std.io.*;
+
 println("Waiting...");
 Time.sleep(1000); // Wait for 1 second
 println("Done!");

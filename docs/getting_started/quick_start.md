@@ -7,6 +7,8 @@ This guide will get you up and running with your first Apex program.
 Create a file named `hello.apex` with the following content:
 
 ```apex
+import std.io.*;
+
 function main(): None {
     println("Hello, World!");
     return None;
@@ -55,6 +57,8 @@ Here is a more complex example demonstrating variables, loops, string interpolat
 `program.apex`:
 
 ```apex
+import std.io.*;
+
 function main(): None {
     // Immutable variables
     name: String = "Apex";

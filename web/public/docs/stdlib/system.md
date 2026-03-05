@@ -11,6 +11,8 @@ The `System` object provides static methods for system-level operations.
 Retrieves the value of an environment variable. Returns an empty string if the variable is not set.
 
 ```apex
+import std.io.*;
+
 path: String = System.getenv("PATH");
 println("Path: {path}");
 ```
@@ -28,6 +30,8 @@ exitCode: Integer = System.shell("echo Hello");
 Executes a command in the system shell and captures its standard output (stdout).
 
 ```apex
+import std.io.*;
+
 output: String = System.exec("whoami");
 println("Current user: {output}");
 ```
@@ -37,6 +41,8 @@ println("Current user: {output}");
 Returns the current working directory.
 
 ```apex
+import std.io.*;
+
 currentDir: String = System.cwd();
 println("Working in: {currentDir}");
 ```
@@ -46,6 +52,8 @@ println("Working in: {currentDir}");
 Returns the name of the operating system ("windows", "macos", "linux", or "unknown").
 
 ```apex
+import std.io.*;
+
 os: String = System.os();
 println("Running on {os}");
 ```
