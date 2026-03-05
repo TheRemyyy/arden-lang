@@ -1179,6 +1179,24 @@ impl<'ctx> Codegen<'ctx> {
                     Box::new(ret_ty),
                 )
             }
+            Expr::Await(inner) => {
+                let inner_ty = self.infer_expr_type(&inner.node, params);
+                if let Type::Task(task_inner) = inner_ty {
+                    *task_inner
+                } else {
+                    Type::Integer
+                }
+            }
+            Expr::AsyncBlock(stmts) => {
+                let mut ret = Type::None;
+                for stmt in stmts {
+                    if let Stmt::Return(Some(expr)) = &stmt.node {
+                        ret = self.infer_expr_type(&expr.node, params);
+                        break;
+                    }
+                }
+                Type::Task(Box::new(ret))
+            }
             _ => Type::Integer,
         }
     }
@@ -1210,6 +1228,34 @@ impl<'ctx> Codegen<'ctx> {
             false,
         );
         self.module.add_function(name, realloc_type, None)
+    }
+
+    pub fn get_or_declare_pthread_create(&mut self) -> FunctionValue<'ctx> {
+        let name = "pthread_create";
+        if let Some(f) = self.module.get_function(name) {
+            return f;
+        }
+
+        let ptr = self.context.ptr_type(AddressSpace::default());
+        let pthread_create_type = self
+            .context
+            .i32_type()
+            .fn_type(&[ptr.into(), ptr.into(), ptr.into(), ptr.into()], false);
+        self.module.add_function(name, pthread_create_type, None)
+    }
+
+    pub fn get_or_declare_pthread_join(&mut self) -> FunctionValue<'ctx> {
+        let name = "pthread_join";
+        if let Some(f) = self.module.get_function(name) {
+            return f;
+        }
+
+        let ptr = self.context.ptr_type(AddressSpace::default());
+        let pthread_join_type = self
+            .context
+            .i32_type()
+            .fn_type(&[self.context.i64_type().into(), ptr.into()], false);
+        self.module.add_function(name, pthread_join_type, None)
     }
 
     pub fn get_or_declare_sprintf(&mut self) -> FunctionValue<'ctx> {

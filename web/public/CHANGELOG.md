@@ -4,6 +4,20 @@ All notable changes to the Apex Programming Language Compiler will be documented
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### ✨ Added
+
+- **Threaded Async Runtime**: `Task<T>` now uses a real thread-backed runtime with result caching.
+  - `async function` calls now spawn task workers immediately via `pthread`.
+  - `await` now joins unfinished tasks and reuses the stored result on subsequent awaits.
+  - `async { ... }` blocks now compile to real task runners with captured environments.
+
+### ♻️ Changed
+
+- **Codegen Task Representation**: `Task<T>` codegen now uses an internal runtime task handle instead of the previous direct `T` value stub.
+- **Async Documentation**: Updated async docs to reflect real runtime behavior (thread-backed scheduling, parallel task execution, await-as-join, cached result).
+
 ## [1.3.3] - Compiler/LSP/Docs Sync - 2026-03-05
 
 ### ✨ Added

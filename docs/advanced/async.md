@@ -8,23 +8,39 @@ Define an async function using `async`. It returns a `Task<T>`.
 
 ```apex
 async function fetchData(): Task<String> {
-    // Simulate network delay
     return "Data";
 }
 ```
 
 ## Await
 
-Use `await` to wait for an async function to complete.
+Use `await` to resolve a `Task<T>` into `T`.
 
 ```apex
-async function main(): Task<None> {
+async function loadMessage(): Task<String> {
     data: String = await fetchData();
-    println("Received: {data}");
-    return None;
+    return data;
 }
 ```
 
 ## Tasks
 
-`Task<T>` represents a future value. The runtime schedules these tasks efficiently.
+`Task<T>` is runtime-scheduled:
+
+- Creating a task (`async function` call or `async { ... }`) immediately spawns a runtime worker thread.
+- The task body runs concurrently in that worker.
+- Subsequent `await` calls return the cached result.
+
+Current runtime behavior is thread-backed (`pthread` runtime): multiple tasks can run in parallel, and `await` joins the task if it is not finished yet.
+
+## Async Blocks
+
+`async { ... }` creates a `Task<T>` expression.
+
+```apex
+task: Task<Integer> = async {
+    return 21 * 2;
+};
+
+value: Integer = await task; // value == 42
+```

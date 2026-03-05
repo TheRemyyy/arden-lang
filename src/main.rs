@@ -1992,7 +1992,7 @@ fn compile_ir(ir_path: &Path, output_path: &Path, opt_level: Option<&str>) -> Re
         cmd.arg("-llegacy_stdio_definitions");
 
         #[cfg(not(windows))]
-        cmd.arg("-lm");
+        cmd.arg("-lm").arg("-pthread");
 
         cmd.output()
     };

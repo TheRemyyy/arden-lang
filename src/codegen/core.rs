@@ -67,6 +67,14 @@ pub struct LoopContext<'ctx> {
     pub after_block: BasicBlock<'ctx>,
 }
 
+struct AsyncFunctionPlan<'ctx> {
+    wrapper: FunctionValue<'ctx>,
+    body: FunctionValue<'ctx>,
+    thunk: FunctionValue<'ctx>,
+    env_type: StructType<'ctx>,
+    inner_return_type: Type,
+}
+
 /// Code generator
 pub struct Codegen<'ctx> {
     pub context: &'ctx Context,
@@ -82,6 +90,8 @@ pub struct Codegen<'ctx> {
     pub loop_stack: Vec<LoopContext<'ctx>>,
     pub str_counter: u32,
     pub lambda_counter: u32,
+    async_counter: u32,
+    async_functions: HashMap<String, AsyncFunctionPlan<'ctx>>,
 }
 
 impl<'ctx> Codegen<'ctx> {
@@ -103,6 +113,8 @@ impl<'ctx> Codegen<'ctx> {
             loop_stack: Vec::new(),
             str_counter: 0,
             lambda_counter: 0,
+            async_counter: 0,
+            async_functions: HashMap::new(),
         }
     }
 
@@ -365,8 +377,8 @@ impl<'ctx> Codegen<'ctx> {
             Type::Box(_) | Type::Rc(_) | Type::Arc(_) => {
                 self.context.ptr_type(AddressSpace::default()).into()
             }
-            // Task<T> - currently represented as T in the stub implementation
-            Type::Task(inner) => self.llvm_type(inner),
+            // Task<T> - runtime task handle pointer
+            Type::Task(_) => self.context.ptr_type(AddressSpace::default()).into(),
             // Range<T> - represented as a struct { start, end, step }
             Type::Range(_) => self.context.ptr_type(AddressSpace::default()).into(),
         }
@@ -632,6 +644,15 @@ impl<'ctx> Codegen<'ctx> {
     // === Functions ===
 
     pub fn declare_function(&mut self, func: &FunctionDecl) -> Result<FunctionValue<'ctx>> {
+        if func.is_async {
+            if func.name == "main" {
+                return Err(CodegenError::new(
+                    "async main is not supported; use a sync main() and await tasks inside async functions",
+                ));
+            }
+            return self.declare_async_function(func);
+        }
+
         let param_types: Vec<BasicMetadataTypeEnum> = func
             .params
             .iter()
@@ -694,7 +715,529 @@ impl<'ctx> Codegen<'ctx> {
         Ok(function)
     }
 
+    fn task_struct_type(&self) -> StructType<'ctx> {
+        let ptr = self.context.ptr_type(AddressSpace::default());
+        self.context.struct_type(
+            &[
+                self.context.i64_type().into(),
+                ptr.into(),
+                self.context.bool_type().into(),
+            ],
+            false,
+        )
+    }
+
+    fn async_inner_return_type(&self, ty: &Type) -> Type {
+        if let Type::Task(inner) = ty {
+            (**inner).clone()
+        } else {
+            ty.clone()
+        }
+    }
+
+    fn declare_async_function(&mut self, func: &FunctionDecl) -> Result<FunctionValue<'ctx>> {
+        let inner_return = self.async_inner_return_type(&func.return_type);
+        let task_return = Type::Task(Box::new(inner_return.clone()));
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+
+        let mut wrapper_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
+        let mut env_fields: Vec<BasicTypeEnum<'ctx>> = Vec::new();
+        for param in &func.params {
+            let llvm = self.llvm_type(&param.ty);
+            wrapper_params.push(llvm.into());
+            env_fields.push(llvm);
+        }
+        let env_type = self.context.struct_type(&env_fields, false);
+
+        let wrapper_fn_type = ptr_type.fn_type(&wrapper_params, false);
+        let wrapper = self.module.add_function(&func.name, wrapper_fn_type, None);
+
+        let body_name = format!("__apex_async_body__{}", func.name);
+        let body_fn_type = match &inner_return {
+            Type::None => self.context.void_type().fn_type(&[ptr_type.into()], false),
+            ty => self.llvm_type(ty).fn_type(&[ptr_type.into()], false),
+        };
+        let body = self.module.add_function(&body_name, body_fn_type, None);
+
+        let thunk_name = format!("__apex_async_thunk__{}", func.name);
+        let thunk_fn_type = ptr_type.fn_type(&[ptr_type.into()], false);
+        let thunk = self.module.add_function(&thunk_name, thunk_fn_type, None);
+
+        self.functions.insert(
+            func.name.clone(),
+            (
+                wrapper,
+                Type::Function(
+                    func.params.iter().map(|p| p.ty.clone()).collect(),
+                    Box::new(task_return),
+                ),
+            ),
+        );
+
+        self.async_functions.insert(
+            func.name.clone(),
+            AsyncFunctionPlan {
+                wrapper,
+                body,
+                thunk,
+                env_type,
+                inner_return_type: inner_return,
+            },
+        );
+
+        Ok(wrapper)
+    }
+
+    fn create_task(
+        &mut self,
+        runner_fn: PointerValue<'ctx>,
+        env_ptr: PointerValue<'ctx>,
+    ) -> Result<PointerValue<'ctx>> {
+        let task_ty = self.task_struct_type();
+        let malloc = self.get_or_declare_malloc();
+        let pthread_create = self.get_or_declare_pthread_create();
+        let size = task_ty
+            .size_of()
+            .ok_or_else(|| CodegenError::new("failed to compute Task runtime size"))?;
+
+        let raw = self
+            .builder
+            .build_call(malloc, &[size.into()], "task_alloc")
+            .unwrap()
+            .try_as_basic_value();
+        let task_raw = match raw {
+            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+            _ => return Err(CodegenError::new("malloc should return pointer for Task")),
+        };
+
+        let task_ptr = self
+            .builder
+            .build_pointer_cast(
+                task_raw,
+                self.context.ptr_type(AddressSpace::default()),
+                "task_ptr",
+            )
+            .unwrap();
+
+        let i32_ty = self.context.i32_type();
+        let zero = i32_ty.const_int(0, false);
+        let thread_idx = i32_ty.const_int(0, false);
+        let result_idx = i32_ty.const_int(1, false);
+        let done_idx = i32_ty.const_int(2, false);
+
+        let thread_tmp = self
+            .builder
+            .build_alloca(self.context.i64_type(), "task_thread_tmp")
+            .unwrap();
+        self.builder
+            .build_store(thread_tmp, self.context.i64_type().const_int(0, false))
+            .unwrap();
+        let null_ptr = self.context.ptr_type(AddressSpace::default()).const_null();
+        let start_fn = self
+            .builder
+            .build_pointer_cast(
+                runner_fn,
+                self.context.ptr_type(AddressSpace::default()),
+                "task_start_fn",
+            )
+            .unwrap();
+        let _spawn_status = self
+            .builder
+            .build_call(
+                pthread_create,
+                &[
+                    thread_tmp.into(),
+                    null_ptr.into(),
+                    start_fn.into(),
+                    env_ptr.into(),
+                ],
+                "task_spawn",
+            )
+            .unwrap();
+
+        let thread_val = self
+            .builder
+            .build_load(self.context.i64_type(), thread_tmp, "task_thread")
+            .unwrap();
+        let thread_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, thread_idx], "task_thread_field")
+                .unwrap()
+        };
+        self.builder.build_store(thread_field, thread_val).unwrap();
+
+        let result_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, result_idx], "task_result_ptr")
+                .unwrap()
+        };
+        self.builder
+            .build_store(
+                result_field,
+                self.context.ptr_type(AddressSpace::default()).const_null(),
+            )
+            .unwrap();
+
+        let done_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, done_idx], "task_done")
+                .unwrap()
+        };
+        self.builder
+            .build_store(done_field, self.context.bool_type().const_int(0, false))
+            .unwrap();
+
+        Ok(self
+            .builder
+            .build_pointer_cast(
+                task_ptr,
+                self.context.ptr_type(AddressSpace::default()),
+                "task_raw",
+            )
+            .unwrap())
+    }
+
+    fn await_task(
+        &mut self,
+        task_raw: PointerValue<'ctx>,
+        inner_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let task_ty = self.task_struct_type();
+        let ptr_ty = self.context.ptr_type(AddressSpace::default());
+        let pthread_join = self.get_or_declare_pthread_join();
+        let task_ptr = self
+            .builder
+            .build_pointer_cast(
+                task_raw,
+                self.context.ptr_type(AddressSpace::default()),
+                "task_cast",
+            )
+            .unwrap();
+
+        let i32_ty = self.context.i32_type();
+        let zero = i32_ty.const_int(0, false);
+        let thread_idx = i32_ty.const_int(0, false);
+        let result_idx = i32_ty.const_int(1, false);
+        let done_idx = i32_ty.const_int(2, false);
+
+        let done_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, done_idx], "task_done_ptr")
+                .unwrap()
+        };
+        let done_val = self
+            .builder
+            .build_load(self.context.bool_type(), done_field, "task_done")
+            .unwrap()
+            .into_int_value();
+
+        let result_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, result_idx], "task_result_field")
+                .unwrap()
+        };
+        let existing_result = self
+            .builder
+            .build_load(ptr_ty, result_field, "task_result_existing")
+            .unwrap()
+            .into_pointer_value();
+
+        let current_bb = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| CodegenError::new("await used outside of basic block"))?;
+        let current_fn = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("await used outside of function"))?;
+        let join_bb = self.context.append_basic_block(current_fn, "task_join");
+        let cont_bb = self.context.append_basic_block(current_fn, "task_cont");
+
+        self.builder
+            .build_conditional_branch(done_val, cont_bb, join_bb)
+            .unwrap();
+
+        self.builder.position_at_end(join_bb);
+        let thread_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, thread_idx], "task_thread_ptr")
+                .unwrap()
+        };
+        let thread_id = self
+            .builder
+            .build_load(self.context.i64_type(), thread_field, "task_thread_id")
+            .unwrap()
+            .into_int_value();
+        let join_result_ptr = self
+            .builder
+            .build_alloca(ptr_ty, "task_join_result")
+            .unwrap();
+        self.builder
+            .build_store(join_result_ptr, ptr_ty.const_null())
+            .unwrap();
+        let _join_status = self
+            .builder
+            .build_call(
+                pthread_join,
+                &[thread_id.into(), join_result_ptr.into()],
+                "task_join_call",
+            )
+            .unwrap();
+        let new_result = self
+            .builder
+            .build_load(ptr_ty, join_result_ptr, "task_joined_result")
+            .unwrap()
+            .into_pointer_value();
+        self.builder.build_store(result_field, new_result).unwrap();
+        self.builder
+            .build_store(done_field, self.context.bool_type().const_int(1, false))
+            .unwrap();
+        self.builder.build_unconditional_branch(cont_bb).unwrap();
+
+        self.builder.position_at_end(cont_bb);
+        let phi = self.builder.build_phi(ptr_ty, "task_result_phi").unwrap();
+        phi.add_incoming(&[(&existing_result, current_bb), (&new_result, join_bb)]);
+        let result_ptr = phi.as_basic_value().into_pointer_value();
+
+        if matches!(inner_ty, Type::None) {
+            return Ok(self.context.i8_type().const_int(0, false).into());
+        }
+
+        let result_ty = self.llvm_type(inner_ty);
+        let typed_ptr = self
+            .builder
+            .build_pointer_cast(
+                result_ptr,
+                self.context.ptr_type(AddressSpace::default()),
+                "task_result_typed",
+            )
+            .unwrap();
+        Ok(self
+            .builder
+            .build_load(result_ty, typed_ptr, "task_result")
+            .unwrap())
+    }
+
+    fn compile_async_function(&mut self, func: &FunctionDecl) -> Result<()> {
+        let plan = self
+            .async_functions
+            .get(&func.name)
+            .ok_or_else(|| CodegenError::new(format!("Missing async plan for {}", func.name)))?;
+        let wrapper = plan.wrapper;
+        let body = plan.body;
+        let thunk = plan.thunk;
+        let env_type = plan.env_type;
+        let inner_return_type = plan.inner_return_type.clone();
+
+        // 1) Compile body function: __apex_async_body__*
+        self.current_function = Some(body);
+        self.current_return_type = Some(inner_return_type.clone());
+        self.variables.clear();
+        self.loop_stack.clear();
+        let body_entry = self.context.append_basic_block(body, "entry");
+        self.builder.position_at_end(body_entry);
+
+        let env_raw = body
+            .get_nth_param(0)
+            .ok_or_else(|| CodegenError::new("Async body missing env parameter"))?
+            .into_pointer_value();
+        let env_ptr = self
+            .builder
+            .build_pointer_cast(
+                env_raw,
+                self.context.ptr_type(AddressSpace::default()),
+                "async_env_cast",
+            )
+            .unwrap();
+
+        for (i, param) in func.params.iter().enumerate() {
+            let field_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        env_type,
+                        env_ptr,
+                        &[
+                            self.context.i32_type().const_int(0, false),
+                            self.context.i32_type().const_int(i as u64, false),
+                        ],
+                        "async_param_field",
+                    )
+                    .unwrap()
+            };
+            let loaded = self
+                .builder
+                .build_load(self.llvm_type(&param.ty), field_ptr, &param.name)
+                .unwrap();
+            let alloca = self
+                .builder
+                .build_alloca(self.llvm_type(&param.ty), &param.name)
+                .unwrap();
+            self.builder.build_store(alloca, loaded).unwrap();
+            self.variables.insert(
+                param.name.clone(),
+                Variable {
+                    ptr: alloca,
+                    ty: param.ty.clone(),
+                },
+            );
+        }
+
+        for stmt in &func.body {
+            self.compile_stmt(&stmt.node)?;
+        }
+        if self.needs_terminator() {
+            if matches!(inner_return_type, Type::None) {
+                self.builder.build_return(None).unwrap();
+            } else {
+                self.builder.build_unreachable().unwrap();
+            }
+        }
+
+        // 2) Compile thunk: __apex_async_thunk__*
+        self.current_function = Some(thunk);
+        self.current_return_type = None;
+        self.variables.clear();
+        self.loop_stack.clear();
+        let thunk_entry = self.context.append_basic_block(thunk, "entry");
+        self.builder.position_at_end(thunk_entry);
+
+        let thunk_env = thunk
+            .get_nth_param(0)
+            .ok_or_else(|| CodegenError::new("Async thunk missing env parameter"))?
+            .into_pointer_value();
+
+        let body_call = self
+            .builder
+            .build_call(body, &[thunk_env.into()], "async_body_call")
+            .unwrap();
+
+        let malloc = self.get_or_declare_malloc();
+        let result_storage = if matches!(inner_return_type, Type::None) {
+            let raw = self
+                .builder
+                .build_call(
+                    malloc,
+                    &[self.context.i64_type().const_int(1, false).into()],
+                    "async_none_alloc",
+                )
+                .unwrap()
+                .try_as_basic_value();
+            let ptr = match raw {
+                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                _ => {
+                    return Err(CodegenError::new(
+                        "malloc failed for async Task<None> result",
+                    ))
+                }
+            };
+            let none_ptr = self
+                .builder
+                .build_pointer_cast(
+                    ptr,
+                    self.context.ptr_type(AddressSpace::default()),
+                    "async_none_ptr",
+                )
+                .unwrap();
+            self.builder
+                .build_store(none_ptr, self.context.i8_type().const_int(0, false))
+                .unwrap();
+            ptr
+        } else {
+            let ret_ty = self.llvm_type(&inner_return_type);
+            let size = ret_ty
+                .size_of()
+                .ok_or_else(|| CodegenError::new("failed to compute async result size"))?;
+            let raw = self
+                .builder
+                .build_call(malloc, &[size.into()], "async_result_alloc")
+                .unwrap()
+                .try_as_basic_value();
+            let ptr = match raw {
+                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                _ => return Err(CodegenError::new("malloc failed for async result")),
+            };
+            let typed_ptr = self
+                .builder
+                .build_pointer_cast(
+                    ptr,
+                    self.context.ptr_type(AddressSpace::default()),
+                    "async_result_ptr",
+                )
+                .unwrap();
+            let result = match body_call.try_as_basic_value() {
+                ValueKind::Basic(v) => v,
+                ValueKind::Instruction(_) => {
+                    return Err(CodegenError::new(
+                        "async body should return value for non-None Task",
+                    ));
+                }
+            };
+            self.builder.build_store(typed_ptr, result).unwrap();
+            ptr
+        };
+        self.builder.build_return(Some(&result_storage)).unwrap();
+
+        // 3) Compile public wrapper: function name(...)
+        self.current_function = Some(wrapper);
+        self.current_return_type = Some(Type::Task(Box::new(inner_return_type.clone())));
+        self.variables.clear();
+        self.loop_stack.clear();
+        let wrapper_entry = self.context.append_basic_block(wrapper, "entry");
+        self.builder.position_at_end(wrapper_entry);
+
+        let env_size = env_type
+            .size_of()
+            .ok_or_else(|| CodegenError::new("failed to compute async environment size"))?;
+        let env_alloc = self
+            .builder
+            .build_call(malloc, &[env_size.into()], "async_env_alloc")
+            .unwrap()
+            .try_as_basic_value();
+        let env_raw_ptr = match env_alloc {
+            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+            _ => return Err(CodegenError::new("malloc failed for async environment")),
+        };
+        let env_cast = self
+            .builder
+            .build_pointer_cast(
+                env_raw_ptr,
+                self.context.ptr_type(AddressSpace::default()),
+                "async_env_store",
+            )
+            .unwrap();
+
+        for (i, param) in func.params.iter().enumerate() {
+            let param_val = wrapper.get_nth_param((i + 1) as u32).ok_or_else(|| {
+                CodegenError::new(format!("Missing async wrapper parameter {}", param.name))
+            })?;
+            let field_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        env_type,
+                        env_cast,
+                        &[
+                            self.context.i32_type().const_int(0, false),
+                            self.context.i32_type().const_int(i as u64, false),
+                        ],
+                        "async_env_field",
+                    )
+                    .unwrap()
+            };
+            self.builder.build_store(field_ptr, param_val).unwrap();
+        }
+
+        let task = self.create_task(thunk.as_global_value().as_pointer_value(), env_raw_ptr)?;
+        self.builder.build_return(Some(&task)).unwrap();
+
+        self.current_function = None;
+        self.current_return_type = None;
+        Ok(())
+    }
+
     pub fn compile_function(&mut self, func: &FunctionDecl) -> Result<()> {
+        if func.is_async {
+            return self.compile_async_function(func);
+        }
+
         let (function, _) = self.functions.get(&func.name).unwrap().clone();
 
         self.current_function = Some(function);
@@ -835,20 +1378,7 @@ impl<'ctx> Codegen<'ctx> {
                                 let zero = self.context.i32_type().const_int(0, false);
                                 self.builder.build_return(Some(&zero)).unwrap();
                             } else {
-                                // Check if function returns Task<None> (needs i8 return) or just None (void)
-                                let return_type = self.current_return_type.as_ref();
-                                let is_task_none = return_type
-                                .map(|t| matches!(t, Type::Task(inner) if matches!(**inner, Type::None)))
-                                .unwrap_or(false);
-
-                                if is_task_none {
-                                    // Task<None> returns i8 in our stub implementation
-                                    let none_val = self.context.i8_type().const_int(0, false);
-                                    self.builder.build_return(Some(&none_val)).unwrap();
-                                } else {
-                                    // Regular None return (void function)
-                                    self.builder.build_return(None).unwrap();
-                                }
+                                self.builder.build_return(None).unwrap();
                             }
                         } else {
                             let val = self.compile_expr(&expr.node)?;
@@ -1452,6 +1982,262 @@ impl<'ctx> Codegen<'ctx> {
 
     // === Expressions ===
 
+    fn infer_await_inner_type(&self, expr: &Expr) -> Type {
+        let inferred = self.infer_expr_type(expr, &[]);
+        if let Type::Task(inner) = inferred {
+            *inner
+        } else {
+            Type::Integer
+        }
+    }
+
+    fn infer_async_block_return_type(&self, body: &[Spanned<Stmt>]) -> Type {
+        let mut ret: Option<Type> = None;
+        for stmt in body {
+            if let Stmt::Return(Some(expr)) = &stmt.node {
+                let ty = self.infer_expr_type(&expr.node, &[]);
+                if ret.is_none() {
+                    ret = Some(ty);
+                }
+            }
+        }
+        ret.unwrap_or(Type::None)
+    }
+
+    fn compile_async_block(&mut self, body: &[Spanned<Stmt>]) -> Result<BasicValueEnum<'ctx>> {
+        let mut captures: Vec<(String, Type)> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let params = std::collections::HashSet::new();
+        for stmt in body {
+            self.walk_stmt_for_captures(&stmt.node, &params, &mut captures, &mut seen);
+        }
+
+        let inner_return_type = self.infer_async_block_return_type(body);
+        let mut env_fields = Vec::new();
+        for (_, ty) in &captures {
+            env_fields.push(self.llvm_type(ty));
+        }
+        let env_type = self.context.struct_type(&env_fields, false);
+
+        let malloc = self.get_or_declare_malloc();
+        let env_size = env_type
+            .size_of()
+            .ok_or_else(|| CodegenError::new("failed to compute async block env size"))?;
+        let env_alloc = self
+            .builder
+            .build_call(malloc, &[env_size.into()], "async_block_env")
+            .unwrap()
+            .try_as_basic_value();
+        let env_raw = match env_alloc {
+            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+            _ => return Err(CodegenError::new("malloc failed for async block env")),
+        };
+        let env_cast = self
+            .builder
+            .build_pointer_cast(
+                env_raw,
+                self.context.ptr_type(AddressSpace::default()),
+                "async_block_env_cast",
+            )
+            .unwrap();
+
+        for (i, (name, ty)) in captures.iter().enumerate() {
+            let var = self.variables.get(name).ok_or_else(|| {
+                CodegenError::new(format!("async block capture '{}' not found", name))
+            })?;
+            let val = self
+                .builder
+                .build_load(self.llvm_type(ty), var.ptr, name)
+                .unwrap();
+            let field_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        env_type,
+                        env_cast,
+                        &[
+                            self.context.i32_type().const_int(0, false),
+                            self.context.i32_type().const_int(i as u64, false),
+                        ],
+                        "async_block_capture",
+                    )
+                    .unwrap()
+            };
+            self.builder.build_store(field_ptr, val).unwrap();
+        }
+
+        let saved_function = self.current_function;
+        let saved_return_type = self.current_return_type.clone();
+        let saved_variables = std::mem::take(&mut self.variables);
+        let saved_loop_stack = std::mem::take(&mut self.loop_stack);
+        let saved_insert_block = self.builder.get_insert_block();
+
+        let id = self.async_counter;
+        self.async_counter += 1;
+        let ptr_ty = self.context.ptr_type(AddressSpace::default());
+
+        let body_name = format!("__apex_async_block_body_{}", id);
+        let body_fn_type = match &inner_return_type {
+            Type::None => self.context.void_type().fn_type(&[ptr_ty.into()], false),
+            ty => self.llvm_type(ty).fn_type(&[ptr_ty.into()], false),
+        };
+        let body_fn = self.module.add_function(&body_name, body_fn_type, None);
+
+        self.current_function = Some(body_fn);
+        self.current_return_type = Some(inner_return_type.clone());
+        self.loop_stack.clear();
+        let body_entry = self.context.append_basic_block(body_fn, "entry");
+        self.builder.position_at_end(body_entry);
+
+        let body_env_raw = body_fn
+            .get_nth_param(0)
+            .ok_or_else(|| CodegenError::new("async block body missing env param"))?
+            .into_pointer_value();
+        let body_env = self
+            .builder
+            .build_pointer_cast(
+                body_env_raw,
+                self.context.ptr_type(AddressSpace::default()),
+                "async_block_body_env",
+            )
+            .unwrap();
+
+        for (i, (name, ty)) in captures.iter().enumerate() {
+            let field_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        env_type,
+                        body_env,
+                        &[
+                            self.context.i32_type().const_int(0, false),
+                            self.context.i32_type().const_int(i as u64, false),
+                        ],
+                        "async_block_body_field",
+                    )
+                    .unwrap()
+            };
+            let loaded = self
+                .builder
+                .build_load(self.llvm_type(ty), field_ptr, "async_capture_load")
+                .unwrap();
+            let alloca = self.builder.build_alloca(self.llvm_type(ty), name).unwrap();
+            self.builder.build_store(alloca, loaded).unwrap();
+            self.variables.insert(
+                name.clone(),
+                Variable {
+                    ptr: alloca,
+                    ty: ty.clone(),
+                },
+            );
+        }
+
+        for stmt in body {
+            self.compile_stmt(&stmt.node)?;
+        }
+        if self.needs_terminator() {
+            if matches!(inner_return_type, Type::None) {
+                self.builder.build_return(None).unwrap();
+            } else {
+                self.builder.build_unreachable().unwrap();
+            }
+        }
+
+        let thunk_name = format!("__apex_async_block_thunk_{}", id);
+        let thunk_fn_type = ptr_ty.fn_type(&[ptr_ty.into()], false);
+        let thunk_fn = self.module.add_function(&thunk_name, thunk_fn_type, None);
+
+        self.current_function = Some(thunk_fn);
+        self.current_return_type = None;
+        self.variables.clear();
+        self.loop_stack.clear();
+        let thunk_entry = self.context.append_basic_block(thunk_fn, "entry");
+        self.builder.position_at_end(thunk_entry);
+
+        let thunk_env = thunk_fn
+            .get_nth_param(0)
+            .ok_or_else(|| CodegenError::new("async block thunk missing env param"))?
+            .into_pointer_value();
+        let body_call = self
+            .builder
+            .build_call(body_fn, &[thunk_env.into()], "async_block_call")
+            .unwrap();
+
+        let result_ptr = if matches!(inner_return_type, Type::None) {
+            let alloc = self
+                .builder
+                .build_call(
+                    malloc,
+                    &[self.context.i64_type().const_int(1, false).into()],
+                    "async_block_none_alloc",
+                )
+                .unwrap()
+                .try_as_basic_value();
+            let ptr = match alloc {
+                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                _ => {
+                    return Err(CodegenError::new(
+                        "malloc failed for async block none result",
+                    ))
+                }
+            };
+            let none_ptr = self
+                .builder
+                .build_pointer_cast(
+                    ptr,
+                    self.context.ptr_type(AddressSpace::default()),
+                    "async_block_none_ptr",
+                )
+                .unwrap();
+            self.builder
+                .build_store(none_ptr, self.context.i8_type().const_int(0, false))
+                .unwrap();
+            ptr
+        } else {
+            let ret_ty = self.llvm_type(&inner_return_type);
+            let size = ret_ty
+                .size_of()
+                .ok_or_else(|| CodegenError::new("failed to compute async block result size"))?;
+            let alloc = self
+                .builder
+                .build_call(malloc, &[size.into()], "async_block_alloc")
+                .unwrap()
+                .try_as_basic_value();
+            let ptr = match alloc {
+                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                _ => return Err(CodegenError::new("malloc failed for async block result")),
+            };
+            let typed_ptr = self
+                .builder
+                .build_pointer_cast(
+                    ptr,
+                    self.context.ptr_type(AddressSpace::default()),
+                    "async_block_result_ptr",
+                )
+                .unwrap();
+            let result_val = match body_call.try_as_basic_value() {
+                ValueKind::Basic(v) => v,
+                ValueKind::Instruction(_) => {
+                    return Err(CodegenError::new(
+                        "async block body should return value for non-None Task",
+                    ));
+                }
+            };
+            self.builder.build_store(typed_ptr, result_val).unwrap();
+            ptr
+        };
+        self.builder.build_return(Some(&result_ptr)).unwrap();
+
+        self.current_function = saved_function;
+        self.current_return_type = saved_return_type;
+        self.variables = saved_variables;
+        self.loop_stack = saved_loop_stack;
+        if let Some(block) = saved_insert_block {
+            self.builder.position_at_end(block);
+        }
+
+        let task = self.create_task(thunk_fn.as_global_value().as_pointer_value(), env_raw)?;
+        Ok(task.into())
+    }
+
     pub fn compile_expr(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
         match expr {
             Expr::Literal(lit) => self.compile_literal(lit),
@@ -1535,35 +2321,15 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             Expr::Await(inner) => {
-                // For now, await just evaluates the expression
-                // Full async runtime would require coroutine support
-                self.compile_expr(&inner.node)
+                let task = self.compile_expr(&inner.node)?;
+                let inner_ty = self.infer_await_inner_type(&inner.node);
+                if !task.is_pointer_value() {
+                    return Err(CodegenError::new("await expects Task<T> value"));
+                }
+                self.await_task(task.into_pointer_value(), &inner_ty)
             }
 
-            Expr::AsyncBlock(body) => {
-                // Compile async block as regular block for now
-                // Full implementation would wrap in a Task
-                let mut result = self.context.i8_type().const_int(0, false).into();
-                for stmt in body {
-                    match &stmt.node {
-                        Stmt::Return(Some(expr)) => {
-                            // Just evaluate the expression, don't emit ret
-                            result = self.compile_expr(&expr.node)?;
-                        }
-                        Stmt::Return(None) => {
-                            // Return None value
-                            result = self.context.i8_type().const_int(0, false).into();
-                        }
-                        _ => {
-                            self.compile_stmt(&stmt.node)?;
-                            if let Stmt::Expr(expr) = &stmt.node {
-                                result = self.compile_expr(&expr.node)?;
-                            }
-                        }
-                    }
-                }
-                Ok(result)
-            }
+            Expr::AsyncBlock(body) => self.compile_async_block(body),
 
             Expr::Require { condition, message } => {
                 // Compile require(condition) as an assert
