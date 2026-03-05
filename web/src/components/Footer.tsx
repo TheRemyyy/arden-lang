@@ -33,12 +33,15 @@ export function Footer() {
             </div>
             <div className="mx-auto mt-12 flex max-w-6xl flex-col items-center justify-between gap-3 border-t border-zinc-800 px-6 pt-8 text-center text-xs md:flex-row md:text-left">
                 <p>&copy; {new Date().getFullYear()} Apex Compiler. Open Source (MIT).</p>
-                <div className="flex items-center gap-3">
-                    <div className="h-2 w-2 rounded-full bg-zinc-300"></div>
-                    <span>Systems Operational</span>
-                </div>
+                <a
+                    href="https://theremyyy.dev"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-zinc-400 transition-colors hover:text-zinc-200"
+                >
+                    TheRemyyy
+                </a>
             </div>
         </footer>
     );
 }
-
