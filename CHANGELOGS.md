@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.3.4] - Async Runtime, FFI, Bindgen - 2026-03-05
+
 ### ✨ Added
 
 - **Threaded Async Runtime**: `Task<T>` now uses a real thread-backed runtime with result caching.
