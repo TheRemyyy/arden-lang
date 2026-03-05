@@ -1,10 +1,19 @@
+# Build
 target/
+
+#Files
 *.exe
 *.ll
 *.o
+
+# Web
 web/node_modules
 web/dist
+
+# IDE
 .idea/
+
+# Tests
 examples/test_no_import/test_no_import
 examples/multi_file_depth_project/java_style_demo
 examples/multi_file_project/multi_file_demo
