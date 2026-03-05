@@ -50,7 +50,6 @@ function rewriteInternalDocLinks(html: string, currentPath: string): string {
 // Navigation structure - URL paths (without .md)
 const NAV_ITEMS = [
     { title: 'Overview', path: '/docs/overview' },
-    { title: 'Projects', path: '/docs/projects' },
     {
         title: 'Getting Started', items: [
             { title: 'Installation', path: '/docs/getting_started/installation' },
@@ -74,6 +73,7 @@ const NAV_ITEMS = [
             { title: 'Enums', path: '/docs/features/enums' },
             { title: 'Ranges', path: '/docs/features/ranges' },
             { title: 'Modules', path: '/docs/features/modules' },
+            { title: 'Projects', path: '/docs/features/projects' },
         ]
     },
     {
