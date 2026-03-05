@@ -23,9 +23,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **C Interop**: Added `extern function ...;` declarations for C ABI calls.
   - Supports typed extern signatures without function bodies.
   - Supports variadic extern declarations (e.g. `extern function printf(fmt: String, ...): Integer;`).
-  - Supports explicit ABI and symbol aliasing (e.g. `extern(c, "puts") function c_puts(...): Integer;`).
+  - Supports explicit ABI and symbol aliasing (e.g. `extern(c, "puts") function c_puts(...): Integer;`, `extern(system, "printf") ...`).
   - Enforces FFI-safe extern signatures and variadic argument types at type-check time.
   - Extern callsites now use C ABI argument lowering (no Apex env pointer).
+- **Pointer Interop Type**: Added generic `Ptr<T>` as a first-class type for raw FFI pointer signatures.
+  - Parser/typechecker/codegen support for `Ptr<T>` declarations and extern interop.
+  - `Ptr<T>` is now accepted as an FFI-safe extern signature type.
+- **C Header Bindings**: Added CLI command `apex bindgen` to generate Apex `extern(c)` declarations from `.h` files.
+  - Supports common C prototypes and variadic signatures.
+  - Supports stdout output or `--output <file>` generation.
 - **New Feature Examples**:
   - `examples/26_effect_system.apex`
   - `examples/27_extern_c_interop.apex`
@@ -34,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `examples/30_extern_variadic_printf.apex`
   - `examples/31_extern_abi_link_name.apex`
   - `examples/32_extern_safe_wrapper.apex`
+  - `examples/33_extern_ptr_types.apex`
+  - `examples/34_bindgen_workflow.apex`
   - `examples/README.md` (coverage index)
 
 ### ♻️ Changed

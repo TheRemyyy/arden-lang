@@ -379,6 +379,7 @@ impl<'ctx> Codegen<'ctx> {
             Type::Box(_) | Type::Rc(_) | Type::Arc(_) => {
                 self.context.ptr_type(AddressSpace::default()).into()
             }
+            Type::Ptr(_) => self.context.ptr_type(AddressSpace::default()).into(),
             // Task<T> - runtime task handle pointer
             Type::Task(_) => self.context.ptr_type(AddressSpace::default()).into(),
             // Range<T> - represented as a struct { start, end, step }
@@ -729,7 +730,10 @@ impl<'ctx> Codegen<'ctx> {
             .collect();
 
         let fn_type = match &func.return_type {
-            Type::None => self.context.void_type().fn_type(&param_types, func.is_variadic),
+            Type::None => self
+                .context
+                .void_type()
+                .fn_type(&param_types, func.is_variadic),
             ty => self.llvm_type(ty).fn_type(&param_types, func.is_variadic),
         };
 
@@ -1730,7 +1734,7 @@ impl<'ctx> Codegen<'ctx> {
                 .build_bit_cast(value.into_float_value(), i64_type, "float_bits")
                 .unwrap()
                 .into_int_value(),
-            Type::String | Type::Named(_) | Type::Ref(_) | Type::MutRef(_) => self
+            Type::String | Type::Named(_) | Type::Ref(_) | Type::MutRef(_) | Type::Ptr(_) => self
                 .builder
                 .build_ptr_to_int(value.into_pointer_value(), i64_type, "ptr_to_i64")
                 .unwrap(),
@@ -1761,7 +1765,7 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_bit_cast(raw, self.context.f64_type(), "bits_to_float")
                 .unwrap(),
-            Type::String | Type::Named(_) | Type::Ref(_) | Type::MutRef(_) => self
+            Type::String | Type::Named(_) | Type::Ref(_) | Type::MutRef(_) | Type::Ptr(_) => self
                 .builder
                 .build_int_to_ptr(
                     raw,

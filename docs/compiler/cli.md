@@ -22,6 +22,7 @@ apex <command> [arguments] [flags]
 | `parse` | **Debug:** Outputs the AST. | `apex parse main.apex` |
 | `lsp` | Starts the LSP server for IDE integration. | `apex lsp` |
 | `compile` | Compiles a single file (legacy mode). | `apex compile file.apex` |
+| `bindgen` | Generates Apex `extern` declarations from a C header. | `apex bindgen include/lib.h -o bindings.apex` |
 
 ## Global Flags
 
@@ -117,3 +118,17 @@ apex parse main.apex
 # Show LLVM IR
 apex build --emit-llvm
 ```
+
+### Bindgen
+
+```bash
+# Print generated extern declarations to stdout
+apex bindgen include/lib.h
+
+# Write generated declarations into a file
+apex bindgen include/lib.h --output src/bindings.apex
+```
+
+Notes:
+- Generated signatures are a starting point. Review and adjust ABI/types before production use.
+- Current generator targets C function prototypes and variadic `...` declarations.

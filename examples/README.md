@@ -36,6 +36,8 @@ This folder is the executable language feature gallery.
 - `30_extern_variadic_printf.apex`: variadic `extern` calls (`printf` with `...`).
 - `31_extern_abi_link_name.apex`: explicit ABI + symbol aliasing (`extern(c, "symbol")`).
 - `32_extern_safe_wrapper.apex`: safe Apex wrapper around raw extern call.
+- `33_extern_ptr_types.apex`: `Ptr<T>` extern signatures (`malloc`/`free` style APIs).
+- `34_bindgen_workflow.apex`: usage style for generated `apex bindgen` extern declarations.
 
 ## Full apps
 

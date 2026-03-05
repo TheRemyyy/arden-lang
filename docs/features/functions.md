@@ -108,6 +108,7 @@ Current extern FFI-safe signature types are:
 - `Boolean`
 - `Char`
 - `String` (C string pointer interop)
+- `Ptr<T>` (raw pointer interop)
 - `None`
 
 For robust integrations, prefer a safe Apex wrapper around raw extern calls.

@@ -54,6 +54,7 @@ pub enum ResolvedType {
     Box(Box<ResolvedType>),
     Rc(Box<ResolvedType>),
     Arc(Box<ResolvedType>),
+    Ptr(Box<ResolvedType>),
     Task(Box<ResolvedType>),
     Range(Box<ResolvedType>),
     Function(Vec<ResolvedType>, Box<ResolvedType>),
@@ -76,6 +77,7 @@ impl ResolvedType {
         match self {
             ResolvedType::Ref(inner) | ResolvedType::MutRef(inner) => Some(inner),
             ResolvedType::Option(inner) | ResolvedType::List(inner) => Some(inner),
+            ResolvedType::Ptr(inner) => Some(inner),
             _ => None,
         }
     }
@@ -101,6 +103,7 @@ impl std::fmt::Display for ResolvedType {
             ResolvedType::Box(inner) => write!(f, "Box<{}>", inner),
             ResolvedType::Rc(inner) => write!(f, "Rc<{}>", inner),
             ResolvedType::Arc(inner) => write!(f, "Arc<{}>", inner),
+            ResolvedType::Ptr(inner) => write!(f, "Ptr<{}>", inner),
             ResolvedType::Task(inner) => write!(f, "Task<{}>", inner),
             ResolvedType::Range(inner) => write!(f, "Range<{}>", inner),
             ResolvedType::Function(params, ret) => {
@@ -268,12 +271,7 @@ impl TypeChecker {
         (effects, pure, any, has_explicit_effects)
     }
 
-    fn validate_effect_attributes(
-        &mut self,
-        attrs: &[Attribute],
-        span: Span,
-        subject: &str,
-    ) {
+    fn validate_effect_attributes(&mut self, attrs: &[Attribute], span: Span, subject: &str) {
         let (effects, pure, any, _) = self.parse_effects_from_attributes(attrs);
         if pure && any {
             self.error(
@@ -363,6 +361,7 @@ impl TypeChecker {
                 | ResolvedType::Char
                 | ResolvedType::String
                 | ResolvedType::None
+                | ResolvedType::Ptr(_)
         )
     }
 
@@ -464,7 +463,8 @@ impl TypeChecker {
             Decl::Class(class) => {
                 let mut changed = false;
                 for method in &class.methods {
-                    changed |= self.infer_effects_for_method(&class.name, &method.name, &method.body);
+                    changed |=
+                        self.infer_effects_for_method(&class.name, &method.name, &method.body);
                 }
                 changed
             }
@@ -678,7 +678,9 @@ impl TypeChecker {
             | Expr::Await(expr) => {
                 self.collect_effects_expr(&expr.node, current_class, out);
             }
-            Expr::Field { object, .. } => self.collect_effects_expr(&object.node, current_class, out),
+            Expr::Field { object, .. } => {
+                self.collect_effects_expr(&object.node, current_class, out)
+            }
             Expr::Index { object, index } => {
                 self.collect_effects_expr(&object.node, current_class, out);
                 self.collect_effects_expr(&index.node, current_class, out);
@@ -981,7 +983,8 @@ impl TypeChecker {
             self.current_allow_any = sig.allow_any;
         } else {
             // Fallback for unresolved keys; should be rare.
-            let (effects, is_pure, allow_any, _) = self.parse_effects_from_attributes(&func.attributes);
+            let (effects, is_pure, allow_any, _) =
+                self.parse_effects_from_attributes(&func.attributes);
             self.current_effects = effects;
             self.current_is_pure = is_pure;
             self.current_allow_any = allow_any;
@@ -2809,6 +2812,7 @@ impl TypeChecker {
             Type::Box(inner) => ResolvedType::Box(Box::new(self.resolve_type(inner))),
             Type::Rc(inner) => ResolvedType::Rc(Box::new(self.resolve_type(inner))),
             Type::Arc(inner) => ResolvedType::Arc(Box::new(self.resolve_type(inner))),
+            Type::Ptr(inner) => ResolvedType::Ptr(Box::new(self.resolve_type(inner))),
             Type::Task(inner) => ResolvedType::Task(Box::new(self.resolve_type(inner))),
             Type::Range(inner) => ResolvedType::Range(Box::new(self.resolve_type(inner))),
             Type::Function(params, ret) => ResolvedType::Function(
@@ -2843,6 +2847,9 @@ impl TypeChecker {
                     }
                     "Arc" if args.len() == 1 => {
                         ResolvedType::Arc(Box::new(self.resolve_type(&args[0])))
+                    }
+                    "Ptr" if args.len() == 1 => {
+                        ResolvedType::Ptr(Box::new(self.resolve_type(&args[0])))
                     }
                     "Task" if args.len() == 1 => {
                         ResolvedType::Task(Box::new(self.resolve_type(&args[0])))
@@ -2896,6 +2903,7 @@ impl TypeChecker {
         match (expected, actual) {
             (ResolvedType::Ref(e), ResolvedType::Ref(a)) => self.types_compatible(e, a),
             (ResolvedType::MutRef(e), ResolvedType::MutRef(a)) => self.types_compatible(e, a),
+            (ResolvedType::Ptr(e), ResolvedType::Ptr(a)) => self.types_compatible(e, a),
             // Can use &mut T where &T is expected
             (ResolvedType::Ref(e), ResolvedType::MutRef(a)) => self.types_compatible(e, a),
             // List compatibility
@@ -2997,6 +3005,7 @@ impl TypeChecker {
                             "Box" => ResolvedType::Box(Box::new(self.parse_type_string(inner_str))),
                             "Rc" => ResolvedType::Rc(Box::new(self.parse_type_string(inner_str))),
                             "Arc" => ResolvedType::Arc(Box::new(self.parse_type_string(inner_str))),
+                            "Ptr" => ResolvedType::Ptr(Box::new(self.parse_type_string(inner_str))),
                             "Map" => {
                                 // Split by comma, respecting nested brackets
                                 let parts = self.split_generic_args(inner_str);

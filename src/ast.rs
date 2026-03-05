@@ -236,6 +236,7 @@ pub enum Type {
     Box(Box<Type>), // Box<T> - heap allocated
     Rc(Box<Type>),  // Rc<T> - reference counted
     Arc(Box<Type>), // Arc<T> - atomic reference counted
+    Ptr(Box<Type>), // Ptr<T> - raw FFI pointer
     // Async types
     Task(Box<Type>), // Task<T> - async task
     // Range type
@@ -250,7 +251,7 @@ impl Type {
     pub fn is_copy(&self) -> bool {
         matches!(
             self,
-            Type::Integer | Type::Float | Type::Boolean | Type::Char | Type::None
+            Type::Integer | Type::Float | Type::Boolean | Type::Char | Type::None | Type::Ptr(_)
         )
     }
 

@@ -1,6 +1,7 @@
 //! Apex Programming Language Compiler
 
 mod ast;
+mod bindgen;
 mod borrowck;
 mod codegen;
 mod import_check;
@@ -121,6 +122,14 @@ enum Commands {
         #[arg(short, long)]
         filter: Option<String>,
     },
+    /// Generate extern bindings from a C header file
+    Bindgen {
+        /// Input C header file
+        header: PathBuf,
+        /// Output Apex file (prints to stdout if omitted)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -164,6 +173,7 @@ fn main() {
         Commands::Test { path, list, filter } => {
             run_tests(path.as_deref(), list, filter.as_deref())
         }
+        Commands::Bindgen { header, output } => bindgen_header(&header, output.as_deref()),
     };
 
     if let Err(e) = result {
@@ -1004,6 +1014,14 @@ fn rewrite_type_for_project(
             entry_namespace,
         ))),
         ast::Type::Arc(inner) => ast::Type::Arc(Box::new(rewrite_type_for_project(
+            inner,
+            current_namespace,
+            local_classes,
+            imported_classes,
+            global_class_map,
+            entry_namespace,
+        ))),
+        ast::Type::Ptr(inner) => ast::Type::Ptr(Box::new(rewrite_type_for_project(
             inner,
             current_namespace,
             local_classes,
@@ -2387,6 +2405,21 @@ fn compile_and_run_test(source_path: &Path, exe_path: &Path) -> Result<(), Strin
         return Err("Tests failed".to_string());
     }
 
+    Ok(())
+}
+
+fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
+    let count = bindgen::generate_bindings(header, output)?;
+    if let Some(out) = output {
+        println!(
+            "{} Generated {} binding(s) -> {}",
+            "OK".green().bold(),
+            count,
+            out.display()
+        );
+    } else {
+        eprintln!("{} Generated {} binding(s)", "OK".green().bold(), count);
+    }
     Ok(())
 }
 

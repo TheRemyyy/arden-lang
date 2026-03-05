@@ -1,0 +1,16 @@
+import std.io.*;
+
+extern(c) function malloc(size: Integer): Ptr<None>;
+extern(c) function free(ptr: Ptr<None>): None;
+
+function alloc_and_free(bytes: Integer): None {
+    memory: Ptr<None> = malloc(bytes);
+    free(memory);
+    return None;
+}
+
+function main(): None {
+    alloc_and_free(128);
+    println("Ptr<T> extern interop works");
+    return None;
+}
