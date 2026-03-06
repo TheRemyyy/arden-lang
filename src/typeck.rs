@@ -806,7 +806,8 @@ impl TypeChecker {
         for decl in &program.declarations {
             if let Decl::Import(import) = &decl.node {
                 if let Some(alias) = &import.alias {
-                    self.import_aliases.insert(alias.clone(), import.path.clone());
+                    self.import_aliases
+                        .insert(alias.clone(), import.path.clone());
                 }
             }
         }
@@ -1015,7 +1016,10 @@ impl TypeChecker {
             for parent in iface.extends {
                 if !self.interfaces.contains_key(&parent) {
                     self.error(
-                        format!("Interface '{}' extends unknown interface '{}'", name, parent),
+                        format!(
+                            "Interface '{}' extends unknown interface '{}'",
+                            name, parent
+                        ),
                         iface.span.clone(),
                     );
                 }
@@ -1080,7 +1084,11 @@ impl TypeChecker {
                     for field in &class.fields {
                         fields.insert(
                             field.name.clone(),
-                            (self.resolve_type(&field.ty), field.mutable, field.visibility),
+                            (
+                                self.resolve_type(&field.ty),
+                                field.mutable,
+                                field.visibility,
+                            ),
                         );
                     }
 
@@ -1345,7 +1353,10 @@ impl TypeChecker {
         if let Some(parent) = &class.extends {
             if self.interfaces.contains_key(parent) {
                 self.error(
-                    format!("Class '{}' cannot extend interface '{}'", class.name, parent),
+                    format!(
+                        "Class '{}' cannot extend interface '{}'",
+                        class.name, parent
+                    ),
                     span.clone(),
                 );
             } else if !self.classes.contains_key(parent) {
@@ -1866,10 +1877,7 @@ impl TypeChecker {
                 }
 
                 if self.interfaces.contains_key(ty) {
-                    self.error(
-                        format!("Cannot construct interface type '{}'", ty),
-                        span,
-                    );
+                    self.error(format!("Cannot construct interface type '{}'", ty), span);
                     return ResolvedType::Unknown;
                 }
 
@@ -2568,12 +2576,11 @@ impl TypeChecker {
                     let t1 = self.check_expr(&args[0].node, args[0].span.clone());
                     let t2 = self.check_expr(&args[1].node, args[1].span.clone());
                     if !matches!(t1, ResolvedType::String) || !matches!(t2, ResolvedType::String) {
+                        let mut parts = name.split("__");
+                        let owner = parts.next().unwrap_or("Str");
+                        let method = parts.next().unwrap_or(name);
                         self.error(
-                            format!(
-                                "{}.{}() requires two String arguments",
-                                name.split("__").next().unwrap(),
-                                name.split("__").last().unwrap()
-                            ),
+                            format!("{}.{}() requires two String arguments", owner, method),
                             span.clone(),
                         );
                     }
@@ -3021,7 +3028,8 @@ impl TypeChecker {
                         );
                         ResolvedType::Unknown
                     }
-                } else if let Some((owner, sig, visibility)) = self.lookup_class_method(name, method)
+                } else if let Some((owner, sig, visibility)) =
+                    self.lookup_class_method(name, method)
                 {
                     self.check_member_visibility(
                         &owner,
@@ -3137,7 +3145,8 @@ impl TypeChecker {
                     );
                     return ResolvedType::Unknown;
                 }
-                if let Some((owner, field_type, _, visibility)) = self.lookup_class_field(name, field)
+                if let Some((owner, field_type, _, visibility)) =
+                    self.lookup_class_field(name, field)
                 {
                     self.check_member_visibility(&owner, visibility, "Field", field, span.clone());
                     return field_type;
@@ -3549,13 +3558,14 @@ impl TypeChecker {
     }
 
     /// Report an error with hint
-fn error_with_hint(&mut self, message: String, span: Span, hint: String) {
+    fn error_with_hint(&mut self, message: String, span: Span, hint: String) {
         self.errors
             .push(TypeError::new(message, span).with_hint(hint));
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
     use crate::lexer::tokenize;
@@ -3628,7 +3638,10 @@ mod tests {
             .map(|e| e.message.as_str())
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(joined.contains("must implement interface method"), "{joined}");
+        assert!(
+            joined.contains("must implement interface method"),
+            "{joined}"
+        );
     }
 
     #[test]
@@ -3652,6 +3665,56 @@ mod tests {
             }
         "#;
         check_source(src).expect("interface-typed calls should typecheck");
+    }
+
+    #[test]
+    fn rejects_protected_member_access_from_non_subclass() {
+        let src = r#"
+            class Base {
+                protected value: Integer;
+                constructor(v: Integer) { this.value = v; }
+            }
+            class Other {
+                function leak(b: Base): Integer {
+                    return b.value;
+                }
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src).expect_err("protected visibility violation should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("protected"), "{joined}");
+    }
+
+    #[test]
+    fn enforces_parent_interface_methods_when_implementing_child_interface() {
+        let src = r#"
+            interface Named {
+                function name(): Integer;
+            }
+            interface Printable extends Named {
+                function print_me(): None;
+            }
+            class Report implements Printable {
+                constructor() {}
+                function print_me(): None { return None; }
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src).expect_err("missing parent-interface method should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("must implement interface method"),
+            "{joined}"
+        );
     }
 }
 

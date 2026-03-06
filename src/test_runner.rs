@@ -338,6 +338,7 @@ fn filter_out_main_function(source: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{ensure_test_runner_imports, generate_test_runner_with_source, TestDiscovery};
 

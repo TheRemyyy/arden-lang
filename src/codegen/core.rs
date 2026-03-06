@@ -161,7 +161,8 @@ impl<'ctx> Codegen<'ctx> {
         for decl in &program.declarations {
             if let Decl::Import(import) = &decl.node {
                 if let Some(alias) = &import.alias {
-                    self.import_aliases.insert(alias.clone(), import.path.clone());
+                    self.import_aliases
+                        .insert(alias.clone(), import.path.clone());
                 }
             }
         }
@@ -503,7 +504,9 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn declare_class_constructor(&mut self, class: &ClassDecl) -> Result<()> {
-        let constructor = class.constructor.as_ref().unwrap();
+        let constructor = class.constructor.as_ref().ok_or_else(|| {
+            CodegenError::new(format!("Class '{}' has no constructor", class.name))
+        })?;
         let param_types: Vec<BasicMetadataTypeEnum> = constructor
             .params
             .iter()
@@ -584,7 +587,10 @@ impl<'ctx> Codegen<'ctx> {
         constructor: &Constructor,
     ) -> Result<()> {
         let name = format!("{}__new", class.name);
-        let (func, _) = self.functions.get(&name).unwrap().clone();
+        let (func, _) =
+            self.functions.get(&name).cloned().ok_or_else(|| {
+                CodegenError::new(format!("Missing declared constructor: {}", name))
+            })?;
 
         self.current_function = Some(func);
         let entry = self.context.append_basic_block(func, "entry");
@@ -594,12 +600,22 @@ impl<'ctx> Codegen<'ctx> {
         // Allocate parameters
         // Param 0 is env_ptr, constructor params start at 1
         for (i, param) in constructor.params.iter().enumerate() {
-            let llvm_param = func.get_nth_param((i + 1) as u32).unwrap();
+            let llvm_param = func.get_nth_param((i + 1) as u32).ok_or_else(|| {
+                CodegenError::new(format!(
+                    "Missing constructor parameter {} for {}",
+                    i + 1,
+                    class.name
+                ))
+            })?;
             let alloca = self
                 .builder
                 .build_alloca(self.llvm_type(&param.ty), &param.name)
-                .unwrap();
-            self.builder.build_store(alloca, llvm_param).unwrap();
+                .map_err(|e| {
+                    CodegenError::new(format!("alloca failed for '{}': {}", param.name, e))
+                })?;
+            self.builder.build_store(alloca, llvm_param).map_err(|e| {
+                CodegenError::new(format!("store failed for '{}': {}", param.name, e))
+            })?;
             self.variables.insert(
                 param.name.clone(),
                 Variable {
@@ -610,25 +626,36 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         // Allocate instance
-        let class_info = self.classes.get(&class.name).unwrap();
+        let class_info = self
+            .classes
+            .get(&class.name)
+            .ok_or_else(|| CodegenError::new(format!("Unknown class: {}", class.name)))?;
         let struct_type = class_info.struct_type;
         let malloc = self.get_or_declare_malloc();
-        let size = struct_type.size_of().unwrap();
+        let size = struct_type
+            .size_of()
+            .ok_or_else(|| CodegenError::new("Failed to compute class struct size"))?;
         let ptr = self
             .builder
             .build_call(malloc, &[size.into()], "instance")
-            .unwrap();
+            .map_err(|e| CodegenError::new(format!("malloc call failed: {}", e)))?;
         let instance = match ptr.try_as_basic_value() {
             ValueKind::Basic(val) => val.into_pointer_value(),
-            _ => panic!("malloc should return a value"),
+            _ => {
+                return Err(CodegenError::new(
+                    "malloc call did not produce a pointer result",
+                ))
+            }
         };
 
         // Store 'this'
         let this_alloca = self
             .builder
             .build_alloca(self.context.ptr_type(AddressSpace::default()), "this")
-            .unwrap();
-        self.builder.build_store(this_alloca, instance).unwrap();
+            .map_err(|e| CodegenError::new(format!("alloca failed for this: {}", e)))?;
+        self.builder
+            .build_store(this_alloca, instance)
+            .map_err(|e| CodegenError::new(format!("store failed for this: {}", e)))?;
         self.variables.insert(
             "this".to_string(),
             Variable {
@@ -650,8 +677,10 @@ impl<'ctx> Codegen<'ctx> {
                 this_alloca,
                 "this",
             )
-            .unwrap();
-        self.builder.build_return(Some(&this_val)).unwrap();
+            .map_err(|e| CodegenError::new(format!("load failed for this: {}", e)))?;
+        self.builder
+            .build_return(Some(&this_val))
+            .map_err(|e| CodegenError::new(format!("return failed in constructor: {}", e)))?;
 
         self.current_function = None;
         Ok(())
@@ -659,7 +688,11 @@ impl<'ctx> Codegen<'ctx> {
 
     pub fn compile_method(&mut self, class: &ClassDecl, method: &FunctionDecl) -> Result<()> {
         let name = format!("{}__{}", class.name, method.name);
-        let (func, _) = self.functions.get(&name).unwrap().clone();
+        let (func, _) = self
+            .functions
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| CodegenError::new(format!("Missing declared method: {}", name)))?;
 
         self.current_function = Some(func);
         let entry = self.context.append_basic_block(func, "entry");
@@ -668,14 +701,21 @@ impl<'ctx> Codegen<'ctx> {
 
         // Param 0 is env_ptr
         // Store 'this' (Param 1)
-        let this_param = func.get_nth_param(1).unwrap();
-        let class_info = self.classes.get(&class.name).unwrap();
+        let this_param = func.get_nth_param(1).ok_or_else(|| {
+            CodegenError::new(format!("Missing 'this' param for method {}", name))
+        })?;
+        let class_info = self
+            .classes
+            .get(&class.name)
+            .ok_or_else(|| CodegenError::new(format!("Unknown class: {}", class.name)))?;
         let _struct_type = class_info.struct_type;
         let this_alloca = self
             .builder
             .build_alloca(self.context.ptr_type(AddressSpace::default()), "this")
-            .unwrap();
-        self.builder.build_store(this_alloca, this_param).unwrap();
+            .map_err(|e| CodegenError::new(format!("alloca failed for this: {}", e)))?;
+        self.builder
+            .build_store(this_alloca, this_param)
+            .map_err(|e| CodegenError::new(format!("store failed for this: {}", e)))?;
         self.variables.insert(
             "this".to_string(),
             Variable {
@@ -687,12 +727,18 @@ impl<'ctx> Codegen<'ctx> {
         // Store parameters
         // Start from index 2 because 0=env_ptr, 1=this
         for (i, param) in method.params.iter().enumerate() {
-            let llvm_param = func.get_nth_param((i + 2) as u32).unwrap();
+            let llvm_param = func.get_nth_param((i + 2) as u32).ok_or_else(|| {
+                CodegenError::new(format!("Missing method parameter {} for {}", i + 2, name))
+            })?;
             let alloca = self
                 .builder
                 .build_alloca(self.llvm_type(&param.ty), &param.name)
-                .unwrap();
-            self.builder.build_store(alloca, llvm_param).unwrap();
+                .map_err(|e| {
+                    CodegenError::new(format!("alloca failed for '{}': {}", param.name, e))
+                })?;
+            self.builder.build_store(alloca, llvm_param).map_err(|e| {
+                CodegenError::new(format!("store failed for '{}': {}", param.name, e))
+            })?;
             self.variables.insert(
                 param.name.clone(),
                 Variable {
@@ -711,10 +757,17 @@ impl<'ctx> Codegen<'ctx> {
         if self.needs_terminator() {
             match &method.return_type {
                 Type::None => {
-                    self.builder.build_return(None).unwrap();
+                    self.builder.build_return(None).map_err(|e| {
+                        CodegenError::new(format!("return failed in method {}: {}", name, e))
+                    })?;
                 }
                 _ => {
-                    self.builder.build_unreachable().unwrap();
+                    self.builder.build_unreachable().map_err(|e| {
+                        CodegenError::new(format!(
+                            "unreachable emit failed in method {}: {}",
+                            name, e
+                        ))
+                    })?;
                 }
             }
         }

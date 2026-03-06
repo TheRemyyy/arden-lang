@@ -38,6 +38,10 @@ impl<'src> Parser<'src> {
         self.tokens.get(self.pos).map(|(t, _)| t)
     }
 
+    fn peek_token(&self, offset: usize) -> Option<&Token<'src>> {
+        self.tokens.get(self.pos + offset).map(|(t, _)| t)
+    }
+
     fn current_span(&self) -> std::ops::Range<usize> {
         self.tokens
             .get(self.pos)
@@ -165,6 +169,27 @@ impl<'src> Parser<'src> {
                 Decl::Function(self.parse_function(attributes)?)
             }
             Some(Token::Extern) => Decl::Function(self.parse_extern_function(attributes)?),
+            Some(Token::Public) | Some(Token::Private) | Some(Token::Protected) => {
+                match self.peek_token(1) {
+                    Some(Token::Function) | Some(Token::Async) => {
+                        Decl::Function(self.parse_function(attributes)?)
+                    }
+                    Some(Token::Extern) => Decl::Function(self.parse_extern_function(attributes)?),
+                    Some(Token::Class) => Decl::Class(self.parse_class(attributes)?),
+                    Some(Token::Enum) => Decl::Enum(self.parse_enum(attributes)?),
+                    Some(Token::Interface) => Decl::Interface(self.parse_interface(attributes)?),
+                    Some(Token::Module) => Decl::Module(self.parse_module(attributes)?),
+                    _ => {
+                        return Err(ParseError::new(
+                            format!(
+                                "Visibility modifier must be followed by a declaration, found {:?}",
+                                self.peek_token(1)
+                            ),
+                            self.current_span(),
+                        ));
+                    }
+                }
+            }
             Some(Token::Class) => Decl::Class(self.parse_class(attributes)?),
             Some(Token::Enum) => Decl::Enum(self.parse_enum(attributes)?),
             Some(Token::Interface) => Decl::Interface(self.parse_interface(attributes)?),
@@ -2075,6 +2100,24 @@ mod tests {
             Decl::Function(func) => {
                 assert_eq!(func.name, "normalFunction");
                 assert!(func.attributes.is_empty());
+            }
+            _ => panic!("Expected function declaration"),
+        }
+    }
+
+    #[test]
+    fn test_parse_public_top_level_function() {
+        let source = r#"
+            public function exported(): Integer {
+                return 1;
+            }
+        "#;
+
+        let program = parse_source(source).expect("Should parse public top-level function");
+        match &program.declarations[0].node {
+            Decl::Function(func) => {
+                assert_eq!(func.name, "exported");
+                assert_eq!(func.visibility, Visibility::Public);
             }
             _ => panic!("Expected function declaration"),
         }
