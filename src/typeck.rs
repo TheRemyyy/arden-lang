@@ -233,6 +233,27 @@ impl TypeChecker {
         StdLib::new().resolve_alias_call(namespace_path, member)
     }
 
+    fn resolve_import_alias_symbol(&self, alias_ident: &str) -> Option<String> {
+        // Local bindings must shadow import aliases.
+        if self.lookup_variable(alias_ident).is_some() {
+            return None;
+        }
+        let path = self.import_aliases.get(alias_ident)?;
+        if path.ends_with(".*") {
+            return None;
+        }
+        let mut parts = path.split('.').collect::<Vec<_>>();
+        let symbol = parts.pop()?;
+        let namespace = parts.join(".");
+        if StdLib::new()
+            .get_namespace(symbol)
+            .is_some_and(|owner| owner == &namespace)
+        {
+            return Some(symbol.to_string());
+        }
+        None
+    }
+
     pub fn new(source: String) -> Self {
         let global_scope = Scope {
             variables: HashMap::new(),
@@ -781,10 +802,13 @@ impl TypeChecker {
         match expr {
             Expr::Call { callee, args, .. } => {
                 if let Expr::Ident(name) = &callee.node {
-                    if let Some(required) = Self::builtin_required_effect(name) {
+                    let canonical = self
+                        .resolve_import_alias_symbol(name)
+                        .unwrap_or_else(|| name.clone());
+                    if let Some(required) = Self::builtin_required_effect(&canonical) {
                         out.insert(required.to_string());
                     }
-                    if let Some(sig) = self.functions.get(name) {
+                    if let Some(sig) = self.functions.get(&canonical) {
                         for eff in &sig.effects {
                             out.insert(eff.clone());
                         }
@@ -2822,21 +2846,27 @@ impl TypeChecker {
         type_args: &[Type],
         span: Span,
     ) -> ResolvedType {
+        let canonical_ident_call = match callee {
+            Expr::Ident(name) => self.resolve_import_alias_symbol(name),
+            _ => None,
+        };
+
         // 1. Built-in functions (special handling for println, etc.)
         if let Expr::Ident(name) = callee {
-            if !type_args.is_empty() && Self::builtin_required_effect(name).is_some() {
+            let resolved_name = canonical_ident_call.as_deref().unwrap_or(name);
+            if !type_args.is_empty() && Self::builtin_required_effect(resolved_name).is_some() {
                 self.error(
                     format!(
                         "Built-in function '{}' does not accept type arguments",
-                        name
+                        resolved_name
                     ),
                     span.clone(),
                 );
             }
-            if let Some(required) = Self::builtin_required_effect(name) {
-                self.enforce_required_effect(required, span.clone(), name);
+            if let Some(required) = Self::builtin_required_effect(resolved_name) {
+                self.enforce_required_effect(required, span.clone(), resolved_name);
             }
-            if let Some(return_type) = self.check_builtin_call(name, args, span.clone()) {
+            if let Some(return_type) = self.check_builtin_call(resolved_name, args, span.clone()) {
                 return return_type;
             }
         }
@@ -2967,10 +2997,15 @@ impl TypeChecker {
 
         // 3. Evaluate callee to see if it's a function type (handles global functions and local variables/params)
         if let Expr::Ident(name) = callee {
-            if let Some(sig) = self.functions.get(name).cloned() {
-                self.enforce_call_effects(&sig, span.clone(), name);
-                let (inst_params, inst_return_type) =
-                    self.instantiate_signature_for_call(name, &sig, type_args, span.clone());
+            let resolved_name = canonical_ident_call.as_deref().unwrap_or(name);
+            if let Some(sig) = self.functions.get(resolved_name).cloned() {
+                self.enforce_call_effects(&sig, span.clone(), resolved_name);
+                let (inst_params, inst_return_type) = self.instantiate_signature_for_call(
+                    resolved_name,
+                    &sig,
+                    type_args,
+                    span.clone(),
+                );
                 let expected = inst_params.len();
                 let bad_arity = if sig.is_variadic {
                     args.len() < expected
@@ -2981,7 +3016,7 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Function '{}' expects {} arguments, got {}",
-                            name,
+                            resolved_name,
                             if sig.is_variadic {
                                 format!("at least {}", expected)
                             } else {
@@ -3005,7 +3040,7 @@ impl TypeChecker {
                         }
                     }
                     if sig.is_variadic && sig.is_extern {
-                        self.check_variadic_ffi_tail_args(name, args, expected);
+                        self.check_variadic_ffi_tail_args(resolved_name, args, expected);
                     }
                 }
                 return inst_return_type;
@@ -4710,6 +4745,20 @@ mod tests {
             joined.contains("Cannot call method on type Integer"),
             "{joined}"
         );
+    }
+
+    #[test]
+    fn specific_stdlib_alias_import_resolves_ident_call() {
+        let src = r#"
+            import std.io.*;
+            import std.math.Math__abs as abs_fn;
+            function main(): None {
+                x: Float = abs_fn(-2.5);
+                println(to_string(x));
+                return None;
+            }
+        "#;
+        check_source(src).expect("specific stdlib alias import call should typecheck");
     }
 
     #[test]

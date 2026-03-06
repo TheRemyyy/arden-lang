@@ -16,6 +16,7 @@ use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
+use crate::stdlib::StdLib;
 
 /// Codegen error
 #[derive(Debug)]
@@ -271,15 +272,49 @@ impl<'ctx> Codegen<'ctx> {
 
     fn resolve_module_alias(&self, name: &str) -> String {
         if let Some(path) = self.import_aliases.get(name) {
-            return match path.as_str() {
-                "std.math" => "Math".to_string(),
-                "std.string" => "Str".to_string(),
-                "std.system" => "System".to_string(),
-                "std.time" => "Time".to_string(),
-                "std.args" => "Args".to_string(),
-                _ => name.to_string(),
-            };
+            let mut owner: Option<String> = None;
+            for (func, ns) in StdLib::new().get_functions() {
+                if ns == path {
+                    if let Some((candidate_owner, _)) = func.split_once("__") {
+                        let candidate_owner = candidate_owner.to_string();
+                        if let Some(existing) = &owner {
+                            if existing != &candidate_owner {
+                                return name.to_string();
+                            }
+                        } else {
+                            owner = Some(candidate_owner);
+                        }
+                    }
+                }
+            }
+            if let Some(owner) = owner {
+                return owner;
+            }
         }
+        name.to_string()
+    }
+
+    fn resolve_function_alias(&self, name: &str) -> String {
+        let Some(path) = self.import_aliases.get(name) else {
+            return name.to_string();
+        };
+        if path.ends_with(".*") {
+            return name.to_string();
+        }
+        let mut parts = path.split('.').collect::<Vec<_>>();
+        let Some(symbol) = parts.pop() else {
+            return name.to_string();
+        };
+        let namespace = parts.join(".");
+
+        if StdLib::new()
+            .get_namespace(symbol)
+            .is_some_and(|owner| owner == &namespace)
+            || self.functions.contains_key(symbol)
+        {
+            return symbol.to_string();
+        }
+
         name.to_string()
     }
 
@@ -3138,15 +3173,30 @@ impl<'ctx> Codegen<'ctx> {
         callee: &Expr,
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
+        let resolved_ident = if let Expr::Ident(name) = callee {
+            if self.variables.contains_key(name) {
+                name.clone()
+            } else {
+                self.resolve_function_alias(name)
+            }
+        } else {
+            String::new()
+        };
+
         // Check for built-in functions
         if let Expr::Ident(name) = callee {
-            if name == "println" || name == "print" {
-                return self.compile_print(args, name == "println");
+            let builtin_name = if resolved_ident.is_empty() {
+                name.as_str()
+            } else {
+                resolved_ident.as_str()
+            };
+            if builtin_name == "println" || builtin_name == "print" {
+                return self.compile_print(args, builtin_name == "println");
             }
 
             // Standard library functions
-            if Self::is_stdlib_function(name) {
-                if let Some(result) = self.compile_stdlib_function(name, args)? {
+            if Self::is_stdlib_function(builtin_name) {
+                if let Some(result) = self.compile_stdlib_function(builtin_name, args)? {
                     return Ok(result);
                 } else {
                     // Void stdlib function - return dummy value
@@ -3270,7 +3320,11 @@ impl<'ctx> Codegen<'ctx> {
 
         // Regular function call
         let callee_name = if let Expr::Ident(name) = callee {
-            Some(name.clone())
+            if resolved_ident.is_empty() {
+                Some(name.clone())
+            } else {
+                Some(resolved_ident.clone())
+            }
         } else {
             None
         };
@@ -3338,13 +3392,22 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
 
+                let looked_up_name = if resolved_ident.is_empty() {
+                    name
+                } else {
+                    resolved_ident.as_str()
+                };
+
                 // Fall back to global function lookup
-                if let Some((f, _)) = self.functions.get(name) {
+                if let Some((f, _)) = self.functions.get(looked_up_name) {
                     *f
-                } else if let Some(f) = self.module.get_function(name) {
+                } else if let Some(f) = self.module.get_function(looked_up_name) {
                     f
                 } else {
-                    return Err(CodegenError::new(format!("Unknown function: {}", name)));
+                    return Err(CodegenError::new(format!(
+                        "Unknown function: {}",
+                        looked_up_name
+                    )));
                 }
             }
             _ => return Err(CodegenError::new("Invalid callee")),

@@ -53,6 +53,9 @@ This document describes the internal architecture of the Apex compiler.
   - Import checking now traverses class constructors/destructors/methods, module functions, and interface default implementations (not only top-level functions).
   - Module function namespace extraction uses mangled names consistently (`Module__func`) during import resolution.
   - Namespace alias imports (`import ... as alias`) no longer implicitly grant unqualified access to all symbols in that namespace.
+- **Alias resolution hardening**:
+  - Specific-symbol aliases (for example `import std.math.Math__abs as abs_fn`) are resolved across type checking and code generation, so aliased calls compile and execute correctly.
+  - Alias canonicalization now uses symbol-table/registry lookups instead of brittle namespace-prefix checks.
 - **Lint scope analysis hardening**:
   - Shadowing diagnostics now account for parameters and `for`-loop variables.
   - Unused-variable diagnostics now include unused `for`-loop iterator variables.

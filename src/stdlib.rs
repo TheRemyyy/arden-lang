@@ -110,10 +110,6 @@ impl StdLib {
     /// - ("std.math", "abs") -> Some("Math__abs")
     /// - ("std.string", "len") -> Some("Str__len")
     pub fn resolve_alias_call(&self, namespace_path: &str, member: &str) -> Option<String> {
-        if !namespace_path.starts_with("std.") {
-            return None;
-        }
-
         // Free-function style (std.io.println -> println)
         if self
             .get_namespace(member)

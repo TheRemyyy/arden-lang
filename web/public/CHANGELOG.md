@@ -144,6 +144,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed import checker false negatives where `import std.math as math;` incorrectly allowed `Math.abs(...)` calls without proper import.
 - Fixed lint `L003` unused-specific-import detection to use alias binding names (for `import ... as alias`) when determining usage.
 - Fixed lint `L003` messages for aliased specific imports to include full import identity (`path as alias`) instead of only raw path.
+- Fixed direct specific import aliases for stdlib symbols (for example `import std.math.Math__abs as abs_fn;`) so calls like `abs_fn(...)` now compile and run end-to-end.
+- Fixed codegen alias resolution to avoid hardcoded namespace-to-module mapping (`std.math` -> `Math`, etc.) and resolve module aliases dynamically from the registered stdlib symbol table.
+- Fixed rewrite/typecheck alias resolution logic to avoid brittle string-prefix checks (`starts_with("std.")`) and rely on canonical symbol registry lookups instead.
 - Fixed generic function type parameters being resolved as class names during type checking:
   - function/method generic params now bind to internal type variables in signatures and body checks
   - call sites like `id<Integer>(1)` no longer fail with spurious `expected T, got Integer` errors.

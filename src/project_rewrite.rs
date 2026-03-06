@@ -933,38 +933,20 @@ fn rewrite_expr_calls_for_project(
                         unreachable!()
                     };
                     if let Some((ns, symbol_name)) = imported_modules.get(module_alias) {
-                        if ns == "std" {
-                            let std_namespace = format!("{}.{}", ns, symbol_name);
-                            if let Some(canonical) =
-                                StdLib::new().resolve_alias_call(&std_namespace, field)
-                            {
-                                if let Some((owner, method)) = canonical.split_once("__") {
-                                    Expr::Field {
-                                        object: Box::new(ast::Spanned::new(
-                                            Expr::Ident(owner.to_string()),
-                                            object.span.clone(),
-                                        )),
-                                        field: method.to_string(),
-                                    }
-                                } else {
-                                    Expr::Ident(canonical)
+                        let namespace_path = format!("{}.{}", ns, symbol_name);
+                        if let Some(canonical) =
+                            StdLib::new().resolve_alias_call(&namespace_path, field)
+                        {
+                            if let Some((owner, method)) = canonical.split_once("__") {
+                                Expr::Field {
+                                    object: Box::new(ast::Spanned::new(
+                                        Expr::Ident(owner.to_string()),
+                                        object.span.clone(),
+                                    )),
+                                    field: method.to_string(),
                                 }
                             } else {
-                                rewrite_expr_calls_for_project(
-                                    &callee.node,
-                                    current_namespace,
-                                    entry_namespace,
-                                    local_functions,
-                                    imported_map,
-                                    global_function_map,
-                                    local_classes,
-                                    imported_classes,
-                                    global_class_map,
-                                    local_modules,
-                                    imported_modules,
-                                    global_module_map,
-                                    scopes,
-                                )
+                                Expr::Ident(canonical)
                             }
                         } else {
                             rewrite_expr_calls_for_project(
@@ -1011,7 +993,14 @@ fn rewrite_expr_calls_for_project(
                             name,
                         ))
                     } else if let Some((ns, symbol_name)) = imported_map.get(name) {
-                        Expr::Ident(mangle_project_symbol(ns, entry_namespace, symbol_name))
+                        if StdLib::new()
+                            .get_namespace(symbol_name)
+                            .is_some_and(|owner| owner == ns)
+                        {
+                            Expr::Ident(symbol_name.clone())
+                        } else {
+                            Expr::Ident(mangle_project_symbol(ns, entry_namespace, symbol_name))
+                        }
                     } else if let Some(ns) = global_function_map.get(name) {
                         Expr::Ident(mangle_project_symbol(ns, entry_namespace, name))
                     } else {
