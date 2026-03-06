@@ -28,6 +28,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
+use twox_hash::XxHash64;
 
 use crate::ast::{Decl, ImportDecl, Program};
 use crate::borrowck::BorrowChecker;
@@ -261,6 +262,10 @@ fn project_cache_file(project_root: &Path) -> PathBuf {
     project_root.join(".apexcache").join("build_fingerprint")
 }
 
+fn stable_hasher() -> XxHash64 {
+    XxHash64::with_seed(0)
+}
+
 fn project_build_artifact_exists(output_path: &Path, emit_llvm: bool) -> bool {
     if emit_llvm {
         output_path.with_extension("ll").exists()
@@ -275,7 +280,7 @@ fn compute_project_fingerprint(
     emit_llvm: bool,
     do_check: bool,
 ) -> Result<String, String> {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = stable_hasher();
 
     env!("CARGO_PKG_VERSION").hash(&mut hasher);
     config.name.hash(&mut hasher);
@@ -395,7 +400,7 @@ struct RewrittenProjectUnit {
 }
 
 fn parsed_file_cache_path(project_root: &Path, file: &Path) -> PathBuf {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = stable_hasher();
     file.hash(&mut hasher);
     project_root
         .join(".apexcache")
@@ -404,7 +409,7 @@ fn parsed_file_cache_path(project_root: &Path, file: &Path) -> PathBuf {
 }
 
 fn source_fingerprint(source: &str) -> String {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = stable_hasher();
     source.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
@@ -514,10 +519,7 @@ fn rewritten_file_cache_path(project_root: &Path, file: &Path) -> PathBuf {
         .join(format!("{:016x}.json", hasher.finish()))
 }
 
-fn hash_sorted_map(
-    map: &HashMap<String, String>,
-    hasher: &mut std::collections::hash_map::DefaultHasher,
-) {
+fn hash_sorted_map(map: &HashMap<String, String>, hasher: &mut impl Hasher) {
     let mut entries = map.iter().collect::<Vec<_>>();
     entries.sort_by(|a, b| a.0.cmp(b.0).then_with(|| a.1.cmp(b.1)));
     for (k, v) in entries {
@@ -526,10 +528,7 @@ fn hash_sorted_map(
     }
 }
 
-fn hash_sorted_map_of_sets(
-    map: &HashMap<String, HashSet<String>>,
-    hasher: &mut std::collections::hash_map::DefaultHasher,
-) {
+fn hash_sorted_map_of_sets(map: &HashMap<String, HashSet<String>>, hasher: &mut impl Hasher) {
     let mut entries = map.iter().collect::<Vec<_>>();
     entries.sort_by(|a, b| a.0.cmp(b.0));
     for (k, set) in entries {
@@ -551,7 +550,7 @@ fn compute_rewrite_context_fingerprint(
     namespace_modules: &HashMap<String, HashSet<String>>,
     global_module_map: &HashMap<String, String>,
 ) -> String {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = stable_hasher();
     entry_namespace.hash(&mut hasher);
     hash_sorted_map_of_sets(namespace_functions, &mut hasher);
     hash_sorted_map(global_function_map, &mut hasher);
@@ -695,7 +694,7 @@ fn object_ext() -> &'static str {
 }
 
 fn object_cache_object_path(project_root: &Path, file: &Path) -> PathBuf {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = stable_hasher();
     file.hash(&mut hasher);
     project_root
         .join(".apexcache")
@@ -704,7 +703,7 @@ fn object_cache_object_path(project_root: &Path, file: &Path) -> PathBuf {
 }
 
 fn object_cache_meta_path(project_root: &Path, file: &Path) -> PathBuf {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = stable_hasher();
     file.hash(&mut hasher);
     project_root
         .join(".apexcache")
@@ -713,7 +712,7 @@ fn object_cache_meta_path(project_root: &Path, file: &Path) -> PathBuf {
 }
 
 fn compute_object_build_fingerprint(link: &LinkConfig<'_>) -> String {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = stable_hasher();
     env!("CARGO_PKG_VERSION").hash(&mut hasher);
     link.opt_level.hash(&mut hasher);
     link.target.hash(&mut hasher);

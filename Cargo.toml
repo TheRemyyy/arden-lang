@@ -25,6 +25,7 @@ serde_json = "1.0"
 rayon = "1.10"
 tower-lsp = { version = "0.20.0", features = ["proposed"] }
 tokio = { version = "1.49.0", features = ["full"] }
+twox-hash = "2.1"
 
 [profile.release]
 opt-level = 3
