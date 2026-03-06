@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 use crate::ast::*;
+use crate::stdlib::StdLib;
 use std::collections::HashMap;
 
 /// Borrow checking error
@@ -85,6 +86,8 @@ pub struct BorrowChecker {
     functions: HashMap<String, Vec<ParamMode>>,
     /// Class method signatures
     classes: HashMap<String, ClassBorrowSigs>,
+    /// Stdlib function names for default borrow-mode fallback
+    stdlib_functions: std::collections::HashSet<String>,
     /// Current scope depth
     scope_depth: usize,
     /// Collected errors
@@ -105,6 +108,7 @@ impl BorrowChecker {
             borrows: Vec::new(),
             functions: HashMap::new(),
             classes: HashMap::new(),
+            stdlib_functions: StdLib::new().get_functions().keys().cloned().collect(),
             scope_depth: 0,
             errors: Vec::new(),
             drop_queue: vec![Vec::new()],
@@ -810,43 +814,8 @@ impl BorrowChecker {
         }
     }
 
-    fn is_borrowing_stdlib_call(name: &str) -> bool {
-        matches!(
-            name,
-            "Str__len"
-                | "Str__compare"
-                | "Str__concat"
-                | "Str__upper"
-                | "Str__lower"
-                | "Str__trim"
-                | "Str__contains"
-                | "print"
-                | "println"
-                | "File__exists"
-                | "File__read"
-                | "File__write"
-                | "File__delete"
-                | "Time__now"
-                | "Time__sleep"
-                | "System__getenv"
-                | "System__shell"
-                | "System__exec"
-                | "System__exit"
-                | "Math__abs"
-                | "Math__min"
-                | "Math__max"
-                | "Math__sqrt"
-                | "Math__pow"
-                | "Math__sin"
-                | "Math__cos"
-                | "Math__tan"
-                | "Math__floor"
-                | "Math__ceil"
-                | "Math__round"
-                | "Math__log"
-                | "Math__log10"
-                | "Math__exp"
-        )
+    fn is_borrowing_stdlib_call(&self, name: &str) -> bool {
+        self.stdlib_functions.contains(name)
     }
 
     fn infer_expr_class<'a>(&'a self, expr: &Expr) -> Option<&'a str> {
@@ -864,10 +833,10 @@ impl BorrowChecker {
     }
 
     fn resolve_call_param_modes(&self, callee: &Expr, arg_len: usize) -> Vec<ParamMode> {
-        let mut param_modes = Vec::new();
+        let param_modes = Vec::new();
 
         if let Expr::Ident(name) = callee {
-            if Self::is_borrowing_stdlib_call(name) {
+            if self.is_borrowing_stdlib_call(name) {
                 return vec![ParamMode::Borrow; arg_len];
             }
             if let Some(modes) = self.functions.get(name) {
@@ -878,16 +847,12 @@ impl BorrowChecker {
 
         if let Expr::Field { object, field } = callee {
             if let Expr::Ident(name) = &object.node {
-                if matches!(
-                    name.as_str(),
-                    "File" | "Time" | "System" | "Math" | "Str" | "Args"
-                ) {
-                    param_modes = vec![ParamMode::Borrow; arg_len];
-                }
-
                 let mangled = format!("{}__{}", name, field);
                 if let Some(modes) = self.functions.get(&mangled) {
                     return modes.clone();
+                }
+                if self.is_borrowing_stdlib_call(&mangled) {
+                    return vec![ParamMode::Borrow; arg_len];
                 }
             }
 
