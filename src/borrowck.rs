@@ -1005,7 +1005,7 @@ impl BorrowChecker {
         match receiver {
             Expr::Ident(name) => match mode {
                 ParamMode::Borrow => self.create_borrow(name, false, span),
-                ParamMode::BorrowMut => self.create_borrow(name, true, span),
+                ParamMode::BorrowMut => self.create_receiver_borrow(name, true, span),
                 ParamMode::Owned => self.try_move(receiver, span),
             },
             Expr::Field { object, .. } | Expr::Index { object, .. } => {
@@ -1014,6 +1014,63 @@ impl BorrowChecker {
             Expr::This => {}
             _ => {}
         }
+    }
+
+    fn create_receiver_borrow(&mut self, name: &str, mutable: bool, span: Span) {
+        let state = {
+            if let Some(var) = self.get_var(name) {
+                var.state.clone()
+            } else {
+                return;
+            }
+        };
+
+        match state {
+            OwnershipState::Moved(move_span) => {
+                self.errors.push(
+                    BorrowError::new(format!("Cannot borrow '{}' after move", name), span.clone())
+                        .with_note("Value was moved here", move_span),
+                );
+                return;
+            }
+            OwnershipState::MutBorrowed(borrow_span) => {
+                self.errors.push(
+                    BorrowError::new(
+                        format!("Cannot borrow '{}' while mutably borrowed", name),
+                        span.clone(),
+                    )
+                    .with_note("Mutable borrow occurred here", borrow_span),
+                );
+                return;
+            }
+            OwnershipState::Borrowed(count) if mutable && count > 0 => {
+                self.errors.push(BorrowError::new(
+                    format!("Cannot mutably borrow '{}' while immutably borrowed", name),
+                    span.clone(),
+                ));
+                return;
+            }
+            _ => {}
+        }
+
+        if let Some(var) = self.get_var_mut(name) {
+            if mutable {
+                var.state = OwnershipState::MutBorrowed(span.clone());
+            } else {
+                match &mut var.state {
+                    OwnershipState::Borrowed(count) => *count += 1,
+                    OwnershipState::Owned => var.state = OwnershipState::Borrowed(1),
+                    _ => {}
+                }
+            }
+        }
+
+        self.borrows.push(BorrowInfo {
+            borrowed_from: name.to_string(),
+            mutable,
+            span,
+            scope_depth: self.scope_depth,
+        });
     }
 
     fn class_mutating_methods(class: &ClassDecl) -> std::collections::HashSet<String> {
