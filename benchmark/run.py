@@ -125,6 +125,25 @@ def timed_compile(cmd: List[str], cwd: Path, env: Dict[str, str] | None = None) 
     return elapsed
 
 
+def timed_compile_with_retry(lang: str, job: Dict, retries: int = 1) -> float:
+    for attempt in range(retries + 1):
+        try:
+            return timed_compile(job["cmd"], job["cwd"], env=job["env"])
+        except RuntimeError as exc:
+            msg = str(exc)
+            transient_ll_missing = (
+                lang == "apex"
+                and ".ll" in msg
+                and "no such file or directory" in msg.lower()
+            )
+            if transient_ll_missing and attempt < retries:
+                time.sleep(0.05)
+                continue
+            raise
+
+    raise RuntimeError("unreachable")
+
+
 def run_checksum(binary: Path, cwd: Path) -> int:
     proc = run_cmd([str(binary)], cwd)
     if proc.returncode != 0:
@@ -564,13 +583,13 @@ def main() -> int:
                 for _ in range(args.warmup):
                     if args.compile_mode == "cold":
                         clean_compile_artifacts(lang, job)
-                    timed_compile(job["cmd"], job["cwd"], env=job["env"])
+                    timed_compile_with_retry(lang, job)
 
                 samples: List[float] = []
                 for _ in range(args.repeats):
                     if args.compile_mode == "cold":
                         clean_compile_artifacts(lang, job)
-                    samples.append(timed_compile(job["cmd"], job["cwd"], env=job["env"]))
+                    samples.append(timed_compile_with_retry(lang, job))
 
                 checksum = run_checksum(job["binary"], job["cwd"])
                 if reference_checksum is None:
