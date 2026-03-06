@@ -30,6 +30,22 @@ This document describes the internal architecture of the Apex compiler.
   - Import checks and rewrite/cache resolution run in parallel per file.
   - Symbol map/collision resolution and final declaration merge still run deterministically.
 
+## Recent Correctness Hardening
+
+- **Scope-aware LSP rename/references**:
+  - Symbol rename/reference resolution now follows lexical bindings selected at cursor position.
+  - Prevents accidental edits of unrelated same-name symbols in nested/outer scopes.
+- **Precise LSP hover token targeting**:
+  - Hover docs are now resolved from the exact token under cursor, not from broad line substring checks.
+- **If-expression parsing in expression positions**:
+  - Parser now supports `if (...) { ... } else { ... }` as `Expr::IfExpr` where an expression is expected.
+- **Borrow checker constant-branch flow pruning**:
+  - Unreachable RHS of `true || ...` and `false && ...` is no longer analyzed for move/borrow effects.
+  - Constant `if` and `while(false)` paths are handled as unreachable in borrow analysis where possible.
+  - Constant `if` with early termination no longer triggers false-positive downstream move/use errors.
+- **Improved type-check diagnostic spans**:
+  - Visibility/signature diagnostics now use declaration-context spans instead of synthetic `0..0` placeholders.
+
 ## Directory Structure
 
 - `src/main.rs`: Entry point, CLI argument parsing.

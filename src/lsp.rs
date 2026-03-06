@@ -32,6 +32,414 @@ pub struct Backend {
     documents: Arc<RwLock<HashMap<Url, Document>>>,
 }
 
+struct ScopedSymbolResolver<'a> {
+    backend: &'a Backend,
+    text: &'a str,
+    symbol: &'a str,
+    cursor_offset: usize,
+    scopes: Vec<HashMap<String, usize>>,
+    occurrences: HashMap<usize, Vec<std::ops::Range<usize>>>,
+    selected_binding: Option<usize>,
+    next_binding_id: usize,
+}
+
+impl<'a> ScopedSymbolResolver<'a> {
+    fn new(backend: &'a Backend, text: &'a str, symbol: &'a str, cursor_offset: usize) -> Self {
+        Self {
+            backend,
+            text,
+            symbol,
+            cursor_offset,
+            scopes: vec![HashMap::new()],
+            occurrences: HashMap::new(),
+            selected_binding: None,
+            next_binding_id: 0,
+        }
+    }
+
+    fn resolve(mut self, program: &Program) -> Vec<std::ops::Range<usize>> {
+        self.predeclare_globals(program);
+        self.walk_program(program);
+        let Some(binding_id) = self.selected_binding else {
+            return Vec::new();
+        };
+        let mut spans = self.occurrences.remove(&binding_id).unwrap_or_default();
+        spans.sort_by_key(|s| (s.start, s.end));
+        spans.dedup_by(|a, b| a.start == b.start && a.end == b.end);
+        spans
+    }
+
+    fn predeclare_globals(&mut self, program: &Program) {
+        for decl in &program.declarations {
+            self.predeclare_decl(decl);
+        }
+    }
+
+    fn predeclare_decl(&mut self, decl: &crate::ast::Spanned<Decl>) {
+        match &decl.node {
+            Decl::Function(func) => self.predeclare_named(&func.name, &decl.span),
+            Decl::Class(class) => self.predeclare_named(&class.name, &decl.span),
+            Decl::Enum(en) => self.predeclare_named(&en.name, &decl.span),
+            Decl::Interface(interface) => self.predeclare_named(&interface.name, &decl.span),
+            Decl::Module(module) => {
+                self.predeclare_named(&module.name, &decl.span);
+                for inner in &module.declarations {
+                    self.predeclare_decl(inner);
+                }
+            }
+            Decl::Import(_) => {}
+        }
+    }
+
+    fn predeclare_named(&mut self, name: &str, span: &std::ops::Range<usize>) {
+        if name != self.symbol {
+            return;
+        }
+        if let Some(name_span) = self
+            .backend
+            .find_name_occurrence_in_span(self.text, name, span)
+        {
+            let id = self.next_binding_id;
+            self.next_binding_id += 1;
+            if let Some(global) = self.scopes.first_mut() {
+                global.insert(name.to_string(), id);
+            }
+            self.record_occurrence(id, name_span);
+        }
+    }
+
+    fn walk_program(&mut self, program: &Program) {
+        for decl in &program.declarations {
+            self.walk_decl(decl);
+        }
+    }
+
+    fn walk_decl(&mut self, decl: &crate::ast::Spanned<Decl>) {
+        match &decl.node {
+            Decl::Function(func) => {
+                self.enter_scope();
+                for param in &func.params {
+                    if param.name == self.symbol {
+                        if let Some(span) = self.backend.find_name_occurrence_in_span(
+                            self.text,
+                            &param.name,
+                            &decl.span,
+                        ) {
+                            self.declare_binding(&param.name, span);
+                        }
+                    }
+                }
+                self.walk_block(&func.body);
+                self.exit_scope();
+            }
+            Decl::Class(class) => {
+                for field in &class.fields {
+                    if field.name == self.symbol {
+                        if let Some(span) = self.backend.find_name_occurrence_in_span(
+                            self.text,
+                            &field.name,
+                            &decl.span,
+                        ) {
+                            let id = self.next_binding_id;
+                            self.next_binding_id += 1;
+                            self.record_occurrence(id, span);
+                        }
+                    }
+                }
+                if let Some(constructor) = &class.constructor {
+                    self.enter_scope();
+                    for param in &constructor.params {
+                        if param.name == self.symbol {
+                            if let Some(span) = self.backend.find_name_occurrence_in_span(
+                                self.text,
+                                &param.name,
+                                &decl.span,
+                            ) {
+                                self.declare_binding(&param.name, span);
+                            }
+                        }
+                    }
+                    self.walk_block(&constructor.body);
+                    self.exit_scope();
+                }
+                if let Some(destructor) = &class.destructor {
+                    self.enter_scope();
+                    self.walk_block(&destructor.body);
+                    self.exit_scope();
+                }
+                for method in &class.methods {
+                    self.enter_scope();
+                    for param in &method.params {
+                        if param.name == self.symbol {
+                            if let Some(span) = self.backend.find_name_occurrence_in_span(
+                                self.text,
+                                &param.name,
+                                &decl.span,
+                            ) {
+                                self.declare_binding(&param.name, span);
+                            }
+                        }
+                    }
+                    self.walk_block(&method.body);
+                    self.exit_scope();
+                }
+            }
+            Decl::Module(module) => {
+                for inner in &module.declarations {
+                    self.walk_decl(inner);
+                }
+            }
+            Decl::Interface(interface) => {
+                for method in &interface.methods {
+                    if method.name == self.symbol {
+                        if let Some(span) = self.backend.find_name_occurrence_in_span(
+                            self.text,
+                            &method.name,
+                            &decl.span,
+                        ) {
+                            let id = self.next_binding_id;
+                            self.next_binding_id += 1;
+                            self.record_occurrence(id, span);
+                        }
+                    }
+                    for param in &method.params {
+                        if param.name == self.symbol {
+                            if let Some(span) = self.backend.find_name_occurrence_in_span(
+                                self.text,
+                                &param.name,
+                                &decl.span,
+                            ) {
+                                let id = self.next_binding_id;
+                                self.next_binding_id += 1;
+                                self.record_occurrence(id, span);
+                            }
+                        }
+                    }
+                }
+            }
+            Decl::Enum(_) | Decl::Import(_) => {}
+        }
+    }
+
+    fn walk_block(&mut self, block: &Block) {
+        for stmt in block {
+            self.walk_stmt(stmt);
+        }
+    }
+
+    fn walk_stmt(&mut self, stmt: &crate::ast::Spanned<Stmt>) {
+        match &stmt.node {
+            Stmt::Let { name, value, .. } => {
+                self.walk_expr(value);
+                if name == self.symbol {
+                    if let Some(span) = self
+                        .backend
+                        .find_name_occurrence_in_span(self.text, name, &stmt.span)
+                    {
+                        self.declare_binding(name, span);
+                    }
+                }
+            }
+            Stmt::Assign { target, value } => {
+                self.walk_expr(target);
+                self.walk_expr(value);
+            }
+            Stmt::Expr(expr) => self.walk_expr(expr),
+            Stmt::Return(expr) => {
+                if let Some(expr) = expr {
+                    self.walk_expr(expr);
+                }
+            }
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                self.walk_expr(condition);
+                self.enter_scope();
+                self.walk_block(then_block);
+                self.exit_scope();
+                if let Some(else_block) = else_block {
+                    self.enter_scope();
+                    self.walk_block(else_block);
+                    self.exit_scope();
+                }
+            }
+            Stmt::While { condition, body } => {
+                self.walk_expr(condition);
+                self.enter_scope();
+                self.walk_block(body);
+                self.exit_scope();
+            }
+            Stmt::For {
+                var,
+                iterable,
+                body,
+                ..
+            } => {
+                self.walk_expr(iterable);
+                self.enter_scope();
+                if var == self.symbol {
+                    if let Some(span) = self
+                        .backend
+                        .find_name_occurrence_in_span(self.text, var, &stmt.span)
+                    {
+                        self.declare_binding(var, span);
+                    }
+                }
+                self.walk_block(body);
+                self.exit_scope();
+            }
+            Stmt::Match { expr, arms } => {
+                self.walk_expr(expr);
+                for arm in arms {
+                    self.enter_scope();
+                    self.walk_block(&arm.body);
+                    self.exit_scope();
+                }
+            }
+            Stmt::Break | Stmt::Continue => {}
+        }
+    }
+
+    fn walk_expr(&mut self, expr: &crate::ast::Spanned<Expr>) {
+        match &expr.node {
+            Expr::Ident(name) => {
+                if name == self.symbol {
+                    if let Some(id) = self.resolve_binding(name) {
+                        self.record_occurrence(id, expr.span.clone());
+                    }
+                }
+            }
+            Expr::Call { callee, args } => {
+                self.walk_expr(callee);
+                for arg in args {
+                    self.walk_expr(arg);
+                }
+            }
+            Expr::Binary { left, right, .. } => {
+                self.walk_expr(left);
+                self.walk_expr(right);
+            }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => self.walk_expr(expr),
+            Expr::Field { object, .. } => self.walk_expr(object),
+            Expr::Index { object, index } => {
+                self.walk_expr(object);
+                self.walk_expr(index);
+            }
+            Expr::Construct { args, .. } => {
+                for arg in args {
+                    self.walk_expr(arg);
+                }
+            }
+            Expr::Lambda { params, body } => {
+                self.enter_scope();
+                for param in params {
+                    if param.name == self.symbol {
+                        if let Some(span) = self.backend.find_name_occurrence_in_span(
+                            self.text,
+                            &param.name,
+                            &expr.span,
+                        ) {
+                            self.declare_binding(&param.name, span);
+                        }
+                    }
+                }
+                self.walk_expr(body);
+                self.exit_scope();
+            }
+            Expr::Match { expr, arms } => {
+                self.walk_expr(expr);
+                for arm in arms {
+                    self.enter_scope();
+                    self.walk_block(&arm.body);
+                    self.exit_scope();
+                }
+            }
+            Expr::StringInterp(parts) => {
+                for part in parts {
+                    if let crate::ast::StringPart::Expr(inner) = part {
+                        self.walk_expr(inner);
+                    }
+                }
+            }
+            Expr::AsyncBlock(block) | Expr::Block(block) => {
+                self.enter_scope();
+                self.walk_block(block);
+                self.exit_scope();
+            }
+            Expr::Require { condition, message } => {
+                self.walk_expr(condition);
+                if let Some(msg) = message {
+                    self.walk_expr(msg);
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                if let Some(start) = start {
+                    self.walk_expr(start);
+                }
+                if let Some(end) = end {
+                    self.walk_expr(end);
+                }
+            }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.walk_expr(condition);
+                self.enter_scope();
+                self.walk_block(then_branch);
+                self.exit_scope();
+                if let Some(else_branch) = else_branch {
+                    self.enter_scope();
+                    self.walk_block(else_branch);
+                    self.exit_scope();
+                }
+            }
+            Expr::Literal(_) | Expr::This => {}
+        }
+    }
+
+    fn declare_binding(&mut self, name: &str, span: std::ops::Range<usize>) {
+        let id = self.next_binding_id;
+        self.next_binding_id += 1;
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_string(), id);
+        }
+        self.record_occurrence(id, span);
+    }
+
+    fn resolve_binding(&self, name: &str) -> Option<usize> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(id) = scope.get(name) {
+                return Some(*id);
+            }
+        }
+        None
+    }
+
+    fn record_occurrence(&mut self, id: usize, span: std::ops::Range<usize>) {
+        if self.cursor_offset >= span.start && self.cursor_offset <= span.end {
+            self.selected_binding = Some(id);
+        }
+        self.occurrences.entry(id).or_default().push(span);
+    }
+
+    fn enter_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    fn exit_scope(&mut self) {
+        self.scopes.pop();
+    }
+}
+
 impl Backend {
     fn new(client: Client) -> Self {
         Self {
@@ -154,6 +562,23 @@ impl Backend {
         Position::new(line, col)
     }
 
+    fn position_to_offset(&self, text: &str, pos: Position) -> usize {
+        let mut line = 0u32;
+        let mut col = 0u32;
+        for (idx, ch) in text.char_indices() {
+            if line == pos.line && col == pos.character {
+                return idx;
+            }
+            if ch == '\n' {
+                line += 1;
+                col = 0;
+            } else {
+                col += 1;
+            }
+        }
+        text.len()
+    }
+
     fn word_at_position(&self, text: &str, pos: Position) -> Option<String> {
         let line = text.lines().nth(pos.line as usize)?;
         let chars: Vec<char> = line.chars().collect();
@@ -237,13 +662,24 @@ impl Backend {
         out
     }
 
-    fn find_symbol_ranges(&self, text: &str, program: &Program, symbol: &str) -> Vec<Range> {
+    fn find_symbol_ranges(
+        &self,
+        text: &str,
+        program: &Program,
+        symbol: &str,
+        cursor_offset: usize,
+    ) -> Vec<Range> {
         if symbol.is_empty() {
             return Vec::new();
         }
 
-        let mut spans: Vec<std::ops::Range<usize>> = Vec::new();
-        self.collect_symbol_spans_program(text, program, symbol, &mut spans);
+        let mut spans =
+            ScopedSymbolResolver::new(self, text, symbol, cursor_offset).resolve(program);
+        if spans.is_empty() {
+            let mut legacy_spans: Vec<std::ops::Range<usize>> = Vec::new();
+            self.collect_symbol_spans_program(text, program, symbol, &mut legacy_spans);
+            spans = legacy_spans;
+        }
         spans.sort_by_key(|s| (s.start, s.end));
         spans.dedup_by(|a, b| a.start == b.start && a.end == b.end);
         spans
@@ -673,9 +1109,6 @@ impl Backend {
 
     /// Get hover information
     fn get_hover(&self, doc: &Document, pos: Position) -> Option<Hover> {
-        // Simple word-based hover
-        let line = doc.text.lines().nth(pos.line as usize)?;
-
         // Keywords documentation
         let keywords_docs: HashMap<&str, &str> = [
             ("function", "Define a function\n\n```apex\nfunction name(params): ReturnType {\n  // body\n}\n```"),
@@ -694,12 +1127,12 @@ impl Backend {
             ("return", "Return from function\n\n```apex\nreturn value;\n```"),
         ].iter().cloned().collect();
 
-        for (kw, doc) in keywords_docs {
-            if line.contains(kw) {
+        if let Some(word) = self.word_at_position(&doc.text, pos) {
+            if let Some(doc) = keywords_docs.get(word.as_str()) {
                 return Some(Hover {
                     contents: HoverContents::Markup(MarkupContent {
                         kind: MarkupKind::Markdown,
-                        value: doc.to_string(),
+                        value: (*doc).to_string(),
                     }),
                     range: None,
                 });
@@ -847,7 +1280,9 @@ impl LanguageServer for Backend {
         if let Some(doc) = docs.get(&uri) {
             if let Some(program) = &doc.parsed {
                 if let Some(symbol) = self.word_at_position(&doc.text, pos) {
-                    let ranges = self.find_symbol_ranges(&doc.text, program, &symbol);
+                    let cursor_offset = self.position_to_offset(&doc.text, pos);
+                    let ranges =
+                        self.find_symbol_ranges(&doc.text, program, &symbol, cursor_offset);
                     let locations: Vec<Location> = ranges
                         .into_iter()
                         .map(|range| Location::new(uri.clone(), range))
@@ -868,7 +1303,9 @@ impl LanguageServer for Backend {
         if let Some(doc) = docs.get(&uri) {
             if let Some(program) = &doc.parsed {
                 if let Some(symbol) = self.word_at_position(&doc.text, pos) {
-                    let ranges = self.find_symbol_ranges(&doc.text, program, &symbol);
+                    let cursor_offset = self.position_to_offset(&doc.text, pos);
+                    let ranges =
+                        self.find_symbol_ranges(&doc.text, program, &symbol, cursor_offset);
                     let edits: Vec<TextEdit> = ranges
                         .into_iter()
                         .map(|range| TextEdit {

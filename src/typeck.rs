@@ -153,6 +153,7 @@ pub struct ClassInfo {
     pub methods: HashMap<String, FuncSig>,
     pub method_visibilities: HashMap<String, Visibility>,
     pub constructor: Option<Vec<(String, ResolvedType)>>,
+    pub visibility: Visibility,
     pub extends: Option<String>,
     pub implements: Vec<String>,
     pub span: Span,
@@ -996,6 +997,70 @@ impl TypeChecker {
         }
     }
 
+    fn check_class_visibility(&mut self, class_name: &str, span: Span) {
+        let Some(class) = self.classes.get(class_name) else {
+            return;
+        };
+        match class.visibility {
+            Visibility::Public => {}
+            Visibility::Private => {
+                let allowed = self
+                    .current_class
+                    .as_ref()
+                    .map(|c| c == class_name)
+                    .unwrap_or(false);
+                if !allowed {
+                    self.error(format!("Class '{}' is private", class_name), span);
+                }
+            }
+            Visibility::Protected => {
+                let allowed = self
+                    .current_class
+                    .as_ref()
+                    .map(|c| self.is_same_or_subclass_of(c, class_name))
+                    .unwrap_or(false);
+                if !allowed {
+                    self.error(format!("Class '{}' is protected", class_name), span);
+                }
+            }
+        }
+    }
+
+    fn check_type_visibility(&mut self, ty: &ResolvedType, span: Span) {
+        match ty {
+            ResolvedType::Class(name) => self.check_class_visibility(name, span),
+            ResolvedType::Option(inner)
+            | ResolvedType::List(inner)
+            | ResolvedType::Set(inner)
+            | ResolvedType::Ref(inner)
+            | ResolvedType::MutRef(inner)
+            | ResolvedType::Box(inner)
+            | ResolvedType::Rc(inner)
+            | ResolvedType::Arc(inner)
+            | ResolvedType::Ptr(inner)
+            | ResolvedType::Task(inner)
+            | ResolvedType::Range(inner) => self.check_type_visibility(inner, span),
+            ResolvedType::Result(ok, err) | ResolvedType::Map(ok, err) => {
+                self.check_type_visibility(ok, span.clone());
+                self.check_type_visibility(err, span);
+            }
+            ResolvedType::Function(params, ret) => {
+                for p in params {
+                    self.check_type_visibility(p, span.clone());
+                }
+                self.check_type_visibility(ret, span);
+            }
+            ResolvedType::Integer
+            | ResolvedType::Float
+            | ResolvedType::Boolean
+            | ResolvedType::String
+            | ResolvedType::Char
+            | ResolvedType::None
+            | ResolvedType::TypeVar(_)
+            | ResolvedType::Unknown => {}
+        }
+    }
+
     /// Run type checking on a program
     pub fn check(&mut self, program: &Program) -> Result<(), Vec<TypeError>> {
         self.populate_import_aliases(program);
@@ -1133,6 +1198,7 @@ impl TypeChecker {
                             methods,
                             method_visibilities,
                             constructor,
+                            visibility: class.visibility,
                             extends: class.extends.clone(),
                             implements: class.implements.clone(),
                             span: decl.span.clone(),
@@ -1262,7 +1328,16 @@ impl TypeChecker {
         }
     }
 
-    fn check_interface(&mut self, interface: &InterfaceDecl, _span: Span) {
+    fn check_interface(&mut self, interface: &InterfaceDecl, span: Span) {
+        for method in &interface.methods {
+            for param in &method.params {
+                let ty = self.resolve_type(&param.ty);
+                self.check_type_visibility(&ty, span.clone());
+            }
+            let ret_ty = self.resolve_type(&method.return_type);
+            self.check_type_visibility(&ret_ty, span.clone());
+        }
+
         for method in &interface.methods {
             let Some(body) = &method.default_impl else {
                 continue;
@@ -1275,7 +1350,7 @@ impl TypeChecker {
             self.current_is_pure = false;
             for param in &method.params {
                 let ty = self.resolve_type(&param.ty);
-                self.declare_variable(&param.name, ty, param.mutable, 0..0);
+                self.declare_variable(&param.name, ty, param.mutable, span.clone());
             }
             self.current_return_type = Some(self.resolve_type(&method.return_type));
             self.check_block(body);
@@ -1288,7 +1363,7 @@ impl TypeChecker {
     }
 
     /// Check a function
-    fn check_function(&mut self, func: &FunctionDecl, _span: Span, function_key: Option<&str>) {
+    fn check_function(&mut self, func: &FunctionDecl, span: Span, function_key: Option<&str>) {
         self.enter_scope();
         let saved_effects = std::mem::take(&mut self.current_effects);
         let saved_pure = self.current_is_pure;
@@ -1312,11 +1387,13 @@ impl TypeChecker {
         // Add parameters to scope
         for param in &func.params {
             let ty = self.resolve_type(&param.ty);
-            self.declare_variable(&param.name, ty, param.mutable, 0..0);
+            self.check_type_visibility(&ty, span.clone());
+            self.declare_variable(&param.name, ty, param.mutable, span.clone());
         }
 
         // Set current return type
         let return_type = self.resolve_type(&func.return_type);
+        self.check_type_visibility(&return_type, span.clone());
         let mut inner_return_type = return_type.clone();
         if func.is_async {
             if let ResolvedType::Task(inner) = &return_type {
@@ -1339,6 +1416,8 @@ impl TypeChecker {
 
     /// Check a class
     fn check_class(&mut self, class: &ClassDecl, span: Span) {
+        let saved_class = self.current_class.clone();
+        self.current_class = Some(class.name.clone());
         if let Some(parent) = &class.extends {
             if self.interfaces.contains_key(parent) {
                 self.error(
@@ -1361,7 +1440,14 @@ impl TypeChecker {
                     ),
                     span.clone(),
                 );
+            } else {
+                self.check_class_visibility(parent, span.clone());
             }
+        }
+
+        for field in &class.fields {
+            let ty = self.resolve_type(&field.ty);
+            self.check_type_visibility(&ty, span.clone());
         }
 
         for interface_name in &class.implements {
@@ -1420,12 +1506,18 @@ impl TypeChecker {
             self.current_allow_any = false;
 
             // Add 'this' binding
-            self.declare_variable("this", ResolvedType::Class(class.name.clone()), true, 0..0);
+            self.declare_variable(
+                "this",
+                ResolvedType::Class(class.name.clone()),
+                true,
+                span.clone(),
+            );
 
             // Add parameters
             for param in &ctor.params {
                 let ty = self.resolve_type(&param.ty);
-                self.declare_variable(&param.name, ty, param.mutable, 0..0);
+                self.check_type_visibility(&ty, span.clone());
+                self.declare_variable(&param.name, ty, param.mutable, span.clone());
             }
 
             self.check_block(&ctor.body);
@@ -1450,7 +1542,12 @@ impl TypeChecker {
                 .collect();
             self.current_is_pure = false;
             self.current_allow_any = false;
-            self.declare_variable("this", ResolvedType::Class(class.name.clone()), true, 0..0);
+            self.declare_variable(
+                "this",
+                ResolvedType::Class(class.name.clone()),
+                true,
+                span.clone(),
+            );
             self.check_block(&dtor.body);
             self.current_effects = saved_effects;
             self.current_is_pure = saved_pure;
@@ -1484,15 +1581,22 @@ impl TypeChecker {
             }
 
             // Add 'this' binding
-            self.declare_variable("this", ResolvedType::Class(class.name.clone()), false, 0..0);
+            self.declare_variable(
+                "this",
+                ResolvedType::Class(class.name.clone()),
+                false,
+                span.clone(),
+            );
 
             // Add parameters
             for param in &method.params {
                 let ty = self.resolve_type(&param.ty);
-                self.declare_variable(&param.name, ty, param.mutable, 0..0);
+                self.check_type_visibility(&ty, span.clone());
+                self.declare_variable(&param.name, ty, param.mutable, span.clone());
             }
 
             let return_type = self.resolve_type(&method.return_type);
+            self.check_type_visibility(&return_type, span.clone());
             self.current_return_type = Some(return_type);
 
             self.check_block(&method.body);
@@ -1504,6 +1608,7 @@ impl TypeChecker {
             self.current_class = saved_class;
             self.exit_scope();
         }
+        self.current_class = saved_class;
     }
 
     /// Check a block of statements
@@ -1523,6 +1628,7 @@ impl TypeChecker {
                 mutable,
             } => {
                 let declared_type = self.resolve_type(ty);
+                self.check_type_visibility(&declared_type, span.clone());
                 let value_type = self.check_expr(&value.node, value.span.clone());
 
                 // Check type compatibility
@@ -1872,6 +1978,7 @@ impl TypeChecker {
 
                 // Check if it's a class constructor
                 if let Some(class) = self.classes.get(ty).cloned() {
+                    self.check_class_visibility(ty, span.clone());
                     if let Some(ctor_params) = &class.constructor {
                         if args.len() != ctor_params.len() {
                             self.error(
@@ -2130,7 +2237,7 @@ impl TypeChecker {
                 self.enter_scope();
                 let mut then_type = ResolvedType::None;
                 for stmt in then_branch {
-                    if let Stmt::Return(Some(expr)) = &stmt.node {
+                    if let Stmt::Expr(expr) = &stmt.node {
                         then_type = self.check_expr(&expr.node, expr.span.clone());
                     }
                     self.check_stmt(&stmt.node, stmt.span.clone());
@@ -2139,10 +2246,24 @@ impl TypeChecker {
 
                 if let Some(else_stmts) = else_branch {
                     self.enter_scope();
+                    let mut else_type = ResolvedType::None;
                     for stmt in else_stmts {
+                        if let Stmt::Expr(expr) = &stmt.node {
+                            else_type = self.check_expr(&expr.node, expr.span.clone());
+                        }
                         self.check_stmt(&stmt.node, stmt.span.clone());
                     }
                     self.exit_scope();
+
+                    if !self.types_compatible(&then_type, &else_type) {
+                        self.error(
+                            format!(
+                                "If expression branch type mismatch: then is {}, else is {}",
+                                then_type, else_type
+                            ),
+                            condition.span.clone(),
+                        );
+                    }
                 }
 
                 then_type
@@ -3666,6 +3787,77 @@ mod tests {
     }
 
     #[test]
+    fn rejects_private_class_construction_from_outside() {
+        let src = r#"
+            private class Secret {
+                constructor() {}
+            }
+            function main(): None {
+                s: Secret = Secret();
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("private class use should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Class 'Secret' is private"), "{joined}");
+    }
+
+    #[test]
+    fn rejects_private_class_in_function_signature() {
+        let src = r#"
+            private class Secret { constructor() {} }
+            function take(s: Secret): None { return None; }
+            function main(): None { return None; }
+        "#;
+        let errors = check_source(src).expect_err("private class in signature should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Class 'Secret' is private"), "{joined}");
+    }
+
+    #[test]
+    fn rejects_extending_private_class_from_outside() {
+        let src = r#"
+            private class Base { constructor() {} }
+            class Child extends Base { constructor() {} }
+            function main(): None { return None; }
+        "#;
+        let errors = check_source(src).expect_err("extending private base should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Class 'Base' is private"), "{joined}");
+    }
+
+    #[test]
+    fn rejects_private_class_in_interface_signature() {
+        let src = r#"
+            private class Secret { constructor() {} }
+            interface I {
+                function leak(s: Secret): None;
+            }
+            function main(): None { return None; }
+        "#;
+        let errors =
+            check_source(src).expect_err("private class in interface signature should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Class 'Secret' is private"), "{joined}");
+    }
+
+    #[test]
     fn supports_inherited_method_lookup() {
         let src = r#"
             class Base {
@@ -3856,6 +4048,37 @@ mod tests {
             .join("\n");
         assert!(
             joined.contains("Cannot call method on type Integer"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn if_expression_branches_typecheck() {
+        let src = r#"
+            function main(): None {
+                x: Integer = if (true) { 1; } else { 2; };
+                return None;
+            }
+        "#;
+        check_source(src).expect("if expression with matching branch types should typecheck");
+    }
+
+    #[test]
+    fn if_expression_branch_type_mismatch_fails() {
+        let src = r#"
+            function main(): None {
+                x: Integer = if (true) { 1; } else { "bad"; };
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("if expression branch mismatch should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("If expression branch type mismatch"),
             "{joined}"
         );
     }

@@ -328,6 +328,9 @@ impl BorrowChecker {
         self.enter_scope();
         for stmt in block {
             self.check_stmt(&stmt.node, stmt.span.clone());
+            if Self::stmt_always_terminates(&stmt.node) {
+                break;
+            }
         }
         self.exit_scope();
     }
@@ -377,15 +380,27 @@ impl BorrowChecker {
                 else_block,
             } => {
                 self.check_expr(&condition.node, condition.span.clone(), false);
-                self.check_block(then_block);
-                if let Some(else_blk) = else_block {
-                    self.check_block(else_blk);
+                match Self::literal_bool(&condition.node) {
+                    Some(true) => self.check_block(then_block),
+                    Some(false) => {
+                        if let Some(else_blk) = else_block {
+                            self.check_block(else_blk);
+                        }
+                    }
+                    None => {
+                        self.check_block(then_block);
+                        if let Some(else_blk) = else_block {
+                            self.check_block(else_blk);
+                        }
+                    }
                 }
             }
 
             Stmt::While { condition, body } => {
                 self.check_expr(&condition.node, condition.span.clone(), false);
-                self.check_block(body);
+                if !matches!(Self::literal_bool(&condition.node), Some(false)) {
+                    self.check_block(body);
+                }
             }
 
             Stmt::For {
@@ -403,6 +418,9 @@ impl BorrowChecker {
                 self.declare_var(var, false, span, needs_drop, var_type.clone());
                 for stmt in body {
                     self.check_stmt(&stmt.node, stmt.span.clone());
+                    if Self::stmt_terminates_control_flow(&stmt.node) {
+                        break;
+                    }
                 }
                 self.exit_scope();
             }
@@ -414,6 +432,9 @@ impl BorrowChecker {
                     self.bind_pattern(&arm.pattern, span.clone());
                     for stmt in &arm.body {
                         self.check_stmt(&stmt.node, stmt.span.clone());
+                        if Self::stmt_terminates_control_flow(&stmt.node) {
+                            break;
+                        }
                     }
                     self.exit_scope();
                 }
@@ -546,9 +567,15 @@ impl BorrowChecker {
                 }
             }
 
-            Expr::Binary { left, right, .. } => {
+            Expr::Binary { left, right, op } => {
                 self.check_expr(&left.node, left.span.clone(), false);
-                self.check_expr(&right.node, right.span.clone(), false);
+                let should_check_right = !matches!(
+                    (op, Self::literal_bool(&left.node)),
+                    (BinOp::Or, Some(true)) | (BinOp::And, Some(false))
+                );
+                if should_check_right {
+                    self.check_expr(&right.node, right.span.clone(), false);
+                }
             }
 
             Expr::Unary { expr: inner, .. } => {
@@ -1160,11 +1187,21 @@ impl BorrowChecker {
                 then_block,
                 else_block,
             } => {
-                Self::expr_calls_this_method_in_set(&condition.node, methods)
-                    || Self::block_calls_this_method_in_set(then_block, methods)
-                    || else_block
+                if Self::expr_calls_this_method_in_set(&condition.node, methods) {
+                    return true;
+                }
+                match Self::literal_bool(&condition.node) {
+                    Some(true) => Self::block_calls_this_method_in_set(then_block, methods),
+                    Some(false) => else_block
                         .as_ref()
-                        .is_some_and(|b| Self::block_calls_this_method_in_set(b, methods))
+                        .is_some_and(|b| Self::block_calls_this_method_in_set(b, methods)),
+                    None => {
+                        Self::block_calls_this_method_in_set(then_block, methods)
+                            || else_block
+                                .as_ref()
+                                .is_some_and(|b| Self::block_calls_this_method_in_set(b, methods))
+                    }
+                }
             }
             Stmt::While { condition, body } => {
                 Self::expr_calls_this_method_in_set(&condition.node, methods)
@@ -1201,9 +1238,15 @@ impl BorrowChecker {
                         .iter()
                         .any(|a| Self::expr_calls_this_method_in_set(&a.node, methods))
             }
-            Expr::Binary { left, right, .. } => {
-                Self::expr_calls_this_method_in_set(&left.node, methods)
-                    || Self::expr_calls_this_method_in_set(&right.node, methods)
+            Expr::Binary { left, right, op } => {
+                if Self::expr_calls_this_method_in_set(&left.node, methods) {
+                    return true;
+                }
+                let should_check_right = !matches!(
+                    (op, Self::literal_bool(&left.node)),
+                    (BinOp::Or, Some(true)) | (BinOp::And, Some(false))
+                );
+                should_check_right && Self::expr_calls_this_method_in_set(&right.node, methods)
             }
             Expr::Unary { expr, .. }
             | Expr::Try(expr)
@@ -1460,9 +1503,15 @@ impl BorrowChecker {
                 }
                 self.expr_moves_ident(&callee.node, ident)
             }
-            Expr::Binary { left, right, .. } => {
-                self.expr_moves_ident(&left.node, ident)
-                    || self.expr_moves_ident(&right.node, ident)
+            Expr::Binary { left, right, op } => {
+                if self.expr_moves_ident(&left.node, ident) {
+                    return true;
+                }
+                let should_check_right = !matches!(
+                    (op, Self::literal_bool(&left.node)),
+                    (BinOp::Or, Some(true)) | (BinOp::And, Some(false))
+                );
+                should_check_right && self.expr_moves_ident(&right.node, ident)
             }
             Expr::Unary { expr, .. }
             | Expr::Try(expr)
@@ -1550,24 +1599,42 @@ impl BorrowChecker {
                 then_block,
                 else_block,
             } => {
-                self.expr_moves_ident(&condition.node, ident)
-                    || then_block
+                if self.expr_moves_ident(&condition.node, ident) {
+                    return true;
+                }
+                match Self::literal_bool(&condition.node) {
+                    Some(true) => then_block
                         .iter()
-                        .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
-                    || else_block
+                        .any(|stmt| self.stmt_moves_ident(&stmt.node, ident)),
+                    Some(false) => else_block
                         .as_ref()
                         .map(|stmts| {
                             stmts
                                 .iter()
                                 .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
                         })
-                        .unwrap_or(false)
+                        .unwrap_or(false),
+                    None => {
+                        then_block
+                            .iter()
+                            .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+                            || else_block
+                                .as_ref()
+                                .map(|stmts| {
+                                    stmts
+                                        .iter()
+                                        .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+                                })
+                                .unwrap_or(false)
+                    }
+                }
             }
             Stmt::While { condition, body } => {
                 self.expr_moves_ident(&condition.node, ident)
-                    || body
-                        .iter()
-                        .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+                    || (!matches!(Self::literal_bool(&condition.node), Some(false))
+                        && body
+                            .iter()
+                            .any(|stmt| self.stmt_moves_ident(&stmt.node, ident)))
             }
             Stmt::For { iterable, body, .. } => {
                 self.expr_moves_ident(&iterable.node, ident)
@@ -1584,6 +1651,47 @@ impl BorrowChecker {
                     })
             }
             Stmt::Break | Stmt::Continue => false,
+        }
+    }
+
+    fn stmt_terminates_control_flow(stmt: &Stmt) -> bool {
+        matches!(stmt, Stmt::Return(_) | Stmt::Break | Stmt::Continue)
+    }
+
+    fn stmt_always_terminates(stmt: &Stmt) -> bool {
+        if Self::stmt_terminates_control_flow(stmt) {
+            return true;
+        }
+        match stmt {
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => match Self::literal_bool(&condition.node) {
+                Some(true) => Self::block_always_terminates(then_block),
+                Some(false) => else_block
+                    .as_ref()
+                    .is_some_and(Self::block_always_terminates),
+                None => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn block_always_terminates(block: &Block) -> bool {
+        for stmt in block {
+            if Self::stmt_always_terminates(&stmt.node) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn literal_bool(expr: &Expr) -> Option<bool> {
+        if let Expr::Literal(Literal::Boolean(v)) = expr {
+            Some(*v)
+        } else {
+            None
         }
     }
 
@@ -2100,6 +2208,29 @@ mod tests {
     }
 
     #[test]
+    fn mutating_method_inference_respects_short_circuit_literals() {
+        let source = r#"
+            class C {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function touch_flag(): Boolean { this.v += 1; return true; }
+                function maybe_touch(): None {
+                    if (true || this.touch_flag()) {
+                    }
+                    return None;
+                }
+            }
+            function main(): None {
+                mut c: C = C(1);
+                r: &C = &c;
+                c.maybe_touch();
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
     fn immutable_borrow_blocks_mutating_nested_receiver_call() {
         let source = r#"
             class B {
@@ -2122,5 +2253,54 @@ mod tests {
         assert!(errors
             .iter()
             .any(|m| m.contains("Cannot mutably borrow 'a' while immutably borrowed")));
+    }
+
+    #[test]
+    fn short_circuit_or_with_true_literal_does_not_move_rhs() {
+        let source = r#"
+            function takes(owned s: String): Boolean { return true; }
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "x";
+                if (true || takes(s)) {
+                }
+                consume(s);
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn short_circuit_and_with_false_literal_does_not_move_rhs() {
+        let source = r#"
+            function takes(owned s: String): Boolean { return true; }
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "x";
+                if (false && takes(s)) {
+                }
+                consume(s);
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn constant_if_with_early_return_does_not_move_unreachable_path() {
+        let source = r#"
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "x";
+                if (true) {
+                    consume(s);
+                    return None;
+                }
+                consume(s);
+                return None;
+            }
+        "#;
+        borrow_ok(source);
     }
 }

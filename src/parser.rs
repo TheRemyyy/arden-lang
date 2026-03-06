@@ -868,6 +868,13 @@ impl<'src> Parser<'src> {
             None
         };
 
+        if alias.is_some() && path_parts.last().is_some_and(|p| p == "*") {
+            return Err(ParseError::new(
+                "Cannot use alias with wildcard import",
+                self.current_span(),
+            ));
+        }
+
         self.eat(&Token::Semi)?;
 
         Ok(ImportDecl {
@@ -1275,6 +1282,37 @@ impl<'src> Parser<'src> {
         })
     }
 
+    fn parse_if_expr(&mut self) -> ParseResult<Spanned<Expr>> {
+        let start = self.current_span().start;
+        self.eat(&Token::If)?;
+        self.eat(&Token::LParen)?;
+        let condition = self.parse_expr()?;
+        self.eat(&Token::RParen)?;
+        self.eat(&Token::LBrace)?;
+        let then_branch = self.parse_block()?;
+        self.eat(&Token::RBrace)?;
+
+        let else_branch = if self.check(&Token::Else) {
+            self.advance();
+            self.eat(&Token::LBrace)?;
+            let block = self.parse_block()?;
+            self.eat(&Token::RBrace)?;
+            Some(block)
+        } else {
+            None
+        };
+
+        let end = self.current_span().start;
+        Ok(Spanned::new(
+            Expr::IfExpr {
+                condition: Box::new(condition),
+                then_branch,
+                else_branch,
+            },
+            start..end,
+        ))
+    }
+
     fn parse_while(&mut self) -> ParseResult<Stmt> {
         self.eat(&Token::While)?;
         self.eat(&Token::LParen)?;
@@ -1360,7 +1398,8 @@ impl<'src> Parser<'src> {
             block
         } else {
             let expr = self.parse_expr()?;
-            vec![Spanned::new(Stmt::Expr(expr), 0..0)]
+            let span = expr.span.clone();
+            vec![Spanned::new(Stmt::Expr(expr), span)]
         };
 
         if self.check(&Token::Comma) {
@@ -1719,6 +1758,7 @@ impl<'src> Parser<'src> {
                 self.advance();
                 Expr::This
             }
+            Some(Token::If) => return self.parse_if_expr(),
             Some(Token::Static)
             | Some(Token::Super)
             | Some(Token::SelfType)
@@ -2239,6 +2279,21 @@ mod tests {
     }
 
     #[test]
+    fn test_reject_import_wildcard_with_alias() {
+        let source = r#"
+            import std.io.* as io;
+            function main(): None { return None; }
+        "#;
+        let err = parse_source(source).expect_err("wildcard alias import should fail");
+        assert!(
+            err.message
+                .contains("Cannot use alias with wildcard import"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
     fn test_parse_compound_assign_ident() {
         let source = r#"
             function main(): None {
@@ -2330,5 +2385,59 @@ mod tests {
             "{}",
             err.message
         );
+    }
+
+    #[test]
+    fn test_match_arm_expression_keeps_expr_span() {
+        let source = r#"
+            function main(): None {
+                match (1) {
+                    1 => foo,
+                    _ => bar,
+                }
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse match statement");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Match { arms, .. } = &func.body[0].node else {
+            panic!("Expected match statement");
+        };
+        let first_stmt = &arms[0].body[0];
+        assert_ne!(first_stmt.span.start, 0);
+        assert!(first_stmt.span.end > first_stmt.span.start);
+    }
+
+    #[test]
+    fn test_parse_if_expression() {
+        let source = r#"
+            function main(): None {
+                x: Integer = if (true) { 1; } else { 2; };
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse if-expression initializer");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Let { value, .. } = &func.body[0].node else {
+            panic!("Expected let statement");
+        };
+        let Expr::IfExpr {
+            condition,
+            then_branch,
+            else_branch,
+        } = &value.node
+        else {
+            panic!("Expected if expression");
+        };
+        assert!(matches!(
+            condition.node,
+            Expr::Literal(Literal::Boolean(true))
+        ));
+        assert_eq!(then_branch.len(), 1);
+        assert!(else_branch.as_ref().is_some_and(|b| b.len() == 1));
     }
 }

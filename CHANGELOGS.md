@@ -57,6 +57,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Project object compilation for cache misses now runs in parallel (per-file LLVM context + codegen instance), then links sequentially.
 - LSP rename/references now resolve symbol locations from parsed AST spans instead of raw text search.
+- LSP rename/references now resolve occurrences by cursor-selected lexical binding (scope-aware), preventing cross-scope over-rename of same-name symbols.
+- LSP hover now resolves keyword docs from the exact token under cursor instead of line substring matching.
 - Import checking now reuses a single `StdLib` instance and shared `Arc<HashMap<...>>` namespace map instead of rebuilding/cloning per file.
 - Import typo suggestion distance now uses a rolling two-row Levenshtein buffer (`O(m)` memory) instead of full matrix allocation (`O(n*m)`).
 - `List<T>` now supports fixed-capacity construction with a compile-time literal argument (`List<T>(N)`) using stack-backed storage.
@@ -137,8 +139,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed codegen lvalue support for indexed assignment through field-owned lists (`obj.list[i] += ...`) and nested field assignment type resolution (`a.b.v += ...`).
 - Fixed parser behavior where visibility modifiers on `constructor`/`destructor` were silently ignored.
   - parser now emits an explicit error (`Visibility modifiers are not supported on constructors/destructors`) instead of accepting misleading syntax.
+- Fixed parser expression coverage by adding `if (...) { ... } else { ... }` expression parsing (`Expr::IfExpr`) in expression contexts.
+- Fixed borrow checker control-flow handling for constant boolean branches:
+  - short-circuit move analysis now skips unreachable RHS for `true || ...` and `false && ...`,
+  - constant `if`/`while(false)` branches are treated as unreachable in borrow analysis where applicable,
+  - constant `if` with early termination now prevents false-positive analysis of unreachable following statements.
+- Fixed mutating-method inference to respect short-circuit constants when scanning method bodies (`true || this.mutating_call()` no longer marks method as mutating due to unreachable RHS).
+- Fixed type checker visibility diagnostic spans by replacing synthetic `0..0` spans with declaration-context spans for interface/function/class signature checks.
 - Fixed project config compatibility for `apex.toml`:
   - `ProjectConfig::load` now supports both flat-key format and `[project]` table format.
+- Fixed class visibility enforcement gaps:
+  - `private`/`protected` class types are now validated at construction sites and variable type declarations.
+  - external construction of private classes (for example `Secret()`) is now rejected.
+  - class visibility is now also enforced in function/method signatures and inheritance (`extends`) checks.
+- Fixed import parser inconsistency:
+  - wildcard imports can no longer be combined with aliases (`import x.* as y` now errors explicitly instead of being accepted and failing later in import checking).
 - Added import checker regression tests for local-vs-stdlib shadowing and `Math.*` import enforcement paths.
 - Added import checker regression test for aliased stdlib module calls (`std.io`/`std.math`/`std.string` alias flow).
 - Added import checker regression test for nested-call validation under aliased stdlib callees.

@@ -426,6 +426,61 @@ function main(): None { return None; }
     ["Visibility modifiers are not supported on constructors"],
 )
 run_single(
+    "wildcard_import_alias_rejected",
+    """
+import std.io.* as io;
+function main(): None { return None; }
+""",
+    False,
+    ["Cannot use alias with wildcard import"],
+)
+run_single(
+    "private_class_construction_rejected",
+    """
+private class Secret {
+    constructor() {}
+}
+function main(): None {
+    s: Secret = Secret();
+    return None;
+}
+""",
+    False,
+    ["Class 'Secret' is private"],
+)
+run_single(
+    "private_class_signature_rejected",
+    """
+private class Secret { constructor() {} }
+function take(s: Secret): None { return None; }
+function main(): None { return None; }
+""",
+    False,
+    ["Class 'Secret' is private"],
+)
+run_single(
+    "private_base_extends_rejected",
+    """
+private class Base { constructor() {} }
+class Child extends Base { constructor() {} }
+function main(): None { return None; }
+""",
+    False,
+    ["Class 'Base' is private"],
+)
+run_single(
+    "private_class_interface_signature_rejected",
+    """
+private class Secret { constructor() {} }
+interface I {
+    function leak(s: Secret): None;
+}
+function main(): None { return None; }
+""",
+    False,
+    ["Class 'Secret' is private"],
+)
+run_single(
     "list_index_codegen_no_panic",
     """
 import std.io.*;
