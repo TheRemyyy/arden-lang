@@ -47,6 +47,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `examples/36_inheritance_extends.apex`
   - `examples/37_interfaces_contracts.apex`
   - `examples/38_import_aliases.apex`
+  - `examples/39_compound_assign.apex`
+  - `examples/40_borrow_scope_recovery.apex`
 - New lint checks:
   - `L004` unused variables (`Variable 'x' is declared but never used`)
   - `L005` variable shadowing diagnostics with outer declaration offset
@@ -61,6 +63,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - List growth path now uses explicit `malloc + copy` reallocation logic, which is compatible with both heap-backed and stack-backed list buffers.
 - `List<Boolean>` now uses boolean-sized element storage/codegen paths instead of integer-width storage in list internals.
 - `apex fmt` now preserves source comments instead of refusing commented files.
+- Borrow checker call-site param-mode resolution for methods is now type-directed from receiver type instead of first-match method-name heuristics across all classes.
+- Borrow checker now tracks optional declared variable type metadata to improve method-call move/borrow analysis accuracy.
 - Project builds now wire `target` from `apex.toml` into final Clang linking (`--target <triple>`).
 - Project builds can now emit shared libraries and static archives via `output_kind`.
 - Single-file scripts can start with a Unix shebang (`#!/usr/bin/env apex`).
@@ -92,6 +96,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Web docs routing now uses extensionless `/docs/...` URLs consistently in footer links and sitemap output.
 - Markdown HTML rendered in the docs/changelog web UI is now sanitized before insertion.
 - Fixed parser handling where compound assignments on parsed postfix targets from identifier-leading expressions were rejected (`items[0] -= 1` path).
+- Fixed borrow checker scope-exit borrow release logic:
+  - mutable borrow state reset now checks active borrows for the same variable only
+  - immutable borrow counts are properly recomputed/decremented after scope exit
+- Fixed lambda capture borrow semantics by analyzing free identifiers in lambda bodies and applying move/borrow behavior for captured outer variables.
+- Added borrow checker regression tests for:
+  - use-after-move
+  - move while borrowed
+  - double mutable borrow
+  - scope-exit borrow release movability
+  - lambda capture move behavior
+  - compound assignment on borrowed variable
+- CI smoke checks now include borrow-checker edge-case expected-fail/expected-pass scenarios.
 - Removed duplicate Vercel routing config from `web/public/vercel.json`; `web/vercel.json` is now the only deploy config.
 - Removed machine-specific LLVM/linker paths from `.cargo/config.toml`.
 - `apex new` now scaffolds `src/main.apex` with the required `import std.io.*;`, so a fresh project checks and runs immediately.

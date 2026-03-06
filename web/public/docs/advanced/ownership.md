@@ -54,3 +54,14 @@ append(&mut s);
 
 (Advanced)
 Apex tracks lifetimes to ensure references do not outlive the data they refer to. This is currently handled implicitly by the compiler.
+
+## Borrow Checker Edge Behavior
+
+The compiler enforces these edge cases explicitly:
+
+- **use-after-move** is rejected
+- **move while borrowed** is rejected
+- **double mutable borrow** is rejected
+- immutable borrow state is released after scope exit, so the value is movable again
+- lambda captures participate in move/borrow analysis for outer variables
+- compound assignment on a currently borrowed variable is rejected

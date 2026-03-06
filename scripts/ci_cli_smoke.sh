@@ -19,6 +19,13 @@ BINDINGS_FILE="${TMP_DIR}/bindings.apex"
 OUT_FILE="${TMP_DIR}/ugly_bin"
 SHARED_PROJECT="${TMP_DIR}/shared_project"
 STATIC_PROJECT="${TMP_DIR}/static_project"
+BORROW_ERR_OUT="${TMP_DIR}/borrow_err.out"
+BORROW_USE_AFTER_MOVE_FILE="${TMP_DIR}/borrow_use_after_move.apex"
+BORROW_MOVE_WHILE_BORROWED_FILE="${TMP_DIR}/borrow_move_while_borrowed.apex"
+BORROW_DOUBLE_MUT_FILE="${TMP_DIR}/borrow_double_mut.apex"
+BORROW_SCOPE_RELEASE_FILE="${TMP_DIR}/borrow_scope_release.apex"
+BORROW_LAMBDA_MOVE_FILE="${TMP_DIR}/borrow_lambda_move.apex"
+BORROW_COMPOUND_BORROWED_FILE="${TMP_DIR}/borrow_compound_borrowed.apex"
 
 "${COMPILER}" new sample_project --path "${PROJECT_DIR}" >/dev/null
 
@@ -85,6 +92,94 @@ EOF_HEADER
 "${COMPILER}" bindgen "${HEADER_FILE}" --output "${BINDINGS_FILE}" >/dev/null
 grep -q 'extern(c) function add(a: Integer, b: Integer): Integer;' "${BINDINGS_FILE}"
 grep -q 'extern(c) function puts(msg: String): Integer;' "${BINDINGS_FILE}"
+
+cat <<'EOF_BORROW_UAM' > "${BORROW_USE_AFTER_MOVE_FILE}"
+import std.io.*;
+function consume(owned s: String): None { return None; }
+function main(): None {
+    s: String = "x";
+    consume(s);
+    println(s);
+    return None;
+}
+EOF_BORROW_UAM
+if "${COMPILER}" check "${BORROW_USE_AFTER_MOVE_FILE}" >"${BORROW_ERR_OUT}" 2>&1; then
+  echo "borrow check unexpectedly passed for use-after-move" >&2
+  exit 1
+fi
+grep -q "Use of moved value 's'" "${BORROW_ERR_OUT}"
+
+cat <<'EOF_BORROW_MWB' > "${BORROW_MOVE_WHILE_BORROWED_FILE}"
+function consume(owned s: String): None { return None; }
+function main(): None {
+    s: String = "x";
+    r: &String = &s;
+    consume(s);
+    return None;
+}
+EOF_BORROW_MWB
+if "${COMPILER}" check "${BORROW_MOVE_WHILE_BORROWED_FILE}" >"${BORROW_ERR_OUT}" 2>&1; then
+  echo "borrow check unexpectedly passed for move-while-borrowed" >&2
+  exit 1
+fi
+grep -q "Cannot move 's' while borrowed" "${BORROW_ERR_OUT}"
+
+cat <<'EOF_BORROW_DM' > "${BORROW_DOUBLE_MUT_FILE}"
+function main(): None {
+    mut x: Integer = 1;
+    a: &mut Integer = &mut x;
+    b: &mut Integer = &mut x;
+    return None;
+}
+EOF_BORROW_DM
+if "${COMPILER}" check "${BORROW_DOUBLE_MUT_FILE}" >"${BORROW_ERR_OUT}" 2>&1; then
+  echo "borrow check unexpectedly passed for double mutable borrow" >&2
+  exit 1
+fi
+grep -q "Cannot borrow 'x' while mutably borrowed" "${BORROW_ERR_OUT}"
+
+cat <<'EOF_BORROW_SCOPE' > "${BORROW_SCOPE_RELEASE_FILE}"
+function consume(owned s: String): None { return None; }
+function main(): None {
+    s: String = "x";
+    if (true) {
+        r: &String = &s;
+    }
+    consume(s);
+    return None;
+}
+EOF_BORROW_SCOPE
+"${COMPILER}" check "${BORROW_SCOPE_RELEASE_FILE}" >/dev/null
+
+cat <<'EOF_BORROW_LAMBDA' > "${BORROW_LAMBDA_MOVE_FILE}"
+import std.io.*;
+function consume(owned s: String): None { return None; }
+function main(): None {
+    s: String = "x";
+    f: () -> None = () => consume(s);
+    println(s);
+    return None;
+}
+EOF_BORROW_LAMBDA
+if "${COMPILER}" check "${BORROW_LAMBDA_MOVE_FILE}" >"${BORROW_ERR_OUT}" 2>&1; then
+  echo "borrow check unexpectedly passed for lambda capture move" >&2
+  exit 1
+fi
+grep -q "Use of moved value 's'" "${BORROW_ERR_OUT}"
+
+cat <<'EOF_BORROW_CA' > "${BORROW_COMPOUND_BORROWED_FILE}"
+function main(): None {
+    mut x: Integer = 10;
+    r: &mut Integer = &mut x;
+    x += 1;
+    return None;
+}
+EOF_BORROW_CA
+if "${COMPILER}" check "${BORROW_COMPOUND_BORROWED_FILE}" >"${BORROW_ERR_OUT}" 2>&1; then
+  echo "borrow check unexpectedly passed for compound-assign on borrowed variable" >&2
+  exit 1
+fi
+grep -q "Cannot assign to 'x' while mutably borrowed" "${BORROW_ERR_OUT}"
 
 "${COMPILER}" new shared_project --path "${SHARED_PROJECT}" >/dev/null
 python3 - <<'PY' "${SHARED_PROJECT}/apex.toml"

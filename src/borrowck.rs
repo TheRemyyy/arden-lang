@@ -71,6 +71,8 @@ struct VarState {
     declared_at: Span,
     /// Type of the variable (for drop checking)
     needs_drop: bool,
+    /// Optional declared type (for method resolution in borrow checking)
+    ty: Option<Type>,
 }
 
 /// Borrow checker state
@@ -198,7 +200,13 @@ impl BorrowChecker {
 
         // Add parameters with correct initial state
         for param in &func.params {
-            self.declare_var(&param.name, param.mutable, 0..0, self.needs_drop(&param.ty));
+            self.declare_var(
+                &param.name,
+                param.mutable,
+                0..0,
+                self.needs_drop(&param.ty),
+                Some(param.ty.clone()),
+            );
 
             // If it's a borrow parameter, initialize it as borrowed
             match param.mode {
@@ -224,9 +232,21 @@ impl BorrowChecker {
         // Check constructor
         if let Some(ctor) = &class.constructor {
             self.enter_scope();
-            self.declare_var("this", true, 0..0, false);
+            self.declare_var(
+                "this",
+                true,
+                0..0,
+                false,
+                Some(Type::Named(class.name.clone())),
+            );
             for param in &ctor.params {
-                self.declare_var(&param.name, param.mutable, 0..0, self.needs_drop(&param.ty));
+                self.declare_var(
+                    &param.name,
+                    param.mutable,
+                    0..0,
+                    self.needs_drop(&param.ty),
+                    Some(param.ty.clone()),
+                );
             }
             self.check_block(&ctor.body);
             self.exit_scope();
@@ -235,9 +255,21 @@ impl BorrowChecker {
         // Check methods
         for method in &class.methods {
             self.enter_scope();
-            self.declare_var("this", false, 0..0, false);
+            self.declare_var(
+                "this",
+                false,
+                0..0,
+                false,
+                Some(Type::Named(class.name.clone())),
+            );
             for param in &method.params {
-                self.declare_var(&param.name, param.mutable, 0..0, self.needs_drop(&param.ty));
+                self.declare_var(
+                    &param.name,
+                    param.mutable,
+                    0..0,
+                    self.needs_drop(&param.ty),
+                    Some(param.ty.clone()),
+                );
 
                 // Initialize borrow state for parameters
                 match param.mode {
@@ -279,7 +311,7 @@ impl BorrowChecker {
                 self.check_expr(&value.node, value.span.clone(), false);
 
                 // Declare the new variable
-                self.declare_var(name, *mutable, span, self.needs_drop(ty));
+                self.declare_var(name, *mutable, span, self.needs_drop(ty), Some(ty.clone()));
             }
 
             Stmt::Assign { target, value } => {
@@ -329,7 +361,7 @@ impl BorrowChecker {
                     .as_ref()
                     .map(|t| self.needs_drop(t))
                     .unwrap_or(false);
-                self.declare_var(var, false, span, needs_drop);
+                self.declare_var(var, false, span, needs_drop, var_type.clone());
                 for stmt in body {
                     self.check_stmt(&stmt.node, stmt.span.clone());
                 }
@@ -445,79 +477,7 @@ impl BorrowChecker {
             Expr::Call { callee, args } => {
                 self.check_expr(&callee.node, callee.span.clone(), false);
 
-                // Get param modes if possible
-                let mut param_modes = Vec::new();
-                if let Expr::Ident(name) = &callee.node {
-                    // Stdlib functions that should borrow
-                    if matches!(
-                        name.as_str(),
-                        "Str__len"
-                            | "Str__compare"
-                            | "Str__concat"
-                            | "Str__upper"
-                            | "Str__lower"
-                            | "Str__trim"
-                            | "Str__contains"
-                            | "print"
-                            | "println"
-                            | "File__exists"
-                            | "File__read"
-                            | "File__write"
-                            | "File__delete"
-                            | "Time__now"
-                            | "Time__sleep"
-                            | "System__getenv"
-                            | "System__shell"
-                            | "System__exec"
-                            | "System__exit"
-                            | "Math__abs"
-                            | "Math__min"
-                            | "Math__max"
-                            | "Math__sqrt"
-                            | "Math__pow"
-                            | "Math__sin"
-                            | "Math__cos"
-                            | "Math__tan"
-                            | "Math__floor"
-                            | "Math__ceil"
-                            | "Math__round"
-                            | "Math__log"
-                            | "Math__log10"
-                            | "Math__exp"
-                    ) {
-                        param_modes = vec![ParamMode::Borrow; args.len()];
-                    } else if let Some(modes) = self.functions.get(name) {
-                        param_modes = modes.clone();
-                    }
-                } else if let Expr::Field { object, field } = &callee.node {
-                    // Check for File static methods
-                    if let Expr::Ident(name) = &object.node {
-                        if matches!(
-                            name.as_str(),
-                            "File" | "Time" | "System" | "Math" | "Str" | "Args"
-                        ) {
-                            param_modes = vec![ParamMode::Borrow; args.len()];
-                        }
-
-                        // Module dot syntax: Module.func(...) resolves to Module__func
-                        let mangled = format!("{}__{}", name, field);
-                        if let Some(modes) = self.functions.get(&mangled) {
-                            param_modes = modes.clone();
-                        }
-                    }
-
-                    // Method call - ideally we'd know the type of object
-                    // For now, look for any method with this name across all classes
-                    // (heuristic until we have full type info in borrowck)
-                    if param_modes.is_empty() {
-                        for class_sig in self.classes.values() {
-                            if let Some(modes) = class_sig.methods.get(field) {
-                                param_modes = modes.clone();
-                                break;
-                            }
-                        }
-                    }
-                }
+                let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
 
                 for (i, arg) in args.iter().enumerate() {
                     self.check_expr(&arg.node, arg.span.clone(), false);
@@ -581,11 +541,31 @@ impl BorrowChecker {
             }
 
             Expr::Lambda { params, body } => {
-                // Lambda captures - check which variables are captured
+                // Lambda captures - free vars borrow or move from outer scope
                 self.enter_scope();
                 for param in params {
-                    self.declare_var(&param.name, param.mutable, span.clone(), false);
+                    self.declare_var(
+                        &param.name,
+                        param.mutable,
+                        span.clone(),
+                        false,
+                        Some(param.ty.clone()),
+                    );
                 }
+
+                let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+                let free_idents = Self::collect_free_idents(&body.node, &param_names);
+                for ident in free_idents {
+                    if self.get_var(&ident).is_none() {
+                        continue;
+                    }
+                    if self.expr_moves_ident(&body.node, &ident) {
+                        self.try_move(&Expr::Ident(ident.clone()), span.clone());
+                    } else {
+                        self.create_borrow(&ident, false, span.clone());
+                    }
+                }
+
                 self.check_expr(&body.node, body.span.clone(), false);
                 self.exit_scope();
             }
@@ -819,23 +799,439 @@ impl BorrowChecker {
     fn bind_pattern(&mut self, pattern: &Pattern, span: Span) {
         match pattern {
             Pattern::Ident(name) => {
-                self.declare_var(name, false, span, false);
+                self.declare_var(name, false, span, false, None);
             }
             Pattern::Variant(_, bindings) => {
                 for binding in bindings {
-                    self.declare_var(binding, false, span.clone(), false);
+                    self.declare_var(binding, false, span.clone(), false, None);
                 }
             }
             _ => {}
         }
     }
 
-    fn declare_var(&mut self, name: &str, mutable: bool, span: Span, needs_drop: bool) {
+    fn is_borrowing_stdlib_call(name: &str) -> bool {
+        matches!(
+            name,
+            "Str__len"
+                | "Str__compare"
+                | "Str__concat"
+                | "Str__upper"
+                | "Str__lower"
+                | "Str__trim"
+                | "Str__contains"
+                | "print"
+                | "println"
+                | "File__exists"
+                | "File__read"
+                | "File__write"
+                | "File__delete"
+                | "Time__now"
+                | "Time__sleep"
+                | "System__getenv"
+                | "System__shell"
+                | "System__exec"
+                | "System__exit"
+                | "Math__abs"
+                | "Math__min"
+                | "Math__max"
+                | "Math__sqrt"
+                | "Math__pow"
+                | "Math__sin"
+                | "Math__cos"
+                | "Math__tan"
+                | "Math__floor"
+                | "Math__ceil"
+                | "Math__round"
+                | "Math__log"
+                | "Math__log10"
+                | "Math__exp"
+        )
+    }
+
+    fn infer_expr_class<'a>(&'a self, expr: &Expr) -> Option<&'a str> {
+        match expr {
+            Expr::Ident(name) => {
+                let ty = self.get_var(name)?.ty.as_ref()?;
+                match ty {
+                    Type::Named(class_name) => Some(class_name.as_str()),
+                    Type::Generic(class_name, _) => Some(class_name.as_str()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn resolve_call_param_modes(&self, callee: &Expr, arg_len: usize) -> Vec<ParamMode> {
+        let mut param_modes = Vec::new();
+
+        if let Expr::Ident(name) = callee {
+            if Self::is_borrowing_stdlib_call(name) {
+                return vec![ParamMode::Borrow; arg_len];
+            }
+            if let Some(modes) = self.functions.get(name) {
+                return modes.clone();
+            }
+            return param_modes;
+        }
+
+        if let Expr::Field { object, field } = callee {
+            if let Expr::Ident(name) = &object.node {
+                if matches!(
+                    name.as_str(),
+                    "File" | "Time" | "System" | "Math" | "Str" | "Args"
+                ) {
+                    param_modes = vec![ParamMode::Borrow; arg_len];
+                }
+
+                let mangled = format!("{}__{}", name, field);
+                if let Some(modes) = self.functions.get(&mangled) {
+                    return modes.clone();
+                }
+            }
+
+            if let Some(class_name) = self.infer_expr_class(&object.node) {
+                if let Some(class_sig) = self.classes.get(class_name) {
+                    if let Some(modes) = class_sig.methods.get(field) {
+                        return modes.clone();
+                    }
+                }
+            }
+        }
+
+        param_modes
+    }
+
+    fn collect_free_idents(expr: &Expr, params: &[String]) -> Vec<String> {
+        let mut out = Vec::new();
+        Self::collect_free_idents_inner(expr, params, &mut out);
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    fn collect_free_idents_inner(expr: &Expr, params: &[String], out: &mut Vec<String>) {
+        match expr {
+            Expr::Ident(name) => {
+                if !params.iter().any(|p| p == name) {
+                    out.push(name.clone());
+                }
+            }
+            Expr::Call { callee, args } => {
+                Self::collect_free_idents_inner(&callee.node, params, out);
+                for arg in args {
+                    Self::collect_free_idents_inner(&arg.node, params, out);
+                }
+            }
+            Expr::Binary { left, right, .. } => {
+                Self::collect_free_idents_inner(&left.node, params, out);
+                Self::collect_free_idents_inner(&right.node, params, out);
+            }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => Self::collect_free_idents_inner(&expr.node, params, out),
+            Expr::Field { object, .. } => {
+                Self::collect_free_idents_inner(&object.node, params, out)
+            }
+            Expr::Index { object, index } => {
+                Self::collect_free_idents_inner(&object.node, params, out);
+                Self::collect_free_idents_inner(&index.node, params, out);
+            }
+            Expr::Construct { args, .. } => {
+                for arg in args {
+                    Self::collect_free_idents_inner(&arg.node, params, out);
+                }
+            }
+            Expr::Lambda {
+                params: inner,
+                body,
+            } => {
+                let mut nested_params: Vec<String> = params.to_vec();
+                nested_params.extend(inner.iter().map(|p| p.name.clone()));
+                Self::collect_free_idents_inner(&body.node, &nested_params, out);
+            }
+            Expr::Match { expr, arms } => {
+                Self::collect_free_idents_inner(&expr.node, params, out);
+                for arm in arms {
+                    for stmt in &arm.body {
+                        Self::collect_free_idents_stmt(&stmt.node, params, out);
+                    }
+                }
+            }
+            Expr::StringInterp(parts) => {
+                for part in parts {
+                    if let StringPart::Expr(e) = part {
+                        Self::collect_free_idents_inner(&e.node, params, out);
+                    }
+                }
+            }
+            Expr::AsyncBlock(stmts) | Expr::Block(stmts) => {
+                for stmt in stmts {
+                    Self::collect_free_idents_stmt(&stmt.node, params, out);
+                }
+            }
+            Expr::Require { condition, message } => {
+                Self::collect_free_idents_inner(&condition.node, params, out);
+                if let Some(msg) = message {
+                    Self::collect_free_idents_inner(&msg.node, params, out);
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                if let Some(start) = start {
+                    Self::collect_free_idents_inner(&start.node, params, out);
+                }
+                if let Some(end) = end {
+                    Self::collect_free_idents_inner(&end.node, params, out);
+                }
+            }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                Self::collect_free_idents_inner(&condition.node, params, out);
+                for stmt in then_branch {
+                    Self::collect_free_idents_stmt(&stmt.node, params, out);
+                }
+                if let Some(else_branch) = else_branch {
+                    for stmt in else_branch {
+                        Self::collect_free_idents_stmt(&stmt.node, params, out);
+                    }
+                }
+            }
+            Expr::Literal(_) | Expr::This => {}
+        }
+    }
+
+    fn collect_free_idents_stmt(stmt: &Stmt, params: &[String], out: &mut Vec<String>) {
+        match stmt {
+            Stmt::Let { value, .. } => Self::collect_free_idents_inner(&value.node, params, out),
+            Stmt::Assign { target, value } => {
+                Self::collect_free_idents_inner(&target.node, params, out);
+                Self::collect_free_idents_inner(&value.node, params, out);
+            }
+            Stmt::Expr(expr) => Self::collect_free_idents_inner(&expr.node, params, out),
+            Stmt::Return(expr) => {
+                if let Some(expr) = expr {
+                    Self::collect_free_idents_inner(&expr.node, params, out);
+                }
+            }
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                Self::collect_free_idents_inner(&condition.node, params, out);
+                for stmt in then_block {
+                    Self::collect_free_idents_stmt(&stmt.node, params, out);
+                }
+                if let Some(else_block) = else_block {
+                    for stmt in else_block {
+                        Self::collect_free_idents_stmt(&stmt.node, params, out);
+                    }
+                }
+            }
+            Stmt::While { condition, body } => {
+                Self::collect_free_idents_inner(&condition.node, params, out);
+                for stmt in body {
+                    Self::collect_free_idents_stmt(&stmt.node, params, out);
+                }
+            }
+            Stmt::For { iterable, body, .. } => {
+                Self::collect_free_idents_inner(&iterable.node, params, out);
+                for stmt in body {
+                    Self::collect_free_idents_stmt(&stmt.node, params, out);
+                }
+            }
+            Stmt::Match { expr, arms } => {
+                Self::collect_free_idents_inner(&expr.node, params, out);
+                for arm in arms {
+                    for stmt in &arm.body {
+                        Self::collect_free_idents_stmt(&stmt.node, params, out);
+                    }
+                }
+            }
+            Stmt::Break | Stmt::Continue => {}
+        }
+    }
+
+    fn expr_moves_ident(&self, expr: &Expr, ident: &str) -> bool {
+        match expr {
+            Expr::Call { callee, args } => {
+                let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
+                for (i, arg) in args.iter().enumerate() {
+                    if let Expr::Ident(name) = &arg.node {
+                        let mode = param_modes.get(i).unwrap_or(&ParamMode::Owned);
+                        if name == ident && *mode == ParamMode::Owned {
+                            return true;
+                        }
+                    }
+                    if self.expr_moves_ident(&arg.node, ident) {
+                        return true;
+                    }
+                }
+                self.expr_moves_ident(&callee.node, ident)
+            }
+            Expr::Binary { left, right, .. } => {
+                self.expr_moves_ident(&left.node, ident)
+                    || self.expr_moves_ident(&right.node, ident)
+            }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => self.expr_moves_ident(&expr.node, ident),
+            Expr::Field { object, .. } => self.expr_moves_ident(&object.node, ident),
+            Expr::Index { object, index } => {
+                self.expr_moves_ident(&object.node, ident)
+                    || self.expr_moves_ident(&index.node, ident)
+            }
+            Expr::Construct { args, .. } => args
+                .iter()
+                .any(|arg| self.expr_moves_ident(&arg.node, ident)),
+            Expr::Lambda { body, .. } => self.expr_moves_ident(&body.node, ident),
+            Expr::Match { expr, arms } => {
+                self.expr_moves_ident(&expr.node, ident)
+                    || arms.iter().any(|arm| {
+                        arm.body
+                            .iter()
+                            .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+                    })
+            }
+            Expr::StringInterp(parts) => parts.iter().any(|part| match part {
+                StringPart::Expr(e) => self.expr_moves_ident(&e.node, ident),
+                StringPart::Literal(_) => false,
+            }),
+            Expr::AsyncBlock(stmts) | Expr::Block(stmts) => stmts
+                .iter()
+                .any(|stmt| self.stmt_moves_ident(&stmt.node, ident)),
+            Expr::Require { condition, message } => {
+                self.expr_moves_ident(&condition.node, ident)
+                    || message
+                        .as_ref()
+                        .map(|m| self.expr_moves_ident(&m.node, ident))
+                        .unwrap_or(false)
+            }
+            Expr::Range { start, end, .. } => {
+                start
+                    .as_ref()
+                    .map(|s| self.expr_moves_ident(&s.node, ident))
+                    .unwrap_or(false)
+                    || end
+                        .as_ref()
+                        .map(|e| self.expr_moves_ident(&e.node, ident))
+                        .unwrap_or(false)
+            }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.expr_moves_ident(&condition.node, ident)
+                    || then_branch
+                        .iter()
+                        .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+                    || else_branch
+                        .as_ref()
+                        .map(|stmts| {
+                            stmts
+                                .iter()
+                                .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+                        })
+                        .unwrap_or(false)
+            }
+            Expr::Ident(_) | Expr::Literal(_) | Expr::This => false,
+        }
+    }
+
+    fn stmt_moves_ident(&self, stmt: &Stmt, ident: &str) -> bool {
+        match stmt {
+            Stmt::Let { value, .. } => self.expr_moves_ident(&value.node, ident),
+            Stmt::Assign { target, value } => {
+                self.expr_moves_ident(&target.node, ident)
+                    || self.expr_moves_ident(&value.node, ident)
+            }
+            Stmt::Expr(expr) => self.expr_moves_ident(&expr.node, ident),
+            Stmt::Return(expr) => expr
+                .as_ref()
+                .map(|e| self.expr_moves_ident(&e.node, ident))
+                .unwrap_or(false),
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                self.expr_moves_ident(&condition.node, ident)
+                    || then_block
+                        .iter()
+                        .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+                    || else_block
+                        .as_ref()
+                        .map(|stmts| {
+                            stmts
+                                .iter()
+                                .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+                        })
+                        .unwrap_or(false)
+            }
+            Stmt::While { condition, body } => {
+                self.expr_moves_ident(&condition.node, ident)
+                    || body
+                        .iter()
+                        .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+            }
+            Stmt::For { iterable, body, .. } => {
+                self.expr_moves_ident(&iterable.node, ident)
+                    || body
+                        .iter()
+                        .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+            }
+            Stmt::Match { expr, arms } => {
+                self.expr_moves_ident(&expr.node, ident)
+                    || arms.iter().any(|arm| {
+                        arm.body
+                            .iter()
+                            .any(|stmt| self.stmt_moves_ident(&stmt.node, ident))
+                    })
+            }
+            Stmt::Break | Stmt::Continue => false,
+        }
+    }
+
+    fn recount_borrows_for(&self, name: &str) -> (usize, Option<Span>) {
+        let mut immutable_count = 0usize;
+        let mut mutable_span = None;
+        for borrow in &self.borrows {
+            if borrow.borrowed_from == name {
+                if borrow.mutable {
+                    mutable_span = Some(borrow.span.clone());
+                } else {
+                    immutable_count += 1;
+                }
+            }
+        }
+        (immutable_count, mutable_span)
+    }
+
+    fn declare_var(
+        &mut self,
+        name: &str,
+        mutable: bool,
+        span: Span,
+        needs_drop: bool,
+        ty: Option<Type>,
+    ) {
         let var = VarState {
             state: OwnershipState::Owned,
             mutable,
             declared_at: span,
             needs_drop,
+            ty,
         };
         self.scopes
             .last_mut()
@@ -875,18 +1271,31 @@ impl BorrowChecker {
         // Release borrows from this scope
         self.borrows.retain(|b| b.scope_depth < self.scope_depth);
 
-        // Update borrow counts for variables
-        for scope in &mut self.scopes {
-            for (_, var) in scope.iter_mut() {
-                if let OwnershipState::MutBorrowed(_) = &var.state {
-                    // Check if borrow is still active
-                    let still_borrowed = self
-                        .borrows
-                        .iter()
-                        .any(|b| b.scope_depth >= self.scope_depth);
-                    if !still_borrowed {
-                        var.state = OwnershipState::Owned;
-                    }
+        // Recompute ownership state based on still-active borrows per variable.
+        let mut updates: Vec<(usize, String, OwnershipState)> = Vec::new();
+        for (scope_idx, scope) in self.scopes.iter().enumerate() {
+            for (name, var) in scope {
+                let (immut_count, mut_span) = self.recount_borrows_for(name);
+                if let Some(span) = mut_span {
+                    updates.push((scope_idx, name.clone(), OwnershipState::MutBorrowed(span)));
+                } else if immut_count > 0 {
+                    updates.push((
+                        scope_idx,
+                        name.clone(),
+                        OwnershipState::Borrowed(immut_count),
+                    ));
+                } else if matches!(
+                    var.state,
+                    OwnershipState::Borrowed(_) | OwnershipState::MutBorrowed(_)
+                ) {
+                    updates.push((scope_idx, name.clone(), OwnershipState::Owned));
+                }
+            }
+        }
+        for (scope_idx, name, new_state) in updates {
+            if let Some(scope) = self.scopes.get_mut(scope_idx) {
+                if let Some(var) = scope.get_mut(&name) {
+                    var.state = new_state;
                 }
             }
         }
@@ -972,4 +1381,131 @@ fn span_to_location(span: &Span, source: &str) -> (usize, usize) {
     }
 
     (line_num, col)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BorrowChecker;
+    use crate::parser::Parser;
+    use crate::{ast::Program, lexer};
+
+    fn parse_program(source: &str) -> Program {
+        let tokens = lexer::tokenize(source).expect("tokenization should succeed");
+        let mut parser = Parser::new(tokens);
+        parser.parse_program().expect("parse should succeed")
+    }
+
+    fn borrow_errors(source: &str) -> Vec<String> {
+        let program = parse_program(source);
+        let mut checker = BorrowChecker::new();
+        checker
+            .check(&program)
+            .expect_err("borrow check should fail")
+            .into_iter()
+            .map(|e| e.message)
+            .collect()
+    }
+
+    fn borrow_ok(source: &str) {
+        let program = parse_program(source);
+        let mut checker = BorrowChecker::new();
+        checker.check(&program).expect("borrow check should pass");
+    }
+
+    #[test]
+    fn detects_use_after_move() {
+        let source = r#"
+            import std.io.*;
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "hello";
+                consume(s);
+                println(s);
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| m.contains("Use of moved value 's'")));
+    }
+
+    #[test]
+    fn detects_move_while_borrowed() {
+        let source = r#"
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "hello";
+                r: &String = &s;
+                consume(s);
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot move 's' while borrowed")));
+    }
+
+    #[test]
+    fn detects_double_mutable_borrow() {
+        let source = r#"
+            function main(): None {
+                mut x: Integer = 1;
+                a: &mut Integer = &mut x;
+                b: &mut Integer = &mut x;
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot borrow 'x' while mutably borrowed")));
+    }
+
+    #[test]
+    fn immutable_borrow_released_after_scope() {
+        let source = r#"
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "hello";
+                if (true) {
+                    r: &String = &s;
+                }
+                consume(s);
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn lambda_capture_marks_move() {
+        let source = r#"
+            import std.io.*;
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "hello";
+                f: () -> None = () => consume(s);
+                println(s);
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| m.contains("Use of moved value 's'")));
+    }
+
+    #[test]
+    fn compound_assign_on_mut_borrowed_variable_is_rejected() {
+        let source = r#"
+            function main(): None {
+                mut x: Integer = 10;
+                r: &mut Integer = &mut x;
+                x += 1;
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot assign to 'x' while mutably borrowed")));
+    }
 }
