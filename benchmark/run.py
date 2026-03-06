@@ -591,6 +591,9 @@ def main() -> int:
                         clean_compile_artifacts(lang, job)
                     samples.append(timed_compile_with_retry(lang, job))
 
+                # Defensive guard for rare transient linker artifact misses in Apex cold mode.
+                if not Path(job["binary"]).exists():
+                    timed_compile_with_retry(lang, job, retries=2)
                 checksum = run_checksum(job["binary"], job["cwd"])
                 if reference_checksum is None:
                     reference_checksum = checksum
