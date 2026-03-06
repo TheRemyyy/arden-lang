@@ -1649,8 +1649,9 @@ fn compile_source(
         let namespace = extract_namespace(&program);
         let imports = extract_imports(&program);
         let stdlib = StdLib::new();
+        let function_namespaces = import_check::extract_function_namespaces(&program, &namespace);
         let mut import_checker =
-            ImportChecker::new(Arc::new(HashMap::new()), namespace, imports, &stdlib);
+            ImportChecker::new(Arc::new(function_namespaces), namespace, imports, &stdlib);
         if let Err(errors) = import_checker.check_program(&program) {
             eprintln!("{} Import errors:", "error".red().bold());
             for err in errors {
@@ -2016,8 +2017,9 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
     let namespace = extract_namespace(&program);
     let imports = extract_imports(&program);
     let stdlib = StdLib::new();
+    let function_namespaces = import_check::extract_function_namespaces(&program, &namespace);
     let mut import_checker =
-        ImportChecker::new(Arc::new(HashMap::new()), namespace, imports, &stdlib);
+        ImportChecker::new(Arc::new(function_namespaces), namespace, imports, &stdlib);
     if let Err(errors) = import_checker.check_program(&program) {
         eprintln!("{} Import errors:", "error".red().bold());
         for err in errors {

@@ -1871,7 +1871,7 @@ impl TypeChecker {
                     if !matches!(resolved, ResolvedType::Class(_))
                         && !matches!(resolved, ResolvedType::Unknown)
                     {
-                        // TODO: Check arguments for specific generic constructors if needed
+                        self.check_builtin_constructor_args(ty, &resolved, args, span.clone());
                         return resolved;
                     }
                 }
@@ -1910,7 +1910,20 @@ impl TypeChecker {
                         }
                     }
                     ResolvedType::Class(ty.clone())
-                } else if ty == "List" || ty == "Map" || ty == "Option" || ty == "Result" {
+                } else if ty == "List"
+                    || ty == "Map"
+                    || ty == "Set"
+                    || ty == "Option"
+                    || ty == "Result"
+                {
+                    // Validate arguments for non-parameterized built-in constructor calls too.
+                    // Keep return as inference var for backwards compatibility.
+                    self.check_builtin_constructor_args(
+                        ty,
+                        &ResolvedType::Class(ty.clone()),
+                        args,
+                        span.clone(),
+                    );
                     // Non-parameterized version - needs inference
                     self.fresh_type_var()
                 } else {
@@ -2158,6 +2171,77 @@ impl TypeChecker {
                 self.exit_scope();
                 result_type
             }
+        }
+    }
+
+    fn check_builtin_constructor_args(
+        &mut self,
+        ty_name: &str,
+        resolved: &ResolvedType,
+        args: &[Spanned<Expr>],
+        span: Span,
+    ) {
+        let arg_types: Vec<ResolvedType> = args
+            .iter()
+            .map(|arg| self.check_expr(&arg.node, arg.span.clone()))
+            .collect();
+
+        // List<T>(N) supports optional integer preallocation size; otherwise List<T>().
+        if ty_name == "List"
+            || ty_name.starts_with("List<")
+            || matches!(resolved, ResolvedType::List(_))
+        {
+            match arg_types.as_slice() {
+                [] => {}
+                [ResolvedType::Integer] => {}
+                [other] => {
+                    self.error(
+                        format!(
+                            "Constructor {} expects optional Integer capacity, got {}",
+                            ty_name, other
+                        ),
+                        span,
+                    );
+                }
+                _ => {
+                    self.error(
+                        format!(
+                            "Constructor {} expects 0 or 1 arguments, got {}",
+                            ty_name,
+                            args.len()
+                        ),
+                        span,
+                    );
+                }
+            }
+            return;
+        }
+
+        // Map/Set/Option/Result constructors are default constructors with no value args.
+        let requires_zero_args = ty_name == "Map"
+            || ty_name.starts_with("Map<")
+            || ty_name == "Set"
+            || ty_name.starts_with("Set<")
+            || ty_name == "Option"
+            || ty_name.starts_with("Option<")
+            || ty_name == "Result"
+            || ty_name.starts_with("Result<")
+            || matches!(
+                resolved,
+                ResolvedType::Map(_, _)
+                    | ResolvedType::Set(_)
+                    | ResolvedType::Option(_)
+                    | ResolvedType::Result(_, _)
+            );
+        if requires_zero_args && !arg_types.is_empty() {
+            self.error(
+                format!(
+                    "Constructor {} expects 0 arguments, got {}",
+                    ty_name,
+                    args.len()
+                ),
+                span,
+            );
         }
     }
 
@@ -3715,6 +3799,64 @@ mod tests {
             joined.contains("must implement interface method"),
             "{joined}"
         );
+    }
+
+    #[test]
+    fn rejects_invalid_list_constructor_arguments() {
+        let src = r#"
+            function main(): None {
+                xs: List<Integer> = List<Integer>("bad", true, 5);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("invalid List constructor should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("expects 0 or 1 arguments"), "{joined}");
+    }
+
+    #[test]
+    fn rejects_invalid_map_set_constructor_arguments() {
+        let src = r#"
+            function main(): None {
+                m: Map<String, Integer> = Map<String, Integer>(1);
+                s: Set<Integer> = Set<Integer>(1, 2);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("invalid Map/Set constructors should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Constructor Map<String, Integer> expects 0 arguments"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("Constructor Set<Integer> expects 0 arguments"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn accepts_valid_builtin_generic_constructors() {
+        let src = r#"
+            function main(): None {
+                xs: List<Integer> = List<Integer>();
+                ys: List<Integer> = List<Integer>(32);
+                m: Map<String, Integer> = Map<String, Integer>();
+                s: Set<Integer> = Set<Integer>();
+                o: Option<Integer> = Option<Integer>();
+                r: Result<Integer, String> = Result<Integer, String>();
+                return None;
+            }
+        "#;
+        check_source(src).expect("valid built-in generic constructors should typecheck");
     }
 }
 

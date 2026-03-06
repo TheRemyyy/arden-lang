@@ -2,6 +2,14 @@
 
 Mathematical functions and constants. All functions are available as static methods on the `Math` object.
 
+Import requirement:
+
+```apex
+import std.math.*;
+```
+
+Calls like `Math.abs(...)` are import-checked and require `std.math` to be imported.
+
 ## Constants
 
 ### `Math.pi(): Float`

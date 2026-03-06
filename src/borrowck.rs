@@ -404,11 +404,13 @@ impl BorrowChecker {
                     }
                 };
 
+                let mut assignment_valid = true;
                 if !mutable {
                     self.errors.push(BorrowError::new(
                         format!("Cannot assign to immutable variable '{}'", name),
                         span.clone(),
                     ));
+                    assignment_valid = false;
                 }
 
                 match state {
@@ -420,19 +422,23 @@ impl BorrowChecker {
                             )
                             .with_note("Mutable borrow occurred here", borrow_span),
                         );
+                        assignment_valid = false;
                     }
                     OwnershipState::Borrowed(count) if count > 0 => {
                         self.errors.push(BorrowError::new(
                             format!("Cannot assign to '{}' while borrowed", name),
                             span.clone(),
                         ));
+                        assignment_valid = false;
                     }
                     _ => {}
                 }
 
                 // Reset ownership state (old value dropped)
-                if let Some(var) = self.get_var_mut(name) {
-                    var.state = OwnershipState::Owned;
+                if assignment_valid {
+                    if let Some(var) = self.get_var_mut(name) {
+                        var.state = OwnershipState::Owned;
+                    }
                 }
             }
             Expr::Field { object, field: _ } => {
@@ -896,6 +902,15 @@ impl BorrowChecker {
         }
 
         if let Expr::Field { object, field } = callee {
+            // Prefer type-directed method resolution first when receiver type is known.
+            if let Some(class_name) = self.infer_expr_class(&object.node) {
+                if let Some(class_sig) = self.classes.get(class_name) {
+                    if let Some(modes) = class_sig.methods.get(field) {
+                        return modes.clone();
+                    }
+                }
+            }
+
             if let Expr::Ident(name) = &object.node {
                 let mangled = format!("{}__{}", name, field);
                 if let Some(modes) = self.functions.get(&mangled) {
@@ -903,14 +918,6 @@ impl BorrowChecker {
                 }
                 if self.is_borrowing_stdlib_call(&mangled) {
                     return vec![ParamMode::Borrow; arg_len];
-                }
-            }
-
-            if let Some(class_name) = self.infer_expr_class(&object.node) {
-                if let Some(class_sig) = self.classes.get(class_name) {
-                    if let Some(modes) = class_sig.methods.get(field) {
-                        return modes.clone();
-                    }
                 }
             }
         }
@@ -1577,5 +1584,26 @@ mod tests {
             }
         "#;
         borrow_ok(source);
+    }
+
+    #[test]
+    fn invalid_assign_does_not_clear_borrow_state() {
+        let source = r#"
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                mut s: String = "a";
+                r: &String = &s;
+                s = "b";
+                consume(s);
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot assign to 's' while borrowed")));
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot move 's' while borrowed")));
     }
 }

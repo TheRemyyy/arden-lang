@@ -99,6 +99,8 @@ pub struct ImportChecker<'a> {
     stdlib: &'a StdLib,
     /// Available function names for suggestions
     available_functions: Vec<String>,
+    /// Functions declared in currently checked program/file.
+    local_functions: HashSet<String>,
     /// Collected errors
     errors: Vec<ImportError>,
 }
@@ -154,12 +156,50 @@ impl<'a> ImportChecker<'a> {
             wildcard_imports,
             stdlib,
             available_functions,
+            local_functions: HashSet::new(),
             errors: Vec::new(),
         }
     }
 
+    fn collect_local_functions(&mut self, program: &Program) {
+        fn walk_decl(out: &mut HashSet<String>, decl: &Decl) {
+            match decl {
+                Decl::Function(func) => {
+                    out.insert(func.name.clone());
+                }
+                Decl::Module(module) => {
+                    for inner in &module.declarations {
+                        if let Decl::Function(func) = &inner.node {
+                            out.insert(format!("{}__{}", module.name, func.name));
+                        }
+                        walk_decl(out, &inner.node);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        self.local_functions.clear();
+        for decl in &program.declarations {
+            walk_decl(&mut self.local_functions, &decl.node);
+        }
+    }
+
+    fn namespace_matches_module_hint(namespace: &str, module_hint: &str) -> bool {
+        namespace
+            .rsplit('.')
+            .next()
+            .map(|tail| tail.eq_ignore_ascii_case(module_hint))
+            .unwrap_or(false)
+    }
+
     /// Check if a function call is valid (imported or local)
     pub fn check_function_call(&mut self, name: &str, span: Span) {
+        // Local function in the same checked program/file always wins over stdlib names.
+        if self.local_functions.contains(name) {
+            return;
+        }
+
         // Skip if it's a local function (defined in current file)
         if let Some(ns) = self.function_namespaces.get(name) {
             if ns == &self.current_namespace {
@@ -211,12 +251,34 @@ impl<'a> ImportChecker<'a> {
     fn check_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Call { callee, args, .. } => {
-                // Check if callee is a simple identifier
-                if let Expr::Ident(name) = &callee.node {
-                    self.check_function_call(name, callee.span.clone());
-                } else {
+                match &callee.node {
+                    // Direct function call
+                    Expr::Ident(name) => self.check_function_call(name, callee.span.clone()),
+                    // Module-style call: Module.func(...)
+                    Expr::Field { object, field } => {
+                        if let Expr::Ident(module_or_type) = &object.node {
+                            let mangled = format!("{}__{}", module_or_type, field);
+                            // Only treat as import-checkable function when known.
+                            if self.local_functions.contains(&mangled)
+                                || self.function_namespaces.contains_key(&mangled)
+                                || self.stdlib.get_namespace(&mangled).is_some()
+                            {
+                                self.check_function_call(&mangled, callee.span.clone());
+                            } else if let Some(ns) = self.stdlib.get_namespace(field) {
+                                if Self::namespace_matches_module_hint(ns, module_or_type) {
+                                    self.check_function_call(field, callee.span.clone());
+                                } else {
+                                    self.check_expr(&callee.node);
+                                }
+                            } else {
+                                self.check_expr(&callee.node);
+                            }
+                        } else {
+                            self.check_expr(&callee.node);
+                        }
+                    }
                     // Check callee expression recursively
-                    self.check_expr(&callee.node);
+                    _ => self.check_expr(&callee.node),
                 }
 
                 // Check arguments
@@ -318,6 +380,8 @@ impl<'a> ImportChecker<'a> {
 
     /// Check entire program for import violations
     pub fn check_program(&mut self, program: &Program) -> Result<(), Vec<ImportError>> {
+        self.collect_local_functions(program);
+
         for decl in &program.declarations {
             if let Decl::Function(func) = &decl.node {
                 for stmt in &func.body {
@@ -346,4 +410,62 @@ pub fn extract_function_namespaces(program: &Program, namespace: &str) -> HashMa
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::tokenize;
+    use crate::parser::Parser;
+
+    fn check_import_errors(source: &str) -> Vec<ImportError> {
+        let tokens = tokenize(source).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().expect("parse");
+        let namespace = program
+            .package
+            .clone()
+            .unwrap_or_else(|| "global".to_string());
+        let imports = program
+            .declarations
+            .iter()
+            .filter_map(|d| match &d.node {
+                Decl::Import(i) => Some(i.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let function_namespaces = extract_function_namespaces(&program, &namespace);
+        let stdlib = StdLib::new();
+        let mut checker =
+            ImportChecker::new(Arc::new(function_namespaces), namespace, imports, &stdlib);
+
+        checker.check_program(&program).err().unwrap_or_default()
+    }
+
+    #[test]
+    fn local_function_can_shadow_stdlib_name() {
+        let source = r#"
+function print(owned s: String): None { return None; }
+function main(): None {
+    s: String = "x";
+    print(s);
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn module_dot_stdlib_call_requires_import() {
+        let source = r#"
+function main(): None {
+    x: Float = Math.abs(-1.0);
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Math__abs");
+    }
 }

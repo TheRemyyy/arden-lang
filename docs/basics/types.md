@@ -69,3 +69,11 @@ See [Ownership and Borrowing](../advanced/ownership.md) for more details.
 - **Lists**: `List<T>` - See [Collections](../stdlib/collections.md#listt)
 - **Maps**: `Map<K, V>` - See [Collections](../stdlib/collections.md#mapk-v)
 - **User-defined**: Classes, Enums, Interfaces.
+
+### Built-in Generic Constructors
+
+Built-in generic constructor argument rules are checked at compile time:
+
+- `List<T>()` and `List<T>(capacity: Integer)` are valid.
+- `Map<K, V>()`, `Set<T>()`, `Option<T>()`, and `Result<T, E>()` accept no value arguments.
+- Passing extra or incompatible constructor arguments is a type error.

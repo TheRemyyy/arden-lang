@@ -103,6 +103,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed false-positive lambda capture diagnostics where owned captures were reported as use-after-move inside the lambda expression itself.
 - Fixed borrow checker assignment validation for nested lvalues (`obj.field = ...`, `arr[i] = ...`) so owner borrow state is enforced consistently (not only plain identifier targets).
 - Fixed method-call borrow mode resolution for `this.method(...)` receiver calls by inferring receiver class from `this` type metadata.
+- Fixed type checker validation gap for built-in generic constructors:
+  - `List<T>` now validates constructor args (`0` args, or optional integer capacity)
+  - `Map<K,V>`, `Set<T>`, `Option<T>`, `Result<T,E>` constructors now reject unexpected value arguments
+- Fixed borrow checker state handling after invalid assignment:
+  - ownership state is no longer force-reset to `Owned` when assignment is rejected due to active borrows
+  - follow-up diagnostics (e.g. subsequent move-while-borrowed) are now preserved in the same flow
+- Fixed import checker precedence so same-file local functions correctly shadow stdlib names (e.g. local `print(...)` no longer incorrectly requires `import std.io.print;`).
+- Fixed import checking for stdlib module-style calls (`Math.abs(...)`) so missing `std.math` imports are now reported.
+- Added import checker regression tests for local-vs-stdlib shadowing and `Math.*` import enforcement paths.
 - Added borrow checker regression tests for:
   - use-after-move
   - move while borrowed
@@ -112,6 +121,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - compound assignment on borrowed variable
   - assignment through borrowed owner (`obj.field += ...`)
   - `this` receiver method param-mode lookup
+- Added type checker regression tests for built-in generic constructor validation (invalid List/Map/Set args + valid constructor paths).
 - CI smoke checks now include borrow-checker edge-case expected-fail/expected-pass scenarios.
 - Removed duplicate Vercel routing config from `web/public/vercel.json`; `web/vercel.json` is now the only deploy config.
 - Removed machine-specific LLVM/linker paths from `.cargo/config.toml`.
