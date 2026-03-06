@@ -33,6 +33,11 @@ BENCHMARKS: List[BenchmarkSpec] = [
         "Compile 10-file project, mutate one file, then recompile",
         kind="incremental",
     ),
+    BenchmarkSpec(
+        "incremental_rebuild_central_file",
+        "Compile 10-file project with shared core dependency, mutate central file, then recompile",
+        kind="incremental",
+    ),
 ]
 
 LANGUAGES = ("apex", "c", "rust", "go")
@@ -181,7 +186,9 @@ def run_checksum(binary: Path, cwd: Path) -> int:
     return parse_checksum(proc.stdout)
 
 
-def generate_compile_project_10_files(root: Path, bench_name: str) -> Dict[str, Dict[str, Path]]:
+def generate_compile_project_10_files(
+    root: Path, bench_name: str, mutation_profile: str = "leaf"
+) -> Dict[str, Dict[str, Path]]:
     generated_root = root / "benchmark" / "generated" / bench_name
     if generated_root.exists():
         shutil.rmtree(generated_root)
@@ -194,12 +201,29 @@ def generate_compile_project_10_files(root: Path, bench_name: str) -> Dict[str, 
     apex_src = apex_dir / "src"
     apex_src.mkdir(parents=True, exist_ok=True)
     apex_files = []
+    apex_core = apex_src / "core.apex"
+    apex_core.write_text(
+        "\n".join(
+            [
+                "import std.io.*;",
+                "",
+                "function core_mix(x: Integer, k: Integer): Integer {",
+                "    return x + k;",
+                "}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    apex_files.append("src/core.apex")
     for i in range(file_count):
         part = f"part_{i:02d}"
         apex_files.append(f"src/{part}.apex")
         lines: List[str] = ["import std.io.*;", ""]
         for j in range(funcs_per_file):
-            lines.append(f"function {part}_f{j:03d}(x: Integer): Integer {{ return x + {i + j + 1}; }}")
+            lines.append(
+                f"function {part}_f{j:03d}(x: Integer): Integer {{ return core_mix(x, {i + j + 1}); }}"
+            )
         lines.append("")
         lines.append(f"function {part}_apply(x: Integer): Integer {{")
         lines.append("    mut y: Integer = x;")
@@ -228,11 +252,41 @@ def generate_compile_project_10_files(root: Path, bench_name: str) -> Dict[str, 
 
     c_dir = generated_root / "c"
     c_dir.mkdir(parents=True, exist_ok=True)
+    (c_dir / "core.h").write_text(
+        "\n".join(
+            [
+                "#ifndef CORE_H",
+                "#define CORE_H",
+                "#include <stdint.h>",
+                "int64_t core_mix(int64_t x, int64_t k);",
+                "#endif",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (c_dir / "core.c").write_text(
+        "\n".join(
+            [
+                "#include <stdint.h>",
+                "int64_t core_mix(int64_t x, int64_t k) {",
+                "    return x + k;",
+                "}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
     for i in range(file_count):
         part = f"part_{i:02d}"
-        lines = ["#include <stdint.h>", f"int64_t {part}_apply(int64_t x) {{", "    int64_t y = x;"]
+        lines = [
+            "#include <stdint.h>",
+            '#include "core.h"',
+            f"int64_t {part}_apply(int64_t x) {{",
+            "    int64_t y = x;",
+        ]
         for j in range(funcs_per_file):
-            lines.append(f"    y = y + {i + j + 1};")
+            lines.append(f"    y = core_mix(y, {i + j + 1});")
         lines.extend(["    return y;", "}"])
         (c_dir / f"{part}.c").write_text("\n".join(lines) + "\n", encoding="utf-8")
     main_c = ["#include <stdint.h>", "#include <stdio.h>"]
@@ -246,7 +300,7 @@ def generate_compile_project_10_files(root: Path, bench_name: str) -> Dict[str, 
 
     rust_dir = generated_root / "rust"
     rust_dir.mkdir(parents=True, exist_ok=True)
-    rust_main = []
+    rust_main = ["mod core;"]
     for i in range(file_count):
         rust_main.append(f"mod part_{i:02d};")
     rust_main.extend(["", "fn main() {", "    let mut acc: i64 = 0;"])
@@ -258,9 +312,20 @@ def generate_compile_project_10_files(root: Path, bench_name: str) -> Dict[str, 
         part = f"part_{i:02d}"
         lines = ["pub fn apply(x: i64) -> i64 {", "    let mut y = x;"]
         for j in range(funcs_per_file):
-            lines.append(f"    y += {i + j + 1};")
+            lines.append(f"    y = crate::core::mix(y, {i + j + 1});")
         lines.extend(["    y", "}"])
         (rust_dir / f"{part}.rs").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (rust_dir / "core.rs").write_text(
+        "\n".join(
+            [
+                "pub fn mix(x: i64, k: i64) -> i64 {",
+                "    x + k",
+                "}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     go_dir = generated_root / "go"
     go_dir.mkdir(parents=True, exist_ok=True)
@@ -274,30 +339,53 @@ def generate_compile_project_10_files(root: Path, bench_name: str) -> Dict[str, 
         part = f"part_{i:02d}"
         lines = ["package main", "", "func " + part + "_apply(x int64) int64 {", "    y := x"]
         for j in range(funcs_per_file):
-            lines.append(f"    y += {i + j + 1}")
+            lines.append(f"    y = coreMix(y, {i + j + 1})")
         lines.extend(["    return y", "}"])
         (go_dir / f"{part}.go").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (go_dir / "core.go").write_text(
+        "\n".join(
+            [
+                "package main",
+                "",
+                "func coreMix(x int64, k int64) int64 {",
+                "    return x + k",
+                "}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    apex_mutate = apex_src / "part_09.apex"
+    c_mutate = c_dir / "part_09.c"
+    rust_mutate = rust_dir / "part_09.rs"
+    go_mutate = go_dir / "part_09.go"
+    if mutation_profile == "central":
+        apex_mutate = apex_core
+        c_mutate = c_dir / "core.c"
+        rust_mutate = rust_dir / "core.rs"
+        go_mutate = go_dir / "core.go"
 
     return {
         "apex": {
             "project_dir": apex_dir,
             "binary": apex_dir / bench_name,
-            "mutate_source": apex_src / "part_09.apex",
+            "mutate_source": apex_mutate,
         },
         "c": {
             "project_dir": c_dir,
             "binary": c_dir / f"{bench_name}_c",
-            "mutate_source": c_dir / "part_09.c",
+            "mutate_source": c_mutate,
         },
         "rust": {
             "project_dir": rust_dir,
             "binary": rust_dir / f"{bench_name}_rust",
-            "mutate_source": rust_dir / "part_09.rs",
+            "mutate_source": rust_mutate,
         },
         "go": {
             "project_dir": go_dir,
             "binary": go_dir / f"{bench_name}_go",
-            "mutate_source": go_dir / "part_09.go",
+            "mutate_source": go_mutate,
         },
     }
 
@@ -324,10 +412,9 @@ def make_compile_jobs(
                 "-march=native",
                 "-std=c11",
                 *[
-                    str(compile_projects["c"]["project_dir"] / f"part_{i:02d}.c")
-                    for i in range(10)
+                    str(path)
+                    for path in sorted(compile_projects["c"]["project_dir"].glob("*.c"))
                 ],
-                str(compile_projects["c"]["project_dir"] / "main.c"),
                 "-o",
                 str(compile_projects["c"]["binary"]),
             ],
@@ -712,6 +799,7 @@ def main() -> int:
             benchmark_compile_mode = compile_mode
         elif spec.kind == "incremental":
             benchmark_compile_mode = args.compile_mode
+            mutation_profile = "central" if "central" in spec.name else "leaf"
             for lang in LANGUAGES:
                 print(f"Incremental compile {lang}...")
                 first_samples: List[float] = []
@@ -720,7 +808,9 @@ def main() -> int:
 
                 cycles = args.warmup + args.repeats
                 for i in range(cycles):
-                    cycle_projects = generate_compile_project_10_files(root, spec.name)
+                    cycle_projects = generate_compile_project_10_files(
+                        root, spec.name, mutation_profile=mutation_profile
+                    )
                     cycle_jobs = make_compile_jobs(root, cycle_projects, build_env, c_compiler)
                     job = cycle_jobs[lang]
 
