@@ -138,6 +138,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed codegen lvalue generation for indexed assignment (`xs[i] = ...`, `xs[i] += ...`) so check-pass programs no longer fail with `Invalid lvalue`.
 - Fixed codegen lvalue support for indexed assignment through field-owned lists (`obj.list[i] += ...`) and nested field assignment type resolution (`a.b.v += ...`).
 - Fixed parser behavior where visibility modifiers on `constructor`/`destructor` were silently ignored.
+- Fixed formatter roundtrip stability for expression statements starting with `match`/`if`:
+  - `apex fmt` now emits parenthesized expression-statement forms (`(match (...){...});`, `(if (...){...} else {...});`) to avoid reparsing as statement nodes with different semantics.
+- Added parser/type/smoke regression coverage for `if` expression branches containing `match (...) { ... };` and lambda-valued `if` expression branches compiled through full codegen.
   - parser now emits an explicit error (`Visibility modifiers are not supported on constructors/destructors`) instead of accepting misleading syntax.
 - Fixed parser expression coverage by adding `if (...) { ... } else { ... }` expression parsing (`Expr::IfExpr`) in expression contexts.
 - `if` expression parsing now supports both forms:

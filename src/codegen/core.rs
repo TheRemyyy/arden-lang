@@ -2846,9 +2846,10 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Block(body) => {
                 let mut result = self.context.i8_type().const_int(0, false).into();
                 for stmt in body {
-                    self.compile_stmt(&stmt.node)?;
                     if let Stmt::Expr(expr) = &stmt.node {
                         result = self.compile_expr(&expr.node)?;
+                    } else {
+                        self.compile_stmt(&stmt.node)?;
                     }
                 }
                 Ok(result)
@@ -2881,9 +2882,10 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(then_block);
         let mut then_result = self.context.i8_type().const_int(0, false).into();
         for stmt in then_branch {
-            self.compile_stmt(&stmt.node)?;
             if let Stmt::Expr(expr) = &stmt.node {
                 then_result = self.compile_expr(&expr.node)?;
+            } else {
+                self.compile_stmt(&stmt.node)?;
             }
         }
         self.builder
@@ -2896,9 +2898,10 @@ impl<'ctx> Codegen<'ctx> {
         let mut else_result = self.context.i8_type().const_int(0, false).into();
         if let Some(else_stmts) = else_branch {
             for stmt in else_stmts {
-                self.compile_stmt(&stmt.node)?;
                 if let Stmt::Expr(expr) = &stmt.node {
                     else_result = self.compile_expr(&expr.node)?;
+                } else {
+                    self.compile_stmt(&stmt.node)?;
                 }
             }
         }

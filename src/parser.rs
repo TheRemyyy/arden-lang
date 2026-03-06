@@ -1093,7 +1093,13 @@ impl<'src> Parser<'src> {
                 self.eat(&Token::Semi)?;
                 Stmt::Continue
             }
-            Some(Token::Match) => self.parse_match_stmt()?,
+            Some(Token::Match) => {
+                let stmt = self.parse_match_stmt()?;
+                if self.check(&Token::Semi) {
+                    self.advance();
+                }
+                stmt
+            }
             Some(Token::Mut) => self.parse_let(true)?,
             Some(Token::Ident(_)) => {
                 // Could be variable declaration or expression
@@ -2460,5 +2466,52 @@ mod tests {
             panic!("Expected if expression");
         };
         assert!(else_branch.is_none());
+    }
+
+    #[test]
+    fn test_parse_match_statement_with_trailing_semicolon() {
+        let source = r#"
+            function main(): None {
+                match (1) {
+                    1 => { },
+                    _ => { },
+                };
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse match statement with semicolon");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        assert!(matches!(func.body[0].node, Stmt::Match { .. }));
+    }
+
+    #[test]
+    fn test_parse_if_expression_branch_match_statement_with_semicolon() {
+        let source = r#"
+            function main(): None {
+                x: None = if (true) {
+                    match (1) {
+                        1 => { },
+                        _ => { },
+                    };
+                } else {
+                    None;
+                };
+                return None;
+            }
+        "#;
+        let program =
+            parse_source(source).expect("Should parse if-expression with match statement");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Let { value, .. } = &func.body[0].node else {
+            panic!("Expected let statement");
+        };
+        let Expr::IfExpr { then_branch, .. } = &value.node else {
+            panic!("Expected if expression");
+        };
+        assert!(matches!(then_branch[0].node, Stmt::Match { .. }));
     }
 }

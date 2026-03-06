@@ -314,6 +314,34 @@ def run_single(name: str, source: str, expect_ok: bool, required: list[str] | No
                 )
 
 
+def run_single_fmt_roundtrip(
+    name: str, source: str, expect_ok: bool, required: list[str] | None = None
+) -> None:
+    path = single_root / f"{name}.apex"
+    path.write_text(source)
+    fmt = subprocess.run([compiler, "fmt", str(path)], capture_output=True, text=True)
+    if fmt.returncode != 0:
+        raise SystemExit(f"[fmt:{name}] fmt failed\n{fmt.stdout}{fmt.stderr}")
+    run_single(name, path.read_text(), expect_ok, required)
+
+
+def run_compile(name: str, source: str, expect_ok: bool) -> None:
+    path = single_root / f"{name}.apex"
+    out = single_root / f"{name}.bin"
+    path.write_text(source)
+    proc = subprocess.run(
+        [compiler, "compile", str(path), "-o", str(out)],
+        capture_output=True,
+        text=True,
+    )
+    output = (proc.stdout or "") + (proc.stderr or "")
+    ok = proc.returncode == 0
+    if ok != expect_ok:
+        raise SystemExit(
+            f"[compile:{name}] expected ok={expect_ok}, got rc={proc.returncode}\n{output}"
+        )
+
+
 def run_project(name: str, files: dict[str, str], expect_ok: bool, required: list[str] | None = None) -> None:
     project_root = tmp_dir / f"project_{name}"
     src_root = project_root / "src"
@@ -504,6 +532,74 @@ function print(owned s: String): None { return None; }
 function main(): None {
     s: String = "x";
     print(s);
+    return None;
+}
+""",
+    True,
+)
+run_single(
+    "if_expr_branch_match_statement_with_semicolon",
+    """
+function main(): None {
+    v: None = if (true) {
+        match (1) {
+            1 => { 1; }
+            _ => { 2; }
+        };
+    } else {
+        None;
+    };
+    return None;
+}
+""",
+    True,
+)
+run_single_fmt_roundtrip(
+    "fmt_match_expr_statement_roundtrip",
+    """
+function main(): None {
+    x: Integer = match (1) {
+        1 => { (match (2) { 2 => { 3; }, _ => { 4; } }); },
+        _ => { 0; }
+    };
+    return None;
+}
+""",
+    True,
+)
+run_single_fmt_roundtrip(
+    "fmt_if_expr_statement_roundtrip",
+    """
+function main(): None {
+    x: Integer = 0;
+    (if (true) { 1; } else { 2; });
+    return None;
+}
+""",
+    True,
+)
+run_compile(
+    "if_expr_lambda_then_else_codegen",
+    """
+function main(): None {
+    f: (Integer) -> Integer = if (true) { (x: Integer) => x + 1; } else { (x: Integer) => x + 2; };
+    y: Integer = f(1);
+    return None;
+}
+""",
+    True,
+)
+run_compile(
+    "if_expr_lambda_local_codegen",
+    """
+function main(): None {
+    f: (Integer) -> Integer = if (true) {
+        g: (Integer) -> Integer = (x: Integer) => x + 1;
+        g;
+    } else {
+        (x: Integer) => x + 2;
+    };
+    y: Integer = f(2);
     return None;
 }
 """,

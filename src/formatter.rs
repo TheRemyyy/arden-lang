@@ -336,7 +336,14 @@ impl Formatter {
                 self.format_expr(&target.node),
                 self.format_expr(&value.node)
             )),
-            Stmt::Expr(expr) => self.push_line(&format!("{};", self.format_expr(&expr.node))),
+            Stmt::Expr(expr) => {
+                let formatted = self.format_expr(&expr.node);
+                if matches!(expr.node, Expr::Match { .. } | Expr::IfExpr { .. }) {
+                    self.push_line(&format!("({});", formatted));
+                } else {
+                    self.push_line(&format!("{};", formatted));
+                }
+            }
             Stmt::Return(expr) => {
                 if let Some(expr) = expr {
                     self.push_line(&format!("return {};", self.format_expr(&expr.node)));
@@ -917,6 +924,8 @@ fn collect_comments(source: &str) -> Vec<SourceComment> {
 #[cfg(test)]
 mod tests {
     use super::format_source;
+    use crate::lexer::tokenize;
+    use crate::parser::Parser;
 
     #[test]
     fn formats_basic_program() {
@@ -956,5 +965,43 @@ function main(): None {mut value: Integer=1+2*3;println("hi {value}");return Non
         let source = "// note\nfunction main(): None { return None; }";
         let formatted = format_source(source).expect("comments should be preserved");
         assert!(formatted.contains("// note"));
+    }
+
+    #[test]
+    fn wraps_match_expression_statements_for_roundtrip() {
+        let source = r#"
+function main(): None {
+    x: Integer = match (1) {
+        1 => { (match (2) { 2 => { 3; }, _ => { 4; } }); },
+        _ => { 0; }
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("(match (2)"));
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn wraps_if_expression_statements_for_roundtrip() {
+        let source = r#"
+function main(): None {
+    x: Integer = 0;
+    (if (true) { 1; } else { 2; });
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("(if (true)"));
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
     }
 }

@@ -1785,6 +1785,13 @@ impl TypeChecker {
                     self.check_block(&arm.body);
                     self.exit_scope();
                 }
+
+                if !self.match_expression_exhaustive(&match_type, arms) {
+                    self.error(
+                        format!("Non-exhaustive match statement for type {}", match_type),
+                        span,
+                    );
+                }
             }
 
             Stmt::Break | Stmt::Continue => {}
@@ -1923,7 +1930,7 @@ impl TypeChecker {
                     .any(|arm| matches!(arm.pattern, Pattern::Variant(ref n, _) if n == "Error"));
                 has_ok && has_err
             }
-            _ => true,
+            _ => false,
         }
     }
 
@@ -4225,6 +4232,92 @@ mod tests {
             }
         "#;
         let errors = check_source(src).expect_err("non-exhaustive boolean match should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Non-exhaustive match expression"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn match_statement_boolean_non_exhaustive_fails() {
+        let src = r#"
+            function main(): None {
+                match (true) {
+                    true => { }
+                }
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("non-exhaustive boolean match stmt should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Non-exhaustive match statement"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn empty_match_statement_fails() {
+        let src = r#"
+            function main(): None {
+                match (1) {
+                }
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("empty match statement should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Non-exhaustive match statement"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn integer_match_expression_requires_catch_all() {
+        let src = r#"
+            function main(): None {
+                x: Integer = match (2) {
+                    1 => 1,
+                };
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("integer match expression without catch-all");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Non-exhaustive match expression"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn empty_match_expression_fails() {
+        let src = r#"
+            function main(): None {
+                n: None = match (1) {
+                };
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("empty match expression should fail");
         let joined = errors
             .iter()
             .map(|e| e.message.as_str())

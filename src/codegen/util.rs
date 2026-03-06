@@ -669,6 +669,7 @@ impl<'ctx> Codegen<'ctx> {
         // Save current function context
         let saved_function = self.current_function;
         let saved_return_type = self.current_return_type.clone();
+        let saved_insert_block = self.builder.get_insert_block();
         let saved_variables = std::mem::take(&mut self.variables);
 
         // Create unique name for lambda
@@ -782,8 +783,10 @@ impl<'ctx> Codegen<'ctx> {
         self.current_return_type = saved_return_type;
         self.variables = saved_variables;
 
-        // Position builder back to the original function
-        if let Some(func) = saved_function {
+        // Position builder back to the exact insertion point used before entering lambda codegen.
+        if let Some(block) = saved_insert_block {
+            self.builder.position_at_end(block);
+        } else if let Some(func) = saved_function {
             if let Some(block) = func.get_last_basic_block() {
                 self.builder.position_at_end(block);
             }

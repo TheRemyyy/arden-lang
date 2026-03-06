@@ -159,6 +159,7 @@ apex fmt --check
 Notes:
 - When run inside a project without an explicit path, `apex fmt` formats the files listed in `apex.toml`.
 - You can point `apex fmt` at either a single `.apex` file or a directory.
+- Formatter output now preserves ambiguous expression statements (`if`/`match`) by emitting them as parenthesized expressions in statement position, so `fmt` round-trips without changing semantics.
 
 ### Linting and Safe Fixes
 
