@@ -11,6 +11,15 @@ This document describes the internal architecture of the Apex compiler.
 5. **Code Generation** (`codegen/core.rs`, `codegen/types.rs`, `codegen/util.rs`): Lowers the AST into LLVM IR (Intermediate Representation).
 6. **Linking**: LLVM IR is compiled to an object file and linked (using `clang`/`cc`) to produce the final executable.
 
+## Build Caching
+
+- **Project fingerprint cache** (`.apexcache/build_fingerprint`):
+  - Hashes project config + source metadata + build-mode flags.
+  - If unchanged and output artifact exists, `apex build` exits early (`Up to date ...`).
+- **Parsed file cache** (`.apexcache/parsed/*.json`):
+  - Stores parsed AST + namespace/import metadata keyed by source fingerprint.
+  - On incremental edits, unchanged files bypass tokenization/parsing and reuse cached AST.
+
 ## Directory Structure
 
 - `src/main.rs`: Entry point, CLI argument parsing.

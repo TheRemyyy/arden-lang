@@ -11,13 +11,14 @@
 #![allow(dead_code)]
 #![allow(clippy::enum_variant_names)]
 
+use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
 /// Source location span
 pub type Span = Range<usize>;
 
 /// AST node with span information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
@@ -30,7 +31,7 @@ impl<T> Spanned<T> {
 }
 
 /// Visibility modifier
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum Visibility {
     #[default]
     Private,
@@ -39,7 +40,7 @@ pub enum Visibility {
 }
 
 /// Parameter passing mode
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ParamMode {
     #[default]
     Owned, // Takes ownership (default)
@@ -48,14 +49,14 @@ pub enum ParamMode {
 }
 
 /// Generic type parameter with optional bounds
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenericParam {
     pub name: String,
     pub bounds: Vec<String>, // extends Interface1, Interface2
 }
 
 /// Function attribute (e.g., @Test, @Ignore)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Attribute {
     Test,
     Ignore(Option<String>), // Optional reason
@@ -73,7 +74,7 @@ pub enum Attribute {
 }
 
 /// Complete program
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Program {
     /// Package/namespace for this file (e.g., "utils.math")
     pub package: Option<String>,
@@ -81,7 +82,7 @@ pub struct Program {
 }
 
 /// Top-level declarations
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Decl {
     Function(FunctionDecl),
     Class(ClassDecl),
@@ -92,21 +93,21 @@ pub enum Decl {
 }
 
 /// Module declaration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleDecl {
     pub name: String,
     pub declarations: Vec<Spanned<Decl>>,
 }
 
 /// Import declaration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportDecl {
     pub path: String,
     pub alias: Option<String>,
 }
 
 /// Function declaration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionDecl {
     pub name: String,
     pub generic_params: Vec<GenericParam>, // <T extends Comparable>
@@ -123,7 +124,7 @@ pub struct FunctionDecl {
 }
 
 /// Parameter with ownership mode
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Parameter {
     pub name: String,
     pub ty: Type,
@@ -132,7 +133,7 @@ pub struct Parameter {
 }
 
 /// Class declaration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassDecl {
     pub name: String,
     pub generic_params: Vec<GenericParam>, // class Box<T>
@@ -146,7 +147,7 @@ pub struct ClassDecl {
 }
 
 /// Class field with visibility
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Field {
     pub name: String,
     pub ty: Type,
@@ -155,20 +156,20 @@ pub struct Field {
 }
 
 /// Constructor
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Constructor {
     pub params: Vec<Parameter>,
     pub body: Block,
 }
 
 /// Destructor (RAII cleanup)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Destructor {
     pub body: Block,
 }
 
 /// Enum declaration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnumDecl {
     pub name: String,
     pub generic_params: Vec<GenericParam>, // enum Result<T, E>
@@ -177,21 +178,21 @@ pub struct EnumDecl {
 }
 
 /// Enum variant
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnumVariant {
     pub name: String,
     pub fields: Vec<EnumField>, // Named or anonymous fields
 }
 
 /// Enum field (can be named or just type)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnumField {
     pub name: Option<String>, // None for positional, Some for named
     pub ty: Type,
 }
 
 /// Interface declaration (trait)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InterfaceDecl {
     pub name: String,
     pub generic_params: Vec<GenericParam>,
@@ -201,7 +202,7 @@ pub struct InterfaceDecl {
 }
 
 /// Interface method signature with optional default implementation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InterfaceMethod {
     pub name: String,
     pub params: Vec<Parameter>,
@@ -210,7 +211,7 @@ pub struct InterfaceMethod {
 }
 
 /// Types
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Type {
     // Primitive types
     Integer,
@@ -265,7 +266,7 @@ impl Type {
 pub type Block = Vec<Spanned<Stmt>>;
 
 /// Statements
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Stmt {
     /// Variable declaration: name: Type = expr;
     Let {
@@ -313,14 +314,14 @@ pub enum Stmt {
 }
 
 /// Match arm
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatchArm {
     pub pattern: Pattern,
     pub body: Block,
 }
 
 /// Pattern for matching
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Pattern {
     /// Wildcard _
     Wildcard,
@@ -333,7 +334,7 @@ pub enum Pattern {
 }
 
 /// Expressions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expr {
     /// Literal values
     Literal(Literal),
@@ -418,14 +419,14 @@ pub enum Expr {
 }
 
 /// Parts of interpolated string
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StringPart {
     Literal(String),
     Expr(Spanned<Expr>),
 }
 
 /// Literal values
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Literal {
     Integer(i64),
     Float(f64),
@@ -436,7 +437,7 @@ pub enum Literal {
 }
 
 /// Binary operators
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BinOp {
     Add,
     Sub,
@@ -467,7 +468,7 @@ impl BinOp {
 }
 
 /// Unary operators
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum UnaryOp {
     Neg,
     Not,

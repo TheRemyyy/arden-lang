@@ -35,3 +35,5 @@ web/dist
 examples/test_no_import/test_no_import
 examples/multi_file_depth_project/multi_file_depth_project
 examples/multi_file_project/multi_file_project
+examples/.apexcache/
+.apexcache/

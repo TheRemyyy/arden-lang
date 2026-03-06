@@ -49,6 +49,11 @@ Optimization note:
 - In project mode, `target` in `apex.toml` is passed to Clang as `--target <triple>` when set.
 - In single-file mode (`apex compile file.apex` / `apex run file.apex`), Apex defaults to `-O3` and uses native tuning when available.
 
+Build cache note:
+- `apex build` now writes cache metadata into `.apexcache/` in the project root.
+- If no source/config/build-mode inputs changed and output artifact exists, build exits early with `Up to date ... (build cache)`.
+- For changed projects, parser-level cache is reused per unchanged file from `.apexcache/parsed/`, reducing front-end rebuild overhead.
+
 ## Compile Command Flags
 
 The `compile` command supports extra codegen controls for single-file workflows:

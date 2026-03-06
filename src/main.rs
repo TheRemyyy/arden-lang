@@ -20,8 +20,10 @@ mod typeck;
 use clap::{Parser as ClapParser, Subcommand};
 use colored::*;
 use inkwell::context::Context;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
@@ -254,6 +256,210 @@ fn current_dir_checked() -> Result<PathBuf, String> {
     })
 }
 
+fn project_cache_file(project_root: &Path) -> PathBuf {
+    project_root.join(".apexcache").join("build_fingerprint")
+}
+
+fn project_build_artifact_exists(output_path: &Path, emit_llvm: bool) -> bool {
+    if emit_llvm {
+        output_path.with_extension("ll").exists()
+    } else {
+        output_path.exists()
+    }
+}
+
+fn compute_project_fingerprint(
+    project_root: &Path,
+    config: &ProjectConfig,
+    emit_llvm: bool,
+    do_check: bool,
+) -> Result<String, String> {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
+    env!("CARGO_PKG_VERSION").hash(&mut hasher);
+    config.name.hash(&mut hasher);
+    config.version.hash(&mut hasher);
+    config.entry.hash(&mut hasher);
+    config.output.hash(&mut hasher);
+    config.opt_level.hash(&mut hasher);
+    config.target.hash(&mut hasher);
+    format!("{:?}", config.output_kind).hash(&mut hasher);
+    config.link_search.hash(&mut hasher);
+    config.link_libs.hash(&mut hasher);
+    config.link_args.hash(&mut hasher);
+    emit_llvm.hash(&mut hasher);
+    do_check.hash(&mut hasher);
+
+    let mut files = config.get_source_files(project_root);
+    files.sort();
+    for file in files {
+        file.hash(&mut hasher);
+        let meta = fs::metadata(&file).map_err(|e| {
+            format!(
+                "{}: Failed to read metadata for '{}': {}",
+                "error".red().bold(),
+                file.display(),
+                e
+            )
+        })?;
+        meta.len().hash(&mut hasher);
+
+        let modified = meta
+            .modified()
+            .map_err(|e| {
+                format!(
+                    "{}: Failed to read modified time for '{}': {}",
+                    "error".red().bold(),
+                    file.display(),
+                    e
+                )
+            })?
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| {
+                format!(
+                    "{}: Invalid modified time for '{}': {}",
+                    "error".red().bold(),
+                    file.display(),
+                    e
+                )
+            })?;
+        modified.as_secs().hash(&mut hasher);
+        modified.subsec_nanos().hash(&mut hasher);
+    }
+
+    Ok(format!("{:016x}", hasher.finish()))
+}
+
+fn load_cached_fingerprint(project_root: &Path) -> Option<String> {
+    fs::read_to_string(project_cache_file(project_root))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn save_cached_fingerprint(project_root: &Path, fingerprint: &str) -> Result<(), String> {
+    let cache_file = project_cache_file(project_root);
+    if let Some(parent) = cache_file.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "{}: Failed to create cache directory '{}': {}",
+                "error".red().bold(),
+                parent.display(),
+                e
+            )
+        })?;
+    }
+    fs::write(&cache_file, fingerprint).map_err(|e| {
+        format!(
+            "{}: Failed to write build cache '{}': {}",
+            "error".red().bold(),
+            cache_file.display(),
+            e
+        )
+    })
+}
+
+const PARSE_CACHE_SCHEMA: &str = "v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ParsedFileCacheEntry {
+    schema: String,
+    compiler_version: String,
+    source_fingerprint: String,
+    namespace: String,
+    program: Program,
+    imports: Vec<ImportDecl>,
+}
+
+fn parsed_file_cache_path(project_root: &Path, file: &Path) -> PathBuf {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    file.hash(&mut hasher);
+    project_root
+        .join(".apexcache")
+        .join("parsed")
+        .join(format!("{:016x}.json", hasher.finish()))
+}
+
+fn source_fingerprint(source: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn load_parsed_file_cache(
+    project_root: &Path,
+    file: &Path,
+    source_fp: &str,
+) -> Result<Option<ParsedFileCacheEntry>, String> {
+    let path = parsed_file_cache_path(project_root, file);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "{}: Failed to read parse cache '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })?;
+
+    let entry: ParsedFileCacheEntry = serde_json::from_str(&raw).map_err(|e| {
+        format!(
+            "{}: Failed to parse cache '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })?;
+
+    if entry.schema != PARSE_CACHE_SCHEMA
+        || entry.compiler_version != env!("CARGO_PKG_VERSION")
+        || entry.source_fingerprint != source_fp
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(entry))
+}
+
+fn save_parsed_file_cache(
+    project_root: &Path,
+    file: &Path,
+    entry: &ParsedFileCacheEntry,
+) -> Result<(), String> {
+    let path = parsed_file_cache_path(project_root, file);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "{}: Failed to create parse cache directory '{}': {}",
+                "error".red().bold(),
+                parent.display(),
+                e
+            )
+        })?;
+    }
+
+    let json = serde_json::to_string(entry).map_err(|e| {
+        format!(
+            "{}: Failed to serialize parse cache '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })?;
+
+    fs::write(&path, json).map_err(|e| {
+        format!(
+            "{}: Failed to write parse cache '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })
+}
+
 /// Create a new project
 fn new_project(name: &str, path: Option<&Path>) -> Result<(), String> {
     let project_path = path
@@ -396,6 +602,20 @@ fn build_project(_release: bool, emit_llvm: bool, do_check: bool) -> Result<(), 
     // Validate project
     config.validate(&project_root)?;
 
+    let output_path = project_root.join(&config.output);
+    let fingerprint = compute_project_fingerprint(&project_root, &config, emit_llvm, do_check)?;
+    if let Some(cached) = load_cached_fingerprint(&project_root) {
+        if cached == fingerprint && project_build_artifact_exists(&output_path, emit_llvm) {
+            println!(
+                "{} {} ({})",
+                "Up to date".green().bold(),
+                config.name.cyan(),
+                "build cache".dimmed()
+            );
+            return Ok(());
+        }
+    }
+
     println!(
         "{} {} v{}",
         "Building".green().bold(),
@@ -414,6 +634,7 @@ fn build_project(_release: bool, emit_llvm: bool, do_check: bool) -> Result<(), 
     let mut function_collisions: Vec<(String, String, String)> = Vec::new();
     let mut class_collisions: Vec<(String, String, String)> = Vec::new();
     let mut module_collisions: Vec<(String, String, String)> = Vec::new();
+    let mut parse_cache_hits: usize = 0;
 
     for file in &files {
         let source = fs::read_to_string(file).map_err(|e| {
@@ -430,41 +651,57 @@ fn build_project(_release: bool, emit_llvm: bool, do_check: bool) -> Result<(), 
             .and_then(|s| s.to_str())
             .unwrap_or("unknown.apex");
 
-        // Parse the file
-        let tokens = lexer::tokenize(&source).map_err(|e| {
-            format!(
-                "{}: Lexer error in {}: {}",
-                "error".red().bold(),
-                filename,
-                e
-            )
-        })?;
+        let source_fp = source_fingerprint(&source);
+        let (namespace, program, imports) =
+            if let Some(cache) = load_parsed_file_cache(&project_root, file, &source_fp)? {
+                parse_cache_hits += 1;
+                (cache.namespace, cache.program, cache.imports)
+            } else {
+                // Parse the file
+                let tokens = lexer::tokenize(&source).map_err(|e| {
+                    format!(
+                        "{}: Lexer error in {}: {}",
+                        "error".red().bold(),
+                        filename,
+                        e
+                    )
+                })?;
 
-        let mut parser = Parser::new(tokens);
-        let program = parser.parse_program().map_err(|e| {
-            format!(
-                "{}: Parse error in {}: {}",
-                "error".red().bold(),
-                filename,
-                e.message
-            )
-        })?;
+                let mut parser = Parser::new(tokens);
+                let program = parser.parse_program().map_err(|e| {
+                    format!(
+                        "{}: Parse error in {}: {}",
+                        "error".red().bold(),
+                        filename,
+                        e.message
+                    )
+                })?;
 
-        // Extract namespace from package declaration
-        let namespace = program
-            .package
-            .clone()
-            .unwrap_or_else(|| "global".to_string());
+                let namespace = program
+                    .package
+                    .clone()
+                    .unwrap_or_else(|| "global".to_string());
+                let imports: Vec<ImportDecl> = program
+                    .declarations
+                    .iter()
+                    .filter_map(|d| match &d.node {
+                        Decl::Import(import) => Some(import.clone()),
+                        _ => None,
+                    })
+                    .collect();
 
-        // Extract imports
-        let imports: Vec<ImportDecl> = program
-            .declarations
-            .iter()
-            .filter_map(|d| match &d.node {
-                Decl::Import(import) => Some(import.clone()),
-                _ => None,
-            })
-            .collect();
+                let cache_entry = ParsedFileCacheEntry {
+                    schema: PARSE_CACHE_SCHEMA.to_string(),
+                    compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+                    source_fingerprint: source_fp,
+                    namespace: namespace.clone(),
+                    program: program.clone(),
+                    imports: imports.clone(),
+                };
+                save_parsed_file_cache(&project_root, file, &cache_entry)?;
+
+                (namespace, program, imports)
+            };
 
         // Extract symbol definitions for global maps
         let class_entry = namespace_class_map.entry(namespace.clone()).or_default();
@@ -517,6 +754,15 @@ fn build_project(_release: bool, emit_llvm: bool, do_check: bool) -> Result<(), 
         }
 
         parsed_files.push((file.clone(), namespace, program, imports));
+    }
+
+    if parse_cache_hits > 0 {
+        println!(
+            "{} Reused parse cache for {}/{} files",
+            "→".cyan(),
+            parse_cache_hits,
+            files.len()
+        );
     }
 
     if !function_collisions.is_empty() {
@@ -634,7 +880,6 @@ fn build_project(_release: bool, emit_llvm: bool, do_check: bool) -> Result<(), 
     }
 
     // Compile combined program AST (import/type checks already done above).
-    let output_path = project_root.join(&config.output);
     let link = LinkConfig {
         opt_level: Some(&config.opt_level),
         target: config.target.as_deref(),
@@ -657,6 +902,8 @@ fn build_project(_release: bool, emit_llvm: bool, do_check: bool) -> Result<(), 
         config.name.cyan(),
         output_path.display()
     );
+
+    save_cached_fingerprint(&project_root, &fingerprint)?;
 
     Ok(())
 }
