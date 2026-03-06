@@ -874,11 +874,38 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
     let mut function_names = Vec::new();
     let mut class_names = Vec::new();
     let mut module_names = Vec::new();
+
+    fn collect_function_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
+        match decl {
+            Decl::Function(func) => {
+                if let Some(module_name) = module_prefix {
+                    out.push(format!("{}__{}", module_name, func.name));
+                } else {
+                    out.push(func.name.clone());
+                }
+            }
+            Decl::Module(module) => {
+                let next_prefix = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, module.name)
+                } else {
+                    module.name.clone()
+                };
+                for inner in &module.declarations {
+                    collect_function_names(&inner.node, Some(next_prefix.clone()), out);
+                }
+            }
+            Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
+        }
+    }
+
     for decl in &program.declarations {
         match &decl.node {
-            Decl::Function(func) => function_names.push(func.name.clone()),
+            Decl::Function(_) => collect_function_names(&decl.node, None, &mut function_names),
+            Decl::Module(module) => {
+                module_names.push(module.name.clone());
+                collect_function_names(&decl.node, None, &mut function_names);
+            }
             Decl::Class(class) => class_names.push(class.name.clone()),
-            Decl::Module(module) => module_names.push(module.name.clone()),
             _ => {}
         }
     }

@@ -235,36 +235,47 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn should_compile_decl(&self, decl: &Decl, active_symbols: &HashSet<String>) -> bool {
+        fn module_has_active_symbol(
+            module: &ModuleDecl,
+            prefix: &str,
+            active_symbols: &HashSet<String>,
+        ) -> bool {
+            if active_symbols.contains(prefix) {
+                return true;
+            }
+            for inner in &module.declarations {
+                match &inner.node {
+                    Decl::Function(func) => {
+                        if active_symbols.contains(&format!("{}__{}", prefix, func.name)) {
+                            return true;
+                        }
+                    }
+                    Decl::Class(class) => {
+                        if active_symbols.contains(&format!("{}__{}", prefix, class.name)) {
+                            return true;
+                        }
+                    }
+                    Decl::Enum(en) => {
+                        if active_symbols.contains(&format!("{}__{}", prefix, en.name)) {
+                            return true;
+                        }
+                    }
+                    Decl::Module(nested) => {
+                        let nested_prefix = format!("{}__{}", prefix, nested.name);
+                        if module_has_active_symbol(nested, &nested_prefix, active_symbols) {
+                            return true;
+                        }
+                    }
+                    Decl::Interface(_) | Decl::Import(_) => {}
+                }
+            }
+            false
+        }
+
         match decl {
             Decl::Function(func) => active_symbols.contains(&func.name),
             Decl::Class(class) => active_symbols.contains(&class.name),
-            Decl::Module(module) => {
-                if active_symbols.contains(&module.name) {
-                    return true;
-                }
-                for inner in &module.declarations {
-                    match &inner.node {
-                        Decl::Function(func) => {
-                            if active_symbols.contains(&format!("{}__{}", module.name, func.name)) {
-                                return true;
-                            }
-                        }
-                        Decl::Class(class) => {
-                            if active_symbols.contains(&format!("{}__{}", module.name, class.name))
-                            {
-                                return true;
-                            }
-                        }
-                        Decl::Enum(en) => {
-                            if active_symbols.contains(&format!("{}__{}", module.name, en.name)) {
-                                return true;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                false
-            }
+            Decl::Module(module) => module_has_active_symbol(module, &module.name, active_symbols),
             Decl::Enum(en) => active_symbols.contains(&en.name),
             Decl::Interface(_) | Decl::Import(_) => false,
         }
@@ -336,6 +347,18 @@ impl<'ctx> Codegen<'ctx> {
         None
     }
 
+    fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
+        match expr {
+            Expr::Ident(name) => Some(vec![name.clone()]),
+            Expr::Field { object, field } => {
+                let mut parts = Self::flatten_field_chain(&object.node)?;
+                parts.push(field.clone());
+                Some(parts)
+            }
+            _ => None,
+        }
+    }
+
     pub fn declare_enum(&mut self, en: &EnumDecl) -> Result<()> {
         let payload_slots = en
             .variants
@@ -378,49 +401,11 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn declare_module(&mut self, module: &ModuleDecl) -> Result<()> {
-        // Declare module contents with prefixed names
-        for decl in &module.declarations {
-            match &decl.node {
-                Decl::Function(func) => {
-                    let mut prefixed_func = func.clone();
-                    prefixed_func.name = format!("{}__{}", module.name, func.name);
-                    self.declare_function(&prefixed_func)?;
-                }
-                Decl::Class(class) => {
-                    let mut prefixed_class = class.clone();
-                    prefixed_class.name = format!("{}__{}", module.name, class.name);
-                    self.declare_class(&prefixed_class)?;
-                }
-                Decl::Enum(en) => {
-                    let mut prefixed_enum = en.clone();
-                    prefixed_enum.name = format!("{}__{}", module.name, en.name);
-                    self.declare_enum(&prefixed_enum)?;
-                }
-                _ => {}
-            }
-        }
-        Ok(())
+        self.declare_module_with_prefix(module, &module.name)
     }
 
     pub fn compile_module(&mut self, module: &ModuleDecl) -> Result<()> {
-        // Compile module contents
-        for decl in &module.declarations {
-            match &decl.node {
-                Decl::Function(func) => {
-                    let mut prefixed_func = func.clone();
-                    prefixed_func.name = format!("{}__{}", module.name, func.name);
-                    self.compile_function(&prefixed_func)?;
-                }
-                Decl::Class(class) => {
-                    let mut prefixed_class = class.clone();
-                    prefixed_class.name = format!("{}__{}", module.name, class.name);
-                    self.compile_class(&prefixed_class)?;
-                }
-                Decl::Enum(_) => {}
-                _ => {}
-            }
-        }
-        Ok(())
+        self.compile_module_with_prefix(module, &module.name)
     }
 
     fn compile_module_filtered(
@@ -428,26 +413,99 @@ impl<'ctx> Codegen<'ctx> {
         module: &ModuleDecl,
         active_symbols: &HashSet<String>,
     ) -> Result<()> {
+        self.compile_module_filtered_with_prefix(module, &module.name, active_symbols)
+    }
+
+    fn declare_module_with_prefix(&mut self, module: &ModuleDecl, prefix: &str) -> Result<()> {
         for decl in &module.declarations {
             match &decl.node {
                 Decl::Function(func) => {
-                    let prefixed = format!("{}__{}", module.name, func.name);
-                    if active_symbols.contains(&module.name) || active_symbols.contains(&prefixed) {
+                    let mut prefixed_func = func.clone();
+                    prefixed_func.name = format!("{}__{}", prefix, func.name);
+                    self.declare_function(&prefixed_func)?;
+                }
+                Decl::Class(class) => {
+                    let mut prefixed_class = class.clone();
+                    prefixed_class.name = format!("{}__{}", prefix, class.name);
+                    self.declare_class(&prefixed_class)?;
+                }
+                Decl::Enum(en) => {
+                    let mut prefixed_enum = en.clone();
+                    prefixed_enum.name = format!("{}__{}", prefix, en.name);
+                    self.declare_enum(&prefixed_enum)?;
+                }
+                Decl::Module(nested) => {
+                    let nested_prefix = format!("{}__{}", prefix, nested.name);
+                    self.declare_module_with_prefix(nested, &nested_prefix)?;
+                }
+                Decl::Interface(_) | Decl::Import(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn compile_module_with_prefix(&mut self, module: &ModuleDecl, prefix: &str) -> Result<()> {
+        for decl in &module.declarations {
+            match &decl.node {
+                Decl::Function(func) => {
+                    let mut prefixed_func = func.clone();
+                    prefixed_func.name = format!("{}__{}", prefix, func.name);
+                    self.compile_function(&prefixed_func)?;
+                }
+                Decl::Class(class) => {
+                    let mut prefixed_class = class.clone();
+                    prefixed_class.name = format!("{}__{}", prefix, class.name);
+                    self.compile_class(&prefixed_class)?;
+                }
+                Decl::Enum(_) => {}
+                Decl::Module(nested) => {
+                    let nested_prefix = format!("{}__{}", prefix, nested.name);
+                    self.compile_module_with_prefix(nested, &nested_prefix)?;
+                }
+                Decl::Interface(_) | Decl::Import(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn compile_module_filtered_with_prefix(
+        &mut self,
+        module: &ModuleDecl,
+        prefix: &str,
+        active_symbols: &HashSet<String>,
+    ) -> Result<()> {
+        if active_symbols.contains(prefix) {
+            return self.compile_module_with_prefix(module, prefix);
+        }
+
+        for decl in &module.declarations {
+            match &decl.node {
+                Decl::Function(func) => {
+                    let prefixed = format!("{}__{}", prefix, func.name);
+                    if active_symbols.contains(&prefixed) {
                         let mut prefixed_func = func.clone();
                         prefixed_func.name = prefixed;
                         self.compile_function(&prefixed_func)?;
                     }
                 }
                 Decl::Class(class) => {
-                    let prefixed = format!("{}__{}", module.name, class.name);
-                    if active_symbols.contains(&module.name) || active_symbols.contains(&prefixed) {
+                    let prefixed = format!("{}__{}", prefix, class.name);
+                    if active_symbols.contains(&prefixed) {
                         let mut prefixed_class = class.clone();
                         prefixed_class.name = prefixed;
                         self.compile_class(&prefixed_class)?;
                     }
                 }
                 Decl::Enum(_) => {}
-                _ => {}
+                Decl::Module(nested) => {
+                    let nested_prefix = format!("{}__{}", prefix, nested.name);
+                    self.compile_module_filtered_with_prefix(
+                        nested,
+                        &nested_prefix,
+                        active_symbols,
+                    )?;
+                }
+                Decl::Interface(_) | Decl::Import(_) => {}
             }
         }
         Ok(())
@@ -3271,6 +3329,32 @@ impl<'ctx> Codegen<'ctx> {
                 // Module dot syntax: Module.func(...) -> Module__func(...)
                 let mangled = format!("{}__{}", resolved_owner, field);
                 if let Some((func, _)) = self.functions.get(&mangled).cloned() {
+                    let mut compiled_args: Vec<BasicValueEnum> = vec![self
+                        .context
+                        .ptr_type(AddressSpace::default())
+                        .const_null()
+                        .into()];
+                    for a in args {
+                        compiled_args.push(self.compile_expr(&a.node)?);
+                    }
+                    let args_meta: Vec<BasicMetadataValueEnum> =
+                        compiled_args.iter().map(|a| (*a).into()).collect();
+                    let call = self.builder.build_call(func, &args_meta, "call").unwrap();
+                    return match call.try_as_basic_value() {
+                        ValueKind::Basic(val) => Ok(val),
+                        ValueKind::Instruction(_) => {
+                            Ok(self.context.i8_type().const_int(0, false).into())
+                        }
+                    };
+                }
+            }
+        }
+
+        // Nested module-style calls: A.X.f(...) -> A__X__f(...)
+        if let Some(path_parts) = Self::flatten_field_chain(callee) {
+            if path_parts.len() >= 3 {
+                let candidate = path_parts.join("__");
+                if let Some((func, _)) = self.functions.get(&candidate).cloned() {
                     let mut compiled_args: Vec<BasicValueEnum> = vec![self
                         .context
                         .ptr_type(AddressSpace::default())

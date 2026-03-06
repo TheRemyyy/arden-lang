@@ -495,6 +495,18 @@ fn is_shadowed(name: &str, scopes: &[HashSet<String>]) -> bool {
     scopes.iter().rev().any(|scope| scope.contains(name))
 }
 
+fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
+    match expr {
+        Expr::Ident(name) => Some(vec![name.clone()]),
+        Expr::Field { object, field } => {
+            let mut parts = flatten_field_chain(&object.node)?;
+            parts.push(field.clone());
+            Some(parts)
+        }
+        _ => None,
+    }
+}
+
 fn push_scope(scopes: &mut Vec<HashSet<String>>) {
     scopes.push(HashSet::new());
 }
@@ -932,6 +944,116 @@ fn rewrite_expr_calls_for_project(
             type_args,
         } => {
             let rewritten_callee = match &callee.node {
+                // Namespace alias + module dot syntax:
+                // import lib as l; l.Tools.ping() -> lib__Tools__ping()
+                Expr::Field { object, field }
+                    if matches!(&object.node, Expr::Field { .. })
+                        && flatten_field_chain(&object.node)
+                            .is_some_and(|parts| !parts.is_empty()) =>
+                {
+                    let chain_parts =
+                        flatten_field_chain(&object.node).expect("guarded by is_some");
+                    let alias_ident = &chain_parts[0];
+
+                    if is_shadowed(alias_ident, scopes) {
+                        rewrite_expr_calls_for_project(
+                            &callee.node,
+                            current_namespace,
+                            entry_namespace,
+                            local_functions,
+                            imported_map,
+                            global_function_map,
+                            local_classes,
+                            imported_classes,
+                            global_class_map,
+                            local_modules,
+                            imported_modules,
+                            global_module_map,
+                            scopes,
+                        )
+                    } else if let Some((ns, symbol_name)) = imported_modules.get(alias_ident) {
+                        if symbol_name.is_empty() {
+                            let candidate = if chain_parts.len() > 1 {
+                                format!("{}__{}", chain_parts[1..].join("__"), field)
+                            } else {
+                                field.to_string()
+                            };
+                            if let Some(owner_ns) = global_function_map.get(&candidate) {
+                                if owner_ns == ns {
+                                    Expr::Ident(mangle_project_symbol(
+                                        owner_ns,
+                                        entry_namespace,
+                                        &candidate,
+                                    ))
+                                } else {
+                                    rewrite_expr_calls_for_project(
+                                        &callee.node,
+                                        current_namespace,
+                                        entry_namespace,
+                                        local_functions,
+                                        imported_map,
+                                        global_function_map,
+                                        local_classes,
+                                        imported_classes,
+                                        global_class_map,
+                                        local_modules,
+                                        imported_modules,
+                                        global_module_map,
+                                        scopes,
+                                    )
+                                }
+                            } else {
+                                rewrite_expr_calls_for_project(
+                                    &callee.node,
+                                    current_namespace,
+                                    entry_namespace,
+                                    local_functions,
+                                    imported_map,
+                                    global_function_map,
+                                    local_classes,
+                                    imported_classes,
+                                    global_class_map,
+                                    local_modules,
+                                    imported_modules,
+                                    global_module_map,
+                                    scopes,
+                                )
+                            }
+                        } else {
+                            rewrite_expr_calls_for_project(
+                                &callee.node,
+                                current_namespace,
+                                entry_namespace,
+                                local_functions,
+                                imported_map,
+                                global_function_map,
+                                local_classes,
+                                imported_classes,
+                                global_class_map,
+                                local_modules,
+                                imported_modules,
+                                global_module_map,
+                                scopes,
+                            )
+                        }
+                    } else {
+                        rewrite_expr_calls_for_project(
+                            &callee.node,
+                            current_namespace,
+                            entry_namespace,
+                            local_functions,
+                            imported_map,
+                            global_function_map,
+                            local_classes,
+                            imported_classes,
+                            global_class_map,
+                            local_modules,
+                            imported_modules,
+                            global_module_map,
+                            scopes,
+                        )
+                    }
+                }
                 Expr::Field { object, field }
                     if matches!(&object.node, Expr::Ident(_))
                         && !matches!(&object.node, Expr::Ident(name) if is_shadowed(name, scopes)) =>
@@ -1821,6 +1943,148 @@ mod tests {
             panic!("expected rewritten ident callee");
         };
         assert_eq!(name, "math_utils__factorial");
+    }
+
+    #[test]
+    fn rewrites_namespace_alias_nested_module_dot_calls() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Function(ast::FunctionDecl {
+                name: "main".to_string(),
+                generic_params: vec![],
+                params: vec![],
+                is_variadic: false,
+                extern_abi: None,
+                extern_link_name: None,
+                return_type: ast::Type::None,
+                body: vec![sp(Stmt::Expr(sp(Expr::Call {
+                    callee: Box::new(sp(Expr::Field {
+                        object: Box::new(sp(Expr::Field {
+                            object: Box::new(sp(Expr::Ident("l".to_string()))),
+                            field: "Tools".to_string(),
+                        })),
+                        field: "ping".to_string(),
+                    })),
+                    args: vec![],
+                    type_args: vec![],
+                })))],
+                is_async: false,
+                is_extern: false,
+                visibility: ast::Visibility::Private,
+                attributes: vec![],
+            }))],
+        };
+
+        let imports = vec![ast::ImportDecl {
+            path: "lib".to_string(),
+            alias: Some("l".to_string()),
+        }];
+        let namespace_functions = HashMap::from([
+            ("app".to_string(), HashSet::from(["main".to_string()])),
+            (
+                "lib".to_string(),
+                HashSet::from(["Tools__ping".to_string()]),
+            ),
+        ]);
+        let global_function_map = HashMap::from([("Tools__ping".to_string(), "lib".to_string())]);
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &namespace_functions,
+            &global_function_map,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &imports,
+        );
+
+        let Decl::Function(func) = &rewritten.declarations[0].node else {
+            panic!("expected function declaration");
+        };
+        let Stmt::Expr(call_stmt) = &func.body[0].node else {
+            panic!("expected expr statement");
+        };
+        let Expr::Call { callee, .. } = &call_stmt.node else {
+            panic!("expected call expression");
+        };
+        let Expr::Ident(name) = &callee.node else {
+            panic!("expected rewritten ident callee");
+        };
+        assert_eq!(name, "lib__Tools__ping");
+    }
+
+    #[test]
+    fn rewrites_namespace_alias_deep_nested_module_dot_calls() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Function(ast::FunctionDecl {
+                name: "main".to_string(),
+                generic_params: vec![],
+                params: vec![],
+                is_variadic: false,
+                extern_abi: None,
+                extern_link_name: None,
+                return_type: ast::Type::None,
+                body: vec![sp(Stmt::Expr(sp(Expr::Call {
+                    callee: Box::new(sp(Expr::Field {
+                        object: Box::new(sp(Expr::Field {
+                            object: Box::new(sp(Expr::Field {
+                                object: Box::new(sp(Expr::Ident("l".to_string()))),
+                                field: "A".to_string(),
+                            })),
+                            field: "X".to_string(),
+                        })),
+                        field: "f".to_string(),
+                    })),
+                    args: vec![],
+                    type_args: vec![],
+                })))],
+                is_async: false,
+                is_extern: false,
+                visibility: ast::Visibility::Private,
+                attributes: vec![],
+            }))],
+        };
+
+        let imports = vec![ast::ImportDecl {
+            path: "lib".to_string(),
+            alias: Some("l".to_string()),
+        }];
+        let namespace_functions = HashMap::from([
+            ("app".to_string(), HashSet::from(["main".to_string()])),
+            ("lib".to_string(), HashSet::from(["A__X__f".to_string()])),
+        ]);
+        let global_function_map = HashMap::from([("A__X__f".to_string(), "lib".to_string())]);
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &namespace_functions,
+            &global_function_map,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &imports,
+        );
+
+        let Decl::Function(func) = &rewritten.declarations[0].node else {
+            panic!("expected function declaration");
+        };
+        let Stmt::Expr(call_stmt) = &func.body[0].node else {
+            panic!("expected expr statement");
+        };
+        let Expr::Call { callee, .. } = &call_stmt.node else {
+            panic!("expected call expression");
+        };
+        let Expr::Ident(name) = &callee.node else {
+            panic!("expected rewritten ident callee");
+        };
+        assert_eq!(name, "lib__A__X__f");
     }
 
     #[test]

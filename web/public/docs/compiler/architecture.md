@@ -57,9 +57,14 @@ This document describes the internal architecture of the Apex compiler.
   - Specific-symbol aliases (for example `import std.math.Math__abs as abs_fn`) are resolved across type checking and code generation, so aliased calls compile and execute correctly.
   - Alias canonicalization now uses symbol-table/registry lookups instead of brittle namespace-prefix checks.
   - Project rewrite now resolves namespace-only alias imports (`import math_utils as mu`) for module-style calls (`mu.factorial(...)`) to correct mangled symbols.
+  - Project rewrite now also resolves nested module calls through namespace aliases (for example `import lib as l; l.Tools.ping()` and `l.A.X.f()`) to deep mangled project symbols.
 - **Import alias diagnostics hardening**:
   - Unknown namespace aliases are now surfaced during import checking when used in module-style calls, reducing delayed downstream failures.
   - Unknown alias diagnostics now emit actionable guidance for valid alias imports instead of suggesting invalid synthetic import paths.
+  - Invalid dotted namespace alias paths now consistently route to namespace-alias diagnostics (`import <namespace> as <alias>;`) instead of falling through to generic later-stage errors.
+- **Nested module codegen hardening**:
+  - Function symbol extraction now recurses through nested modules in project parsing/import-check phases.
+  - Filtered project compilation now recursively declares and compiles nested module symbols when a parent module namespace is active, preventing missing-symbol linker failures for deep module calls.
 - **Shared stdlib registry**:
   - Compiler stages now reuse a single lazy-initialized stdlib registry (`OnceLock`) instead of repeatedly constructing stdlib lookup maps during hot-path analysis and lowering.
 - **Lint scope analysis hardening**:

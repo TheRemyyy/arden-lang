@@ -146,8 +146,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed test-runner `main` stripping to support `public/private/protected` and `async` main signatures.
 - Fixed parser string interpolation fallback for unclosed `{...` sequences so they remain literal text instead of being interpreted as expressions.
 - Fixed project namespace alias call lowering so valid imports like `import math_utils as mu; mu.factorial(...)` compile and run in multi-file projects.
+- Fixed project namespace alias lowering for nested module chains:
+  - `import lib as l; l.Tools.ping()` now rewrites to the correct mangled symbol.
+  - deep chains like `l.A.X.f()` now resolve end-to-end instead of falling through to undefined-variable/linker failures.
 - Fixed import checker diagnostics for unknown namespace aliases so invalid alias usage is reported during import checking (instead of surfacing later as generic undefined-variable/codegen failures).
 - Fixed unknown namespace-alias import-check hint text to be actionable (`import <namespace> as <alias>;`) instead of emitting invalid synthetic import suggestions.
+- Fixed invalid dotted namespace alias handling (`import nope.ns as n; n.call();`) to consistently produce unknown-namespace-alias diagnostics during import checking.
 - Fixed CI `cli-smoke` compiler path resolution when reusing downloaded release artifact:
   - `scripts/ci_cli_smoke.sh` now normalizes relative `APEX_COMPILER_PATH` to absolute path before changing working directories.
   - CI now passes absolute compiler path via `${{ github.workspace }}/target/release/apex-compiler`.
@@ -182,6 +186,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - alias calls now resolve generically from `StdLib` (`std.io`, `std.math`, `std.string`, `std.system`, `std.time`, `std.fs`, ...).
   - avoids per-namespace/per-module hardcoded branching and reduces risk of future alias regressions when stdlib surface changes.
 - Fixed import checker traversal bug where alias-resolved callee handling (`io.println(...)`) could skip validation of nested argument calls; missing imports inside arguments (for example `Math.abs` without `std.math`) are now correctly reported.
+- Fixed nested module function namespace extraction/collection to recurse through deep module trees (`Outer__Inner__f`), avoiding missed symbol ownership during import checking and project rewrite.
 - Fixed single-file borrow checking for stdlib namespace aliases (`import std.io as io; io.println(s);`):
   - alias calls now resolve to stdlib borrow-mode signatures in borrow checker (no false move on borrowed stdlib args),
   - and borrow arguments in function calls are now treated as temporary call-site borrows released after the call expression.
@@ -195,6 +200,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed codegen index access on `List<T>` values to handle materialized list structs (`{capacity,length,data}`) without pointer-cast panics.
 - Fixed codegen lvalue generation for indexed assignment (`xs[i] = ...`, `xs[i] += ...`) so check-pass programs no longer fail with `Invalid lvalue`.
 - Fixed codegen lvalue support for indexed assignment through field-owned lists (`obj.list[i] += ...`) and nested field assignment type resolution (`a.b.v += ...`).
+- Fixed filtered project codegen for nested modules:
+  - nested module functions are now declared/compiled recursively when a parent module namespace is active,
+  - prevents `undefined reference` link failures for deep module symbols referenced through namespace aliases.
 - Fixed parser behavior where visibility modifiers on `constructor`/`destructor` were silently ignored.
 - Fixed formatter roundtrip stability for expression statements starting with `match`/`if`:
   - `apex fmt` now emits parenthesized expression-statement forms (`(match (...){...});`, `(if (...){...} else {...});`) to avoid reparsing as statement nodes with different semantics.

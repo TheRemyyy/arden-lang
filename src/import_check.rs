@@ -150,7 +150,20 @@ impl<'a> ImportChecker<'a> {
                 // remains conservative and does not auto-import by alias identifier.
                 if known_namespaces.contains(&path) {
                     namespace_aliases.insert(alias_name, path.clone());
-                } else if !path.contains('.') {
+                } else if path.contains('.') {
+                    let mut parts = path.split('.').collect::<Vec<_>>();
+                    let symbol = parts.pop().unwrap_or_default();
+                    let symbol_ns = parts.join(".");
+                    let is_known_symbol_alias = function_namespaces
+                        .get(symbol)
+                        .is_some_and(|ns| ns == &symbol_ns)
+                        || stdlib
+                            .get_namespace(symbol)
+                            .is_some_and(|ns| ns == &symbol_ns);
+                    if !is_known_symbol_alias {
+                        invalid_namespace_aliases.insert(alias_name);
+                    }
+                } else {
                     invalid_namespace_aliases.insert(alias_name);
                 }
                 continue;
@@ -600,7 +613,7 @@ pub fn extract_function_namespaces(program: &Program, namespace: &str) -> HashMa
         out: &mut HashMap<String, String>,
         decl: &Decl,
         namespace: &str,
-        module_prefix: Option<&str>,
+        module_prefix: Option<String>,
     ) {
         match decl {
             Decl::Function(func) => {
@@ -611,8 +624,13 @@ pub fn extract_function_namespaces(program: &Program, namespace: &str) -> HashMa
                 }
             }
             Decl::Module(module) => {
+                let next_prefix = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, module.name)
+                } else {
+                    module.name.clone()
+                };
                 for inner in &module.declarations {
-                    walk_decl(out, &inner.node, namespace, Some(&module.name));
+                    walk_decl(out, &inner.node, namespace, Some(next_prefix.clone()));
                 }
             }
             Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
@@ -730,6 +748,21 @@ function main(): None {
         let errors = check_import_errors(source);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].function_name, "dne.print");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_dotted_namespace_alias_reports_import_error_on_use() {
+        let source = r#"
+import nope.ns as n;
+function main(): None {
+    n.call();
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "n.call");
         assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
     }
 
@@ -870,6 +903,23 @@ module MathEx {
         let map = extract_function_namespaces(&program, "demo");
         assert!(map.contains_key("MathEx__addOne"));
         assert!(!map.contains_key("addOne"));
+    }
+
+    #[test]
+    fn extracts_nested_module_functions_as_deep_mangled_namespaces() {
+        let source = r#"
+module Outer {
+    module Inner {
+        function ping(): Integer { return 1; }
+    }
+}
+"#;
+        let tokens = tokenize(source).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().expect("parse");
+        let map = extract_function_namespaces(&program, "demo");
+        assert!(map.contains_key("Outer__Inner__ping"));
+        assert!(!map.contains_key("Inner__ping"));
     }
 
     #[test]
