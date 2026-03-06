@@ -33,7 +33,7 @@ benchmark/
 
 ## Requirements
 
-- Linux/macOS shell environment.
+- Linux/macOS/Windows shell environment.
 - `python3`
 - `clang` (for C)
 - `rustc` (for Rust)
@@ -60,6 +60,11 @@ From repository root:
 ```bash
 python3 benchmark/run.py
 ```
+
+Default run behavior:
+- runtime workloads: `sum_loop`, `prime_count`, `matrix_mul`
+- compile stress in both modes: `compile_project_10_files_hot`, `compile_project_10_files_cold`
+- incremental rebuild scenario: `incremental_rebuild_1_file`
 
 Useful options:
 
@@ -102,3 +107,4 @@ For `incremental_rebuild_1_file`:
 - This suite is CPU-focused and deterministic.
 - Keep machine load stable for fair comparisons.
 - For publication-quality results, pin CPU governor and run multiple sessions.
+- On Windows, executable suffixes are handled automatically (`.exe`), but required toolchains still must be available in `PATH`.

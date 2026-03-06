@@ -38,6 +38,27 @@ BENCHMARKS: List[BenchmarkSpec] = [
 LANGUAGES = ("apex", "c", "rust", "go")
 
 
+def is_windows() -> bool:
+    return os.name == "nt"
+
+
+def exe_path(path: Path) -> Path:
+    if is_windows() and path.suffix.lower() != ".exe":
+        return path.with_suffix(".exe")
+    return path
+
+
+def pick_c_compiler() -> str:
+    cc_env = os.environ.get("CC", "").strip()
+    if cc_env:
+        return cc_env
+    if shutil.which("clang"):
+        return "clang"
+    if shutil.which("gcc"):
+        return "gcc"
+    raise RuntimeError("C compiler not found. Install clang/gcc or set CC.")
+
+
 def run_cmd(cmd: List[str], cwd: Path, env: Dict[str, str] | None = None) -> subprocess.CompletedProcess:
     merged_env = os.environ.copy()
     if env:
@@ -97,7 +118,9 @@ def compile_apex(
 
 def compile_c(root: Path, bench: str, out: Path, c_compiler: str) -> None:
     src = root / "benchmark" / "c" / f"{bench}.c"
-    cmd = [c_compiler, "-O3", "-march=native", "-std=c11", str(src), "-o", str(out)]
+    cmd = [c_compiler, "-O3", "-std=c11", str(src), "-o", str(out)]
+    if c_compiler != "cl":
+        cmd.insert(2, "-march=native")
     proc = run_cmd(cmd, root)
     if proc.returncode != 0:
         raise RuntimeError(f"Failed to compile C benchmark {bench}:\n{proc.stderr}")
@@ -291,7 +314,7 @@ def make_compile_jobs(
             "cmd": [str(compiler), "build", "--no-check"],
             "cwd": compile_projects["apex"]["project_dir"],
             "env": build_env,
-            "binary": compile_projects["apex"]["binary"],
+            "binary": exe_path(compile_projects["apex"]["binary"]),
             "mutate_source": compile_projects["apex"]["mutate_source"],
         },
         "c": {
@@ -310,7 +333,7 @@ def make_compile_jobs(
             ],
             "cwd": compile_projects["c"]["project_dir"],
             "env": None,
-            "binary": compile_projects["c"]["binary"],
+            "binary": exe_path(compile_projects["c"]["binary"]),
             "mutate_source": compile_projects["c"]["mutate_source"],
         },
         "rust": {
@@ -326,7 +349,7 @@ def make_compile_jobs(
             ],
             "cwd": compile_projects["rust"]["project_dir"],
             "env": None,
-            "binary": compile_projects["rust"]["binary"],
+            "binary": exe_path(compile_projects["rust"]["binary"]),
             "mutate_source": compile_projects["rust"]["mutate_source"],
         },
         "go": {
@@ -343,7 +366,7 @@ def make_compile_jobs(
                 "GO111MODULE": "on",
                 "GOCACHE": str(compile_projects["go"]["project_dir"] / ".gocache"),
             },
-            "binary": compile_projects["go"]["binary"],
+            "binary": exe_path(compile_projects["go"]["binary"]),
             "go_cache_dir": compile_projects["go"]["project_dir"] / ".gocache",
             "mutate_source": compile_projects["go"]["mutate_source"],
         },
@@ -414,13 +437,16 @@ def build_markdown(result: Dict) -> str:
     lines.append(f"- Apex opt level: `{result.get('apex_opt_level', 'n/a')}`")
     lines.append(f"- Apex target: `{result.get('apex_target') or 'native/default'}`")
     lines.append(f"- C compiler: `{result.get('c_compiler', 'n/a')}`")
-    lines.append(f"- Compile mode: `{result.get('compile_mode', 'hot')}`")
+    lines.append(f"- Compile mode: `{result.get('compile_mode', 'n/a')}`")
     lines.append("")
 
     for bench in result["benchmarks"]:
         lines.append(f"## {bench['name']}")
         lines.append("")
         lines.append(f"{bench['description']}")
+        if bench.get("compile_mode"):
+            lines.append("")
+            lines.append(f"- compile mode: `{bench['compile_mode']}`")
         lines.append("")
         if bench.get("kind") == "incremental":
             lines.append(
@@ -530,11 +556,11 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     ensure_tool("python3")
-    ensure_tool("clang")
+    c_compiler = pick_c_compiler()
+    ensure_tool(c_compiler)
     ensure_tool("rustc")
     ensure_tool("go")
     ensure_tool("cargo")
-    c_compiler = "clang"
 
     llvm_prefix = detect_llvm_prefix()
     build_env = {"LLVM_SYS_211_PREFIX": llvm_prefix}
@@ -546,6 +572,29 @@ def main() -> int:
 
     selected = [b for b in BENCHMARKS if args.bench is None or b.name == args.bench]
 
+    # Default run includes compile hot+cold and incremental view together.
+    if args.bench is None:
+        expanded: List[BenchmarkSpec] = []
+        for spec in selected:
+            if spec.kind == "compile":
+                expanded.append(
+                    BenchmarkSpec(
+                        f"{spec.name}_hot",
+                        f"{spec.description} (hot cache mode)",
+                        kind="compile",
+                    )
+                )
+                expanded.append(
+                    BenchmarkSpec(
+                        f"{spec.name}_cold",
+                        f"{spec.description} (cold cache mode)",
+                        kind="compile",
+                    )
+                )
+            else:
+                expanded.append(spec)
+        selected = expanded
+
     report = {
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S %Z"),
         "repeats": args.repeats,
@@ -553,7 +602,7 @@ def main() -> int:
         "apex_opt_level": args.apex_opt_level,
         "apex_target": args.apex_target,
         "c_compiler": c_compiler,
-        "compile_mode": args.compile_mode,
+        "compile_mode": "mixed" if args.bench is None else args.compile_mode,
         "benchmarks": [],
     }
 
@@ -564,10 +613,10 @@ def main() -> int:
 
         if spec.kind == "runtime":
             binaries = {
-                "apex": bin_dir / f"{spec.name}_apex",
-                "c": bin_dir / f"{spec.name}_c",
-                "rust": bin_dir / f"{spec.name}_rust",
-                "go": bin_dir / f"{spec.name}_go",
+                "apex": exe_path(bin_dir / f"{spec.name}_apex"),
+                "c": exe_path(bin_dir / f"{spec.name}_c"),
+                "rust": exe_path(bin_dir / f"{spec.name}_rust"),
+                "go": exe_path(bin_dir / f"{spec.name}_go"),
             }
 
             compile_apex(
@@ -615,7 +664,16 @@ def main() -> int:
                     "metric": "runtime",
                 }
         elif spec.kind == "compile":
-            compile_projects = generate_compile_project_10_files(root, spec.name)
+            compile_mode = args.compile_mode
+            base_name = spec.name
+            if spec.name.endswith("_hot"):
+                compile_mode = "hot"
+                base_name = spec.name[: -len("_hot")]
+            elif spec.name.endswith("_cold"):
+                compile_mode = "cold"
+                base_name = spec.name[: -len("_cold")]
+
+            compile_projects = generate_compile_project_10_files(root, base_name)
             compile_jobs = make_compile_jobs(root, compile_projects, build_env, c_compiler)
 
             for lang in LANGUAGES:
@@ -623,13 +681,13 @@ def main() -> int:
                 job = compile_jobs[lang]
 
                 for _ in range(args.warmup):
-                    if args.compile_mode == "cold":
+                    if compile_mode == "cold":
                         clean_compile_artifacts(lang, job)
                     timed_compile_with_retry(lang, job)
 
                 samples: List[float] = []
                 for _ in range(args.repeats):
-                    if args.compile_mode == "cold":
+                    if compile_mode == "cold":
                         clean_compile_artifacts(lang, job)
                     samples.append(timed_compile_with_retry(lang, job))
 
@@ -651,7 +709,9 @@ def main() -> int:
                     "stats": stats,
                     "metric": "compile",
                 }
+            benchmark_compile_mode = compile_mode
         elif spec.kind == "incremental":
+            benchmark_compile_mode = args.compile_mode
             for lang in LANGUAGES:
                 print(f"Incremental compile {lang}...")
                 first_samples: List[float] = []
@@ -664,7 +724,7 @@ def main() -> int:
                     cycle_jobs = make_compile_jobs(root, cycle_projects, build_env, c_compiler)
                     job = cycle_jobs[lang]
 
-                    if args.compile_mode == "cold":
+                    if benchmark_compile_mode == "cold":
                         clean_compile_artifacts(lang, job)
                     first_elapsed = timed_compile_with_retry(lang, job)
 
@@ -719,6 +779,7 @@ def main() -> int:
                 "name": spec.name,
                 "description": spec.description,
                 "kind": spec.kind,
+                "compile_mode": benchmark_compile_mode if spec.kind in ("compile", "incremental") else None,
                 "languages": lang_data,
                 "speedup_vs_apex": speedups,
             }

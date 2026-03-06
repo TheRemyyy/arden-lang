@@ -36,6 +36,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Added compile benchmark cache modes: `--compile-mode hot|cold` for `compile_project_10_files`.
   - Added cold-mode artifact/cache cleanup handling and Apex transient `.ll` retry guard in benchmark runner.
   - Added `incremental_rebuild_1_file` benchmark: compile once, mutate one source file, then recompile and report first/second compile timing.
+  - `python3 benchmark/run.py` now includes both `compile_project_10_files_hot` and `compile_project_10_files_cold` plus incremental rebuild output in one report by default.
+  - Benchmark runner now normalizes executable path handling for Windows (`.exe`) and supports C compiler auto-detection (`CC`/`clang`/`gcc`).
 - New language coverage examples:
   - `examples/35_visibility_enforcement.apex`
   - `examples/36_inheritance_extends.apex`
