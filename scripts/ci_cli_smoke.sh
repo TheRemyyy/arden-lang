@@ -24,6 +24,7 @@ BORROW_USE_AFTER_MOVE_FILE="${TMP_DIR}/borrow_use_after_move.apex"
 BORROW_MOVE_WHILE_BORROWED_FILE="${TMP_DIR}/borrow_move_while_borrowed.apex"
 BORROW_DOUBLE_MUT_FILE="${TMP_DIR}/borrow_double_mut.apex"
 BORROW_SCOPE_RELEASE_FILE="${TMP_DIR}/borrow_scope_release.apex"
+BORROW_REBORROW_AFTER_SCOPE_FILE="${TMP_DIR}/borrow_reborrow_after_scope.apex"
 BORROW_LAMBDA_MOVE_FILE="${TMP_DIR}/borrow_lambda_move.apex"
 BORROW_COMPOUND_BORROWED_FILE="${TMP_DIR}/borrow_compound_borrowed.apex"
 
@@ -150,6 +151,20 @@ function main(): None {
 }
 EOF_BORROW_SCOPE
 "${COMPILER}" check "${BORROW_SCOPE_RELEASE_FILE}" >/dev/null
+
+cat <<'EOF_BORROW_REBORROW' > "${BORROW_REBORROW_AFTER_SCOPE_FILE}"
+function take_borrow(borrow s: String): None { return None; }
+function main(): None {
+    s: String = "x";
+    if (true) {
+        r: &String = &s;
+        take_borrow(s);
+    }
+    take_borrow(s);
+    return None;
+}
+EOF_BORROW_REBORROW
+"${COMPILER}" check "${BORROW_REBORROW_AFTER_SCOPE_FILE}" >/dev/null
 
 cat <<'EOF_BORROW_LAMBDA' > "${BORROW_LAMBDA_MOVE_FILE}"
 import std.io.*;
