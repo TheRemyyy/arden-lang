@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Added `compile_project_10_files` stress benchmark (generated 10-file project compile timing per language).
   - Added compile benchmark cache modes: `--compile-mode hot|cold` for `compile_project_10_files`.
   - Added cold-mode artifact/cache cleanup handling and Apex transient `.ll` retry guard in benchmark runner.
+  - Added `incremental_rebuild_1_file` benchmark: compile once, mutate one source file, then recompile and report first/second compile timing.
 - New language coverage examples:
   - `examples/35_visibility_enforcement.apex`
   - `examples/36_inheritance_extends.apex`

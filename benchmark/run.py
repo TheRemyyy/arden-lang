@@ -28,6 +28,11 @@ BENCHMARKS: List[BenchmarkSpec] = [
         "Compile stress test on generated 10-file project per language",
         kind="compile",
     ),
+    BenchmarkSpec(
+        "incremental_rebuild_1_file",
+        "Compile 10-file project, mutate one file, then recompile",
+        kind="incremental",
+    ),
 ]
 
 LANGUAGES = ("apex", "c", "rust", "go")
@@ -153,8 +158,8 @@ def run_checksum(binary: Path, cwd: Path) -> int:
     return parse_checksum(proc.stdout)
 
 
-def generate_compile_project_10_files(root: Path) -> Dict[str, Dict[str, Path]]:
-    generated_root = root / "benchmark" / "generated" / "compile_project_10_files"
+def generate_compile_project_10_files(root: Path, bench_name: str) -> Dict[str, Dict[str, Path]]:
+    generated_root = root / "benchmark" / "generated" / bench_name
     if generated_root.exists():
         shutil.rmtree(generated_root)
     generated_root.mkdir(parents=True, exist_ok=True)
@@ -189,13 +194,13 @@ def generate_compile_project_10_files(root: Path) -> Dict[str, Dict[str, Path]]:
     apex_files.append("src/main.apex")
 
     toml_lines = [
-        'name = "compile_project_10_files"',
+        f'name = "{bench_name}"',
         'version = "0.1.0"',
         'entry = "src/main.apex"',
         "files = [",
     ]
     toml_lines.extend([f'    "{f}",' for f in apex_files])
-    toml_lines.extend(["]", 'output = "compile_project_10_files"', 'opt_level = "3"'])
+    toml_lines.extend(["]", f'output = "{bench_name}"', 'opt_level = "3"'])
     (apex_dir / "apex.toml").write_text("\n".join(toml_lines) + "\n", encoding="utf-8")
 
     c_dir = generated_root / "c"
@@ -253,21 +258,106 @@ def generate_compile_project_10_files(root: Path) -> Dict[str, Dict[str, Path]]:
     return {
         "apex": {
             "project_dir": apex_dir,
-            "binary": apex_dir / "compile_project_10_files",
+            "binary": apex_dir / bench_name,
+            "mutate_source": apex_src / "part_09.apex",
         },
         "c": {
             "project_dir": c_dir,
-            "binary": c_dir / "compile_project_10_files_c",
+            "binary": c_dir / f"{bench_name}_c",
+            "mutate_source": c_dir / "part_09.c",
         },
         "rust": {
             "project_dir": rust_dir,
-            "binary": rust_dir / "compile_project_10_files_rust",
+            "binary": rust_dir / f"{bench_name}_rust",
+            "mutate_source": rust_dir / "part_09.rs",
         },
         "go": {
             "project_dir": go_dir,
-            "binary": go_dir / "compile_project_10_files_go",
+            "binary": go_dir / f"{bench_name}_go",
+            "mutate_source": go_dir / "part_09.go",
         },
     }
+
+
+def make_compile_jobs(
+    root: Path,
+    compile_projects: Dict[str, Dict[str, Path]],
+    build_env: Dict[str, str],
+    c_compiler: str,
+) -> Dict[str, Dict]:
+    compiler = root / "target" / "release" / "apex-compiler"
+    return {
+        "apex": {
+            "cmd": [str(compiler), "build", "--no-check"],
+            "cwd": compile_projects["apex"]["project_dir"],
+            "env": build_env,
+            "binary": compile_projects["apex"]["binary"],
+            "mutate_source": compile_projects["apex"]["mutate_source"],
+        },
+        "c": {
+            "cmd": [
+                c_compiler,
+                "-O3",
+                "-march=native",
+                "-std=c11",
+                *[
+                    str(compile_projects["c"]["project_dir"] / f"part_{i:02d}.c")
+                    for i in range(10)
+                ],
+                str(compile_projects["c"]["project_dir"] / "main.c"),
+                "-o",
+                str(compile_projects["c"]["binary"]),
+            ],
+            "cwd": compile_projects["c"]["project_dir"],
+            "env": None,
+            "binary": compile_projects["c"]["binary"],
+            "mutate_source": compile_projects["c"]["mutate_source"],
+        },
+        "rust": {
+            "cmd": [
+                "rustc",
+                "-C",
+                "opt-level=3",
+                "-C",
+                "target-cpu=native",
+                "main.rs",
+                "-o",
+                str(compile_projects["rust"]["binary"]),
+            ],
+            "cwd": compile_projects["rust"]["project_dir"],
+            "env": None,
+            "binary": compile_projects["rust"]["binary"],
+            "mutate_source": compile_projects["rust"]["mutate_source"],
+        },
+        "go": {
+            "cmd": [
+                "go",
+                "build",
+                "-trimpath",
+                "-o",
+                str(compile_projects["go"]["binary"]),
+                ".",
+            ],
+            "cwd": compile_projects["go"]["project_dir"],
+            "env": {
+                "GO111MODULE": "on",
+                "GOCACHE": str(compile_projects["go"]["project_dir"] / ".gocache"),
+            },
+            "binary": compile_projects["go"]["binary"],
+            "go_cache_dir": compile_projects["go"]["project_dir"] / ".gocache",
+            "mutate_source": compile_projects["go"]["mutate_source"],
+        },
+    }
+
+
+def apply_incremental_source_change(lang: str, source: Path, marker: str) -> None:
+    if not source.exists():
+        raise RuntimeError(f"Missing source to mutate: {source}")
+    prefix = "//" if lang in ("apex", "rust", "go") else "/*"
+    suffix = "" if lang in ("apex", "rust", "go") else " */"
+    line = f"\n{prefix} incremental bench mutation {marker}{suffix}\n"
+    with source.open("a", encoding="utf-8") as f:
+        f.write(line)
 
 
 def timed_run(binary: Path, cwd: Path) -> (float, int):
@@ -332,16 +422,31 @@ def build_markdown(result: Dict) -> str:
         lines.append("")
         lines.append(f"{bench['description']}")
         lines.append("")
-        lines.append("| Language | Checksum | min (s) | mean (s) | median (s) | stddev (s) | max (s) |")
-        lines.append("|---|---:|---:|---:|---:|---:|---:|")
-        for lang in LANGUAGES:
-            entry = bench["languages"][lang]
-            stats = entry["stats"]
+        if bench.get("kind") == "incremental":
             lines.append(
-                f"| {lang} | {entry['checksum']} | {format_seconds(stats['min_s'])} | "
-                f"{format_seconds(stats['mean_s'])} | {format_seconds(stats['median_s'])} | "
-                f"{format_seconds(stats['stddev_s'])} | {format_seconds(stats['max_s'])} |"
+                "| Language | Checksum | first mean (s) | second mean (s) | second/first |"
             )
+            lines.append("|---|---:|---:|---:|---:|")
+            for lang in LANGUAGES:
+                entry = bench["languages"][lang]
+                first_mean = entry["first_stats"]["mean_s"]
+                second_mean = entry["second_stats"]["mean_s"]
+                ratio = second_mean / first_mean if first_mean > 0 else float("inf")
+                lines.append(
+                    f"| {lang} | {entry['checksum']} | {format_seconds(first_mean)} | "
+                    f"{format_seconds(second_mean)} | {ratio:.3f}x |"
+                )
+        else:
+            lines.append("| Language | Checksum | min (s) | mean (s) | median (s) | stddev (s) | max (s) |")
+            lines.append("|---|---:|---:|---:|---:|---:|---:|")
+            for lang in LANGUAGES:
+                entry = bench["languages"][lang]
+                stats = entry["stats"]
+                lines.append(
+                    f"| {lang} | {entry['checksum']} | {format_seconds(stats['min_s'])} | "
+                    f"{format_seconds(stats['mean_s'])} | {format_seconds(stats['median_s'])} | "
+                    f"{format_seconds(stats['stddev_s'])} | {format_seconds(stats['max_s'])} |"
+                )
         lines.append("")
         lines.append("| Relative to Apex (mean) | Value |")
         lines.append("|---|---:|")
@@ -452,10 +557,6 @@ def main() -> int:
         "benchmarks": [],
     }
 
-    compile_projects = None
-    if any(spec.kind == "compile" for spec in selected):
-        compile_projects = generate_compile_project_10_files(root)
-
     for spec in selected:
         print(f"\n=== {spec.name} ===")
         lang_data: Dict[str, Dict] = {}
@@ -514,67 +615,8 @@ def main() -> int:
                     "metric": "runtime",
                 }
         elif spec.kind == "compile":
-            if compile_projects is None:
-                raise RuntimeError("Internal error: compile projects were not generated")
-
-            compiler = root / "target" / "release" / "apex-compiler"
-            compile_jobs = {
-                "apex": {
-                    "cmd": [str(compiler), "build", "--no-check"],
-                    "cwd": compile_projects["apex"]["project_dir"],
-                    "env": build_env,
-                    "binary": compile_projects["apex"]["binary"],
-                },
-                "c": {
-                    "cmd": [
-                        c_compiler,
-                        "-O3",
-                        "-march=native",
-                        "-std=c11",
-                        *[str(compile_projects["c"]["project_dir"] / f"part_{i:02d}.c") for i in range(10)],
-                        str(compile_projects["c"]["project_dir"] / "main.c"),
-                        "-o",
-                        str(compile_projects["c"]["binary"]),
-                    ],
-                    "cwd": compile_projects["c"]["project_dir"],
-                    "env": None,
-                    "binary": compile_projects["c"]["binary"],
-                },
-                "rust": {
-                    "cmd": [
-                        "rustc",
-                        "-C",
-                        "opt-level=3",
-                        "-C",
-                        "target-cpu=native",
-                        "main.rs",
-                        "-o",
-                        str(compile_projects["rust"]["binary"]),
-                    ],
-                    "cwd": compile_projects["rust"]["project_dir"],
-                    "env": None,
-                    "binary": compile_projects["rust"]["binary"],
-                },
-                "go": {
-                    "cmd": [
-                        "go",
-                        "build",
-                        "-trimpath",
-                        "-o",
-                        str(compile_projects["go"]["binary"]),
-                        ".",
-                    ],
-                    "cwd": compile_projects["go"]["project_dir"],
-                    "env": {
-                        "GO111MODULE": "on",
-                        "GOCACHE": str(
-                            compile_projects["go"]["project_dir"] / ".gocache"
-                        ),
-                    },
-                    "binary": compile_projects["go"]["binary"],
-                    "go_cache_dir": compile_projects["go"]["project_dir"] / ".gocache",
-                },
-            }
+            compile_projects = generate_compile_project_10_files(root, spec.name)
+            compile_jobs = make_compile_jobs(root, compile_projects, build_env, c_compiler)
 
             for lang in LANGUAGES:
                 print(f"Compiling {lang}...")
@@ -608,6 +650,59 @@ def main() -> int:
                     "samples_s": samples,
                     "stats": stats,
                     "metric": "compile",
+                }
+        elif spec.kind == "incremental":
+            for lang in LANGUAGES:
+                print(f"Incremental compile {lang}...")
+                first_samples: List[float] = []
+                second_samples: List[float] = []
+                checksums: List[int] = []
+
+                cycles = args.warmup + args.repeats
+                for i in range(cycles):
+                    cycle_projects = generate_compile_project_10_files(root, spec.name)
+                    cycle_jobs = make_compile_jobs(root, cycle_projects, build_env, c_compiler)
+                    job = cycle_jobs[lang]
+
+                    if args.compile_mode == "cold":
+                        clean_compile_artifacts(lang, job)
+                    first_elapsed = timed_compile_with_retry(lang, job)
+
+                    apply_incremental_source_change(lang, Path(job["mutate_source"]), f"{i}")
+                    second_elapsed = timed_compile_with_retry(lang, job)
+
+                    if not Path(job["binary"]).exists():
+                        timed_compile_with_retry(lang, job, retries=2)
+                    checksum = run_checksum(job["binary"], job["cwd"])
+
+                    if i >= args.warmup:
+                        first_samples.append(first_elapsed)
+                        second_samples.append(second_elapsed)
+                        checksums.append(checksum)
+
+                if len(set(checksums)) != 1:
+                    raise RuntimeError(
+                        f"Non-deterministic checksum in incremental {lang}/{spec.name}: {checksums}"
+                    )
+
+                checksum = checksums[0]
+                if reference_checksum is None:
+                    reference_checksum = checksum
+                elif checksum != reference_checksum:
+                    raise RuntimeError(
+                        f"Checksum mismatch for {spec.name}: {lang}={checksum}, expected={reference_checksum}"
+                    )
+
+                first_stats = compute_stats(first_samples)
+                second_stats = compute_stats(second_samples)
+                lang_data[lang] = {
+                    "checksum": checksum,
+                    "first_samples_s": first_samples,
+                    "second_samples_s": second_samples,
+                    "first_stats": first_stats,
+                    "second_stats": second_stats,
+                    "stats": second_stats,
+                    "metric": "incremental_compile_second",
                 }
         else:
             raise RuntimeError(f"Unsupported benchmark kind: {spec.kind}")

@@ -15,6 +15,7 @@ This directory contains a structured benchmark suite that compares Apex against 
 - `prime_count`: sieve-based prime counting.
 - `matrix_mul`: dense integer matrix multiplication (flattened arrays).
 - `compile_project_10_files`: compile stress benchmark on generated 10-file projects per language.
+- `incremental_rebuild_1_file`: compiles a generated 10-file project, mutates one file, then recompiles.
 
 ## Directory Layout
 
@@ -66,6 +67,7 @@ Useful options:
 python3 benchmark/run.py --repeats 7 --warmup 1
 python3 benchmark/run.py --bench prime_count
 python3 benchmark/run.py --bench compile_project_10_files
+python3 benchmark/run.py --bench incremental_rebuild_1_file
 python3 benchmark/run.py --bench compile_project_10_files --compile-mode cold
 python3 benchmark/run.py --no-build
 python3 benchmark/run.py --apex-opt-level 3
@@ -87,6 +89,13 @@ Both include:
 For `compile_project_10_files`:
 - `--compile-mode hot` keeps compile caches/artifacts between runs (incremental-friendly).
 - `--compile-mode cold` clears artifacts between timed runs for cleaner cold-compile comparison.
+
+For `incremental_rebuild_1_file`:
+- each measured cycle does:
+  1. full compile
+  2. single-file source mutation
+  3. second compile
+- report includes `first mean` vs `second mean` per language.
 
 ## Notes
 
