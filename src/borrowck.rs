@@ -88,6 +88,8 @@ pub struct BorrowChecker {
     classes: HashMap<String, ClassBorrowSigs>,
     /// Stdlib function names for default borrow-mode fallback
     stdlib_functions: std::collections::HashSet<String>,
+    /// Import aliases (alias -> namespace path), e.g. io -> std.io
+    import_aliases: HashMap<String, String>,
     /// Current scope depth
     scope_depth: usize,
     /// Collected errors
@@ -97,8 +99,14 @@ pub struct BorrowChecker {
 }
 
 struct ClassBorrowSigs {
-    methods: HashMap<String, Vec<ParamMode>>,
+    methods: HashMap<String, MethodBorrowSig>,
     constructor: Vec<ParamMode>,
+    field_types: HashMap<String, Type>,
+}
+
+struct MethodBorrowSig {
+    receiver_mode: ParamMode,
+    params: Vec<ParamMode>,
 }
 
 impl BorrowChecker {
@@ -109,6 +117,7 @@ impl BorrowChecker {
             functions: HashMap::new(),
             classes: HashMap::new(),
             stdlib_functions: StdLib::new().get_functions().keys().cloned().collect(),
+            import_aliases: HashMap::new(),
             scope_depth: 0,
             errors: Vec::new(),
             drop_queue: vec![Vec::new()],
@@ -144,10 +153,18 @@ impl BorrowChecker {
             }
             Decl::Class(class) => {
                 let mut methods = HashMap::new();
+                let mutating_methods = Self::class_mutating_methods(class);
                 for method in &class.methods {
                     methods.insert(
                         method.name.clone(),
-                        method.params.iter().map(|p| p.mode).collect(),
+                        MethodBorrowSig {
+                            receiver_mode: if mutating_methods.contains(&method.name) {
+                                ParamMode::BorrowMut
+                            } else {
+                                ParamMode::Borrow
+                            },
+                            params: method.params.iter().map(|p| p.mode).collect(),
+                        },
                     );
                 }
                 let constructor = class
@@ -155,12 +172,18 @@ impl BorrowChecker {
                     .as_ref()
                     .map(|c| c.params.iter().map(|p| p.mode).collect())
                     .unwrap_or_default();
+                let field_types = class
+                    .fields
+                    .iter()
+                    .map(|f| (f.name.clone(), f.ty.clone()))
+                    .collect();
 
                 self.classes.insert(
                     class.name.clone(),
                     ClassBorrowSigs {
                         methods,
                         constructor,
+                        field_types,
                     },
                 );
             }
@@ -180,6 +203,12 @@ impl BorrowChecker {
                         }
                         _ => self.collect_sig(&inner.node),
                     }
+                }
+            }
+            Decl::Import(import) => {
+                if let Some(alias) = &import.alias {
+                    self.import_aliases
+                        .insert(alias.clone(), import.path.clone());
                 }
             }
             _ => {}
@@ -313,6 +342,12 @@ impl BorrowChecker {
             } => {
                 // Check the value expression (may involve moves)
                 self.check_expr(&value.node, value.span.clone(), false);
+
+                // If a reference is initialized from a call that borrows an argument,
+                // keep that borrow alive for the lifetime of this scope.
+                if matches!(ty, Type::Ref(_) | Type::MutRef(_)) {
+                    self.bind_reference_origin_borrow(&value.node, value.span.clone());
+                }
 
                 // Declare the new variable
                 self.declare_var(name, *mutable, span, self.needs_drop(ty), Some(ty.clone()));
@@ -523,6 +558,15 @@ impl BorrowChecker {
             Expr::Call { callee, args } => {
                 self.check_expr(&callee.node, callee.span.clone(), false);
 
+                // Borrows created to satisfy receiver/argument modes are
+                // temporary for this call expression.
+                self.enter_scope();
+                if let Some(mode) = self.resolve_call_receiver_mode(&callee.node) {
+                    if let Expr::Field { object, .. } = &callee.node {
+                        self.apply_receiver_mode(&object.node, mode, callee.span.clone());
+                    }
+                }
+
                 let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
 
                 for (i, arg) in args.iter().enumerate() {
@@ -545,6 +589,7 @@ impl BorrowChecker {
                         }
                     }
                 }
+                self.exit_scope();
             }
 
             Expr::Field { object, field: _ } => {
@@ -587,18 +632,8 @@ impl BorrowChecker {
             }
 
             Expr::Lambda { params, body } => {
-                // Lambda captures - free vars borrow or move from outer scope
-                self.enter_scope();
-                for param in params {
-                    self.declare_var(
-                        &param.name,
-                        param.mutable,
-                        span.clone(),
-                        false,
-                        Some(param.ty.clone()),
-                    );
-                }
-
+                // Lambda captures - free vars borrow or move from outer scope.
+                // Capture effects apply at lambda creation site (outer scope).
                 let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
                 let free_idents = Self::collect_free_idents(&body.node, &param_names);
                 let mut moved_captures = Vec::new();
@@ -611,6 +646,17 @@ impl BorrowChecker {
                     } else {
                         self.create_borrow(&ident, false, span.clone());
                     }
+                }
+
+                self.enter_scope();
+                for param in params {
+                    self.declare_var(
+                        &param.name,
+                        param.mutable,
+                        span.clone(),
+                        false,
+                        Some(param.ty.clone()),
+                    );
                 }
 
                 self.check_expr(&body.node, body.span.clone(), false);
@@ -866,23 +912,35 @@ impl BorrowChecker {
         self.stdlib_functions.contains(name)
     }
 
-    fn infer_expr_class<'a>(&'a self, expr: &Expr) -> Option<&'a str> {
+    fn resolve_stdlib_alias_call_name(&self, alias_ident: &str, member: &str) -> Option<String> {
+        // Local bindings must shadow import aliases.
+        if self.get_var(alias_ident).is_some() {
+            return None;
+        }
+        let namespace_path = self.import_aliases.get(alias_ident)?;
+        StdLib::new().resolve_alias_call(namespace_path, member)
+    }
+
+    fn infer_expr_class(&self, expr: &Expr) -> Option<String> {
+        let ty = self.infer_expr_type(expr)?;
+        match ty {
+            Type::Named(class_name) => Some(class_name),
+            Type::Generic(class_name, _) => Some(class_name),
+            _ => None,
+        }
+    }
+
+    fn infer_expr_type(&self, expr: &Expr) -> Option<Type> {
         match expr {
-            Expr::Ident(name) => {
-                let ty = self.get_var(name)?.ty.as_ref()?;
-                match ty {
-                    Type::Named(class_name) => Some(class_name.as_str()),
-                    Type::Generic(class_name, _) => Some(class_name.as_str()),
-                    _ => None,
-                }
-            }
-            Expr::This => {
-                let ty = self.get_var("this")?.ty.as_ref()?;
-                match ty {
-                    Type::Named(class_name) => Some(class_name.as_str()),
-                    Type::Generic(class_name, _) => Some(class_name.as_str()),
-                    _ => None,
-                }
+            Expr::Ident(name) => self.get_var(name)?.ty.clone(),
+            Expr::This => self.get_var("this")?.ty.clone(),
+            Expr::Field { object, field } => {
+                let owner_class = self.infer_expr_class(&object.node)?;
+                self.classes
+                    .get(&owner_class)?
+                    .field_types
+                    .get(field)
+                    .cloned()
             }
             _ => None,
         }
@@ -904,14 +962,23 @@ impl BorrowChecker {
         if let Expr::Field { object, field } = callee {
             // Prefer type-directed method resolution first when receiver type is known.
             if let Some(class_name) = self.infer_expr_class(&object.node) {
-                if let Some(class_sig) = self.classes.get(class_name) {
-                    if let Some(modes) = class_sig.methods.get(field) {
-                        return modes.clone();
+                if let Some(class_sig) = self.classes.get(&class_name) {
+                    if let Some(sig) = class_sig.methods.get(field) {
+                        return sig.params.clone();
                     }
                 }
             }
 
             if let Expr::Ident(name) = &object.node {
+                if let Some(canonical) = self.resolve_stdlib_alias_call_name(name, field) {
+                    if self.is_borrowing_stdlib_call(&canonical) {
+                        return vec![ParamMode::Borrow; arg_len];
+                    }
+                    if let Some(modes) = self.functions.get(&canonical) {
+                        return modes.clone();
+                    }
+                }
+
                 let mangled = format!("{}__{}", name, field);
                 if let Some(modes) = self.functions.get(&mangled) {
                     return modes.clone();
@@ -923,6 +990,244 @@ impl BorrowChecker {
         }
 
         param_modes
+    }
+
+    fn resolve_call_receiver_mode(&self, callee: &Expr) -> Option<ParamMode> {
+        let Expr::Field { object, field } = callee else {
+            return None;
+        };
+        let class_name = self.infer_expr_class(&object.node)?;
+        let class_sig = self.classes.get(&class_name)?;
+        class_sig.methods.get(field).map(|sig| sig.receiver_mode)
+    }
+
+    fn apply_receiver_mode(&mut self, receiver: &Expr, mode: ParamMode, span: Span) {
+        match receiver {
+            Expr::Ident(name) => match mode {
+                ParamMode::Borrow => self.create_borrow(name, false, span),
+                ParamMode::BorrowMut => self.create_borrow(name, true, span),
+                ParamMode::Owned => self.try_move(receiver, span),
+            },
+            Expr::Field { object, .. } | Expr::Index { object, .. } => {
+                self.apply_receiver_mode(&object.node, mode, span)
+            }
+            Expr::This => {}
+            _ => {}
+        }
+    }
+
+    fn class_mutating_methods(class: &ClassDecl) -> std::collections::HashSet<String> {
+        let mut mutating: std::collections::HashSet<String> = class
+            .methods
+            .iter()
+            .filter(|m| Self::block_mutates_this(&m.body))
+            .map(|m| m.name.clone())
+            .collect();
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for method in &class.methods {
+                if mutating.contains(&method.name) {
+                    continue;
+                }
+                if Self::block_calls_this_method_in_set(&method.body, &mutating) {
+                    mutating.insert(method.name.clone());
+                    changed = true;
+                }
+            }
+        }
+        mutating
+    }
+
+    fn block_mutates_this(block: &Block) -> bool {
+        block.iter().any(|stmt| Self::stmt_mutates_this(&stmt.node))
+    }
+
+    fn stmt_mutates_this(stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Assign { target, .. } => Self::expr_root_is_this(&target.node),
+            Stmt::If {
+                then_block,
+                else_block,
+                ..
+            } => {
+                Self::block_mutates_this(then_block)
+                    || else_block.as_ref().is_some_and(Self::block_mutates_this)
+            }
+            Stmt::While { body, .. } => Self::block_mutates_this(body),
+            Stmt::For { body, .. } => Self::block_mutates_this(body),
+            Stmt::Match { arms, .. } => arms.iter().any(|arm| Self::block_mutates_this(&arm.body)),
+            Stmt::Expr(_) | Stmt::Let { .. } | Stmt::Return(_) | Stmt::Break | Stmt::Continue => {
+                false
+            }
+        }
+    }
+
+    fn expr_root_is_this(expr: &Expr) -> bool {
+        match expr {
+            Expr::This => true,
+            Expr::Field { object, .. } | Expr::Index { object, .. } => {
+                Self::expr_root_is_this(&object.node)
+            }
+            Expr::Deref(inner) => Self::expr_root_is_this(&inner.node),
+            _ => false,
+        }
+    }
+
+    fn block_calls_this_method_in_set(
+        block: &Block,
+        methods: &std::collections::HashSet<String>,
+    ) -> bool {
+        block
+            .iter()
+            .any(|stmt| Self::stmt_calls_this_method_in_set(&stmt.node, methods))
+    }
+
+    fn stmt_calls_this_method_in_set(
+        stmt: &Stmt,
+        methods: &std::collections::HashSet<String>,
+    ) -> bool {
+        match stmt {
+            Stmt::Let { value, .. } => Self::expr_calls_this_method_in_set(&value.node, methods),
+            Stmt::Assign { target, value } => {
+                Self::expr_calls_this_method_in_set(&target.node, methods)
+                    || Self::expr_calls_this_method_in_set(&value.node, methods)
+            }
+            Stmt::Expr(expr) => Self::expr_calls_this_method_in_set(&expr.node, methods),
+            Stmt::Return(expr) => expr
+                .as_ref()
+                .is_some_and(|e| Self::expr_calls_this_method_in_set(&e.node, methods)),
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                Self::expr_calls_this_method_in_set(&condition.node, methods)
+                    || Self::block_calls_this_method_in_set(then_block, methods)
+                    || else_block
+                        .as_ref()
+                        .is_some_and(|b| Self::block_calls_this_method_in_set(b, methods))
+            }
+            Stmt::While { condition, body } => {
+                Self::expr_calls_this_method_in_set(&condition.node, methods)
+                    || Self::block_calls_this_method_in_set(body, methods)
+            }
+            Stmt::For { iterable, body, .. } => {
+                Self::expr_calls_this_method_in_set(&iterable.node, methods)
+                    || Self::block_calls_this_method_in_set(body, methods)
+            }
+            Stmt::Match { expr, arms } => {
+                Self::expr_calls_this_method_in_set(&expr.node, methods)
+                    || arms
+                        .iter()
+                        .any(|arm| Self::block_calls_this_method_in_set(&arm.body, methods))
+            }
+            Stmt::Break | Stmt::Continue => false,
+        }
+    }
+
+    fn expr_calls_this_method_in_set(
+        expr: &Expr,
+        methods: &std::collections::HashSet<String>,
+    ) -> bool {
+        match expr {
+            Expr::Call { callee, args } => {
+                let calls_mutating = matches!(
+                    &callee.node,
+                    Expr::Field { object, field }
+                        if matches!(&object.node, Expr::This) && methods.contains(field)
+                );
+                calls_mutating
+                    || Self::expr_calls_this_method_in_set(&callee.node, methods)
+                    || args
+                        .iter()
+                        .any(|a| Self::expr_calls_this_method_in_set(&a.node, methods))
+            }
+            Expr::Binary { left, right, .. } => {
+                Self::expr_calls_this_method_in_set(&left.node, methods)
+                    || Self::expr_calls_this_method_in_set(&right.node, methods)
+            }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => Self::expr_calls_this_method_in_set(&expr.node, methods),
+            Expr::Field { object, .. } => {
+                Self::expr_calls_this_method_in_set(&object.node, methods)
+            }
+            Expr::Index { object, index } => {
+                Self::expr_calls_this_method_in_set(&object.node, methods)
+                    || Self::expr_calls_this_method_in_set(&index.node, methods)
+            }
+            Expr::Construct { args, .. } => args
+                .iter()
+                .any(|a| Self::expr_calls_this_method_in_set(&a.node, methods)),
+            Expr::Lambda { body, .. } => Self::expr_calls_this_method_in_set(&body.node, methods),
+            Expr::Match { expr, arms } => {
+                Self::expr_calls_this_method_in_set(&expr.node, methods)
+                    || arms.iter().any(|arm| {
+                        arm.body
+                            .iter()
+                            .any(|s| Self::stmt_calls_this_method_in_set(&s.node, methods))
+                    })
+            }
+            Expr::StringInterp(parts) => parts.iter().any(|p| match p {
+                StringPart::Expr(e) => Self::expr_calls_this_method_in_set(&e.node, methods),
+                StringPart::Literal(_) => false,
+            }),
+            Expr::AsyncBlock(stmts) | Expr::Block(stmts) => stmts
+                .iter()
+                .any(|s| Self::stmt_calls_this_method_in_set(&s.node, methods)),
+            Expr::Require { condition, message } => {
+                Self::expr_calls_this_method_in_set(&condition.node, methods)
+                    || message
+                        .as_ref()
+                        .is_some_and(|m| Self::expr_calls_this_method_in_set(&m.node, methods))
+            }
+            Expr::Range { start, end, .. } => {
+                start
+                    .as_ref()
+                    .is_some_and(|s| Self::expr_calls_this_method_in_set(&s.node, methods))
+                    || end
+                        .as_ref()
+                        .is_some_and(|e| Self::expr_calls_this_method_in_set(&e.node, methods))
+            }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                Self::expr_calls_this_method_in_set(&condition.node, methods)
+                    || then_branch
+                        .iter()
+                        .any(|s| Self::stmt_calls_this_method_in_set(&s.node, methods))
+                    || else_branch.as_ref().is_some_and(|b| {
+                        b.iter()
+                            .any(|s| Self::stmt_calls_this_method_in_set(&s.node, methods))
+                    })
+            }
+            Expr::Ident(_) | Expr::Literal(_) | Expr::This => false,
+        }
+    }
+
+    fn bind_reference_origin_borrow(&mut self, value: &Expr, span: Span) {
+        let Expr::Call { callee, args } = value else {
+            return;
+        };
+        let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
+        for (i, arg) in args.iter().enumerate() {
+            let mode = param_modes.get(i).copied().unwrap_or(ParamMode::Owned);
+            let Expr::Ident(name) = &arg.node else {
+                continue;
+            };
+            match mode {
+                ParamMode::Borrow => self.create_borrow(name, false, span.clone()),
+                ParamMode::BorrowMut => self.create_borrow(name, true, span.clone()),
+                ParamMode::Owned => {}
+            }
+        }
     }
 
     fn collect_free_idents(expr: &Expr, params: &[String]) -> Vec<String> {
@@ -1605,5 +1910,160 @@ mod tests {
         assert!(errors
             .iter()
             .any(|m| m.contains("Cannot move 's' while borrowed")));
+    }
+
+    #[test]
+    fn stdlib_alias_call_borrows_instead_of_moves() {
+        let source = r#"
+            import std.io as io;
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "x";
+                io.println(s);
+                consume(s);
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn reference_return_from_borrow_keeps_source_borrowed() {
+        let source = r#"
+            function id_borrow(borrow s: String): &String { return &s; }
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "x";
+                r: &String = id_borrow(s);
+                consume(s);
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot move 's' while borrowed")));
+    }
+
+    #[test]
+    fn lambda_borrow_capture_blocks_move_after_creation() {
+        let source = r#"
+            function take_borrow(borrow s: String): None { return None; }
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "x";
+                f: () -> None = () => take_borrow(s);
+                consume(s);
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot move 's' while borrowed")));
+    }
+
+    #[test]
+    fn immutable_borrow_blocks_mutating_method_call() {
+        let source = r#"
+            class C {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function touch(): None { this.v += 1; return None; }
+            }
+            function main(): None {
+                mut c: C = C(1);
+                r: &C = &c;
+                c.touch();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot mutably borrow 'c' while immutably borrowed")));
+    }
+
+    #[test]
+    fn immutable_borrow_allows_read_only_method_call() {
+        let source = r#"
+            class C {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function get(): Integer { return this.v; }
+            }
+            function main(): None {
+                mut c: C = C(1);
+                r: &C = &c;
+                x: Integer = c.get();
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn immutable_borrow_blocks_transitively_mutating_method_call() {
+        let source = r#"
+            class C {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function touch2(): None { this.v += 1; return None; }
+                function wrapper(): None { this.touch2(); return None; }
+            }
+            function main(): None {
+                mut c: C = C(1);
+                r: &C = &c;
+                c.wrapper();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot mutably borrow 'c' while immutably borrowed")));
+    }
+
+    #[test]
+    fn mutating_method_receiver_borrow_is_temporary() {
+        let source = r#"
+            class C {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function touch(): None { this.v += 1; return None; }
+            }
+            function main(): None {
+                mut c: C = C(1);
+                c.touch();
+                c.touch();
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn immutable_borrow_blocks_mutating_nested_receiver_call() {
+        let source = r#"
+            class B {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function touch(): None { this.v += 1; return None; }
+            }
+            class A {
+                mut b: B;
+                constructor(v: Integer) { this.b = B(v); }
+            }
+            function main(): None {
+                mut a: A = A(1);
+                r: &A = &a;
+                a.b.touch();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot mutably borrow 'a' while immutably borrowed")));
     }
 }

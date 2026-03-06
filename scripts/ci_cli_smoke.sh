@@ -17,6 +17,8 @@ TEST_FILE="${TMP_DIR}/sample_test.apex"
 HEADER_FILE="${TMP_DIR}/sample.h"
 BINDINGS_FILE="${TMP_DIR}/bindings.apex"
 OUT_FILE="${TMP_DIR}/ugly_bin"
+NESTED_FIELD_FILE="${TMP_DIR}/nested_field_assign.apex"
+NESTED_FIELD_OUT="${TMP_DIR}/nested_field_assign_bin"
 SHARED_PROJECT="${TMP_DIR}/shared_project"
 STATIC_PROJECT="${TMP_DIR}/static_project"
 BORROW_ERR_OUT="${TMP_DIR}/borrow_err.out"
@@ -75,6 +77,23 @@ fi
 "${COMPILER}" run "${UGLY_FILE}" >/dev/null
 "${COMPILER}" bench "${UGLY_FILE}" --iterations 2 >/dev/null
 "${COMPILER}" profile "${UGLY_FILE}" >/dev/null
+
+cat <<'EOF_NESTED_FIELD' > "${NESTED_FIELD_FILE}"
+class B {
+    mut v: Integer;
+    constructor(v: Integer) { this.v = v; }
+}
+class A {
+    mut b: B;
+    constructor(v: Integer) { this.b = B(v); }
+}
+function main(): None {
+    mut a: A = A(7);
+    a.b.v += 1;
+    return None;
+}
+EOF_NESTED_FIELD
+"${COMPILER}" compile "${NESTED_FIELD_FILE}" -o "${NESTED_FIELD_OUT}" --no-check >/dev/null
 
 cat <<'EOF_TEST' > "${TEST_FILE}"
 @Test
@@ -362,6 +381,35 @@ function main(): None {
 """,
     False,
     ["import std.math.*;"],
+)
+run_single(
+    "alias_call_checks_nested_args",
+    """
+import std.io as io;
+function main(): None {
+    io.println(to_string(Math.abs(-3)));
+    return None;
+}
+""",
+    False,
+    ["import std.math.*;"],
+)
+run_single(
+    "list_index_codegen_no_panic",
+    """
+import std.io.*;
+function main(): None {
+    mut xs: List<Integer> = List<Integer>();
+    xs.push(1);
+    xs.push(2);
+    xs.push(3);
+    xs[0] += 1;
+    xs.set(1, xs.get(0) + xs.get(2));
+    println(to_string(xs[0]));
+    return None;
+}
+""",
+    True,
 )
 run_single(
     "local_shadow_std_print",

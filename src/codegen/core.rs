@@ -4022,19 +4022,53 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
-        let obj_ptr = self.compile_expr(object)?.into_pointer_value();
+        let obj_val = self.compile_expr(object)?;
         let idx = self.compile_expr(index)?.into_int_value();
 
+        // List indexing may come either as:
+        // 1) direct data pointer, or
+        // 2) materialized list struct value {capacity, length, data_ptr}.
+        if let BasicValueEnum::StructValue(list_struct) = obj_val {
+            let data_ptr = self
+                .builder
+                .build_extract_value(list_struct, 2, "list_data")
+                .map_err(|_| CodegenError::new("Invalid list value for index access"))?
+                .into_pointer_value();
+            let elem_ty = match self.infer_object_type(object) {
+                Some(Type::List(inner)) if matches!(*inner, Type::Boolean) => {
+                    self.context.bool_type().as_basic_type_enum()
+                }
+                _ => self.context.i64_type().as_basic_type_enum(),
+            };
+            let typed_data_ptr = self
+                .builder
+                .build_pointer_cast(
+                    data_ptr,
+                    self.context.ptr_type(AddressSpace::default()),
+                    "list_typed_data",
+                )
+                .unwrap();
+            let elem_ptr = unsafe {
+                self.builder
+                    .build_gep(elem_ty, typed_data_ptr, &[idx], "elem")
+                    .unwrap()
+            };
+            return Ok(self.builder.build_load(elem_ty, elem_ptr, "load").unwrap());
+        }
+
+        let obj_ptr = obj_val.into_pointer_value();
+        let elem_ty = match self.infer_object_type(object) {
+            Some(Type::List(inner)) if matches!(*inner, Type::Boolean) => {
+                self.context.bool_type().as_basic_type_enum()
+            }
+            _ => self.context.i64_type().as_basic_type_enum(),
+        };
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i64_type(), obj_ptr, &[idx], "elem")
+                .build_gep(elem_ty, obj_ptr, &[idx], "elem")
                 .unwrap()
         };
-
-        Ok(self
-            .builder
-            .build_load(self.context.i64_type(), elem_ptr, "load")
-            .unwrap())
+        Ok(self.builder.build_load(elem_ty, elem_ptr, "load").unwrap())
     }
 
     pub fn compile_construct(

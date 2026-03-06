@@ -121,8 +121,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Replaced hardcoded stdlib alias mapping in type checking/project rewrite with stdlib-registry-based resolution:
   - alias calls now resolve generically from `StdLib` (`std.io`, `std.math`, `std.string`, `std.system`, `std.time`, `std.fs`, ...).
   - avoids per-namespace/per-module hardcoded branching and reduces risk of future alias regressions when stdlib surface changes.
+- Fixed import checker traversal bug where alias-resolved callee handling (`io.println(...)`) could skip validation of nested argument calls; missing imports inside arguments (for example `Math.abs` without `std.math`) are now correctly reported.
+- Fixed single-file borrow checking for stdlib namespace aliases (`import std.io as io; io.println(s);`):
+  - alias calls now resolve to stdlib borrow-mode signatures in borrow checker (no false move on borrowed stdlib args),
+  - and borrow arguments in function calls are now treated as temporary call-site borrows released after the call expression.
+- Fixed borrow checker lifetime tracking for reference-return call initializers:
+  - `r: &T = f_borrowing(x)` now keeps the source borrow active in the surrounding scope, preventing invalid moves/assignments of `x` while `r` is alive.
+- Fixed lambda borrow captures to apply at lambda creation scope (outer scope), so captured borrows correctly block invalid moves after closure creation.
+- Fixed borrow checker method receiver analysis:
+  - mutating receiver calls now infer receiver mode from class method bodies (including transitive `this.other_method()` mutating paths),
+  - receiver borrows are now temporary call-site borrows (no stale borrow after `obj.method()` returns),
+  - nested receiver chains (`a.b.touch()`) now propagate receiver borrow mode to root owner (`a`) for correct borrow conflict detection.
+- Fixed codegen index access on `List<T>` values to handle materialized list structs (`{capacity,length,data}`) without pointer-cast panics.
+- Fixed codegen lvalue generation for indexed assignment (`xs[i] = ...`, `xs[i] += ...`) so check-pass programs no longer fail with `Invalid lvalue`.
+- Fixed codegen lvalue support for indexed assignment through field-owned lists (`obj.list[i] += ...`) and nested field assignment type resolution (`a.b.v += ...`).
 - Added import checker regression tests for local-vs-stdlib shadowing and `Math.*` import enforcement paths.
 - Added import checker regression test for aliased stdlib module calls (`std.io`/`std.math`/`std.string` alias flow).
+- Added import checker regression test for nested-call validation under aliased stdlib callees.
 - Added CLI smoke regression coverage for project-level `apex check` catching cross-file type errors.
 - Added CLI smoke regression coverage for project-mode stdlib alias imports (`io.println`, `math.abs`) in `apex check`.
 - Added type checker regression test for local-variable shadowing over stdlib import aliases.
@@ -138,8 +153,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - compound assignment on borrowed variable
   - assignment through borrowed owner (`obj.field += ...`)
   - `this` receiver method param-mode lookup
+  - stdlib alias call borrow semantics in single-file mode (`io.println(s)` keeps `s` movable after the call)
+  - reference-return borrow lifetime retention
+  - temporary receiver borrow behavior across repeated mutating calls
+  - nested receiver borrow conflict detection (`a.b.touch()` while `a` is borrowed)
 - Added type checker regression tests for built-in generic constructor validation (invalid List/Map/Set args + valid constructor paths).
 - CI smoke checks now include borrow-checker edge-case expected-fail/expected-pass scenarios.
+- CI smoke checks now include compile-time regression coverage for nested field assignment (`a.b.v += ...`) and list index codegen assignment paths.
 - Removed duplicate Vercel routing config from `web/public/vercel.json`; `web/vercel.json` is now the only deploy config.
 - Removed machine-specific LLVM/linker paths from `.cargo/config.toml`.
 - `apex new` now scaffolds `src/main.apex` with the required `import std.io.*;`, so a fresh project checks and runs immediately.

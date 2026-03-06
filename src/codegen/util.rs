@@ -850,18 +850,10 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Field { object, field } => {
                 let obj_ptr = self.compile_expr(&object.node)?.into_pointer_value();
 
-                let class_name = match &object.node {
-                    Expr::Ident(name) => self.variables.get(name).and_then(|v| match &v.ty {
-                        Type::Named(n) => Some(n.clone()),
-                        _ => None,
-                    }),
-                    Expr::This => self.variables.get("this").and_then(|v| match &v.ty {
-                        Type::Named(n) => Some(n.clone()),
-                        _ => None,
-                    }),
-                    _ => None,
-                }
-                .ok_or_else(|| CodegenError::new("Cannot determine object type"))?;
+                let class_name = self
+                    .infer_object_type(&object.node)
+                    .and_then(|ty| self.type_to_class_name(&ty))
+                    .ok_or_else(|| CodegenError::new("Cannot determine object type"))?;
 
                 let class_info = self
                     .classes
@@ -888,6 +880,74 @@ impl<'ctx> Codegen<'ctx> {
                         )
                         .unwrap())
                 }
+            }
+            Expr::Index { object, index } => {
+                let idx_val = self.compile_expr(&index.node)?.into_int_value();
+
+                // Prefer typed list element pointer for List<T> index assignment.
+                if let Some(Type::List(inner)) = self.infer_object_type(&object.node) {
+                    let list_ptr = match &object.node {
+                        Expr::Ident(name) => self.variables.get(name).map(|v| v.ptr),
+                        Expr::Field { object: obj, field } => {
+                            self.compile_field_ptr(&obj.node, field).ok()
+                        }
+                        Expr::This => self.variables.get("this").map(|v| v.ptr),
+                        _ => None,
+                    };
+                    if let Some(list_ptr) = list_ptr {
+                        let elem_ty = self.llvm_type(&inner);
+                        let list_type = self.context.struct_type(
+                            &[
+                                self.context.i64_type().into(),
+                                self.context.i64_type().into(),
+                                self.context.ptr_type(AddressSpace::default()).into(),
+                            ],
+                            false,
+                        );
+                        let i32_type = self.context.i32_type();
+                        let data_ptr_ptr = unsafe {
+                            self.builder
+                                .build_gep(
+                                    list_type.as_basic_type_enum(),
+                                    list_ptr,
+                                    &[i32_type.const_int(0, false), i32_type.const_int(2, false)],
+                                    "list_data_ptr_ptr",
+                                )
+                                .unwrap()
+                        };
+                        let data_ptr = self
+                            .builder
+                            .build_load(
+                                self.context.ptr_type(AddressSpace::default()),
+                                data_ptr_ptr,
+                                "list_data",
+                            )
+                            .unwrap()
+                            .into_pointer_value();
+                        let typed_data_ptr = self
+                            .builder
+                            .build_pointer_cast(
+                                data_ptr,
+                                self.context.ptr_type(AddressSpace::default()),
+                                "list_data_typed",
+                            )
+                            .unwrap();
+                        let elem_ptr = unsafe {
+                            self.builder
+                                .build_gep(elem_ty, typed_data_ptr, &[idx_val], "idx_elem_ptr")
+                                .unwrap()
+                        };
+                        return Ok(elem_ptr);
+                    }
+                }
+
+                let obj_ptr = self.compile_expr(&object.node)?.into_pointer_value();
+                let elem_ptr = unsafe {
+                    self.builder
+                        .build_gep(self.context.i64_type(), obj_ptr, &[idx_val], "idx_elem_ptr")
+                        .unwrap()
+                };
+                Ok(elem_ptr)
             }
             _ => Err(CodegenError::new("Invalid lvalue")),
         }

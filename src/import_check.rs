@@ -314,30 +314,33 @@ impl<'a> ImportChecker<'a> {
                     // Module-style call: Module.func(...)
                     Expr::Field { object, field } => {
                         if let Expr::Ident(module_or_type) = &object.node {
+                            let mut handled_alias_call = false;
                             if let Some(ns) = self.namespace_aliases.get(module_or_type) {
                                 if let Some(canonical_name) =
                                     self.resolve_stdlib_call_in_namespace(ns, field)
                                 {
                                     self.check_function_call(&canonical_name, callee.span.clone());
-                                    return;
+                                    handled_alias_call = true;
                                 }
                             }
 
-                            let mangled = format!("{}__{}", module_or_type, field);
-                            // Only treat as import-checkable function when known.
-                            if self.local_functions.contains(&mangled)
-                                || self.function_namespaces.contains_key(&mangled)
-                                || self.stdlib.get_namespace(&mangled).is_some()
-                            {
-                                self.check_function_call(&mangled, callee.span.clone());
-                            } else if let Some(ns) = self.stdlib.get_namespace(field) {
-                                if Self::namespace_matches_module_hint(ns, module_or_type) {
-                                    self.check_function_call(field, callee.span.clone());
+                            if !handled_alias_call {
+                                let mangled = format!("{}__{}", module_or_type, field);
+                                // Only treat as import-checkable function when known.
+                                if self.local_functions.contains(&mangled)
+                                    || self.function_namespaces.contains_key(&mangled)
+                                    || self.stdlib.get_namespace(&mangled).is_some()
+                                {
+                                    self.check_function_call(&mangled, callee.span.clone());
+                                } else if let Some(ns) = self.stdlib.get_namespace(field) {
+                                    if Self::namespace_matches_module_hint(ns, module_or_type) {
+                                        self.check_function_call(field, callee.span.clone());
+                                    } else {
+                                        self.check_expr(&callee.node);
+                                    }
                                 } else {
                                     self.check_expr(&callee.node);
                                 }
-                            } else {
-                                self.check_expr(&callee.node);
                             }
                         } else {
                             self.check_expr(&callee.node);
@@ -551,5 +554,19 @@ function main(): None {
 "#;
         let errors = check_import_errors(source);
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn alias_call_still_checks_nested_argument_calls() {
+        let source = r#"
+import std.io as io;
+function main(): None {
+    io.println(to_string(Math.abs(-3)));
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Math__abs");
     }
 }
