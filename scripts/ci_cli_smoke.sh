@@ -3,10 +3,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-COMPILER="${APEX_COMPILER_PATH:-${REPO_ROOT}/target/release/apex-compiler}"
+COMPILER_INPUT="${APEX_COMPILER_PATH:-${REPO_ROOT}/target/release/apex-compiler}"
+if [[ "${COMPILER_INPUT}" = /* ]]; then
+  COMPILER="${COMPILER_INPUT}"
+else
+  COMPILER="${REPO_ROOT}/${COMPILER_INPUT}"
+fi
 
 if [[ "${CI_SKIP_COMPILER_BUILD:-0}" != "1" ]]; then
   cargo build --release >/dev/null
+fi
+
+if [[ ! -x "${COMPILER}" ]]; then
+  echo "Compiler binary not found or not executable: ${COMPILER}" >&2
+  exit 127
 fi
 
 TMP_DIR="$(mktemp -d)"

@@ -107,7 +107,7 @@ jobs:
         run: bash scripts/ci_cli_smoke.sh
         env:
           CI_SKIP_COMPILER_BUILD: "1"
-          APEX_COMPILER_PATH: target/release/apex-compiler
+          APEX_COMPILER_PATH: ${{ github.workspace }}/target/release/apex-compiler
 
   check-examples:
     name: Check Examples
