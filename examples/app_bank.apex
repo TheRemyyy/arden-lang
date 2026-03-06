@@ -228,13 +228,13 @@ function main(): None {
     println("");
     println("=== Creating Accounts ===");
 
-    checking: BankAccount = BankAccount("CHK-001", "Alice Johnson", 1000.0);
+    mut checking: BankAccount = BankAccount("CHK-001", "Alice Johnson", 1000.0);
     checking.displayInfo();
 
-    savings: SavingsAccount = SavingsAccount("SAV-001", "Alice Johnson", 5000.0, 0.025);
+    mut savings: SavingsAccount = SavingsAccount("SAV-001", "Alice Johnson", 5000.0, 0.025);
     savings.displayInfo();
 
-    checking2: BankAccount = BankAccount("CHK-002", "Bob Smith", 2500.0);
+    mut checking2: BankAccount = BankAccount("CHK-002", "Bob Smith", 2500.0);
     checking2.displayInfo();
 
     // Deposit operations

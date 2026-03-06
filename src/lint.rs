@@ -272,7 +272,7 @@ fn collect_expr_idents(expr: &Expr, used: &mut HashSet<String>) {
         Expr::Ident(name) => {
             used.insert(name.clone());
         }
-        Expr::Call { callee, args } => {
+        Expr::Call { callee, args, .. } => {
             collect_expr_idents(&callee.node, used);
             for arg in args {
                 collect_expr_idents(&arg.node, used);
@@ -684,7 +684,7 @@ fn collect_expr_names(expr: &Expr, used: &mut HashSet<String>) {
         Expr::Ident(name) => {
             used.insert(name.clone());
         }
-        Expr::Call { callee, args } => {
+        Expr::Call { callee, args, .. } => {
             collect_expr_names(&callee.node, used);
             for arg in args {
                 collect_expr_names(&arg.node, used);

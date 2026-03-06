@@ -355,6 +355,8 @@ pub enum Expr {
     Call {
         callee: Box<Spanned<Expr>>,
         args: Vec<Spanned<Expr>>,
+        /// Optional explicit generic type arguments at call site: f<T>(...)
+        type_args: Vec<Type>,
     },
     /// Field access: expr.field
     Field {

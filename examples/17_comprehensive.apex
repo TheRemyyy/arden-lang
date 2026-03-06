@@ -214,7 +214,7 @@ function main(): None {
     println("");
     println("=== Classes ===");
 
-    person: Person = Person("Alice", 30, 1);
+    mut person: Person = Person("Alice", 30, 1);
     person.display();
     person.birthday();
     name: String = person.getName();
@@ -287,7 +287,7 @@ function main(): None {
     println("");
     println("=== Generic Container ===");
 
-    container: Container = Container();
+    mut container: Container = Container();
     container.add(10);
     container.add(20);
     container.add(30);

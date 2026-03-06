@@ -137,6 +137,7 @@ pub struct VarInfo {
 pub struct FuncSig {
     pub params: Vec<(String, ResolvedType)>,
     pub return_type: ResolvedType,
+    pub generic_type_vars: Vec<usize>,
     pub is_variadic: bool,
     pub is_extern: bool,
     pub effects: Vec<String>,
@@ -778,7 +779,7 @@ impl TypeChecker {
         out: &mut std::collections::BTreeSet<String>,
     ) {
         match expr {
-            Expr::Call { callee, args } => {
+            Expr::Call { callee, args, .. } => {
                 if let Expr::Ident(name) = &callee.node {
                     if let Some(required) = Self::builtin_required_effect(name) {
                         out.insert(required.to_string());
@@ -1231,6 +1232,14 @@ impl TypeChecker {
                     );
                     self.validate_extern_signature(func, decl.span.clone());
                     let generic_bindings = self.make_generic_type_bindings(&func.generic_params);
+                    let generic_type_vars: Vec<usize> = func
+                        .generic_params
+                        .iter()
+                        .filter_map(|p| match generic_bindings.get(&p.name) {
+                            Some(ResolvedType::TypeVar(id)) => Some(*id),
+                            _ => None,
+                        })
+                        .collect();
                     let params: Vec<(String, ResolvedType)> = func
                         .params
                         .iter()
@@ -1254,6 +1263,7 @@ impl TypeChecker {
                         FuncSig {
                             params,
                             return_type,
+                            generic_type_vars,
                             is_variadic: func.is_variadic,
                             is_extern: func.is_extern,
                             effects,
@@ -1287,6 +1297,14 @@ impl TypeChecker {
                         );
                         let generic_bindings =
                             self.make_generic_type_bindings(&method.generic_params);
+                        let generic_type_vars: Vec<usize> = method
+                            .generic_params
+                            .iter()
+                            .filter_map(|p| match generic_bindings.get(&p.name) {
+                                Some(ResolvedType::TypeVar(id)) => Some(*id),
+                                _ => None,
+                            })
+                            .collect();
                         let params: Vec<(String, ResolvedType)> = method
                             .params
                             .iter()
@@ -1311,6 +1329,7 @@ impl TypeChecker {
                             FuncSig {
                                 params,
                                 return_type,
+                                generic_type_vars,
                                 is_variadic: method.is_variadic,
                                 is_extern: method.is_extern,
                                 effects,
@@ -1357,6 +1376,7 @@ impl TypeChecker {
                             FuncSig {
                                 params,
                                 return_type: self.resolve_type(&method.return_type),
+                                generic_type_vars: Vec::new(),
                                 is_variadic: false,
                                 is_extern: false,
                                 effects: Vec::new(),
@@ -1409,6 +1429,14 @@ impl TypeChecker {
                             let prefixed_name = format!("{}__{}", module.name, func.name);
                             let generic_bindings =
                                 self.make_generic_type_bindings(&func.generic_params);
+                            let generic_type_vars: Vec<usize> = func
+                                .generic_params
+                                .iter()
+                                .filter_map(|p| match generic_bindings.get(&p.name) {
+                                    Some(ResolvedType::TypeVar(id)) => Some(*id),
+                                    _ => None,
+                                })
+                                .collect();
                             let params: Vec<(String, ResolvedType)> = func
                                 .params
                                 .iter()
@@ -1432,6 +1460,7 @@ impl TypeChecker {
                                 FuncSig {
                                     params,
                                     return_type,
+                                    generic_type_vars,
                                     is_variadic: func.is_variadic,
                                     is_extern: func.is_extern,
                                     effects,
@@ -1808,17 +1837,7 @@ impl TypeChecker {
                 let value_type = self.check_expr(&value.node, value.span.clone());
 
                 // Check if target is assignable (mutable)
-                if let Expr::Ident(name) = &target.node {
-                    if let Some(var) = self.lookup_variable(name) {
-                        if !var.mutable {
-                            self.error_with_hint(
-                                format!("Cannot assign to immutable variable '{}'", name),
-                                target.span.clone(),
-                                "Consider declaring with 'mut'".to_string(),
-                            );
-                        }
-                    }
-                }
+                self.check_assignment_target_mutability(&target.node, target.span.clone());
 
                 if !self.types_compatible(&target_type, &value_type) {
                     self.error(
@@ -1953,6 +1972,27 @@ impl TypeChecker {
             }
 
             Stmt::Break | Stmt::Continue => {}
+        }
+    }
+
+    fn check_assignment_target_mutability(&mut self, target: &Expr, span: Span) {
+        match target {
+            Expr::Ident(name) => {
+                if let Some(var) = self.lookup_variable(name) {
+                    if !var.mutable {
+                        self.error_with_hint(
+                            format!("Cannot assign to immutable variable '{}'", name),
+                            span,
+                            "Consider declaring with 'mut'".to_string(),
+                        );
+                    }
+                }
+            }
+            Expr::Field { object, .. } | Expr::Index { object, .. } => {
+                self.check_assignment_target_mutability(&object.node, span);
+            }
+            Expr::This | Expr::Deref(_) => {}
+            _ => {}
         }
     }
 
@@ -2145,7 +2185,11 @@ impl TypeChecker {
                 }
             }
 
-            Expr::Call { callee, args } => self.check_call(&callee.node, args, span),
+            Expr::Call {
+                callee,
+                args,
+                type_args,
+            } => self.check_call(&callee.node, args, type_args, span),
 
             Expr::Field { object, field } => {
                 let obj_type = self.check_expr(&object.node, object.span.clone());
@@ -2617,10 +2661,178 @@ impl TypeChecker {
         }
     }
 
+    fn validate_resolved_type_exists(&mut self, ty: &ResolvedType, span: Span) {
+        match ty {
+            ResolvedType::Class(name) => {
+                if !self.classes.contains_key(name)
+                    && !self.interfaces.contains_key(name)
+                    && !self.enums.contains_key(name)
+                {
+                    self.error(format!("Unknown type: {}", name), span);
+                }
+            }
+            ResolvedType::Option(inner)
+            | ResolvedType::List(inner)
+            | ResolvedType::Set(inner)
+            | ResolvedType::Ref(inner)
+            | ResolvedType::MutRef(inner)
+            | ResolvedType::Box(inner)
+            | ResolvedType::Rc(inner)
+            | ResolvedType::Arc(inner)
+            | ResolvedType::Ptr(inner)
+            | ResolvedType::Task(inner)
+            | ResolvedType::Range(inner) => self.validate_resolved_type_exists(inner, span),
+            ResolvedType::Result(ok, err) | ResolvedType::Map(ok, err) => {
+                self.validate_resolved_type_exists(ok, span.clone());
+                self.validate_resolved_type_exists(err, span);
+            }
+            ResolvedType::Function(params, ret) => {
+                for p in params {
+                    self.validate_resolved_type_exists(p, span.clone());
+                }
+                self.validate_resolved_type_exists(ret, span);
+            }
+            ResolvedType::Integer
+            | ResolvedType::Float
+            | ResolvedType::Boolean
+            | ResolvedType::String
+            | ResolvedType::Char
+            | ResolvedType::None
+            | ResolvedType::TypeVar(_)
+            | ResolvedType::Unknown => {}
+        }
+    }
+
+    fn substitute_type_vars(
+        ty: &ResolvedType,
+        substitutions: &HashMap<usize, ResolvedType>,
+    ) -> ResolvedType {
+        match ty {
+            ResolvedType::TypeVar(id) => {
+                substitutions.get(id).cloned().unwrap_or_else(|| ty.clone())
+            }
+            ResolvedType::Option(inner) => {
+                ResolvedType::Option(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Result(ok, err) => ResolvedType::Result(
+                Box::new(Self::substitute_type_vars(ok, substitutions)),
+                Box::new(Self::substitute_type_vars(err, substitutions)),
+            ),
+            ResolvedType::List(inner) => {
+                ResolvedType::List(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Map(k, v) => ResolvedType::Map(
+                Box::new(Self::substitute_type_vars(k, substitutions)),
+                Box::new(Self::substitute_type_vars(v, substitutions)),
+            ),
+            ResolvedType::Set(inner) => {
+                ResolvedType::Set(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Ref(inner) => {
+                ResolvedType::Ref(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::MutRef(inner) => {
+                ResolvedType::MutRef(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Box(inner) => {
+                ResolvedType::Box(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Rc(inner) => {
+                ResolvedType::Rc(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Arc(inner) => {
+                ResolvedType::Arc(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Ptr(inner) => {
+                ResolvedType::Ptr(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Task(inner) => {
+                ResolvedType::Task(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Range(inner) => {
+                ResolvedType::Range(Box::new(Self::substitute_type_vars(inner, substitutions)))
+            }
+            ResolvedType::Function(params, ret) => ResolvedType::Function(
+                params
+                    .iter()
+                    .map(|p| Self::substitute_type_vars(p, substitutions))
+                    .collect(),
+                Box::new(Self::substitute_type_vars(ret, substitutions)),
+            ),
+            _ => ty.clone(),
+        }
+    }
+
+    fn instantiate_signature_for_call(
+        &mut self,
+        name: &str,
+        sig: &FuncSig,
+        type_args: &[Type],
+        span: Span,
+    ) -> (Vec<(String, ResolvedType)>, ResolvedType) {
+        if type_args.is_empty() {
+            return (sig.params.clone(), sig.return_type.clone());
+        }
+
+        if sig.generic_type_vars.is_empty() {
+            self.error(
+                format!(
+                    "Function '{}' is not generic but called with explicit type arguments",
+                    name
+                ),
+                span,
+            );
+            return (sig.params.clone(), sig.return_type.clone());
+        }
+
+        if type_args.len() != sig.generic_type_vars.len() {
+            self.error(
+                format!(
+                    "Function '{}' expects {} type arguments, got {}",
+                    name,
+                    sig.generic_type_vars.len(),
+                    type_args.len()
+                ),
+                span,
+            );
+            return (sig.params.clone(), sig.return_type.clone());
+        }
+
+        let mut substitutions: HashMap<usize, ResolvedType> = HashMap::new();
+        for (type_var_id, arg) in sig.generic_type_vars.iter().zip(type_args.iter()) {
+            let resolved = self.resolve_type(arg);
+            self.validate_resolved_type_exists(&resolved, span.clone());
+            substitutions.insert(*type_var_id, resolved);
+        }
+
+        let params = sig
+            .params
+            .iter()
+            .map(|(name, ty)| (name.clone(), Self::substitute_type_vars(ty, &substitutions)))
+            .collect::<Vec<_>>();
+        let return_type = Self::substitute_type_vars(&sig.return_type, &substitutions);
+        (params, return_type)
+    }
+
     /// Check a function/method call
-    fn check_call(&mut self, callee: &Expr, args: &[Spanned<Expr>], span: Span) -> ResolvedType {
+    fn check_call(
+        &mut self,
+        callee: &Expr,
+        args: &[Spanned<Expr>],
+        type_args: &[Type],
+        span: Span,
+    ) -> ResolvedType {
         // 1. Built-in functions (special handling for println, etc.)
         if let Expr::Ident(name) = callee {
+            if !type_args.is_empty() && Self::builtin_required_effect(name).is_some() {
+                self.error(
+                    format!(
+                        "Built-in function '{}' does not accept type arguments",
+                        name
+                    ),
+                    span.clone(),
+                );
+            }
             if let Some(required) = Self::builtin_required_effect(name) {
                 self.enforce_required_effect(required, span.clone(), name);
             }
@@ -2648,6 +2860,15 @@ impl TypeChecker {
                     resolved_module.as_str(),
                     "File" | "Time" | "System" | "Math" | "Str" | "Args"
                 ) {
+                    if !type_args.is_empty() {
+                        self.error(
+                            format!(
+                                "Built-in function '{}.{}' does not accept type arguments",
+                                resolved_module, field
+                            ),
+                            span.clone(),
+                        );
+                    }
                     let builtin_name = format!("{}__{}", resolved_module, field);
                     if let Some(required) = Self::builtin_required_effect(&builtin_name) {
                         self.enforce_required_effect(required, span.clone(), &builtin_name);
@@ -2693,7 +2914,13 @@ impl TypeChecker {
                 let mangled = format!("{}__{}", resolved_module, field);
                 if let Some(sig) = self.functions.get(&mangled).cloned() {
                     self.enforce_call_effects(&sig, span.clone(), &mangled);
-                    let expected = sig.params.len();
+                    let (inst_params, inst_return_type) = self.instantiate_signature_for_call(
+                        &mangled,
+                        &sig,
+                        type_args,
+                        span.clone(),
+                    );
+                    let expected = inst_params.len();
                     let bad_arity = if sig.is_variadic {
                         args.len() < expected
                     } else {
@@ -2714,7 +2941,7 @@ impl TypeChecker {
                             span.clone(),
                         );
                     } else {
-                        for (arg, (_, param_type)) in args.iter().zip(sig.params.iter()) {
+                        for (arg, (_, param_type)) in args.iter().zip(inst_params.iter()) {
                             let arg_type = self.check_expr(&arg.node, arg.span.clone());
                             if !self.types_compatible(param_type, &arg_type) {
                                 self.error(
@@ -2730,19 +2957,21 @@ impl TypeChecker {
                             self.check_variadic_ffi_tail_args(&mangled, args, expected);
                         }
                     }
-                    return sig.return_type;
+                    return inst_return_type;
                 }
             }
 
             let obj_type = self.check_expr(&object.node, object.span.clone());
-            return self.check_method_call(&obj_type, field, args, span);
+            return self.check_method_call(&obj_type, field, args, type_args, span);
         }
 
         // 3. Evaluate callee to see if it's a function type (handles global functions and local variables/params)
         if let Expr::Ident(name) = callee {
             if let Some(sig) = self.functions.get(name).cloned() {
                 self.enforce_call_effects(&sig, span.clone(), name);
-                let expected = sig.params.len();
+                let (inst_params, inst_return_type) =
+                    self.instantiate_signature_for_call(name, &sig, type_args, span.clone());
+                let expected = inst_params.len();
                 let bad_arity = if sig.is_variadic {
                     args.len() < expected
                 } else {
@@ -2763,7 +2992,7 @@ impl TypeChecker {
                         span.clone(),
                     );
                 } else {
-                    for (arg, (_, param_type)) in args.iter().zip(sig.params.iter()) {
+                    for (arg, (_, param_type)) in args.iter().zip(inst_params.iter()) {
                         let arg_type = self.check_expr(&arg.node, arg.span.clone());
                         if !self.types_compatible(param_type, &arg_type) {
                             self.error(
@@ -2779,10 +3008,16 @@ impl TypeChecker {
                         self.check_variadic_ffi_tail_args(name, args, expected);
                     }
                 }
-                return sig.return_type;
+                return inst_return_type;
             }
         }
 
+        if !type_args.is_empty() {
+            self.error(
+                "Explicit type arguments are only supported on named function calls".to_string(),
+                span.clone(),
+            );
+        }
         let callee_type = self.check_expr(callee, span.clone());
         if let ResolvedType::Function(param_types, return_type) = callee_type {
             if args.len() != param_types.len() {
@@ -3298,8 +3533,19 @@ impl TypeChecker {
         obj_type: &ResolvedType,
         method: &str,
         args: &[Spanned<Expr>],
+        type_args: &[Type],
         span: Span,
     ) -> ResolvedType {
+        if !type_args.is_empty() && !matches!(obj_type, ResolvedType::Class(_)) {
+            self.error(
+                format!(
+                    "Method '{}' on type '{}' does not accept explicit type arguments",
+                    method, obj_type
+                ),
+                span.clone(),
+            );
+        }
+
         match obj_type {
             ResolvedType::List(inner) => match method {
                 "push" => {
@@ -3442,6 +3688,12 @@ impl TypeChecker {
             ResolvedType::Class(name) => {
                 if let Some(interface) = self.interfaces.get(name).cloned() {
                     if let Some(sig) = interface.methods.get(method) {
+                        if !type_args.is_empty() {
+                            self.error(
+                                format!("Interface method '{}.{}' is not generic", name, method),
+                                span.clone(),
+                            );
+                        }
                         if args.len() != sig.params.len() {
                             self.error(
                                 format!(
@@ -3484,13 +3736,24 @@ impl TypeChecker {
                         span.clone(),
                     );
                     self.enforce_call_effects(&sig, span.clone(), method);
-                    if args.len() != sig.params.len() {
+                    let method_name = format!("{}.{}", owner, method);
+                    let (inst_params, inst_return_type) = self.instantiate_signature_for_call(
+                        &method_name,
+                        &sig,
+                        type_args,
+                        span.clone(),
+                    );
+                    if args.len() != inst_params.len() {
                         self.error(
-                            format!("Method '{}' expects {} arguments", method, sig.params.len()),
+                            format!(
+                                "Method '{}' expects {} arguments",
+                                method,
+                                inst_params.len()
+                            ),
                             span,
                         );
                     } else {
-                        for (arg, (_, param_type)) in args.iter().zip(sig.params.iter()) {
+                        for (arg, (_, param_type)) in args.iter().zip(inst_params.iter()) {
                             let arg_type = self.check_expr(&arg.node, arg.span.clone());
                             if !self.types_compatible(param_type, &arg_type) {
                                 self.error(
@@ -3503,7 +3766,7 @@ impl TypeChecker {
                             }
                         }
                     }
-                    sig.return_type
+                    inst_return_type
                 } else {
                     self.error(format!("Unknown class: {}", name), span);
                     ResolvedType::Unknown
@@ -4292,6 +4555,138 @@ mod tests {
             }
         "#;
         check_source(src).expect("valid built-in generic constructors should typecheck");
+    }
+
+    #[test]
+    fn rejects_explicit_type_args_on_non_generic_function() {
+        let src = r#"
+            function f(x: Integer): Integer { return x; }
+            function main(): None {
+                y: Integer = f<String>(1);
+                return None;
+            }
+        "#;
+        let errors = check_source(src)
+            .expect_err("non-generic function call with explicit type args should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("is not generic"), "{joined}");
+    }
+
+    #[test]
+    fn rejects_explicit_type_arg_arity_mismatch() {
+        let src = r#"
+            function id<T>(x: T): T { return x; }
+            function main(): None {
+                y: Integer = id<Integer, String>(1);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("generic arity mismatch should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("expects 1 type arguments"), "{joined}");
+    }
+
+    #[test]
+    fn rejects_unknown_explicit_type_argument() {
+        let src = r#"
+            function id<T>(x: T): T { return x; }
+            function main(): None {
+                y: Integer = id<Nope>(1);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("unknown explicit type arg should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Unknown type: Nope"), "{joined}");
+    }
+
+    #[test]
+    fn explicit_generic_method_call_typechecks() {
+        let src = r#"
+            class C {
+                constructor() {}
+                function id<T>(x: T): T { return x; }
+            }
+            function main(): None {
+                c: C = C();
+                y: Integer = c.id<Integer>(1);
+                return None;
+            }
+        "#;
+        check_source(src).expect("explicit generic method call should typecheck");
+    }
+
+    #[test]
+    fn explicit_generic_module_call_typechecks() {
+        let src = r#"
+            module M {
+                function id<T>(x: T): T { return x; }
+            }
+            function main(): None {
+                y: Integer = M.id<Integer>(1);
+                return None;
+            }
+        "#;
+        check_source(src).expect("explicit generic module call should typecheck");
+    }
+
+    #[test]
+    fn rejects_field_assignment_through_immutable_owner() {
+        let src = r#"
+            class C {
+                mut v: Integer;
+                constructor() { this.v = 1; }
+            }
+            function main(): None {
+                c: C = C();
+                c.v = 2;
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("immutable owner field assignment should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Cannot assign to immutable variable 'c'"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_index_assignment_through_immutable_owner() {
+        let src = r#"
+            function main(): None {
+                xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                xs[0] = 2;
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("immutable owner index assignment should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Cannot assign to immutable variable 'xs'"),
+            "{joined}"
+        );
     }
 
     #[test]

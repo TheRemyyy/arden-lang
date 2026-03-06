@@ -2,6 +2,7 @@
 // Tests: string interpolation with {}, expressions in strings, formatting
 
 import std.io.*;
+import std.math.*;
 
 function main(): None {
     println("=== String Interpolation Tests ===");

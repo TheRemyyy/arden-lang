@@ -218,7 +218,7 @@ function printHeader(title: String): None {
 function testStack(): None {
     printHeader("Stack (LIFO)");
 
-    stack: Stack = Stack(5);
+    mut stack: Stack = Stack(5);
     println("Created stack with capacity 5");
 
     println("");
@@ -245,7 +245,7 @@ function testStack(): None {
 function testQueue(): None {
     printHeader("Queue (FIFO)");
 
-    queue: Queue = Queue(5);
+    mut queue: Queue = Queue(5);
     println("Created queue with capacity 5");
 
     println("");
@@ -271,8 +271,8 @@ function testQueue(): None {
 function testLinkedList(): None {
     printHeader("Linked List");
 
-    node1: ListNode = ListNode(10);
-    node2: ListNode = ListNode(20);
+    mut node1: ListNode = ListNode(10);
+    mut node2: ListNode = ListNode(20);
     node3: ListNode = ListNode(30);
 
     println("Created 3 nodes: 10 -> 20 -> 30");
@@ -293,8 +293,8 @@ function testLinkedList(): None {
 function testBinaryTree(): None {
     printHeader("Binary Tree");
 
-    root: TreeNode = TreeNode(50);
-    left: TreeNode = TreeNode(30);
+    mut root: TreeNode = TreeNode(50);
+    mut left: TreeNode = TreeNode(30);
     right: TreeNode = TreeNode(70);
     leftLeft: TreeNode = TreeNode(20);
     leftRight: TreeNode = TreeNode(40);
@@ -349,9 +349,9 @@ function testGraph(): None {
     printHeader("Graph");
 
     // Create nodes
-    nodeA: GraphNode = GraphNode(0);
-    nodeB: GraphNode = GraphNode(1);
-    nodeC: GraphNode = GraphNode(2);
+    mut nodeA: GraphNode = GraphNode(0);
+    mut nodeB: GraphNode = GraphNode(1);
+    mut nodeC: GraphNode = GraphNode(2);
     nodeD: GraphNode = GraphNode(3);
 
     println("Created graph with 4 nodes");

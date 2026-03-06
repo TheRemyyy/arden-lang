@@ -333,7 +333,7 @@ function main(): None {
     println("Playing another round...");
 
     hints.reset();
-    game2: GameState = GameState(1, 100);
+    mut game2: GameState = GameState(1, 100);
 
     // Quick simulated game
     target2: Integer = 73;

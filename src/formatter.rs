@@ -476,9 +476,25 @@ impl Formatter {
                     formatted
                 }
             }
-            Expr::Call { callee, args } => format!(
-                "{}({})",
+            Expr::Call {
+                callee,
+                args,
+                type_args,
+            } => format!(
+                "{}{}({})",
                 self.format_expr_with_prec(&callee.node, 9),
+                if type_args.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "<{}>",
+                        type_args
+                            .iter()
+                            .map(|ty| self.format_type(ty))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                },
                 args.iter()
                     .map(|arg| self.format_expr(&arg.node))
                     .collect::<Vec<_>>()

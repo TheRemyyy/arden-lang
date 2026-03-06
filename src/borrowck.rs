@@ -233,9 +233,10 @@ impl BorrowChecker {
 
         // Add parameters with correct initial state
         for param in &func.params {
+            let param_mutable = param.mutable || matches!(param.mode, ParamMode::BorrowMut);
             self.declare_var(
                 &param.name,
-                param.mutable,
+                param_mutable,
                 0..0,
                 self.needs_drop(&param.ty),
                 Some(param.ty.clone()),
@@ -273,9 +274,10 @@ impl BorrowChecker {
                 Some(Type::Named(class.name.clone())),
             );
             for param in &ctor.params {
+                let param_mutable = param.mutable || matches!(param.mode, ParamMode::BorrowMut);
                 self.declare_var(
                     &param.name,
-                    param.mutable,
+                    param_mutable,
                     0..0,
                     self.needs_drop(&param.ty),
                     Some(param.ty.clone()),
@@ -296,9 +298,10 @@ impl BorrowChecker {
                 Some(Type::Named(class.name.clone())),
             );
             for param in &method.params {
+                let param_mutable = param.mutable || matches!(param.mode, ParamMode::BorrowMut);
                 self.declare_var(
                     &param.name,
-                    param.mutable,
+                    param_mutable,
                     0..0,
                     self.needs_drop(&param.ty),
                     Some(param.ty.clone()),
@@ -498,10 +501,12 @@ impl BorrowChecker {
                 }
             }
             Expr::Field { object, field: _ } => {
+                self.check_owner_mutability_for_assignment(&object.node, span.clone());
                 self.check_owner_borrow_state_for_assignment(&object.node, span.clone());
                 self.check_expr(&object.node, object.span.clone(), false);
             }
             Expr::Index { object, index } => {
+                self.check_owner_mutability_for_assignment(&object.node, span.clone());
                 self.check_owner_borrow_state_for_assignment(&object.node, span.clone());
                 self.check_expr(&object.node, object.span.clone(), false);
                 self.check_expr(&index.node, index.span.clone(), false);
@@ -553,6 +558,26 @@ impl BorrowChecker {
         }
     }
 
+    fn check_owner_mutability_for_assignment(&mut self, expr: &Expr, span: Span) {
+        match expr {
+            Expr::Ident(name) => {
+                if let Some(var) = self.get_var(name) {
+                    if !var.mutable {
+                        self.errors.push(BorrowError::new(
+                            format!("Cannot assign through immutable variable '{}'", name),
+                            span,
+                        ));
+                    }
+                }
+            }
+            Expr::Field { object, .. } | Expr::Index { object, .. } => {
+                self.check_owner_mutability_for_assignment(&object.node, span);
+            }
+            Expr::This | Expr::Deref(_) => {}
+            _ => {}
+        }
+    }
+
     #[allow(clippy::only_used_in_recursion)]
     fn check_expr(&mut self, expr: &Expr, span: Span, need_mut: bool) {
         match expr {
@@ -582,7 +607,7 @@ impl BorrowChecker {
                 self.check_expr(&inner.node, inner.span.clone(), false);
             }
 
-            Expr::Call { callee, args } => {
+            Expr::Call { callee, args, .. } => {
                 self.check_expr(&callee.node, callee.span.clone(), false);
 
                 // Borrows created to satisfy receiver/argument modes are
@@ -1057,6 +1082,10 @@ impl BorrowChecker {
                     return vec![ParamMode::Borrow; arg_len];
                 }
             }
+
+            // Unknown method receiver type: stay conservative and avoid
+            // implicit move-default on arguments for member-call syntax.
+            return vec![ParamMode::Borrow; arg_len];
         }
 
         param_modes
@@ -1087,13 +1116,21 @@ impl BorrowChecker {
     }
 
     fn create_receiver_borrow(&mut self, name: &str, mutable: bool, span: Span) {
-        let state = {
+        let (state, is_mutable) = {
             if let Some(var) = self.get_var(name) {
-                var.state.clone()
+                (var.state.clone(), var.mutable)
             } else {
                 return;
             }
         };
+
+        if mutable && !is_mutable {
+            self.errors.push(BorrowError::new(
+                format!("Cannot mutably borrow immutable variable '{}'", name),
+                span,
+            ));
+            return;
+        }
 
         match state {
             OwnershipState::Moved(move_span) => {
@@ -1269,7 +1306,7 @@ impl BorrowChecker {
         methods: &std::collections::HashSet<String>,
     ) -> bool {
         match expr {
-            Expr::Call { callee, args } => {
+            Expr::Call { callee, args, .. } => {
                 let calls_mutating = matches!(
                     &callee.node,
                     Expr::Field { object, field }
@@ -1356,7 +1393,7 @@ impl BorrowChecker {
     }
 
     fn bind_reference_origin_borrow(&mut self, value: &Expr, span: Span) {
-        let Expr::Call { callee, args } = value else {
+        let Expr::Call { callee, args, .. } = value else {
             return;
         };
         let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
@@ -1456,7 +1493,7 @@ impl BorrowChecker {
                     out.push(name.clone());
                 }
             }
-            Expr::Call { callee, args } => {
+            Expr::Call { callee, args, .. } => {
                 Self::collect_free_idents_inner(&callee.node, params, out);
                 for arg in args {
                     Self::collect_free_idents_inner(&arg.node, params, out);
@@ -1599,7 +1636,7 @@ impl BorrowChecker {
 
     fn expr_moves_ident(&self, expr: &Expr, ident: &str) -> bool {
         match expr {
-            Expr::Call { callee, args } => {
+            Expr::Call { callee, args, .. } => {
                 let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
                 for (i, arg) in args.iter().enumerate() {
                     if let Expr::Ident(name) = &arg.node {
@@ -1771,7 +1808,7 @@ impl BorrowChecker {
                 matches!(&inner.node, Expr::Ident(name) if name == ident)
                     || self.expr_mutably_borrows_ident(&inner.node, ident)
             }
-            Expr::Call { callee, args } => {
+            Expr::Call { callee, args, .. } => {
                 let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
                 if args.iter().enumerate().any(|(i, arg)| {
                     matches!(param_modes.get(i), Some(ParamMode::BorrowMut))
@@ -2474,6 +2511,44 @@ mod tests {
             }
         "#;
         borrow_ok(source);
+    }
+
+    #[test]
+    fn method_call_with_expression_receiver_does_not_force_owned_args() {
+        let source = r#"
+            import std.io.*;
+            class C {
+                function use(borrow s: String): None { println(s); return None; }
+            }
+            function mk(): C { return C(); }
+            function main(): None {
+                s: String = "x";
+                mk().use(s);
+                println(s);
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn immutable_receiver_cannot_call_mutating_method() {
+        let source = r#"
+            class C {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function touch(): None { this.v += 1; return None; }
+            }
+            function main(): None {
+                c: C = C(1);
+                c.touch();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot mutably borrow immutable variable 'c'")));
     }
 
     #[test]

@@ -141,7 +141,7 @@ function main(): None {
     // Counter class
     println("");
     println("Creating Counter...");
-    c: Counter = Counter(0);
+    mut c: Counter = Counter(0);
     c.increment();
     c.increment();
     c.increment();

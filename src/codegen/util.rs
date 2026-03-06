@@ -1347,7 +1347,7 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Unary { expr, .. } => {
                 self.walk_expr_for_captures(&expr.node, params, captures, seen);
             }
-            Expr::Call { callee, args } => {
+            Expr::Call { callee, args, .. } => {
                 self.walk_expr_for_captures(&callee.node, params, captures, seen);
                 for arg in args {
                     self.walk_expr_for_captures(&arg.node, params, captures, seen);

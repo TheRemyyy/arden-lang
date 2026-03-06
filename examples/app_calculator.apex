@@ -189,7 +189,7 @@ function main(): None {
     println("========================================");
     println("");
 
-    calc: Calculator = Calculator();
+    mut calc: Calculator = Calculator();
 
     // Basic arithmetic demo
     println("=== Basic Arithmetic ===");

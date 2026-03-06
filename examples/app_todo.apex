@@ -188,7 +188,7 @@ function main(): None {
     println("========================================");
 
     // Create a todo list
-    myList: TodoList = TodoList("My Tasks");
+    mut myList: TodoList = TodoList("My Tasks");
     println("");
     println("Created list: My Tasks");
 
@@ -202,7 +202,7 @@ function main(): None {
     // Add some todo items
     printHeader("Adding Todo Items");
 
-    task1: TodoItem = TodoItem(1, "Review project proposal", Priority__high());
+    mut task1: TodoItem = TodoItem(1, "Review project proposal", Priority__high());
     myList.addItem();
     task1.display();
 
@@ -214,7 +214,7 @@ function main(): None {
     myList.addItem();
     task3.display();
 
-    task4: TodoItem = TodoItem(4, "Fix critical bug", Priority__critical());
+    mut task4: TodoItem = TodoItem(4, "Fix critical bug", Priority__critical());
     myList.addItem();
     task4.display();
 

@@ -919,7 +919,11 @@ fn rewrite_expr_calls_for_project(
     scopes: &mut Vec<HashSet<String>>,
 ) -> Expr {
     match expr {
-        Expr::Call { callee, args } => {
+        Expr::Call {
+            callee,
+            args,
+            type_args,
+        } => {
             let rewritten_callee = match &callee.node {
                 Expr::Field { object, field }
                     if matches!(&object.node, Expr::Ident(_))
@@ -1055,6 +1059,7 @@ fn rewrite_expr_calls_for_project(
                         )
                     })
                     .collect(),
+                type_args: type_args.clone(),
             }
         }
         Expr::Binary { op, left, right } => Expr::Binary {
@@ -1304,6 +1309,7 @@ mod tests {
                     sp(Stmt::Expr(sp(Expr::Call {
                         callee: Box::new(sp(Expr::Ident("foo".to_string()))),
                         args: vec![],
+                        type_args: vec![],
                     }))),
                 ],
                 is_async: false,
@@ -1379,6 +1385,7 @@ mod tests {
                             field: "make".to_string(),
                         })),
                         args: vec![],
+                        type_args: vec![],
                     }))),
                 ],
                 is_async: false,
@@ -1472,6 +1479,7 @@ mod tests {
                             field: "make".to_string(),
                         })),
                         args: vec![],
+                        type_args: vec![],
                     }))),
                 ],
                 is_async: false,
@@ -1538,6 +1546,7 @@ mod tests {
                     sp(Stmt::Expr(sp(Expr::Call {
                         callee: Box::new(sp(Expr::Ident("helper".to_string()))),
                         args: vec![],
+                        type_args: vec![],
                     }))),
                     sp(Stmt::Let {
                         name: "widget".to_string(),
@@ -1622,6 +1631,7 @@ mod tests {
                     sp(Stmt::Expr(sp(Expr::Call {
                         callee: Box::new(sp(Expr::Ident("mk".to_string()))),
                         args: vec![],
+                        type_args: vec![],
                     }))),
                     sp(Stmt::Expr(sp(Expr::Call {
                         callee: Box::new(sp(Expr::Field {
@@ -1629,6 +1639,7 @@ mod tests {
                             field: "run".to_string(),
                         })),
                         args: vec![],
+                        type_args: vec![],
                     }))),
                 ],
                 is_async: false,
@@ -1716,6 +1727,7 @@ mod tests {
                             field: "println".to_string(),
                         })),
                         args: vec![sp(Expr::Literal(ast::Literal::String("x".to_string())))],
+                        type_args: vec![],
                     }))),
                     sp(Stmt::Expr(sp(Expr::Call {
                         callee: Box::new(sp(Expr::Field {
@@ -1723,6 +1735,7 @@ mod tests {
                             field: "abs".to_string(),
                         })),
                         args: vec![sp(Expr::Literal(ast::Literal::Integer(-1)))],
+                        type_args: vec![],
                     }))),
                 ],
                 is_async: false,

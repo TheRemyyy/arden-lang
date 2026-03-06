@@ -679,6 +679,132 @@ function main(): None {
 """,
     True,
 )
+run_single(
+    "explicit_generic_non_generic_function_rejected",
+    """
+function f(x: Integer): Integer { return x; }
+function main(): None {
+    y: Integer = f<String>(1);
+    return None;
+}
+""",
+    False,
+    ["is not generic"],
+)
+run_single(
+    "explicit_generic_function_arity_mismatch_rejected",
+    """
+function id<T>(x: T): T { return x; }
+function main(): None {
+    y: Integer = id<Integer, String>(1);
+    return None;
+}
+""",
+    False,
+    ["expects 1 type arguments"],
+)
+run_single(
+    "explicit_generic_unknown_type_rejected",
+    """
+function id<T>(x: T): T { return x; }
+function main(): None {
+    y: Integer = id<Nope>(1);
+    return None;
+}
+""",
+    False,
+    ["Unknown type: Nope"],
+)
+run_single(
+    "explicit_generic_method_call_parses_and_typechecks",
+    """
+class C {
+    function id<T>(x: T): T { return x; }
+}
+function main(): None {
+    c: C = C();
+    y: Integer = c.id<Integer>(1);
+    return None;
+}
+""",
+    True,
+)
+run_single(
+    "explicit_generic_module_call_parses_and_typechecks",
+    """
+module M {
+    function id<T>(x: T): T { return x; }
+}
+function main(): None {
+    y: Integer = M.id<Integer>(1);
+    return None;
+}
+""",
+    True,
+)
+run_single(
+    "method_call_with_expression_receiver_does_not_move_borrow_arg",
+    """
+import std.io.*;
+class C {
+    function use(borrow s: String): None { println(s); return None; }
+}
+function mk(): C { return C(); }
+function main(): None {
+    s: String = "x";
+    mk().use(s);
+    println(s);
+    return None;
+}
+""",
+    True,
+)
+run_single(
+    "field_assignment_through_immutable_owner_rejected",
+    """
+class C {
+    mut v: Integer;
+    constructor() { this.v = 1; }
+}
+function main(): None {
+    c: C = C();
+    c.v = 2;
+    return None;
+}
+""",
+    False,
+    ["Cannot assign to immutable variable 'c'"],
+)
+run_single(
+    "index_assignment_through_immutable_owner_rejected",
+    """
+function main(): None {
+    xs: List<Integer> = List<Integer>();
+    xs.push(1);
+    xs[0] = 2;
+    return None;
+}
+""",
+    False,
+    ["Cannot assign to immutable variable 'xs'"],
+)
+run_single(
+    "immutable_receiver_cannot_call_mutating_method",
+    """
+class C {
+    mut v: Integer;
+    constructor(v: Integer) { this.v = v; }
+    function touch(): None { this.v += 1; return None; }
+}
+function main(): None {
+    c: C = C(1);
+    c.touch();
+    return None;
+}
+""",
+    False,
+    ["Cannot mutably borrow immutable variable 'c'"],
+)
 run_compile_stdout(
     "match_expression_literal_runtime_selects_correct_arm",
     """

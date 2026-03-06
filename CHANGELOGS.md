@@ -121,6 +121,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed generic function type parameters being resolved as class names during type checking:
   - function/method generic params now bind to internal type variables in signatures and body checks
   - call sites like `id<Integer>(1)` no longer fail with spurious `expected T, got Integer` errors.
+- Fixed explicit generic call handling end-to-end:
+  - parser now supports explicit type arguments on method and module calls (`obj.fn<T>(...)`, `Module.fn<T>(...)`)
+  - non-generic functions called with explicit type arguments now fail
+  - explicit generic arity mismatch now fails
+  - unknown explicit type argument types now fail
+- Fixed borrow checker argument-mode fallback for member calls with expression receivers (`mk().use(x)`):
+  - unresolved receiver types no longer default call arguments to `Owned` moves.
+- Fixed mutable receiver borrow validation to reject mutating method calls on immutable variables.
+- Fixed assignment mutability enforcement for nested lvalues:
+  - immutable owners now reject `obj.field = ...`
+  - immutable owners now reject `arr[i] = ...`
+- Fixed examples regression in `examples/12_string_interp.apex` by adding missing `std.math` import for `Math.abs(...)`.
 - Fixed project rewrite handling of stdlib namespace aliases (`import std.io as io;`, `import std.math as math;`) so project-mode `check/build` no longer rewrites aliases into invalid mangled module identifiers.
 - Fixed type checker alias resolution precedence: a local variable named like an import alias (for example `io`) no longer gets treated as stdlib module alias in method-call resolution (`io.println(...)` now correctly errors on non-module variable types).
 - Replaced hardcoded stdlib alias mapping in type checking/project rewrite with stdlib-registry-based resolution:

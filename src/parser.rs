@@ -1751,6 +1751,45 @@ impl<'src> Parser<'src> {
         Ok(expr)
     }
 
+    fn parse_call_type_args(&mut self) -> ParseResult<Vec<Type>> {
+        if !self.check(&Token::Lt) {
+            return Ok(Vec::new());
+        }
+
+        let saved = self.pos;
+        self.advance();
+        let mut type_args = Vec::new();
+        let mut parse_ok = true;
+        while !self.check(&Token::Gt) && !self.is_at_end() {
+            match self.parse_type() {
+                Ok(parsed_type) => type_args.push(parsed_type),
+                Err(_) => {
+                    parse_ok = false;
+                    break;
+                }
+            }
+            if self.check(&Token::Comma) {
+                self.advance();
+            } else if !self.check(&Token::Gt) {
+                parse_ok = false;
+                break;
+            }
+        }
+
+        if parse_ok && self.check(&Token::Gt) {
+            self.advance();
+            if self.check(&Token::LParen) {
+                Ok(type_args)
+            } else {
+                self.pos = saved;
+                Ok(Vec::new())
+            }
+        } else {
+            self.pos = saved;
+            Ok(Vec::new())
+        }
+    }
+
     fn parse_expr_rest(&mut self, mut expr: Spanned<Expr>) -> ParseResult<Spanned<Expr>> {
         loop {
             let start = expr.span.start;
@@ -1759,6 +1798,7 @@ impl<'src> Parser<'src> {
                 Some(Token::Dot) => {
                     self.advance();
                     let field = self.parse_ident()?;
+                    let type_args = self.parse_call_type_args()?;
 
                     if self.check(&Token::LParen) {
                         // Method call
@@ -1777,6 +1817,7 @@ impl<'src> Parser<'src> {
                             Expr::Call {
                                 callee: Box::new(method_expr),
                                 args,
+                                type_args,
                             },
                             start..self.current_span().start,
                         );
@@ -1798,6 +1839,24 @@ impl<'src> Parser<'src> {
                         Expr::Call {
                             callee: Box::new(expr),
                             args,
+                            type_args: Vec::new(),
+                        },
+                        start..self.current_span().start,
+                    );
+                }
+                Some(Token::Lt) => {
+                    let type_args = self.parse_call_type_args()?;
+                    if type_args.is_empty() || !self.check(&Token::LParen) {
+                        break;
+                    }
+                    self.advance();
+                    let args = self.parse_args()?;
+                    self.eat(&Token::RParen)?;
+                    expr = Spanned::new(
+                        Expr::Call {
+                            callee: Box::new(expr),
+                            args,
+                            type_args,
                         },
                         start..self.current_span().start,
                     );
@@ -1923,38 +1982,15 @@ impl<'src> Parser<'src> {
                     .map(|c| c.is_uppercase())
                     .unwrap_or(false);
 
-                let mut has_explicit_type_args = false;
-                if self.check(&Token::Lt) {
-                    let saved = self.pos;
-                    self.advance();
-                    let mut type_args = Vec::new();
-                    let mut parse_ok = true;
-                    while !self.check(&Token::Gt) && !self.is_at_end() {
-                        match self.parse_type() {
-                            Ok(parsed_type) => type_args.push(self.format_type(&parsed_type)),
-                            Err(_) => {
-                                parse_ok = false;
-                                break;
-                            }
-                        }
-                        if self.check(&Token::Comma) {
-                            self.advance();
-                        } else if !self.check(&Token::Gt) {
-                            parse_ok = false;
-                            break;
-                        }
-                    }
-                    if parse_ok && self.check(&Token::Gt) {
-                        self.advance();
-                        if self.check(&Token::LParen) {
-                            has_explicit_type_args = true;
-                            full_name = format!("{}<{}>", name, type_args.join(", "));
-                        } else {
-                            self.pos = saved;
-                        }
-                    } else {
-                        self.pos = saved;
-                    }
+                let explicit_type_args = self.parse_call_type_args()?;
+                let has_explicit_type_args = !explicit_type_args.is_empty();
+                if has_explicit_type_args {
+                    let formatted = explicit_type_args
+                        .iter()
+                        .map(|t| self.format_type(t))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    full_name = format!("{}<{}>", name, formatted);
                 }
 
                 // Check if this is a constructor call
@@ -2003,6 +2039,7 @@ impl<'src> Parser<'src> {
                         Expr::Call {
                             callee: Box::new(callee),
                             args,
+                            type_args: explicit_type_args,
                         }
                     }
                 } else {
@@ -2677,9 +2714,14 @@ mod tests {
             panic!("Expected let statement");
         };
         match &value.node {
-            Expr::Call { callee, args } => {
+            Expr::Call {
+                callee,
+                args,
+                type_args,
+            } => {
                 assert!(matches!(callee.node, Expr::Ident(ref n) if n == "Foo"));
                 assert!(args.is_empty());
+                assert!(type_args.is_empty());
             }
             other => panic!("Expected call expression, found {:?}", other),
         }
@@ -2701,7 +2743,57 @@ mod tests {
         let Stmt::Let { value, .. } = &func.body[0].node else {
             panic!("Expected let statement");
         };
-        assert!(matches!(value.node, Expr::Call { .. }));
+        let Expr::Call { type_args, .. } = &value.node else {
+            panic!("Expected call");
+        };
+        assert_eq!(type_args.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_explicit_generic_method_call() {
+        let source = r#"
+            class C {
+                function id<T>(x: T): T { return x; }
+            }
+            function main(): None {
+                c: C = C();
+                x: Integer = c.id<Integer>(1);
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse explicit generic method call");
+        let Decl::Function(func) = &program.declarations[1].node else {
+            panic!("Expected main function declaration");
+        };
+        let Stmt::Let { value, .. } = &func.body[1].node else {
+            panic!("Expected let statement");
+        };
+        let Expr::Call { type_args, .. } = &value.node else {
+            panic!("Expected call");
+        };
+        assert_eq!(type_args.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_explicit_generic_module_call() {
+        let source = r#"
+            module M { function id<T>(x: T): T { return x; } }
+            function main(): None {
+                x: Integer = M.id<Integer>(1);
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse explicit generic module call");
+        let Decl::Function(func) = &program.declarations[1].node else {
+            panic!("Expected main function declaration");
+        };
+        let Stmt::Let { value, .. } = &func.body[0].node else {
+            panic!("Expected let statement");
+        };
+        let Expr::Call { type_args, .. } = &value.node else {
+            panic!("Expected call");
+        };
+        assert_eq!(type_args.len(), 1);
     }
 
     #[test]
@@ -2720,7 +2812,10 @@ mod tests {
         let Stmt::Let { value, .. } = &func.body[0].node else {
             panic!("Expected let statement");
         };
-        assert!(matches!(value.node, Expr::Call { .. }));
+        let Expr::Call { type_args, .. } = &value.node else {
+            panic!("Expected call");
+        };
+        assert_eq!(type_args.len(), 1);
     }
 
     #[test]

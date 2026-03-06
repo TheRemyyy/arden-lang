@@ -39,7 +39,7 @@ class PremiumAccount extends Account {
 
 function main(): None {
     println("=== Visibility Enforcement ===");
-    a: Account = Account("Standard", 100, 42);
+    mut a: Account = Account("Standard", 100, 42);
     a.deposit(50);
     println("Account: ${a.label}, balance=${a.getBalance()}");
 

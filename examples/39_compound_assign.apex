@@ -41,7 +41,7 @@ function main(): None {
     x /= 2;
     println("x = {x}");
 
-    c: Counter = Counter(20);
+    mut c: Counter = Counter(20);
     c.value += 4;
     c.value -= 2;
     c.value *= 3;

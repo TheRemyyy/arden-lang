@@ -142,6 +142,11 @@ apex check src/utils.apex
 Behavior:
 - `apex check` (without a file path) is project-aware and validates the full project graph (`apex.toml` files list), including cross-file imports/types/borrows.
 - `apex check <file.apex>` checks only that single file.
+- `apex check` validates explicit generic call arguments on functions/methods/modules (`f<T>(...)`), including:
+  - non-generic calls with type arguments (rejected),
+  - generic arity mismatch (rejected),
+  - unknown explicit type arguments (rejected).
+- Assignment mutability checks now apply to nested targets too (`obj.field = ...`, `arr[i] = ...`), not only direct identifier targets.
 
 ### Formatting Code
 

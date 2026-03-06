@@ -2773,7 +2773,7 @@ impl<'ctx> Codegen<'ctx> {
 
             Expr::Unary { op, expr } => self.compile_unary(*op, &expr.node),
 
-            Expr::Call { callee, args } => self.compile_call(&callee.node, args),
+            Expr::Call { callee, args, .. } => self.compile_call(&callee.node, args),
 
             Expr::Field { object, field } => self.compile_field(&object.node, field),
 

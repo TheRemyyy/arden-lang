@@ -311,7 +311,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                     }
                 }
             }
-            Expr::Call { callee, args } => {
+            Expr::Call { callee, args, .. } => {
                 self.walk_expr(callee);
                 for arg in args {
                     self.walk_expr(arg);
@@ -921,7 +921,7 @@ impl Backend {
                     out.push(expr.span.clone());
                 }
             }
-            Expr::Call { callee, args } => {
+            Expr::Call { callee, args, .. } => {
                 self.collect_symbol_spans_expr(text, symbol, callee, out);
                 for arg in args {
                     self.collect_symbol_spans_expr(text, symbol, arg, out);
