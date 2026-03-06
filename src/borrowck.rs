@@ -436,9 +436,11 @@ impl BorrowChecker {
                 }
             }
             Expr::Field { object, field: _ } => {
+                self.check_owner_borrow_state_for_assignment(&object.node, span.clone());
                 self.check_expr(&object.node, object.span.clone(), false);
             }
             Expr::Index { object, index } => {
+                self.check_owner_borrow_state_for_assignment(&object.node, span.clone());
                 self.check_expr(&object.node, object.span.clone(), false);
                 self.check_expr(&index.node, index.span.clone(), false);
             }
@@ -452,6 +454,40 @@ impl BorrowChecker {
                     span,
                 ));
             }
+        }
+    }
+
+    fn check_owner_borrow_state_for_assignment(&mut self, expr: &Expr, span: Span) {
+        match expr {
+            Expr::Ident(name) => {
+                if let Some(var) = self.get_var(name) {
+                    match &var.state {
+                        OwnershipState::MutBorrowed(borrow_span) => {
+                            self.errors.push(
+                                BorrowError::new(
+                                    format!(
+                                        "Cannot assign through '{}' while mutably borrowed",
+                                        name
+                                    ),
+                                    span.clone(),
+                                )
+                                .with_note("Mutable borrow occurred here", borrow_span.clone()),
+                            );
+                        }
+                        OwnershipState::Borrowed(count) if *count > 0 => {
+                            self.errors.push(BorrowError::new(
+                                format!("Cannot assign through '{}' while borrowed", name),
+                                span.clone(),
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Expr::Field { object, .. } | Expr::Index { object, .. } => {
+                self.check_owner_borrow_state_for_assignment(&object.node, span);
+            }
+            _ => {}
         }
     }
 
@@ -559,18 +595,24 @@ impl BorrowChecker {
 
                 let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
                 let free_idents = Self::collect_free_idents(&body.node, &param_names);
+                let mut moved_captures = Vec::new();
                 for ident in free_idents {
                     if self.get_var(&ident).is_none() {
                         continue;
                     }
                     if self.expr_moves_ident(&body.node, &ident) {
-                        self.try_move(&Expr::Ident(ident.clone()), span.clone());
+                        moved_captures.push(ident);
                     } else {
                         self.create_borrow(&ident, false, span.clone());
                     }
                 }
 
                 self.check_expr(&body.node, body.span.clone(), false);
+                // Mark owned captures as moved after body analysis to avoid false
+                // use-after-move reports inside the lambda expression itself.
+                for ident in moved_captures {
+                    self.try_move(&Expr::Ident(ident), span.clone());
+                }
                 self.exit_scope();
             }
 
@@ -822,6 +864,14 @@ impl BorrowChecker {
         match expr {
             Expr::Ident(name) => {
                 let ty = self.get_var(name)?.ty.as_ref()?;
+                match ty {
+                    Type::Named(class_name) => Some(class_name.as_str()),
+                    Type::Generic(class_name, _) => Some(class_name.as_str()),
+                    _ => None,
+                }
+            }
+            Expr::This => {
+                let ty = self.get_var("this")?.ty.as_ref()?;
                 match ty {
                     Type::Named(class_name) => Some(class_name.as_str()),
                     Type::Generic(class_name, _) => Some(class_name.as_str()),
@@ -1459,6 +1509,19 @@ mod tests {
     }
 
     #[test]
+    fn lambda_owned_capture_does_not_fail_inside_lambda() {
+        let source = r#"
+            function consume(owned s: String): None { return None; }
+            function main(): None {
+                s: String = "hello";
+                f: () -> None = () => consume(s);
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
     fn compound_assign_on_mut_borrowed_variable_is_rejected() {
         let source = r#"
             function main(): None {
@@ -1472,5 +1535,47 @@ mod tests {
         assert!(errors
             .iter()
             .any(|m| m.contains("Cannot assign to 'x' while mutably borrowed")));
+    }
+
+    #[test]
+    fn field_assign_on_borrowed_owner_is_rejected() {
+        let source = r#"
+            class C {
+                mut value: Integer;
+                constructor(v: Integer) { this.value = v; }
+            }
+            function main(): None {
+                mut c: C = C(1);
+                r: &C = &c;
+                c.value += 1;
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot assign through 'c' while borrowed")));
+    }
+
+    #[test]
+    fn this_method_uses_declared_param_modes() {
+        let source = r#"
+            import std.io.*;
+            class A {
+                function take(borrow s: String): None { return None; }
+                function run(): None {
+                    s: String = "x";
+                    this.take(s);
+                    println(s);
+                    return None;
+                }
+            }
+            function main(): None {
+                a: A = A();
+                a.run();
+                return None;
+            }
+        "#;
+        borrow_ok(source);
     }
 }

@@ -42,7 +42,7 @@ This folder is the executable language feature gallery.
 - `36_inheritance_extends.apex`: class inheritance with `extends` and inherited methods.
 - `37_interfaces_contracts.apex`: enforced `implements` contracts and interface-typed params.
 - `38_import_aliases.apex`: `import ... as ...` alias usage (`math`, `str`, `io`).
-- `39_compound_assign.apex`: compound assignment operators (`+=`, `-=`, `*=`, `/=`) for vars, indexes, and fields.
+- `39_compound_assign.apex`: compound assignment operators (`+=`, `-=`, `*=`, `/=`) for vars and fields.
 - `40_borrow_scope_recovery.apex`: borrow checker scope edge case where immutable borrow ends and move is valid again.
 
 ## Full apps

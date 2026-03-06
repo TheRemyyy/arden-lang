@@ -65,3 +65,5 @@ The compiler enforces these edge cases explicitly:
 - immutable borrow state is released after scope exit, so the value is movable again
 - lambda captures participate in move/borrow analysis for outer variables
 - compound assignment on a currently borrowed variable is rejected
+- assignments through nested lvalues (`obj.field = ...`, `arr[i] = ...`) are rejected when the owner is currently borrowed
+- method calls on `this` use declared parameter borrow modes (no fallback to default owned move behavior)

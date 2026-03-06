@@ -100,6 +100,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - mutable borrow state reset now checks active borrows for the same variable only
   - immutable borrow counts are properly recomputed/decremented after scope exit
 - Fixed lambda capture borrow semantics by analyzing free identifiers in lambda bodies and applying move/borrow behavior for captured outer variables.
+- Fixed false-positive lambda capture diagnostics where owned captures were reported as use-after-move inside the lambda expression itself.
+- Fixed borrow checker assignment validation for nested lvalues (`obj.field = ...`, `arr[i] = ...`) so owner borrow state is enforced consistently (not only plain identifier targets).
+- Fixed method-call borrow mode resolution for `this.method(...)` receiver calls by inferring receiver class from `this` type metadata.
 - Added borrow checker regression tests for:
   - use-after-move
   - move while borrowed
@@ -107,6 +110,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - scope-exit borrow release movability
   - lambda capture move behavior
   - compound assignment on borrowed variable
+  - assignment through borrowed owner (`obj.field += ...`)
+  - `this` receiver method param-mode lookup
 - CI smoke checks now include borrow-checker edge-case expected-fail/expected-pass scenarios.
 - Removed duplicate Vercel routing config from `web/public/vercel.json`; `web/vercel.json` is now the only deploy config.
 - Removed machine-specific LLVM/linker paths from `.cargo/config.toml`.
