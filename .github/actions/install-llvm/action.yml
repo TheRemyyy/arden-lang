@@ -49,6 +49,7 @@ runs:
         choco install llvm --version=21.1.7 -y --no-progress
         $llvmPrefix = $null
         $llvmConfig = $null
+        $llvmVersion = "21.1.7"
         $prefixCandidates = @(
           "C:\Program Files\LLVM",
           "$env:ChocolateyInstall\lib\llvm\tools\llvm"
@@ -127,6 +128,8 @@ runs:
           $llvmConfig = Join-Path $llvmBin "llvm-config.exe"
         }
 
+        $realLlvmPrefix = $llvmPrefix
+
         if (-not (Test-Path $llvmConfig)) {
           $clangVersionLine = (& $clangPath --version 2>$null | Select-Object -First 1)
           if ($clangVersionLine -notmatch 'clang version ([0-9]+\.[0-9]+\.[0-9]+)') {
@@ -163,6 +166,15 @@ runs:
             '    snprintf(out, size, "%s", path);',
             '}',
             '',
+            'static const char* get_real_prefix(const char* fallback)',
+            '{',
+            '    const char* from_env = getenv("APEX_LLVM_REAL_PREFIX");',
+            '    if (from_env != NULL && from_env[0] != ''\0'') {',
+            '        return from_env;',
+            '    }',
+            '    return fallback;',
+            '}',
+            '',
             'static void print_libnames(const char* prefix)',
             '{',
             '    char pattern[MAX_PATH];',
@@ -194,12 +206,14 @@ runs:
             '    {',
             '        int i;',
             '        char prefix[MAX_PATH];',
+            '        const char* real_prefix;',
             '        const char* command = NULL;',
             '',
             '        get_prefix(prefix, sizeof(prefix));',
             '        if (prefix[0] == ''\0'') {',
             '            return 1;',
             '        }',
+            '        real_prefix = get_real_prefix(prefix);',
             '',
             '        for (i = 1; i < argc; ++i) {',
             '            if (strcmp(argv[i], "--link-static") == 0 || strcmp(argv[i], "--link-shared") == 0) {',
@@ -222,11 +236,11 @@ runs:
             '            return 0;',
             '        }',
             '        if (strcmp(command, "--libdir") == 0) {',
-            '            printf("%s\\lib\n", prefix);',
+            '            printf("%s\\\\lib\\n", real_prefix);',
             '            return 0;',
             '        }',
             '        if (strcmp(command, "--cflags") == 0) {',
-            '            printf("-I%s\\include\n", prefix);',
+            '            printf("-I%s\\\\include\\n", real_prefix);',
             '            return 0;',
             '        }',
             '        if (strcmp(command, "--build-mode") == 0) {',
@@ -234,7 +248,7 @@ runs:
             '            return 0;',
             '        }',
             '        if (strcmp(command, "--libnames") == 0) {',
-            '            print_libnames(prefix);',
+            '            print_libnames(real_prefix);',
             '            printf("\\n");',
             '            return 0;',
             '        }',
@@ -248,9 +262,6 @@ runs:
           ) -join "`n"
           $shimCode | Set-Content -Path $shimSource -Encoding UTF8
 
-          cmd /c mklink /J "$shimRoot\lib" "$llvmLib" | Out-Null
-          cmd /c mklink /J "$shimRoot\include" (Join-Path $llvmPrefix "include") | Out-Null
-
           & $clangPath -O2 -o (Join-Path $shimBin "llvm-config.exe") $shimSource
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to compile llvm-config shim with clang.exe"
@@ -260,6 +271,7 @@ runs:
           $llvmPrefix = $shimRoot
         }
 
+        echo "APEX_LLVM_REAL_PREFIX=$realLlvmPrefix" >> $env:GITHUB_ENV
         echo "APEX_LLVM_SHIM_VERSION=$llvmVersion" >> $env:GITHUB_ENV
         echo "LLVM_SYS_211_PREFIX=$llvmPrefix" >> $env:GITHUB_ENV
         echo "LLVM_CONFIG_PATH=$llvmConfig" >> $env:GITHUB_ENV
