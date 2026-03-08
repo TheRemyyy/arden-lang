@@ -25,6 +25,9 @@ This document describes the internal architecture of the Apex compiler.
 - **Import-check cache** (`.apexcache/import_check/*.json`):
   - Stores successful import-check results keyed by semantic fingerprint + per-file import/rewrite context fingerprint.
   - Unchanged files can now skip repeated import-check traversal on hot rebuilds.
+- **Dependency graph cache** (`.apexcache/dependency_graph/latest.json`):
+  - Stores per-file semantic/API fingerprints plus direct file dependencies resolved from same-namespace access and explicit imports.
+  - Supports explicit `body-only` vs `API` change classification and reverse-dependent impact tracking between builds.
 - **Object file cache** (`.apexcache/objects/*.{o|obj}` + `*.json`):
   - Stores per-file compiled objects keyed by semantic fingerprint + per-file rewrite-context fingerprint + build options (`opt_level`, `target`, compiler version, linker mode).
   - On incremental edits, unchanged files reuse cached object files and final build performs fast relink from cached + rebuilt objects.
@@ -35,6 +38,9 @@ This document describes the internal architecture of the Apex compiler.
   - Rewrite/object cache invalidation now hashes only the current file's namespace/import context and relevant imported namespace symbol maps.
   - Specific imports (`import lib.foo;`) additionally track owner-file API fingerprints, so unrelated API changes in the same namespace no longer fan out to those files.
   - Unrelated namespace changes no longer force global rewrite-cache/object-cache misses across the entire project.
+- **Transitive codegen closure**:
+  - Object-cache misses now rebuild against the changed file plus only its transitive file dependency closure.
+  - Unrelated project files are no longer injected as API-only declarations into every object rebuild miss.
 - **Parallel project parse phase**:
   - Multi-file project parsing now runs in parallel workers (file read + lex + parse/cache lookup).
   - Import checks and rewrite/cache resolution run in parallel per file.

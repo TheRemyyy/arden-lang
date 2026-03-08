@@ -440,6 +440,21 @@ struct RewrittenProjectUnit {
     from_rewrite_cache: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DependencyGraphCache {
+    schema: String,
+    compiler_version: String,
+    files: Vec<DependencyGraphFileEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DependencyGraphFileEntry {
+    file: PathBuf,
+    semantic_fingerprint: String,
+    api_fingerprint: String,
+    direct_dependencies: Vec<PathBuf>,
+}
+
 fn parsed_file_cache_path(project_root: &Path, file: &Path) -> PathBuf {
     let mut hasher = stable_hasher();
     file.hash(&mut hasher);
@@ -538,6 +553,7 @@ fn api_program_fingerprint(program: &Program) -> String {
 fn codegen_program_for_unit(
     rewritten_files: &[RewrittenProjectUnit],
     active_file: &Path,
+    dependency_closure: Option<&HashSet<PathBuf>>,
 ) -> Program {
     let mut program = Program {
         package: None,
@@ -545,6 +561,11 @@ fn codegen_program_for_unit(
     };
 
     for unit in rewritten_files {
+        if let Some(closure) = dependency_closure {
+            if unit.file != active_file && !closure.contains(&unit.file) {
+                continue;
+            }
+        }
         let source_program = if unit.file == active_file {
             unit.program.clone()
         } else {
@@ -627,6 +648,7 @@ fn save_parsed_file_cache(
 }
 
 const IMPORT_CHECK_CACHE_SCHEMA: &str = "v1";
+const DEPENDENCY_GRAPH_CACHE_SCHEMA: &str = "v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ImportCheckCacheEntry {
@@ -710,6 +732,75 @@ fn save_import_check_cache_hit(
     fs::write(&path, json).map_err(|e| {
         format!(
             "{}: Failed to write import-check cache '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })
+}
+
+fn dependency_graph_cache_path(project_root: &Path) -> PathBuf {
+    project_root
+        .join(".apexcache")
+        .join("dependency_graph")
+        .join("latest.json")
+}
+
+fn load_dependency_graph_cache(
+    project_root: &Path,
+) -> Result<Option<DependencyGraphCache>, String> {
+    let path = dependency_graph_cache_path(project_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "{}: Failed to read dependency graph cache '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })?;
+    let cache: DependencyGraphCache = match serde_json::from_str(&raw) {
+        Ok(cache) => cache,
+        Err(_) => return Ok(None),
+    };
+    if cache.schema != DEPENDENCY_GRAPH_CACHE_SCHEMA
+        || cache.compiler_version != env!("CARGO_PKG_VERSION")
+    {
+        return Ok(None);
+    }
+    Ok(Some(cache))
+}
+
+fn save_dependency_graph_cache(
+    project_root: &Path,
+    cache: &DependencyGraphCache,
+) -> Result<(), String> {
+    let path = dependency_graph_cache_path(project_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "{}: Failed to create dependency graph cache directory '{}': {}",
+                "error".red().bold(),
+                parent.display(),
+                e
+            )
+        })?;
+    }
+
+    let json = serde_json::to_string(cache).map_err(|e| {
+        format!(
+            "{}: Failed to serialize dependency graph cache '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })?;
+    fs::write(&path, json).map_err(|e| {
+        format!(
+            "{}: Failed to write dependency graph cache '{}': {}",
             "error".red().bold(),
             path.display(),
             e
@@ -912,6 +1003,165 @@ struct RewriteFingerprintContext<'a> {
     global_module_file_map: &'a HashMap<String, PathBuf>,
     namespace_api_fingerprints: &'a HashMap<String, String>,
     file_api_fingerprints: &'a HashMap<PathBuf, String>,
+}
+
+struct DependencyResolutionContext<'a> {
+    namespace_files_map: &'a HashMap<String, Vec<PathBuf>>,
+    global_function_map: &'a HashMap<String, String>,
+    global_function_file_map: &'a HashMap<String, PathBuf>,
+    global_class_map: &'a HashMap<String, String>,
+    global_class_file_map: &'a HashMap<String, PathBuf>,
+    global_module_map: &'a HashMap<String, String>,
+    global_module_file_map: &'a HashMap<String, PathBuf>,
+}
+
+fn resolve_import_dependency_files(
+    import: &ImportDecl,
+    ctx: &DependencyResolutionContext<'_>,
+) -> HashSet<PathBuf> {
+    let mut deps = HashSet::new();
+
+    if import.path.ends_with(".*") {
+        if let Some(files) = ctx
+            .namespace_files_map
+            .get(import.path.trim_end_matches(".*"))
+        {
+            deps.extend(files.iter().cloned());
+        }
+        return deps;
+    }
+
+    if let Some(files) = ctx.namespace_files_map.get(&import.path) {
+        deps.extend(files.iter().cloned());
+        return deps;
+    }
+
+    if let Some(owner_file) = import_path_owner_file(
+        &import.path,
+        ctx.global_function_map,
+        ctx.global_function_file_map,
+        ctx.global_class_map,
+        ctx.global_class_file_map,
+        ctx.global_module_map,
+        ctx.global_module_file_map,
+    ) {
+        deps.insert(owner_file.clone());
+        return deps;
+    }
+
+    if let Some((namespace, _)) = import.path.rsplit_once('.') {
+        if let Some(files) = ctx.namespace_files_map.get(namespace) {
+            deps.extend(files.iter().cloned());
+        }
+    }
+
+    deps
+}
+
+fn build_file_dependency_graph(
+    parsed_files: &[ParsedProjectUnit],
+    ctx: &DependencyResolutionContext<'_>,
+) -> HashMap<PathBuf, HashSet<PathBuf>> {
+    let mut graph = HashMap::new();
+
+    for unit in parsed_files {
+        let mut deps = HashSet::new();
+
+        if let Some(files) = ctx.namespace_files_map.get(&unit.namespace) {
+            deps.extend(files.iter().filter(|file| *file != &unit.file).cloned());
+        }
+
+        for import in &unit.imports {
+            deps.extend(resolve_import_dependency_files(import, ctx));
+        }
+
+        deps.remove(&unit.file);
+        graph.insert(unit.file.clone(), deps);
+    }
+
+    graph
+}
+
+fn build_reverse_dependency_graph(
+    forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
+) -> HashMap<PathBuf, HashSet<PathBuf>> {
+    let mut reverse = HashMap::new();
+    for (file, deps) in forward_graph {
+        reverse.entry(file.clone()).or_insert_with(HashSet::new);
+        for dep in deps {
+            reverse
+                .entry(dep.clone())
+                .or_insert_with(HashSet::new)
+                .insert(file.clone());
+        }
+    }
+    reverse
+}
+
+fn transitive_dependents(
+    reverse_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
+    roots: &HashSet<PathBuf>,
+) -> HashSet<PathBuf> {
+    let mut out = HashSet::new();
+    let mut stack: Vec<PathBuf> = roots.iter().cloned().collect();
+    while let Some(file) = stack.pop() {
+        if !out.insert(file.clone()) {
+            continue;
+        }
+        if let Some(next) = reverse_graph.get(&file) {
+            stack.extend(next.iter().cloned());
+        }
+    }
+    out
+}
+
+fn transitive_dependencies(
+    forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
+    root: &Path,
+) -> HashSet<PathBuf> {
+    let mut out = HashSet::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(file) = stack.pop() {
+        if let Some(next) = forward_graph.get(&file) {
+            for dep in next {
+                if out.insert(dep.clone()) {
+                    stack.push(dep.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
+fn dependency_graph_cache_from_state(
+    parsed_files: &[ParsedProjectUnit],
+    forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
+) -> DependencyGraphCache {
+    let mut files: Vec<DependencyGraphFileEntry> = parsed_files
+        .iter()
+        .map(|unit| {
+            let mut direct_dependencies = forward_graph
+                .get(&unit.file)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .collect::<Vec<_>>();
+            direct_dependencies.sort();
+            DependencyGraphFileEntry {
+                file: unit.file.clone(),
+                semantic_fingerprint: unit.semantic_fingerprint.clone(),
+                api_fingerprint: unit.api_fingerprint.clone(),
+                direct_dependencies,
+            }
+        })
+        .collect();
+    files.sort_by(|a, b| a.file.cmp(&b.file));
+
+    DependencyGraphCache {
+        schema: DEPENDENCY_GRAPH_CACHE_SCHEMA.to_string(),
+        compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+        files,
+    }
 }
 
 fn compute_rewrite_context_fingerprint_for_unit(
@@ -1652,6 +1902,75 @@ fn build_project(
         );
     }
 
+    let previous_dependency_graph = load_dependency_graph_cache(&project_root)?;
+    let mut namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    for unit in &parsed_files {
+        namespace_files_map
+            .entry(unit.namespace.clone())
+            .or_default()
+            .push(unit.file.clone());
+    }
+    for files in namespace_files_map.values_mut() {
+        files.sort();
+    }
+
+    let dependency_resolution_ctx = DependencyResolutionContext {
+        namespace_files_map: &namespace_files_map,
+        global_function_map: &global_function_map,
+        global_function_file_map: &global_function_file_map,
+        global_class_map: &global_class_map,
+        global_class_file_map: &global_class_file_map,
+        global_module_map: &global_module_map,
+        global_module_file_map: &global_module_file_map,
+    };
+    let file_dependency_graph =
+        build_file_dependency_graph(&parsed_files, &dependency_resolution_ctx);
+    let reverse_file_dependency_graph = build_reverse_dependency_graph(&file_dependency_graph);
+    let current_dependency_graph_cache =
+        dependency_graph_cache_from_state(&parsed_files, &file_dependency_graph);
+
+    if let Some(previous) = &previous_dependency_graph {
+        let previous_files: HashMap<&PathBuf, &DependencyGraphFileEntry> = previous
+            .files
+            .iter()
+            .map(|entry| (&entry.file, entry))
+            .collect();
+        let mut body_only_changed = HashSet::new();
+        let mut api_changed = HashSet::new();
+
+        for unit in &parsed_files {
+            match previous_files.get(&unit.file) {
+                Some(prev) if prev.semantic_fingerprint == unit.semantic_fingerprint => {}
+                Some(prev) if prev.api_fingerprint == unit.api_fingerprint => {
+                    body_only_changed.insert(unit.file.clone());
+                }
+                _ => {
+                    api_changed.insert(unit.file.clone());
+                }
+            }
+        }
+
+        let dependent_api_impact = if api_changed.is_empty() {
+            HashSet::new()
+        } else {
+            let mut impacted = transitive_dependents(&reverse_file_dependency_graph, &api_changed);
+            for changed in &api_changed {
+                impacted.remove(changed);
+            }
+            impacted
+        };
+
+        if !body_only_changed.is_empty() || !api_changed.is_empty() {
+            println!(
+                "{} Impact graph: {} body-only, {} API, {} downstream dependents",
+                "→".cyan(),
+                body_only_changed.len(),
+                api_changed.len(),
+                dependent_api_impact.len()
+            );
+        }
+    }
+
     let semantic_fingerprint =
         compute_semantic_project_fingerprint(&config, &parsed_files, emit_llvm, do_check);
     if !check_only {
@@ -1993,7 +2312,13 @@ fn build_project(
             .par_iter()
             .map(|(index, unit)| {
                 let obj_path = object_cache_object_path(&project_root, &unit.file);
-                let codegen_program = codegen_program_for_unit(&rewritten_files, &unit.file);
+                let dependency_closure =
+                    transitive_dependencies(&file_dependency_graph, &unit.file);
+                let codegen_program = codegen_program_for_unit(
+                    &rewritten_files,
+                    &unit.file,
+                    Some(&dependency_closure),
+                );
                 compile_program_ast_to_object_filtered(
                     &codegen_program,
                     &unit.file,
@@ -2039,6 +2364,7 @@ fn build_project(
     if !check_only {
         save_cached_fingerprint(&project_root, &fingerprint)?;
         save_semantic_cached_fingerprint(&project_root, &semantic_fingerprint)?;
+        save_dependency_graph_cache(&project_root, &current_dependency_graph_cache)?;
     }
 
     Ok(())
@@ -3251,8 +3577,10 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        api_program_fingerprint, compute_rewrite_context_fingerprint_for_unit,
-        semantic_program_fingerprint, ParsedProjectUnit, RewriteFingerprintContext,
+        api_program_fingerprint, build_file_dependency_graph, build_reverse_dependency_graph,
+        compute_rewrite_context_fingerprint_for_unit, semantic_program_fingerprint,
+        transitive_dependents, DependencyResolutionContext, ParsedProjectUnit,
+        RewriteFingerprintContext,
     };
     use crate::ast::{ImportDecl, Program};
     use crate::parser::Parser;
@@ -3498,5 +3826,77 @@ function add(x: Float): Float {
         let fp_b = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_b);
 
         assert_ne!(fp_a, fp_b);
+    }
+
+    #[test]
+    fn dependency_graph_tracks_specific_symbol_owner_file_only() {
+        let app = make_unit("src/main.apex", "app", &["lib.foo"]);
+        let foo = make_unit("src/lib_foo.apex", "lib", &[]);
+        let bar = make_unit("src/lib_bar.apex", "lib", &[]);
+        let parsed_files = vec![app.clone(), foo, bar];
+        let namespace_files_map = HashMap::from([
+            ("app".to_string(), vec![PathBuf::from("src/main.apex")]),
+            (
+                "lib".to_string(),
+                vec![
+                    PathBuf::from("src/lib_bar.apex"),
+                    PathBuf::from("src/lib_foo.apex"),
+                ],
+            ),
+        ]);
+
+        let global_function_map = HashMap::from([
+            ("foo".to_string(), "lib".to_string()),
+            ("bar".to_string(), "lib".to_string()),
+        ]);
+        let global_function_file_map = HashMap::from([
+            ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
+            ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+        ]);
+        let global_class_map = HashMap::new();
+        let global_class_file_map = HashMap::new();
+        let global_module_map = HashMap::new();
+        let global_module_file_map = HashMap::new();
+        let ctx = DependencyResolutionContext {
+            namespace_files_map: &namespace_files_map,
+            global_function_map: &global_function_map,
+            global_function_file_map: &global_function_file_map,
+            global_class_map: &global_class_map,
+            global_class_file_map: &global_class_file_map,
+            global_module_map: &global_module_map,
+            global_module_file_map: &global_module_file_map,
+        };
+        let graph = build_file_dependency_graph(&parsed_files, &ctx);
+
+        assert_eq!(
+            graph.get(&app.file).cloned().unwrap_or_default(),
+            HashSet::from([PathBuf::from("src/lib_foo.apex")])
+        );
+    }
+
+    #[test]
+    fn reverse_dependency_graph_returns_only_transitive_dependents() {
+        let reverse = build_reverse_dependency_graph(&HashMap::from([
+            (
+                PathBuf::from("a.apex"),
+                HashSet::from([PathBuf::from("b.apex")]),
+            ),
+            (
+                PathBuf::from("c.apex"),
+                HashSet::from([PathBuf::from("a.apex")]),
+            ),
+            (PathBuf::from("d.apex"), HashSet::new()),
+        ]));
+
+        let impacted = transitive_dependents(&reverse, &HashSet::from([PathBuf::from("b.apex")]));
+
+        assert_eq!(
+            impacted,
+            HashSet::from([
+                PathBuf::from("b.apex"),
+                PathBuf::from("a.apex"),
+                PathBuf::from("c.apex"),
+            ])
+        );
     }
 }
