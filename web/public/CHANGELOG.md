@@ -4,7 +4,7 @@ All notable changes to the Apex Programming Language Compiler will be documented
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [1.3.5] - Bug Fixes - 2026-03-08
 
 ### ✨ Added
 
@@ -136,7 +136,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `Task.await_timeout(...)` now works through portable completion polling plus final join semantics.
   - Async function and async block runtimes now publish task completion/result state explicitly before final await/join.
   - Task runtime state now distinguishes `completed` from `done`, matching `is_done`, `cancel`, and timeout behavior more accurately across platforms.
-- CI LLVM setup on Windows now resolves `llvm-sys` from a real `llvm-config.exe` prefix instead of only checking for `clang.exe`.
+- CI LLVM setup on Windows now derives a usable `llvm-sys` configuration even when the Chocolatey LLVM install does not ship `llvm-config.exe`.
+  - The shared GitHub Actions LLVM install step now discovers LLVM 21 via `clang.exe` when needed and prepares a Windows `llvm-config.exe` shim for `llvm-sys`.
   - GitHub Actions build/check steps now rely on `GITHUB_ENV` exports from the shared LLVM install action instead of re-overriding LLVM env vars per step.
 
 ### 🐛 Fixed
@@ -198,7 +199,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - CI now passes absolute compiler path via `${{ github.workspace }}/target/release/apex-compiler`.
 - Fixed macOS async runtime example/link failures caused by `Task.await_timeout(...)` depending on unavailable `pthread_timedjoin_np`.
 - Fixed async task completion races by initializing task back-pointers before worker thread spawn and publishing completion state atomically.
-- Fixed Windows GitHub Actions `llvm-sys` detection failures by requiring/exporting a valid LLVM 21 prefix containing `llvm-config.exe`.
+- Fixed Windows GitHub Actions `llvm-sys` detection failures when the LLVM 21 Chocolatey install provides `clang.exe` but no `llvm-config.exe`.
 - Fixed parser handling of empty interpolation braces (`{}`) to preserve braces as literal text.
 - Fixed parser string interpolation normalization so all-literal interpolation parts are merged back into plain string literals.
 - Fixed import checker alias semantics: namespace alias imports no longer implicitly import all symbols as unqualified calls.

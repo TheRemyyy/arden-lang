@@ -1,6 +1,6 @@
 [package]
 name = "apex-compiler"
-version = "1.4.0"
+version = "1.3.5"
 edition = "2021"
 authors = ["TheRemyyy"]
 description = "Apex Programming Language Compiler"

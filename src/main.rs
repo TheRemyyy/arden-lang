@@ -45,7 +45,7 @@ use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary, TypeCheck
 #[derive(ClapParser)]
 #[command(name = "apex")]
 #[command(author = "TheRemyyy")]
-#[command(version = "1.4")]
+#[command(version = "1.3.5")]
 #[command(about = "Apex Programming Language Compiler")]
 struct Cli {
     #[command(subcommand)]
