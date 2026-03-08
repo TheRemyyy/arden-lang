@@ -946,6 +946,7 @@ struct RewrittenFileCacheEntry {
 }
 
 const OBJECT_CACHE_SCHEMA: &str = "v3";
+const LINK_MANIFEST_CACHE_SCHEMA: &str = "v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ObjectCacheEntry {
@@ -954,6 +955,14 @@ struct ObjectCacheEntry {
     semantic_fingerprint: String,
     rewrite_context_fingerprint: String,
     object_build_fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct LinkManifestCache {
+    schema: String,
+    compiler_version: String,
+    link_fingerprint: String,
+    link_inputs: Vec<PathBuf>,
 }
 
 fn rewritten_file_cache_path(project_root: &Path, file: &Path) -> PathBuf {
@@ -1657,6 +1666,86 @@ fn object_cache_meta_path(project_root: &Path, file: &Path) -> PathBuf {
         .join(".apexcache")
         .join("objects")
         .join(format!("{:016x}.json", hasher.finish()))
+}
+
+fn link_manifest_cache_path(project_root: &Path) -> PathBuf {
+    project_root
+        .join(".apexcache")
+        .join("link")
+        .join("latest.json")
+}
+
+fn compute_link_fingerprint(
+    output_path: &Path,
+    link_inputs: &[PathBuf],
+    link: &LinkConfig<'_>,
+) -> String {
+    let mut hasher = stable_hasher();
+    env!("CARGO_PKG_VERSION").hash(&mut hasher);
+    output_path.hash(&mut hasher);
+    link.opt_level.hash(&mut hasher);
+    link.target.hash(&mut hasher);
+    std::mem::discriminant(&link.output_kind).hash(&mut hasher);
+    link.link_search.hash(&mut hasher);
+    link.link_libs.hash(&mut hasher);
+    link.link_args.hash(&mut hasher);
+    link_inputs.hash(&mut hasher);
+    "lld".hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn load_link_manifest_cache(project_root: &Path) -> Option<LinkManifestCache> {
+    let path = link_manifest_cache_path(project_root);
+    let raw = fs::read_to_string(path).ok()?;
+    let cache: LinkManifestCache = serde_json::from_str(&raw).ok()?;
+    if cache.schema != LINK_MANIFEST_CACHE_SCHEMA
+        || cache.compiler_version != env!("CARGO_PKG_VERSION")
+    {
+        return None;
+    }
+    Some(cache)
+}
+
+fn save_link_manifest_cache(project_root: &Path, cache: &LinkManifestCache) -> Result<(), String> {
+    let path = link_manifest_cache_path(project_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "{}: Failed to create link manifest cache directory '{}': {}",
+                "error".red().bold(),
+                parent.display(),
+                e
+            )
+        })?;
+    }
+
+    let json = serde_json::to_string(cache).map_err(|e| {
+        format!(
+            "{}: Failed to serialize link manifest cache '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })?;
+    fs::write(&path, json).map_err(|e| {
+        format!(
+            "{}: Failed to write link manifest cache '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })
+}
+
+fn should_skip_final_link(
+    previous_manifest: Option<&LinkManifestCache>,
+    current_manifest: &LinkManifestCache,
+    output_path: &Path,
+    object_cache_miss_count: usize,
+) -> bool {
+    object_cache_miss_count == 0
+        && output_path.exists()
+        && previous_manifest.is_some_and(|manifest| manifest == current_manifest)
 }
 
 fn compute_object_build_fingerprint(link: &LinkConfig<'_>) -> String {
@@ -2891,6 +2980,7 @@ fn build_project(
         )?;
     } else {
         let object_build_fingerprint = compute_object_build_fingerprint(&link);
+        let previous_link_manifest = load_link_manifest_cache(&project_root);
         let mut object_paths: Vec<Option<PathBuf>> = vec![None; rewritten_files.len()];
         let mut object_cache_hits: usize = 0;
         let object_candidate_count = rewritten_files
@@ -2961,7 +3051,27 @@ fn build_project(
         }
 
         let link_inputs: Vec<PathBuf> = object_paths.into_iter().flatten().collect();
-        link_objects(&link_inputs, &output_path, &link)?;
+        let current_link_manifest = LinkManifestCache {
+            schema: LINK_MANIFEST_CACHE_SCHEMA.to_string(),
+            compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+            link_fingerprint: compute_link_fingerprint(&output_path, &link_inputs, &link),
+            link_inputs: link_inputs.clone(),
+        };
+
+        if should_skip_final_link(
+            previous_link_manifest.as_ref(),
+            &current_link_manifest,
+            &output_path,
+            cache_misses.len(),
+        ) {
+            println!(
+                "{} Reused final link output from manifest cache",
+                "→".cyan()
+            );
+        } else {
+            link_objects(&link_inputs, &output_path, &link)?;
+            save_link_manifest_cache(&project_root, &current_link_manifest)?;
+        }
     }
 
     println!(
@@ -4188,13 +4298,15 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
 mod tests {
     use super::{
         api_program_fingerprint, build_file_dependency_graph, build_reverse_dependency_graph,
-        compute_rewrite_context_fingerprint_for_unit, semantic_program_fingerprint,
-        transitive_dependents, DependencyResolutionContext, ParsedProjectUnit,
-        RewriteFingerprintContext,
+        compute_link_fingerprint, compute_rewrite_context_fingerprint_for_unit,
+        semantic_program_fingerprint, should_skip_final_link, transitive_dependents,
+        DependencyResolutionContext, LinkConfig, LinkManifestCache, OutputKind, ParsedProjectUnit,
+        RewriteFingerprintContext, LINK_MANIFEST_CACHE_SCHEMA,
     };
     use crate::ast::{ImportDecl, Program};
     use crate::parser::Parser;
     use std::collections::{HashMap, HashSet};
+    use std::fs;
     use std::path::PathBuf;
 
     fn parse_program(source: &str) -> Program {
@@ -4574,5 +4686,59 @@ function add(x: Float): Float {
                 PathBuf::from("c.apex"),
             ])
         );
+    }
+
+    #[test]
+    fn link_manifest_skip_requires_exact_manifest_match_and_no_object_misses() {
+        let output_path = PathBuf::from("build/app");
+        let link_inputs = vec![PathBuf::from("a.o"), PathBuf::from("b.o")];
+        let link = LinkConfig {
+            opt_level: Some("3"),
+            target: None,
+            output_kind: OutputKind::Bin,
+            link_search: &[],
+            link_libs: &[],
+            link_args: &[],
+        };
+        let current = LinkManifestCache {
+            schema: LINK_MANIFEST_CACHE_SCHEMA.to_string(),
+            compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+            link_fingerprint: compute_link_fingerprint(&output_path, &link_inputs, &link),
+            link_inputs: link_inputs.clone(),
+        };
+
+        assert!(!should_skip_final_link(None, &current, &output_path, 0));
+        assert!(!should_skip_final_link(
+            Some(&current),
+            &current,
+            &output_path,
+            1
+        ));
+    }
+
+    #[test]
+    fn link_manifest_skip_allows_relink_elision_for_identical_cached_inputs() {
+        let temp =
+            std::env::temp_dir().join(format!("apex-link-manifest-test-{}", std::process::id()));
+        fs::write(&temp, b"bin").expect("write output placeholder");
+        let link_inputs = vec![PathBuf::from("a.o"), PathBuf::from("b.o")];
+        let link = LinkConfig {
+            opt_level: Some("3"),
+            target: None,
+            output_kind: OutputKind::Bin,
+            link_search: &[],
+            link_libs: &[],
+            link_args: &[],
+        };
+        let current = LinkManifestCache {
+            schema: LINK_MANIFEST_CACHE_SCHEMA.to_string(),
+            compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+            link_fingerprint: compute_link_fingerprint(&temp, &link_inputs, &link),
+            link_inputs,
+        };
+
+        assert!(should_skip_final_link(Some(&current), &current, &temp, 0));
+
+        let _ = fs::remove_file(temp);
     }
 }
