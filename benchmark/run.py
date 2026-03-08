@@ -38,6 +38,11 @@ BENCHMARKS: List[BenchmarkSpec] = [
         "Compile 10-file project with shared core dependency, mutate central file, then recompile",
         kind="incremental",
     ),
+    BenchmarkSpec(
+        "incremental_rebuild_mega_project_10_files",
+        "Compile a generated mega-project, apply syntax-only edits to 10 files, then rebuild",
+        kind="incremental_batch",
+    ),
 ]
 
 LANGUAGES = ("apex", "c", "rust", "go")
@@ -186,21 +191,44 @@ def run_checksum(binary: Path, cwd: Path) -> int:
     return parse_checksum(proc.stdout)
 
 
+def pick_mutation_targets(part_files: List[Path], mutate_count: int, profile: str) -> List[Path]:
+    if not part_files:
+        return []
+
+    mutate_count = max(1, min(mutate_count, len(part_files)))
+    if profile == "central":
+        middle = len(part_files) // 2
+        return [part_files[middle]]
+    if profile == "batch_spread":
+        if mutate_count == 1:
+            return [part_files[-1]]
+        last_index = len(part_files) - 1
+        indices = {
+            round((last_index * i) / (mutate_count - 1))
+            for i in range(mutate_count)
+        }
+        return [part_files[i] for i in sorted(indices)]
+    return part_files[-mutate_count:]
+
+
 def generate_compile_project_10_files(
-    root: Path, bench_name: str, mutation_profile: str = "leaf"
+    root: Path,
+    bench_name: str,
+    mutation_profile: str = "leaf",
+    file_count: int = 10,
+    funcs_per_file: int = 180,
+    mutate_count: int = 1,
 ) -> Dict[str, Dict[str, Path]]:
     generated_root = root / "benchmark" / "generated" / bench_name
     if generated_root.exists():
         shutil.rmtree(generated_root)
     generated_root.mkdir(parents=True, exist_ok=True)
 
-    file_count = 10
-    funcs_per_file = 180
-
     apex_dir = generated_root / "apex"
     apex_src = apex_dir / "src"
     apex_src.mkdir(parents=True, exist_ok=True)
     apex_files = []
+    apex_part_files: List[Path] = []
     apex_core = apex_src / "core.apex"
     apex_core.write_text(
         "\n".join(
@@ -219,6 +247,7 @@ def generate_compile_project_10_files(
     for i in range(file_count):
         part = f"part_{i:02d}"
         apex_files.append(f"src/{part}.apex")
+        apex_part_files.append(apex_src / f"{part}.apex")
         lines: List[str] = ["import std.io.*;", ""]
         for j in range(funcs_per_file):
             lines.append(
@@ -252,6 +281,7 @@ def generate_compile_project_10_files(
 
     c_dir = generated_root / "c"
     c_dir.mkdir(parents=True, exist_ok=True)
+    c_part_files: List[Path] = []
     (c_dir / "core.h").write_text(
         "\n".join(
             [
@@ -279,6 +309,7 @@ def generate_compile_project_10_files(
     )
     for i in range(file_count):
         part = f"part_{i:02d}"
+        c_part_files.append(c_dir / f"{part}.c")
         lines = [
             "#include <stdint.h>",
             '#include "core.h"',
@@ -300,6 +331,7 @@ def generate_compile_project_10_files(
 
     rust_dir = generated_root / "rust"
     rust_dir.mkdir(parents=True, exist_ok=True)
+    rust_part_files: List[Path] = []
     rust_main = ["mod core;"]
     for i in range(file_count):
         rust_main.append(f"mod part_{i:02d};")
@@ -310,6 +342,7 @@ def generate_compile_project_10_files(
     (rust_dir / "main.rs").write_text("\n".join(rust_main) + "\n", encoding="utf-8")
     for i in range(file_count):
         part = f"part_{i:02d}"
+        rust_part_files.append(rust_dir / f"{part}.rs")
         lines = ["pub fn apply(x: i64) -> i64 {", "    let mut y = x;"]
         for j in range(funcs_per_file):
             lines.append(f"    y = crate::core::mix(y, {i + j + 1});")
@@ -329,6 +362,7 @@ def generate_compile_project_10_files(
 
     go_dir = generated_root / "go"
     go_dir.mkdir(parents=True, exist_ok=True)
+    go_part_files: List[Path] = []
     (go_dir / "go.mod").write_text("module compile10\n\ngo 1.22\n", encoding="utf-8")
     go_main = ['package main', "", 'import "fmt"', "", "func main() {", "    var acc int64 = 0"]
     for i in range(file_count):
@@ -337,6 +371,7 @@ def generate_compile_project_10_files(
     (go_dir / "main.go").write_text("\n".join(go_main) + "\n", encoding="utf-8")
     for i in range(file_count):
         part = f"part_{i:02d}"
+        go_part_files.append(go_dir / f"{part}.go")
         lines = ["package main", "", "func " + part + "_apply(x int64) int64 {", "    y := x"]
         for j in range(funcs_per_file):
             lines.append(f"    y = coreMix(y, {i + j + 1})")
@@ -356,38 +391,53 @@ def generate_compile_project_10_files(
         encoding="utf-8",
     )
 
-    apex_mutate = apex_src / "part_09.apex"
-    c_mutate = c_dir / "part_09.c"
-    rust_mutate = rust_dir / "part_09.rs"
-    go_mutate = go_dir / "part_09.go"
+    apex_mutate_sources = pick_mutation_targets(apex_part_files, mutate_count, mutation_profile)
+    c_mutate_sources = pick_mutation_targets(c_part_files, mutate_count, mutation_profile)
+    rust_mutate_sources = pick_mutation_targets(rust_part_files, mutate_count, mutation_profile)
+    go_mutate_sources = pick_mutation_targets(go_part_files, mutate_count, mutation_profile)
     if mutation_profile == "central":
-        apex_mutate = apex_core
-        c_mutate = c_dir / "core.c"
-        rust_mutate = rust_dir / "core.rs"
-        go_mutate = go_dir / "core.go"
+        apex_mutate_sources = [apex_core]
+        c_mutate_sources = [c_dir / "core.c"]
+        rust_mutate_sources = [rust_dir / "core.rs"]
+        go_mutate_sources = [go_dir / "core.go"]
 
     return {
         "apex": {
             "project_dir": apex_dir,
             "binary": apex_dir / bench_name,
-            "mutate_source": apex_mutate,
+            "mutate_source": apex_mutate_sources[0],
+            "mutate_sources": apex_mutate_sources,
         },
         "c": {
             "project_dir": c_dir,
             "binary": c_dir / f"{bench_name}_c",
-            "mutate_source": c_mutate,
+            "mutate_source": c_mutate_sources[0],
+            "mutate_sources": c_mutate_sources,
         },
         "rust": {
             "project_dir": rust_dir,
             "binary": rust_dir / f"{bench_name}_rust",
-            "mutate_source": rust_mutate,
+            "mutate_source": rust_mutate_sources[0],
+            "mutate_sources": rust_mutate_sources,
         },
         "go": {
             "project_dir": go_dir,
             "binary": go_dir / f"{bench_name}_go",
-            "mutate_source": go_mutate,
+            "mutate_source": go_mutate_sources[0],
+            "mutate_sources": go_mutate_sources,
         },
     }
+
+
+def generate_incremental_rebuild_mega_project_10_files(root: Path, bench_name: str) -> Dict[str, Dict[str, Path]]:
+    return generate_compile_project_10_files(
+        root,
+        bench_name,
+        mutation_profile="batch_spread",
+        file_count=120,
+        funcs_per_file=320,
+        mutate_count=10,
+    )
 
 
 def make_compile_jobs(
@@ -404,6 +454,7 @@ def make_compile_jobs(
             "env": build_env,
             "binary": exe_path(compile_projects["apex"]["binary"]),
             "mutate_source": compile_projects["apex"]["mutate_source"],
+            "mutate_sources": compile_projects["apex"].get("mutate_sources", []),
         },
         "c": {
             "cmd": [
@@ -422,6 +473,7 @@ def make_compile_jobs(
             "env": None,
             "binary": exe_path(compile_projects["c"]["binary"]),
             "mutate_source": compile_projects["c"]["mutate_source"],
+            "mutate_sources": compile_projects["c"].get("mutate_sources", []),
         },
         "rust": {
             "cmd": [
@@ -438,6 +490,7 @@ def make_compile_jobs(
             "env": None,
             "binary": exe_path(compile_projects["rust"]["binary"]),
             "mutate_source": compile_projects["rust"]["mutate_source"],
+            "mutate_sources": compile_projects["rust"].get("mutate_sources", []),
         },
         "go": {
             "cmd": [
@@ -456,6 +509,7 @@ def make_compile_jobs(
             "binary": exe_path(compile_projects["go"]["binary"]),
             "go_cache_dir": compile_projects["go"]["project_dir"] / ".gocache",
             "mutate_source": compile_projects["go"]["mutate_source"],
+            "mutate_sources": compile_projects["go"].get("mutate_sources", []),
         },
     }
 
@@ -468,6 +522,11 @@ def apply_incremental_source_change(lang: str, source: Path, marker: str) -> Non
     line = f"\n{prefix} incremental bench mutation {marker}{suffix}\n"
     with source.open("a", encoding="utf-8") as f:
         f.write(line)
+
+
+def apply_incremental_source_changes(lang: str, sources: List[Path], marker: str) -> None:
+    for idx, source in enumerate(sources):
+        apply_incremental_source_change(lang, source, f"{marker}_file_{idx:02d}")
 
 
 def timed_run(binary: Path, cwd: Path) -> (float, int):
@@ -500,6 +559,11 @@ def clean_compile_artifacts(lang: str, job: Dict) -> None:
     binary = Path(job["binary"])
     if binary.exists():
         binary.unlink()
+
+    if lang == "apex":
+        apex_cache_dir = Path(job["cwd"]) / ".apexcache"
+        if apex_cache_dir.exists():
+            shutil.rmtree(apex_cache_dir)
 
     if lang == "go":
         go_cache_dir = job.get("go_cache_dir")
@@ -535,9 +599,12 @@ def build_markdown(result: Dict) -> str:
             lines.append("")
             lines.append(f"- compile mode: `{bench['compile_mode']}`")
         lines.append("")
-        if bench.get("kind") == "incremental":
+        if bench.get("kind") in ("incremental", "incremental_batch"):
+            phase_one_label = bench.get("phase_one_label", "first mean (s)")
+            phase_two_label = bench.get("phase_two_label", "second mean (s)")
+            ratio_label = bench.get("ratio_label", "second/first")
             lines.append(
-                "| Language | Checksum | first mean (s) | second mean (s) | second/first |"
+                f"| Language | Checksum | {phase_one_label} | {phase_two_label} | {ratio_label} |"
             )
             lines.append("|---|---:|---:|---:|---:|")
             for lang in LANGUAGES:
@@ -854,6 +921,68 @@ def main() -> int:
                     "stats": second_stats,
                     "metric": "incremental_compile_second",
                 }
+            phase_one_label = "full compile mean (s)"
+            phase_two_label = "rebuild mean (s)"
+            ratio_label = "rebuild/full"
+        elif spec.kind == "incremental_batch":
+            benchmark_compile_mode = "cold_then_hot_batch_edit"
+            for lang in LANGUAGES:
+                print(f"Incremental batch compile {lang}...")
+                first_samples: List[float] = []
+                second_samples: List[float] = []
+                checksums: List[int] = []
+
+                cycles = args.warmup + args.repeats
+                for i in range(cycles):
+                    cycle_projects = generate_incremental_rebuild_mega_project_10_files(
+                        root, spec.name
+                    )
+                    cycle_jobs = make_compile_jobs(root, cycle_projects, build_env, c_compiler)
+                    job = cycle_jobs[lang]
+
+                    clean_compile_artifacts(lang, job)
+                    first_elapsed = timed_compile_with_retry(lang, job)
+
+                    mutate_sources = [Path(p) for p in job.get("mutate_sources", [])]
+                    apply_incremental_source_changes(lang, mutate_sources, f"{i}")
+                    second_elapsed = timed_compile_with_retry(lang, job)
+
+                    if not Path(job["binary"]).exists():
+                        timed_compile_with_retry(lang, job, retries=2)
+                    checksum = run_checksum(job["binary"], job["cwd"])
+
+                    if i >= args.warmup:
+                        first_samples.append(first_elapsed)
+                        second_samples.append(second_elapsed)
+                        checksums.append(checksum)
+
+                if len(set(checksums)) != 1:
+                    raise RuntimeError(
+                        f"Non-deterministic checksum in incremental batch {lang}/{spec.name}: {checksums}"
+                    )
+
+                checksum = checksums[0]
+                if reference_checksum is None:
+                    reference_checksum = checksum
+                elif checksum != reference_checksum:
+                    raise RuntimeError(
+                        f"Checksum mismatch for {spec.name}: {lang}={checksum}, expected={reference_checksum}"
+                    )
+
+                first_stats = compute_stats(first_samples)
+                second_stats = compute_stats(second_samples)
+                lang_data[lang] = {
+                    "checksum": checksum,
+                    "first_samples_s": first_samples,
+                    "second_samples_s": second_samples,
+                    "first_stats": first_stats,
+                    "second_stats": second_stats,
+                    "stats": second_stats,
+                    "metric": "incremental_compile_second",
+                }
+            phase_one_label = "cold full build mean (s)"
+            phase_two_label = "hot rebuild after 10 edits mean (s)"
+            ratio_label = "hot/cold"
         else:
             raise RuntimeError(f"Unsupported benchmark kind: {spec.kind}")
 
@@ -869,7 +998,10 @@ def main() -> int:
                 "name": spec.name,
                 "description": spec.description,
                 "kind": spec.kind,
-                "compile_mode": benchmark_compile_mode if spec.kind in ("compile", "incremental") else None,
+                "compile_mode": benchmark_compile_mode if spec.kind in ("compile", "incremental", "incremental_batch") else None,
+                "phase_one_label": phase_one_label if spec.kind in ("incremental", "incremental_batch") else None,
+                "phase_two_label": phase_two_label if spec.kind in ("incremental", "incremental_batch") else None,
+                "ratio_label": ratio_label if spec.kind in ("incremental", "incremental_batch") else None,
                 "languages": lang_data,
                 "speedup_vs_apex": speedups,
             }
