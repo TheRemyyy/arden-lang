@@ -12,7 +12,7 @@ use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType
 use inkwell::values::{
     BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue, ValueKind,
 };
-use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
+use inkwell::{AddressSpace, AtomicOrdering, FloatPredicate, IntPredicate};
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
@@ -2420,17 +2420,8 @@ impl<'ctx> Codegen<'ctx> {
             &[
                 self.context.i64_type().into(),
                 ptr.into(),
-                self.context.bool_type().into(),
-            ],
-            false,
-        )
-    }
-
-    fn timespec_struct_type(&self) -> StructType<'ctx> {
-        self.context.struct_type(
-            &[
-                self.context.i64_type().into(),
-                self.context.i64_type().into(),
+                self.context.i8_type().into(),
+                self.context.i8_type().into(),
             ],
             false,
         )
@@ -2442,6 +2433,53 @@ impl<'ctx> Codegen<'ctx> {
         } else {
             ty.clone()
         }
+    }
+
+    fn build_atomic_bool_load(
+        &mut self,
+        ptr: PointerValue<'ctx>,
+        name: &str,
+        ordering: AtomicOrdering,
+    ) -> Result<IntValue<'ctx>> {
+        let raw = self
+            .builder
+            .build_load(self.context.i8_type(), ptr, name)
+            .unwrap()
+            .into_int_value();
+        let block = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| CodegenError::new("atomic load used outside basic block"))?;
+        let inst = block
+            .get_last_instruction()
+            .ok_or_else(|| CodegenError::new("failed to capture atomic load instruction"))?;
+        inst.set_atomic_ordering(ordering)
+            .map_err(|e| CodegenError::new(format!("failed to set atomic load ordering: {e}")))?;
+        Ok(self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                raw,
+                self.context.i8_type().const_zero(),
+                &format!("{name}_bool"),
+            )
+            .unwrap())
+    }
+
+    fn build_atomic_bool_store(
+        &mut self,
+        ptr: PointerValue<'ctx>,
+        value: IntValue<'ctx>,
+        ordering: AtomicOrdering,
+    ) -> Result<()> {
+        let byte_value = self
+            .builder
+            .build_int_cast(value, self.context.i8_type(), "atomic_flag_store")
+            .unwrap();
+        let inst = self.builder.build_store(ptr, byte_value).unwrap();
+        inst.set_atomic_ordering(ordering)
+            .map_err(|e| CodegenError::new(format!("failed to set atomic store ordering: {e}")))?;
+        Ok(())
     }
 
     fn declare_async_function(&mut self, func: &FunctionDecl) -> Result<FunctionValue<'ctx>> {
@@ -2456,6 +2494,7 @@ impl<'ctx> Codegen<'ctx> {
             wrapper_params.push(llvm.into());
             env_fields.push(llvm);
         }
+        env_fields.push(ptr_type.into());
         let env_type = self.context.struct_type(&env_fields, false);
 
         let wrapper_fn_type = ptr_type.fn_type(&wrapper_params, false);
@@ -2501,6 +2540,7 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         runner_fn: PointerValue<'ctx>,
         env_ptr: PointerValue<'ctx>,
+        env_task_slot_ptr: PointerValue<'ctx>,
     ) -> Result<PointerValue<'ctx>> {
         let task_ty = self.task_struct_type();
         let malloc = self.get_or_declare_malloc();
@@ -2533,6 +2573,51 @@ impl<'ctx> Codegen<'ctx> {
         let thread_idx = i32_ty.const_int(0, false);
         let result_idx = i32_ty.const_int(1, false);
         let done_idx = i32_ty.const_int(2, false);
+        let completed_idx = i32_ty.const_int(3, false);
+
+        let thread_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, thread_idx], "task_thread_field")
+                .unwrap()
+        };
+        self.builder
+            .build_store(thread_field, self.context.i64_type().const_int(0, false))
+            .unwrap();
+
+        let result_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, result_idx], "task_result_ptr")
+                .unwrap()
+        };
+        self.builder
+            .build_store(
+                result_field,
+                self.context.ptr_type(AddressSpace::default()).const_null(),
+            )
+            .unwrap();
+
+        let done_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, done_idx], "task_done")
+                .unwrap()
+        };
+        self.builder
+            .build_store(done_field, self.context.i8_type().const_int(0, false))
+            .unwrap();
+        let completed_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, completed_idx], "task_completed")
+                .unwrap()
+        };
+        self.builder
+            .build_store(
+                completed_field,
+                self.context.i8_type().const_int(0, false),
+            )
+            .unwrap();
+        self.builder
+            .build_store(env_task_slot_ptr, task_ptr)
+            .unwrap();
 
         let thread_tmp = self
             .builder
@@ -2568,33 +2653,7 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_load(self.context.i64_type(), thread_tmp, "task_thread")
             .unwrap();
-        let thread_field = unsafe {
-            self.builder
-                .build_gep(task_ty, task_ptr, &[zero, thread_idx], "task_thread_field")
-                .unwrap()
-        };
         self.builder.build_store(thread_field, thread_val).unwrap();
-
-        let result_field = unsafe {
-            self.builder
-                .build_gep(task_ty, task_ptr, &[zero, result_idx], "task_result_ptr")
-                .unwrap()
-        };
-        self.builder
-            .build_store(
-                result_field,
-                self.context.ptr_type(AddressSpace::default()).const_null(),
-            )
-            .unwrap();
-
-        let done_field = unsafe {
-            self.builder
-                .build_gep(task_ty, task_ptr, &[zero, done_idx], "task_done")
-                .unwrap()
-        };
-        self.builder
-            .build_store(done_field, self.context.bool_type().const_int(0, false))
-            .unwrap();
 
         Ok(self
             .builder
@@ -2636,9 +2695,18 @@ impl<'ctx> Codegen<'ctx> {
         };
         let done_val = self
             .builder
-            .build_load(self.context.bool_type(), done_field, "task_done")
+            .build_load(self.context.i8_type(), done_field, "task_done")
             .unwrap()
             .into_int_value();
+        let done_ready = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                done_val,
+                self.context.i8_type().const_zero(),
+                "task_done_ready",
+            )
+            .unwrap();
 
         let result_field = unsafe {
             self.builder
@@ -2662,7 +2730,7 @@ impl<'ctx> Codegen<'ctx> {
         let cont_bb = self.context.append_basic_block(current_fn, "task_cont");
 
         self.builder
-            .build_conditional_branch(done_val, cont_bb, join_bb)
+            .build_conditional_branch(done_ready, cont_bb, join_bb)
             .unwrap();
 
         self.builder.position_at_end(join_bb);
@@ -2698,7 +2766,7 @@ impl<'ctx> Codegen<'ctx> {
             .into_pointer_value();
         self.builder.build_store(result_field, new_result).unwrap();
         self.builder
-            .build_store(done_field, self.context.bool_type().const_int(1, false))
+            .build_store(done_field, self.context.i8_type().const_int(1, false))
             .unwrap();
         self.builder.build_unconditional_branch(cont_bb).unwrap();
 
@@ -2736,6 +2804,7 @@ impl<'ctx> Codegen<'ctx> {
         let thunk = plan.thunk;
         let env_type = plan.env_type;
         let inner_return_type = plan.inner_return_type.clone();
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
 
         // 1) Compile body function: __apex_async_body__*
         self.current_function = Some(body);
@@ -2813,6 +2882,10 @@ impl<'ctx> Codegen<'ctx> {
             .get_nth_param(0)
             .ok_or_else(|| CodegenError::new("Async thunk missing env parameter"))?
             .into_pointer_value();
+        let thunk_env_cast = self
+            .builder
+            .build_pointer_cast(thunk_env, ptr_type, "async_thunk_env_cast")
+            .unwrap();
 
         let body_call = self
             .builder
@@ -2883,6 +2956,60 @@ impl<'ctx> Codegen<'ctx> {
             self.builder.build_store(typed_ptr, result).unwrap();
             ptr
         };
+        let task_field_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    env_type,
+                    thunk_env_cast,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context
+                            .i32_type()
+                            .const_int(func.params.len() as u64, false),
+                    ],
+                    "async_task_field",
+                )
+                .unwrap()
+        };
+        let task_ptr = self
+            .builder
+            .build_load(ptr_type, task_field_ptr, "async_task_ptr")
+            .unwrap()
+            .into_pointer_value();
+        let result_field = unsafe {
+            self.builder
+                .build_gep(
+                    self.task_struct_type(),
+                    task_ptr,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context.i32_type().const_int(1, false),
+                    ],
+                    "async_task_result_ptr",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(result_field, result_storage)
+            .unwrap();
+        let completed_field = unsafe {
+            self.builder
+                .build_gep(
+                    self.task_struct_type(),
+                    task_ptr,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context.i32_type().const_int(3, false),
+                    ],
+                    "async_task_completed_ptr",
+                )
+                .unwrap()
+        };
+        self.build_atomic_bool_store(
+            completed_field,
+            self.context.i8_type().const_int(1, false),
+            AtomicOrdering::Release,
+        )?;
         self.builder.build_return(Some(&result_storage)).unwrap();
 
         // 3) Compile public wrapper: function name(...)
@@ -2933,8 +3060,30 @@ impl<'ctx> Codegen<'ctx> {
             };
             self.builder.build_store(field_ptr, param_val).unwrap();
         }
+        let task_slot_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    env_type,
+                    env_cast,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context
+                            .i32_type()
+                            .const_int(func.params.len() as u64, false),
+                    ],
+                    "async_env_task_slot",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(task_slot_ptr, ptr_type.const_null())
+            .unwrap();
 
-        let task = self.create_task(thunk.as_global_value().as_pointer_value(), env_raw_ptr)?;
+        let task = self.create_task(
+            thunk.as_global_value().as_pointer_value(),
+            env_raw_ptr,
+            task_slot_ptr,
+        )?;
         self.builder.build_return(Some(&task)).unwrap();
 
         self.current_function = None;
@@ -3928,10 +4077,12 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         let inner_return_type = self.infer_async_block_return_type(body);
+        let ptr_ty = self.context.ptr_type(AddressSpace::default());
         let mut env_fields = Vec::new();
         for (_, ty) in &captures {
             env_fields.push(self.llvm_type(ty));
         }
+        env_fields.push(ptr_ty.into());
         let env_type = self.context.struct_type(&env_fields, false);
 
         let malloc = self.get_or_declare_malloc();
@@ -3979,6 +4130,24 @@ impl<'ctx> Codegen<'ctx> {
             };
             self.builder.build_store(field_ptr, val).unwrap();
         }
+        let task_slot_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    env_type,
+                    env_cast,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context
+                            .i32_type()
+                            .const_int(captures.len() as u64, false),
+                    ],
+                    "async_block_task_slot",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(task_slot_ptr, ptr_ty.const_null())
+            .unwrap();
 
         let saved_function = self.current_function;
         let saved_return_type = self.current_return_type.clone();
@@ -3988,7 +4157,6 @@ impl<'ctx> Codegen<'ctx> {
 
         let id = self.async_counter;
         self.async_counter += 1;
-        let ptr_ty = self.context.ptr_type(AddressSpace::default());
 
         let body_name = format!("__apex_async_block_body_{}", id);
         let body_fn_type = match &inner_return_type {
@@ -4071,6 +4239,10 @@ impl<'ctx> Codegen<'ctx> {
             .get_nth_param(0)
             .ok_or_else(|| CodegenError::new("async block thunk missing env param"))?
             .into_pointer_value();
+        let thunk_env_cast = self
+            .builder
+            .build_pointer_cast(thunk_env, ptr_ty, "async_block_thunk_env")
+            .unwrap();
         let body_call = self
             .builder
             .build_call(body_fn, &[thunk_env.into()], "async_block_call")
@@ -4139,6 +4311,58 @@ impl<'ctx> Codegen<'ctx> {
             self.builder.build_store(typed_ptr, result_val).unwrap();
             ptr
         };
+        let task_field_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    env_type,
+                    thunk_env_cast,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context
+                            .i32_type()
+                            .const_int(captures.len() as u64, false),
+                    ],
+                    "async_block_task_field",
+                )
+                .unwrap()
+        };
+        let task_ptr = self
+            .builder
+            .build_load(ptr_ty, task_field_ptr, "async_block_task_ptr")
+            .unwrap()
+            .into_pointer_value();
+        let result_field = unsafe {
+            self.builder
+                .build_gep(
+                    self.task_struct_type(),
+                    task_ptr,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context.i32_type().const_int(1, false),
+                    ],
+                    "async_block_result_field",
+                )
+                .unwrap()
+        };
+        self.builder.build_store(result_field, result_ptr).unwrap();
+        let completed_field = unsafe {
+            self.builder
+                .build_gep(
+                    self.task_struct_type(),
+                    task_ptr,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context.i32_type().const_int(3, false),
+                    ],
+                    "async_block_completed_field",
+                )
+                .unwrap()
+        };
+        self.build_atomic_bool_store(
+            completed_field,
+            self.context.i8_type().const_int(1, false),
+            AtomicOrdering::Release,
+        )?;
         self.builder.build_return(Some(&result_ptr)).unwrap();
 
         self.current_function = saved_function;
@@ -4149,7 +4373,11 @@ impl<'ctx> Codegen<'ctx> {
             self.builder.position_at_end(block);
         }
 
-        let task = self.create_task(thunk_fn.as_global_value().as_pointer_value(), env_raw)?;
+        let task = self.create_task(
+            thunk_fn.as_global_value().as_pointer_value(),
+            env_raw,
+            task_slot_ptr,
+        )?;
         Ok(task.into())
     }
 
@@ -5045,20 +5273,94 @@ impl<'ctx> Codegen<'ctx> {
         let thread_idx = i32_ty.const_int(0, false);
         let result_idx = i32_ty.const_int(1, false);
         let done_idx = i32_ty.const_int(2, false);
+        let completed_idx = i32_ty.const_int(3, false);
+        let done_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, done_idx], "task_done_ptr")
+                .unwrap()
+        };
+        let completed_field = unsafe {
+            self.builder
+                .build_gep(
+                    task_ty,
+                    task_ptr,
+                    &[zero, completed_idx],
+                    "task_completed_ptr",
+                )
+                .unwrap()
+        };
+        let result_field = unsafe {
+            self.builder
+                .build_gep(task_ty, task_ptr, &[zero, result_idx], "task_result_field")
+                .unwrap()
+        };
 
         match method {
             "is_done" => {
-                let done_field = unsafe {
-                    self.builder
-                        .build_gep(task_ty, task_ptr, &[zero, done_idx], "task_done_ptr")
-                        .unwrap()
-                };
+                let done_val = self
+                    .builder
+                    .build_load(self.context.i8_type(), done_field, "task_done")
+                    .unwrap()
+                    .into_int_value();
+                let done_bool = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        done_val,
+                        self.context.i8_type().const_zero(),
+                        "task_done_bool",
+                    )
+                    .unwrap();
+                let completed_val = self
+                    .build_atomic_bool_load(
+                        completed_field,
+                        "task_completed",
+                        AtomicOrdering::Acquire,
+                    )?;
                 Ok(self
                     .builder
-                    .build_load(self.context.bool_type(), done_field, "task_done")
-                    .unwrap())
+                    .build_or(done_bool, completed_val, "task_is_done")
+                    .unwrap()
+                    .into())
             }
             "cancel" => {
+                let done_val = self
+                    .builder
+                    .build_load(self.context.i8_type(), done_field, "task_done")
+                    .unwrap()
+                    .into_int_value();
+                let done_bool = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        done_val,
+                        self.context.i8_type().const_zero(),
+                        "task_done_bool",
+                    )
+                    .unwrap();
+                let completed_val = self
+                    .build_atomic_bool_load(
+                        completed_field,
+                        "task_completed",
+                        AtomicOrdering::Acquire,
+                    )?;
+                let already_done = self
+                    .builder
+                    .build_or(done_bool, completed_val, "task_already_done")
+                    .unwrap();
+
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("Task.cancel used outside function"))?;
+                let cancel_bb = self.context.append_basic_block(current_fn, "task_cancel");
+                let merge_bb = self
+                    .context
+                    .append_basic_block(current_fn, "task_cancel_merge");
+                self.builder
+                    .build_conditional_branch(already_done, merge_bb, cancel_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(cancel_bb);
                 let thread_field = unsafe {
                     self.builder
                         .build_gep(task_ty, task_ptr, &[zero, thread_idx], "task_thread_ptr")
@@ -5080,15 +5382,15 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap()
                 };
                 self.builder
-                    .build_store(done_field, self.context.bool_type().const_int(1, false))
+                    .build_store(done_field, self.context.i8_type().const_int(1, false))
                     .unwrap();
+                self.build_atomic_bool_store(
+                    completed_field,
+                    self.context.i8_type().const_int(1, false),
+                    AtomicOrdering::Release,
+                )?;
 
                 // Store default zero value so await after cancel doesn't dereference null.
-                let result_field = unsafe {
-                    self.builder
-                        .build_gep(task_ty, task_ptr, &[zero, result_idx], "task_result_ptr")
-                        .unwrap()
-                };
                 let malloc = self.get_or_declare_malloc();
                 let result_ptr = if matches!(inner, Type::None) {
                     let raw = self
@@ -5158,6 +5460,9 @@ impl<'ctx> Codegen<'ctx> {
                     ptr
                 };
                 self.builder.build_store(result_field, result_ptr).unwrap();
+                self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                self.builder.position_at_end(merge_bb);
                 Ok(self.context.i8_type().const_int(0, false).into())
             }
             "await_timeout" => {
@@ -5181,35 +5486,92 @@ impl<'ctx> Codegen<'ctx> {
                         .build_gep(task_ty, task_ptr, &[zero, done_idx], "task_done_ptr")
                         .unwrap()
                 };
-                let done_val = self
-                    .builder
-                    .build_load(self.context.bool_type(), done_field, "task_done")
-                    .unwrap()
-                    .into_int_value();
-                let result_field = unsafe {
+                let completed_field = unsafe {
                     self.builder
-                        .build_gep(task_ty, task_ptr, &[zero, result_idx], "task_result_field")
+                        .build_gep(
+                            task_ty,
+                            task_ptr,
+                            &[zero, completed_idx],
+                            "task_completed_ptr",
+                        )
                         .unwrap()
                 };
+                let done_val = self
+                    .builder
+                    .build_load(self.context.i8_type(), done_field, "task_done")
+                    .unwrap()
+                    .into_int_value();
+                let done_ready = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        done_val,
+                        self.context.i8_type().const_zero(),
+                        "task_done_ready",
+                    )
+                    .unwrap();
 
                 let done_bb = self
                     .context
                     .append_basic_block(current_fn, "task_timeout_done");
-                let wait_bb = self
+                let check_bb = self
                     .context
-                    .append_basic_block(current_fn, "task_timeout_wait");
-                let succ_bb = self
+                    .append_basic_block(current_fn, "task_timeout_check");
+                let join_bb = self
                     .context
-                    .append_basic_block(current_fn, "task_timeout_succ");
+                    .append_basic_block(current_fn, "task_timeout_join");
+                let loop_bb = self
+                    .context
+                    .append_basic_block(current_fn, "task_timeout_loop");
+                let sleep_bb = self
+                    .context
+                    .append_basic_block(current_fn, "task_timeout_sleep");
                 let timeout_bb = self
                     .context
                     .append_basic_block(current_fn, "task_timeout_fail");
                 let merge_bb = self
                     .context
                     .append_basic_block(current_fn, "task_timeout_merge");
+                let thread_field = unsafe {
+                    self.builder
+                        .build_gep(task_ty, task_ptr, &[zero, thread_idx], "task_thread_ptr")
+                        .unwrap()
+                };
+                let thread_id = self
+                    .builder
+                    .build_load(self.context.i64_type(), thread_field, "task_thread_id")
+                    .unwrap();
+                let join_result_ptr = self
+                    .builder
+                    .build_alloca(
+                        self.context.ptr_type(AddressSpace::default()),
+                        "timed_join_out",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_store(
+                        join_result_ptr,
+                        self.context.ptr_type(AddressSpace::default()).const_null(),
+                    )
+                    .unwrap();
+                let iter_ptr = self
+                    .builder
+                    .build_alloca(self.context.i64_type(), "task_timeout_iter")
+                    .unwrap();
+                self.builder
+                    .build_store(iter_ptr, self.context.i64_type().const_zero())
+                    .unwrap();
+                let max_iters = self
+                    .builder
+                    .build_int_add(
+                        ms_i64,
+                        self.context.i64_type().const_int(1, false),
+                        "task_timeout_iters",
+                    )
+                    .unwrap();
 
                 self.builder
-                    .build_conditional_branch(done_val, done_bb, wait_bb)
+                    .build_conditional_branch(done_ready, done_bb, check_bb)
                     .unwrap();
 
                 // done -> Some(result)
@@ -5242,166 +5604,80 @@ impl<'ctx> Codegen<'ctx> {
                 let done_some = self.create_option_some(done_value)?;
                 self.builder.build_unconditional_branch(merge_bb).unwrap();
 
-                // wait -> timed join
-                self.builder.position_at_end(wait_bb);
-                let thread_field = unsafe {
-                    self.builder
-                        .build_gep(task_ty, task_ptr, &[zero, thread_idx], "task_thread_ptr")
-                        .unwrap()
-                };
-                let thread_id = self
-                    .builder
-                    .build_load(self.context.i64_type(), thread_field, "task_thread_id")
-                    .unwrap();
-
-                let join_result_ptr = self
-                    .builder
-                    .build_alloca(
-                        self.context.ptr_type(AddressSpace::default()),
-                        "timed_join_out",
-                    )
-                    .unwrap();
+                self.builder.position_at_end(check_bb);
+                let completed_val = self
+                    .build_atomic_bool_load(
+                        completed_field,
+                        "task_completed",
+                        AtomicOrdering::Acquire,
+                    )?;
                 self.builder
-                    .build_store(
-                        join_result_ptr,
-                        self.context.ptr_type(AddressSpace::default()).const_null(),
-                    )
+                    .build_conditional_branch(completed_val, join_bb, loop_bb)
                     .unwrap();
 
-                let timespec_ty = self.timespec_struct_type();
-                let ts = self.builder.build_alloca(timespec_ty, "deadline").unwrap();
-                let clock_gettime = self.get_or_declare_clock_gettime();
-                let _clock = self
+                self.builder.position_at_end(loop_bb);
+                let iter_val = self
                     .builder
-                    .build_call(
-                        clock_gettime,
-                        &[
-                            self.context.i32_type().const_int(0, false).into(),
-                            ts.into(),
-                        ],
-                        "clock_now",
-                    )
-                    .unwrap();
-
-                let sec_ptr = unsafe {
-                    self.builder
-                        .build_gep(
-                            timespec_ty,
-                            ts,
-                            &[zero, i32_ty.const_int(0, false)],
-                            "deadline_sec_ptr",
-                        )
-                        .unwrap()
-                };
-                let nsec_ptr = unsafe {
-                    self.builder
-                        .build_gep(
-                            timespec_ty,
-                            ts,
-                            &[zero, i32_ty.const_int(1, false)],
-                            "deadline_nsec_ptr",
-                        )
-                        .unwrap()
-                };
-                let sec_now = self
-                    .builder
-                    .build_load(self.context.i64_type(), sec_ptr, "sec_now")
+                    .build_load(self.context.i64_type(), iter_ptr, "task_timeout_iter_val")
                     .unwrap()
                     .into_int_value();
-                let nsec_now = self
-                    .builder
-                    .build_load(self.context.i64_type(), nsec_ptr, "nsec_now")
-                    .unwrap()
-                    .into_int_value();
-
-                let thousand = self.context.i64_type().const_int(1000, false);
-                let million = self.context.i64_type().const_int(1_000_000, false);
-                let billion = self.context.i64_type().const_int(1_000_000_000, false);
-                let ms_sec = self
-                    .builder
-                    .build_int_unsigned_div(ms_i64, thousand, "ms_sec")
-                    .unwrap();
-                let ms_rem = self
-                    .builder
-                    .build_int_unsigned_rem(ms_i64, thousand, "ms_rem")
-                    .unwrap();
-                let sec_add = self
-                    .builder
-                    .build_int_add(sec_now, ms_sec, "deadline_sec_base")
-                    .unwrap();
-                let ns_add = self
-                    .builder
-                    .build_int_add(
-                        nsec_now,
-                        self.builder
-                            .build_int_mul(ms_rem, million, "ms_to_ns")
-                            .unwrap(),
-                        "deadline_ns_add",
-                    )
-                    .unwrap();
-                let carry = self
-                    .builder
-                    .build_int_compare(IntPredicate::UGE, ns_add, billion, "deadline_ns_carry")
-                    .unwrap();
-                let ns_norm = self
-                    .builder
-                    .build_select(
-                        carry,
-                        self.builder
-                            .build_int_sub(ns_add, billion, "deadline_ns_sub")
-                            .unwrap(),
-                        ns_add,
-                        "deadline_ns_norm",
-                    )
-                    .unwrap()
-                    .into_int_value();
-                let sec_norm = self
-                    .builder
-                    .build_int_add(
-                        sec_add,
-                        self.builder
-                            .build_int_z_extend(carry, self.context.i64_type(), "carry_i64")
-                            .unwrap(),
-                        "deadline_sec_norm",
-                    )
-                    .unwrap();
-                self.builder.build_store(sec_ptr, sec_norm).unwrap();
-                self.builder.build_store(nsec_ptr, ns_norm).unwrap();
-
-                let timed_join = self.get_or_declare_pthread_timedjoin_np();
-                let join_status = match self
-                    .builder
-                    .build_call(
-                        timed_join,
-                        &[thread_id.into(), join_result_ptr.into(), ts.into()],
-                        "timed_join",
-                    )
-                    .unwrap()
-                    .try_as_basic_value()
-                {
-                    ValueKind::Basic(v) => v.into_int_value(),
-                    ValueKind::Instruction(_) => {
-                        return Err(CodegenError::new(
-                            "pthread_timedjoin_np should return status",
-                        ));
-                    }
-                };
-
-                let join_ok = self
+                let timed_out = self
                     .builder
                     .build_int_compare(
-                        IntPredicate::EQ,
-                        join_status,
-                        self.context.i32_type().const_int(0, false),
-                        "join_ok",
+                        IntPredicate::UGE,
+                        iter_val,
+                        max_iters,
+                        "task_timeout_reached",
                     )
                     .unwrap();
                 self.builder
-                    .build_conditional_branch(join_ok, succ_bb, timeout_bb)
+                    .build_conditional_branch(timed_out, timeout_bb, sleep_bb)
                     .unwrap();
 
-                // success -> store result + done, return Some(value)
-                self.builder.position_at_end(succ_bb);
+                self.builder.position_at_end(sleep_bb);
+                #[cfg(windows)]
+                {
+                    let sleep_fn = self.get_or_declare_sleep_win();
+                    self.builder
+                        .build_call(
+                            sleep_fn,
+                            &[self.context.i32_type().const_int(1, false).into()],
+                            "task_timeout_sleep_call",
+                        )
+                        .unwrap();
+                }
+                #[cfg(not(windows))]
+                {
+                    let usleep_fn = self.get_or_declare_usleep();
+                    self.builder
+                        .build_call(
+                            usleep_fn,
+                            &[self.context.i32_type().const_int(1000, false).into()],
+                            "task_timeout_usleep_call",
+                        )
+                        .unwrap();
+                }
+                let next_iter = self
+                    .builder
+                    .build_int_add(
+                        iter_val,
+                        self.context.i64_type().const_int(1, false),
+                        "task_timeout_next_iter",
+                    )
+                    .unwrap();
+                self.builder.build_store(iter_ptr, next_iter).unwrap();
+                self.builder.build_unconditional_branch(check_bb).unwrap();
+
+                self.builder.position_at_end(join_bb);
+                let pthread_join = self.get_or_declare_pthread_join();
+                let _join_status = self
+                    .builder
+                    .build_call(
+                        pthread_join,
+                        &[thread_id.into(), join_result_ptr.into()],
+                        "timed_join_finalize",
+                    )
+                    .unwrap();
                 let joined_ptr = self
                     .builder
                     .build_load(
@@ -5413,8 +5689,13 @@ impl<'ctx> Codegen<'ctx> {
                     .into_pointer_value();
                 self.builder.build_store(result_field, joined_ptr).unwrap();
                 self.builder
-                    .build_store(done_field, self.context.bool_type().const_int(1, false))
+                    .build_store(done_field, self.context.i8_type().const_int(1, false))
                     .unwrap();
+                self.build_atomic_bool_store(
+                    completed_field,
+                    self.context.i8_type().const_int(1, false),
+                    AtomicOrdering::Release,
+                )?;
                 let succ_value: BasicValueEnum = if matches!(inner, Type::None) {
                     self.context.i8_type().const_int(0, false).into()
                 } else {
@@ -5464,7 +5745,7 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
                 phi.add_incoming(&[
                     (&done_some, done_bb),
-                    (&succ_some, succ_bb),
+                    (&succ_some, join_bb),
                     (&timeout_none, timeout_bb),
                 ]);
                 Ok(phi.as_basic_value())
