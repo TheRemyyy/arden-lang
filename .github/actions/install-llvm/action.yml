@@ -139,7 +139,7 @@ runs:
           $shimSource = Join-Path $env:RUNNER_TEMP "llvm-config-shim.cs"
           $escapedPrefix = $llvmPrefix.Replace('\', '\\')
           $escapedVersion = $llvmVersion.Replace('\', '\\')
-          @"
+          $shimCode = @"
           using System;
           using System.IO;
           using System.Linq;
@@ -192,7 +192,8 @@ runs:
                   }
               }
           }
-          "@ | Set-Content -Path $shimSource -Encoding UTF8
+          "@
+          $shimCode | Set-Content -Path $shimSource -Encoding UTF8
 
           Add-Type -TypeDefinition (Get-Content $shimSource -Raw) `
             -Language CSharp `
