@@ -24,8 +24,6 @@ jobs:
           key: ${{ runner.os }}-x86_64-unknown-linux-gnu-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Build release
         run: cargo build --release --target x86_64-unknown-linux-gnu
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
       - uses: actions/upload-artifact@v4
         with:
           name: apex-compiler-linux-x64
@@ -49,8 +47,6 @@ jobs:
           key: ${{ runner.os }}-aarch64-apple-darwin-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Build release
         run: cargo build --release --target aarch64-apple-darwin
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
       - uses: actions/upload-artifact@v4
         with:
           name: apex-compiler-macos-arm64
@@ -82,8 +78,6 @@ jobs:
       - name: Build release
         run: cargo build --release --target x86_64-pc-windows-msvc
         env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
-          LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
           RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
       - uses: actions/upload-artifact@v4
         with:
@@ -105,18 +99,10 @@ jobs:
             target
           key: ${{ runner.os }}-checks-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo check --locked --all-targets --all-features --verbose
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
       - run: cargo test --locked --verbose
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
       - run: cargo test --locked --release --all-targets --verbose
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
       - run: cargo fmt -- --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
 
   checks-macos:
     name: Rust Checks (macos-arm64)
@@ -133,18 +119,10 @@ jobs:
             target
           key: ${{ runner.os }}-checks-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo check --locked --all-targets --all-features --verbose
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
       - run: cargo test --locked --verbose
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
       - run: cargo test --locked --release --all-targets --verbose
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
       - run: cargo fmt -- --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
-        env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
 
   checks-windows:
     name: Rust Checks (windows-x64)
@@ -169,24 +147,16 @@ jobs:
           echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
       - run: cargo check --locked --all-targets --all-features --verbose
         env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
-          LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
           RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
       - run: cargo test --locked --verbose
         env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
-          LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
           RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
       - run: cargo test --locked --release --all-targets --verbose
         env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
-          LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
           RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
       - run: cargo fmt -- --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
         env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
-          LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
           RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
 
   smoke-linux:

@@ -56,7 +56,6 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
         env:
-          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
           RUSTFLAGS: ${{ matrix.os == 'windows-latest' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
 
       - name: Strip binary (Linux/macOS)

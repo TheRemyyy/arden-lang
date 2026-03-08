@@ -48,15 +48,17 @@ runs:
       run: |
         choco install llvm --version=21.1.7 -y --no-progress
         $llvmPrefix = $null
+        $llvmConfig = $null
         $prefixCandidates = @(
           "C:\Program Files\LLVM",
           "$env:ChocolateyInstall\lib\llvm\tools\llvm"
         ) | Where-Object { $_ -and (Test-Path $_) }
 
         foreach ($prefix in $prefixCandidates) {
-          $clang = Join-Path $prefix "bin\clang.exe"
-          if (Test-Path $clang) {
+          $candidateConfig = Join-Path $prefix "bin\llvm-config.exe"
+          if (Test-Path $candidateConfig) {
             $llvmPrefix = $prefix
+            $llvmConfig = $candidateConfig
             break
           }
         }
@@ -64,13 +66,14 @@ runs:
         if (-not $llvmPrefix) {
           $chocoRoot = Join-Path $env:ChocolateyInstall "lib"
           if (Test-Path $chocoRoot) {
-            $found = Get-ChildItem -Path $chocoRoot -Filter clang.exe -Recurse -File -ErrorAction SilentlyContinue |
+            $found = Get-ChildItem -Path $chocoRoot -Filter llvm-config.exe -Recurse -File -ErrorAction SilentlyContinue |
               Where-Object { $_.FullName -match '\\llvm(\\|-)'} |
               Select-Object -ExpandProperty FullName
             foreach ($candidate in $found) {
               $version = (& $candidate --version 2>$null | Select-Object -First 1)
               if ($version -match 'version 21\.') {
                 $llvmPrefix = Split-Path -Parent (Split-Path -Parent $candidate)
+                $llvmConfig = $candidate
                 break
               }
             }
@@ -78,18 +81,21 @@ runs:
         }
 
         if (-not $llvmPrefix) {
-          throw "LLVM 21 installation prefix not found after LLVM install"
+          throw "LLVM 21 llvm-config.exe not found after LLVM install"
         }
 
         $llvmBin = Join-Path $llvmPrefix "bin"
         $llvmLib = Join-Path $llvmPrefix "lib"
-        if (-not (Test-Path (Join-Path $llvmBin "clang.exe"))) {
-          throw "clang.exe not found in LLVM bin directory: $llvmBin"
+        if (-not $llvmConfig) {
+          $llvmConfig = Join-Path $llvmBin "llvm-config.exe"
+        }
+        if (-not (Test-Path $llvmConfig)) {
+          throw "llvm-config.exe not found in LLVM bin directory: $llvmBin"
         }
         if (-not (Test-Path $llvmLib)) {
           throw "LLVM lib directory not found: $llvmLib"
         }
-        $llvmPrefixUnix = $llvmPrefix -replace '\\','/'
 
-        echo "LLVM_SYS_211_PREFIX=$llvmPrefixUnix" >> $env:GITHUB_ENV
+        echo "LLVM_SYS_211_PREFIX=$llvmPrefix" >> $env:GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=$llvmConfig" >> $env:GITHUB_ENV
         echo "$llvmBin" >> $env:GITHUB_PATH
