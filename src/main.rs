@@ -3762,7 +3762,10 @@ fn should_force_no_pie(link: &LinkConfig<'_>) -> bool {
         None => true,
         Some(target) => {
             let target = target.to_ascii_lowercase();
-            !(target.contains("windows") || target.contains("mingw") || target.contains("darwin") || target.contains("apple"))
+            !(target.contains("windows")
+                || target.contains("mingw")
+                || target.contains("darwin")
+                || target.contains("apple"))
         }
     }
 }

@@ -62,8 +62,18 @@ jobs:
           path: ${{ matrix.binary_path }}
 
   checks:
-    name: Rust Checks (linux-x64)
-    runs-on: ubuntu-latest
+    name: Rust Checks (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x64
+            os: ubuntu-latest
+          - label: macos-arm64
+            os: macos-latest
+          - label: windows-x64
+            os: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -75,11 +85,31 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-checks-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Windows build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install libxml2:x64-windows-static
+          $LibPath = "C:\vcpkg\installed\x64-windows-static\lib"
+          Copy-Item "$LibPath\libxml2.lib" "$LibPath\libxml2s.lib" -Force
+          echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
       - run: cargo check --locked --all-targets --all-features --verbose
+        env:
+          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
+          RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
       - run: cargo test --locked --verbose
+        env:
+          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
+          RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
       - run: cargo test --locked --release --all-targets --verbose
+        env:
+          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
+          RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
       - run: cargo fmt -- --check
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        env:
+          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
+          RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
 
   smoke:
     name: CLI Smoke (${{ matrix.label }})
