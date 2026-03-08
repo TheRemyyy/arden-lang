@@ -32,9 +32,33 @@ runs:
       shell: pwsh
       run: |
         choco install llvm --version=21.1.7 -y --no-progress
-        $LLVMPath = "C:\Program Files\LLVM"
-        if (-not (Test-Path $LLVMPath)) {
-          throw "LLVM install path not found: $LLVMPath"
+        $llvmConfig = (Get-Command llvm-config.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1)
+        if (-not $llvmConfig) {
+          $candidates = @(
+            "C:\Program Files\LLVM\bin\llvm-config.exe",
+            "$env:ChocolateyInstall\lib\llvm\tools\llvm\bin\llvm-config.exe"
+          )
+          foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+              $llvmConfig = $candidate
+              break
+            }
+          }
         }
-        echo "LLVM_SYS_211_PREFIX=C:/Program Files/LLVM" >> $env:GITHUB_ENV
-        echo "$LLVMPath\bin" >> $env:GITHUB_PATH
+        if (-not $llvmConfig) {
+          throw "llvm-config.exe not found after LLVM install"
+        }
+
+        $llvmVersion = (& $llvmConfig --version).Trim()
+        if (-not $llvmVersion.StartsWith("21.")) {
+          throw "Expected LLVM 21.x, got $llvmVersion at $llvmConfig"
+        }
+
+        $llvmBin = Split-Path -Parent $llvmConfig
+        $llvmPrefix = Split-Path -Parent $llvmBin
+        $llvmPrefixUnix = $llvmPrefix -replace '\\','/'
+        $llvmConfigUnix = $llvmConfig -replace '\\','/'
+
+        echo "LLVM_SYS_211_PREFIX=$llvmPrefixUnix" >> $env:GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=$llvmConfigUnix" >> $env:GITHUB_ENV
+        echo "$llvmBin" >> $env:GITHUB_PATH
