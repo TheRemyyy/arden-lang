@@ -24,50 +24,66 @@ runs:
       shell: bash
       run: |
         brew install llvm@21
-        echo "LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)" >> "$GITHUB_ENV"
-        echo "$(brew --prefix llvm@21)/bin" >> "$GITHUB_PATH"
-        command -v ld.lld || true
+        LLVM_PREFIX="$(brew --prefix llvm@21)"
+        LLVM_BIN="${LLVM_PREFIX}/bin"
+        mkdir -p "${HOME}/.local/bin"
+        if [ -x "${LLVM_BIN}/lld" ] && [ ! -e "${HOME}/.local/bin/lld" ]; then
+          ln -sf "${LLVM_BIN}/lld" "${HOME}/.local/bin/lld"
+        fi
+        if [ -x "${LLVM_BIN}/ld.lld" ] && [ ! -e "${HOME}/.local/bin/ld.lld" ]; then
+          ln -sf "${LLVM_BIN}/ld.lld" "${HOME}/.local/bin/ld.lld"
+        elif [ -x "${LLVM_BIN}/ld64.lld" ] && [ ! -e "${HOME}/.local/bin/ld.lld" ]; then
+          ln -sf "${LLVM_BIN}/ld64.lld" "${HOME}/.local/bin/ld.lld"
+        fi
+        echo "LLVM_SYS_211_PREFIX=${LLVM_PREFIX}" >> "$GITHUB_ENV"
+        echo "${LLVM_BIN}" >> "$GITHUB_PATH"
+        echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+        command -v ld.lld
     - name: Install LLVM (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
         choco install llvm --version=21.1.7 -y --no-progress
-        $llvmConfig = (Get-Command llvm-config.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1)
+        $llvmConfig = $null
+        $llvmPrefix = $null
+        $prefixCandidates = @(
+          "C:\Program Files\LLVM",
+          "$env:ChocolateyInstall\lib\llvm\tools\llvm"
+        ) | Where-Object { $_ -and (Test-Path $_) }
+
+        foreach ($prefix in $prefixCandidates) {
+          $candidate = Join-Path $prefix "bin\llvm-config.exe"
+          if (-not (Test-Path $candidate)) {
+            continue
+          }
+          $version = (& $candidate --version).Trim()
+          if ($version.StartsWith("21.")) {
+            $llvmConfig = $candidate
+            $llvmPrefix = $prefix
+            break
+          }
+        }
+
         if (-not $llvmConfig) {
-          $candidates = @(
-            "C:\Program Files\LLVM\bin\llvm-config.exe",
-            "$env:ChocolateyInstall\lib\llvm\tools\llvm\bin\llvm-config.exe",
-            "$env:ChocolateyInstall\bin\llvm-config.exe"
-          )
-          foreach ($candidate in $candidates) {
-            if (Test-Path $candidate) {
-              $llvmConfig = $candidate
-              break
+          $chocoRoot = Join-Path $env:ChocolateyInstall "lib"
+          if (Test-Path $chocoRoot) {
+            $found = Get-ChildItem -Path $chocoRoot -Filter llvm-config.exe -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match '\\llvm(\\|-)'} |
+              Select-Object -ExpandProperty FullName
+            foreach ($candidate in $found) {
+              $version = (& $candidate --version).Trim()
+              if ($version.StartsWith("21.")) {
+                $llvmConfig = $candidate
+                $llvmPrefix = Split-Path -Parent (Split-Path -Parent $candidate)
+                break
+              }
             }
           }
         }
+
         if (-not $llvmConfig) {
-          $searchRoots = @(
-            "C:\Program Files",
-            "C:\Program Files (x86)",
-            "$env:ChocolateyInstall\lib",
-            "$env:ChocolateyInstall\bin"
-          ) | Where-Object { $_ -and (Test-Path $_) }
-          foreach ($root in $searchRoots) {
-            $found = Get-ChildItem -Path $root -Filter llvm-config.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName -First 1
-            if ($found) {
-              $llvmConfig = $found
-              break
-            }
-          }
-        }
-        if (-not $llvmConfig) {
-          $llvmDirCandidates = @(
-            "C:\Program Files\LLVM",
-            "$env:ChocolateyInstall\lib\llvm\tools\llvm"
-          ) | Where-Object { $_ -and (Test-Path $_) }
-          if ($llvmDirCandidates.Count -gt 0) {
-            $llvmPrefix = $llvmDirCandidates[0]
+          if ($prefixCandidates.Count -gt 0) {
+            $llvmPrefix = $prefixCandidates[0]
             $llvmBin = Join-Path $llvmPrefix "bin"
             if (Test-Path $llvmBin) {
               $llvmPrefixUnix = $llvmPrefix -replace '\\','/'
@@ -77,16 +93,14 @@ runs:
               exit 0
             }
           }
-          throw "llvm-config.exe not found after LLVM install"
+          throw "LLVM 21 llvm-config.exe not found after LLVM install"
         }
 
         $llvmVersion = (& $llvmConfig --version).Trim()
-        if (-not $llvmVersion.StartsWith("21.")) {
-          throw "Expected LLVM 21.x, got $llvmVersion at $llvmConfig"
-        }
-
         $llvmBin = Split-Path -Parent $llvmConfig
-        $llvmPrefix = Split-Path -Parent $llvmBin
+        if (-not $llvmPrefix) {
+          $llvmPrefix = Split-Path -Parent $llvmBin
+        }
         $llvmPrefixUnix = $llvmPrefix -replace '\\','/'
         $llvmConfigUnix = $llvmConfig -replace '\\','/'
 
