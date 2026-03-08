@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use twox_hash::XxHash64;
 
-use crate::ast::{Decl, ImportDecl, Program};
+use crate::ast::{Block, Decl, ImportDecl, Program, Spanned};
 use crate::borrowck::BorrowChecker;
 use crate::codegen::Codegen;
 use crate::import_check::ImportChecker;
@@ -264,6 +264,10 @@ fn project_cache_file(project_root: &Path) -> PathBuf {
     project_root.join(".apexcache").join("build_fingerprint")
 }
 
+fn semantic_project_cache_file(project_root: &Path) -> PathBuf {
+    project_root.join(".apexcache").join("semantic_build_fingerprint")
+}
+
 fn stable_hasher() -> XxHash64 {
     XxHash64::with_seed(0)
 }
@@ -345,6 +349,13 @@ fn load_cached_fingerprint(project_root: &Path) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+fn load_semantic_cached_fingerprint(project_root: &Path) -> Option<String> {
+    fs::read_to_string(semantic_project_cache_file(project_root))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn save_cached_fingerprint(project_root: &Path, fingerprint: &str) -> Result<(), String> {
     let cache_file = project_cache_file(project_root);
     if let Some(parent) = cache_file.parent() {
@@ -367,13 +378,37 @@ fn save_cached_fingerprint(project_root: &Path, fingerprint: &str) -> Result<(),
     })
 }
 
-const PARSE_CACHE_SCHEMA: &str = "v1";
+fn save_semantic_cached_fingerprint(project_root: &Path, fingerprint: &str) -> Result<(), String> {
+    let cache_file = semantic_project_cache_file(project_root);
+    if let Some(parent) = cache_file.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "{}: Failed to create cache directory '{}': {}",
+                "error".red().bold(),
+                parent.display(),
+                e
+            )
+        })?;
+    }
+    fs::write(&cache_file, fingerprint).map_err(|e| {
+        format!(
+            "{}: Failed to write semantic build cache '{}': {}",
+            "error".red().bold(),
+            cache_file.display(),
+            e
+        )
+    })
+}
+
+const PARSE_CACHE_SCHEMA: &str = "v3";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ParsedFileCacheEntry {
     schema: String,
     compiler_version: String,
     source_fingerprint: String,
+    api_fingerprint: String,
+    semantic_fingerprint: String,
     namespace: String,
     program: Program,
     imports: Vec<ImportDecl>,
@@ -385,7 +420,8 @@ struct ParsedProjectUnit {
     namespace: String,
     program: Program,
     imports: Vec<ImportDecl>,
-    source_fingerprint: String,
+    api_fingerprint: String,
+    semantic_fingerprint: String,
     function_names: Vec<String>,
     class_names: Vec<String>,
     module_names: Vec<String>,
@@ -396,7 +432,8 @@ struct ParsedProjectUnit {
 struct RewrittenProjectUnit {
     file: PathBuf,
     program: Program,
-    source_fingerprint: String,
+    semantic_fingerprint: String,
+    rewrite_context_fingerprint: String,
     active_symbols: HashSet<String>,
     from_rewrite_cache: bool,
 }
@@ -414,6 +451,100 @@ fn source_fingerprint(source: &str) -> String {
     let mut hasher = stable_hasher();
     source.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
+}
+
+fn semantic_program_fingerprint(program: &Program) -> String {
+    let canonical = formatter::format_program_canonical(program);
+    source_fingerprint(&canonical)
+}
+
+fn empty_block() -> Block {
+    Vec::new()
+}
+
+fn api_projection_decl(decl: &Spanned<Decl>) -> Spanned<Decl> {
+    let projected = match &decl.node {
+        Decl::Function(func) => {
+            let mut func = func.clone();
+            if !func.is_extern {
+                func.body = empty_block();
+            }
+            Decl::Function(func)
+        }
+        Decl::Class(class) => {
+            let mut class = class.clone();
+            if let Some(constructor) = &mut class.constructor {
+                constructor.body = empty_block();
+            }
+            if let Some(destructor) = &mut class.destructor {
+                destructor.body = empty_block();
+            }
+            class.methods = class
+                .methods
+                .into_iter()
+                .map(|mut method| {
+                    method.body = empty_block();
+                    method
+                })
+                .collect();
+            Decl::Class(class)
+        }
+        Decl::Interface(interface) => {
+            let mut interface = interface.clone();
+            interface.methods = interface
+                .methods
+                .into_iter()
+                .map(|mut method| {
+                    method.default_impl = method.default_impl.map(|_| empty_block());
+                    method
+                })
+                .collect();
+            Decl::Interface(interface)
+        }
+        Decl::Module(module) => {
+            let mut module = module.clone();
+            module.declarations = module
+                .declarations
+                .iter()
+                .map(api_projection_decl)
+                .collect();
+            Decl::Module(module)
+        }
+        Decl::Enum(en) => Decl::Enum(en.clone()),
+        Decl::Import(import) => Decl::Import(import.clone()),
+    };
+    Spanned::new(projected, decl.span.clone())
+}
+
+fn api_projection_program(program: &Program) -> Program {
+    Program {
+        package: program.package.clone(),
+        declarations: program.declarations.iter().map(api_projection_decl).collect(),
+    }
+}
+
+fn api_program_fingerprint(program: &Program) -> String {
+    let projected = api_projection_program(program);
+    let canonical = formatter::format_program_canonical(&projected);
+    source_fingerprint(&canonical)
+}
+
+fn codegen_program_for_unit(rewritten_files: &[RewrittenProjectUnit], active_file: &Path) -> Program {
+    let mut program = Program {
+        package: None,
+        declarations: Vec::new(),
+    };
+
+    for unit in rewritten_files {
+        let source_program = if unit.file == active_file {
+            unit.program.clone()
+        } else {
+            api_projection_program(&unit.program)
+        };
+        program.declarations.extend(source_program.declarations);
+    }
+
+    program
 }
 
 fn load_parsed_file_cache(
@@ -435,14 +566,10 @@ fn load_parsed_file_cache(
         )
     })?;
 
-    let entry: ParsedFileCacheEntry = serde_json::from_str(&raw).map_err(|e| {
-        format!(
-            "{}: Failed to parse cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
+    let entry: ParsedFileCacheEntry = match serde_json::from_str(&raw) {
+        Ok(entry) => entry,
+        Err(_) => return Ok(None),
+    };
 
     if entry.schema != PARSE_CACHE_SCHEMA
         || entry.compiler_version != env!("CARGO_PKG_VERSION")
@@ -490,24 +617,24 @@ fn save_parsed_file_cache(
     })
 }
 
-const REWRITE_CACHE_SCHEMA: &str = "v1";
+const REWRITE_CACHE_SCHEMA: &str = "v2";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RewrittenFileCacheEntry {
     schema: String,
     compiler_version: String,
-    source_fingerprint: String,
+    semantic_fingerprint: String,
     rewrite_context_fingerprint: String,
     rewritten_program: Program,
 }
 
-const OBJECT_CACHE_SCHEMA: &str = "v2";
+const OBJECT_CACHE_SCHEMA: &str = "v3";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ObjectCacheEntry {
     schema: String,
     compiler_version: String,
-    source_fingerprint: String,
+    semantic_fingerprint: String,
     rewrite_context_fingerprint: String,
     object_build_fingerprint: String,
 }
@@ -521,29 +648,114 @@ fn rewritten_file_cache_path(project_root: &Path, file: &Path) -> PathBuf {
         .join(format!("{:016x}.json", hasher.finish()))
 }
 
-fn hash_sorted_map(map: &HashMap<String, String>, hasher: &mut impl Hasher) {
-    let mut entries = map.iter().collect::<Vec<_>>();
-    entries.sort_by(|a, b| a.0.cmp(b.0).then_with(|| a.1.cmp(b.1)));
-    for (k, v) in entries {
-        k.hash(hasher);
-        v.hash(hasher);
+fn namespace_prefixes(namespace: &str) -> Vec<String> {
+    let mut prefixes = Vec::new();
+    let mut current = namespace.trim();
+    while !current.is_empty() {
+        prefixes.push(current.to_string());
+        if let Some((prefix, _)) = current.rsplit_once('.') {
+            current = prefix;
+        } else {
+            break;
+        }
+    }
+    prefixes
+}
+
+fn hash_imports(imports: &[ImportDecl], hasher: &mut impl Hasher) {
+    let mut normalized = imports
+        .iter()
+        .map(|import| {
+            (
+                import.path.clone(),
+                import.alias.clone().unwrap_or_default(),
+            )
+        })
+        .collect::<Vec<_>>();
+    normalized.sort();
+    for (path, alias) in normalized {
+        path.hash(hasher);
+        alias.hash(hasher);
     }
 }
 
-fn hash_sorted_map_of_sets(map: &HashMap<String, HashSet<String>>, hasher: &mut impl Hasher) {
-    let mut entries = map.iter().collect::<Vec<_>>();
+fn hash_filtered_namespace_map(
+    map: &HashMap<String, HashSet<String>>,
+    relevant_namespaces: &HashSet<String>,
+    hasher: &mut impl Hasher,
+) {
+    let mut entries = map
+        .iter()
+        .filter(|(namespace, _)| relevant_namespaces.contains(*namespace))
+        .collect::<Vec<_>>();
     entries.sort_by(|a, b| a.0.cmp(b.0));
-    for (k, set) in entries {
-        k.hash(hasher);
-        let mut values = set.iter().collect::<Vec<_>>();
+    for (namespace, symbols) in entries {
+        namespace.hash(hasher);
+        let mut values = symbols.iter().collect::<Vec<_>>();
         values.sort();
-        for v in values {
-            v.hash(hasher);
+        for value in values {
+            value.hash(hasher);
         }
     }
 }
 
-fn compute_rewrite_context_fingerprint(
+fn hash_filtered_global_map(
+    map: &HashMap<String, String>,
+    relevant_namespaces: &HashSet<String>,
+    hasher: &mut impl Hasher,
+) {
+    let mut entries = map
+        .iter()
+        .filter(|(_, namespace)| relevant_namespaces.contains(*namespace))
+        .collect::<Vec<_>>();
+    entries.sort_by(|a, b| a.0.cmp(b.0).then_with(|| a.1.cmp(b.1)));
+    for (symbol, namespace) in entries {
+        symbol.hash(hasher);
+        namespace.hash(hasher);
+    }
+}
+
+fn compute_namespace_api_fingerprints(parsed_files: &[ParsedProjectUnit]) -> HashMap<String, String> {
+    let mut grouped: HashMap<String, Vec<(&PathBuf, &str)>> = HashMap::new();
+    for unit in parsed_files {
+        grouped
+            .entry(unit.namespace.clone())
+            .or_default()
+            .push((&unit.file, unit.api_fingerprint.as_str()));
+    }
+
+    let mut result = HashMap::new();
+    for (namespace, mut entries) in grouped {
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+        let mut hasher = stable_hasher();
+        namespace.hash(&mut hasher);
+        for (file, api_fingerprint) in entries {
+            file.hash(&mut hasher);
+            api_fingerprint.hash(&mut hasher);
+        }
+        result.insert(namespace, format!("{:016x}", hasher.finish()));
+    }
+    result
+}
+
+fn hash_namespace_api_fingerprints(
+    map: &HashMap<String, String>,
+    relevant_namespaces: &HashSet<String>,
+    hasher: &mut impl Hasher,
+) {
+    let mut entries = map
+        .iter()
+        .filter(|(namespace, _)| relevant_namespaces.contains(*namespace))
+        .collect::<Vec<_>>();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    for (namespace, fingerprint) in entries {
+        namespace.hash(hasher);
+        fingerprint.hash(hasher);
+    }
+}
+
+fn compute_rewrite_context_fingerprint_for_unit(
+    unit: &ParsedProjectUnit,
     entry_namespace: &str,
     namespace_functions: &HashMap<String, HashSet<String>>,
     global_function_map: &HashMap<String, String>,
@@ -551,15 +763,66 @@ fn compute_rewrite_context_fingerprint(
     global_class_map: &HashMap<String, String>,
     namespace_modules: &HashMap<String, HashSet<String>>,
     global_module_map: &HashMap<String, String>,
+    namespace_api_fingerprints: &HashMap<String, String>,
 ) -> String {
+    let mut relevant_namespaces: HashSet<String> =
+        namespace_prefixes(&unit.namespace).into_iter().collect();
+    relevant_namespaces.insert(unit.namespace.clone());
+
+    for import in &unit.imports {
+        let imported_namespace = if import.path.ends_with(".*") {
+            import.path.trim_end_matches(".*")
+        } else if import.path.contains('.') {
+            import.path.rsplit_once('.').map(|(ns, _)| ns).unwrap_or("")
+        } else {
+            import.path.as_str()
+        };
+
+        for prefix in namespace_prefixes(imported_namespace) {
+            relevant_namespaces.insert(prefix);
+        }
+    }
+
     let mut hasher = stable_hasher();
     entry_namespace.hash(&mut hasher);
-    hash_sorted_map_of_sets(namespace_functions, &mut hasher);
-    hash_sorted_map(global_function_map, &mut hasher);
-    hash_sorted_map_of_sets(namespace_classes, &mut hasher);
-    hash_sorted_map(global_class_map, &mut hasher);
-    hash_sorted_map_of_sets(namespace_modules, &mut hasher);
-    hash_sorted_map(global_module_map, &mut hasher);
+    unit.namespace.hash(&mut hasher);
+    hash_imports(&unit.imports, &mut hasher);
+    hash_filtered_namespace_map(namespace_functions, &relevant_namespaces, &mut hasher);
+    hash_filtered_global_map(global_function_map, &relevant_namespaces, &mut hasher);
+    hash_filtered_namespace_map(namespace_classes, &relevant_namespaces, &mut hasher);
+    hash_filtered_global_map(global_class_map, &relevant_namespaces, &mut hasher);
+    hash_filtered_namespace_map(namespace_modules, &relevant_namespaces, &mut hasher);
+    hash_filtered_global_map(global_module_map, &relevant_namespaces, &mut hasher);
+    hash_namespace_api_fingerprints(namespace_api_fingerprints, &relevant_namespaces, &mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn compute_semantic_project_fingerprint(
+    config: &ProjectConfig,
+    parsed_files: &[ParsedProjectUnit],
+    emit_llvm: bool,
+    do_check: bool,
+) -> String {
+    let mut hasher = stable_hasher();
+    env!("CARGO_PKG_VERSION").hash(&mut hasher);
+    config.name.hash(&mut hasher);
+    config.version.hash(&mut hasher);
+    config.entry.hash(&mut hasher);
+    config.output.hash(&mut hasher);
+    config.opt_level.hash(&mut hasher);
+    config.target.hash(&mut hasher);
+    format!("{:?}", config.output_kind).hash(&mut hasher);
+    config.link_search.hash(&mut hasher);
+    config.link_libs.hash(&mut hasher);
+    config.link_args.hash(&mut hasher);
+    emit_llvm.hash(&mut hasher);
+    do_check.hash(&mut hasher);
+
+    for unit in parsed_files {
+        unit.file.hash(&mut hasher);
+        unit.semantic_fingerprint.hash(&mut hasher);
+    }
+
     format!("{:016x}", hasher.finish())
 }
 
@@ -602,7 +865,7 @@ fn collect_active_symbols(program: &Program) -> HashSet<String> {
 fn load_rewritten_file_cache(
     project_root: &Path,
     file: &Path,
-    source_fingerprint: &str,
+    semantic_fingerprint: &str,
     rewrite_context_fingerprint: &str,
 ) -> Result<Option<Program>, String> {
     let path = rewritten_file_cache_path(project_root, file);
@@ -619,18 +882,14 @@ fn load_rewritten_file_cache(
         )
     })?;
 
-    let entry: RewrittenFileCacheEntry = serde_json::from_str(&raw).map_err(|e| {
-        format!(
-            "{}: Failed to parse rewrite cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
+    let entry: RewrittenFileCacheEntry = match serde_json::from_str(&raw) {
+        Ok(entry) => entry,
+        Err(_) => return Ok(None),
+    };
 
     if entry.schema != REWRITE_CACHE_SCHEMA
         || entry.compiler_version != env!("CARGO_PKG_VERSION")
-        || entry.source_fingerprint != source_fingerprint
+        || entry.semantic_fingerprint != semantic_fingerprint
         || entry.rewrite_context_fingerprint != rewrite_context_fingerprint
     {
         return Ok(None);
@@ -642,7 +901,7 @@ fn load_rewritten_file_cache(
 fn save_rewritten_file_cache(
     project_root: &Path,
     file: &Path,
-    source_fingerprint: &str,
+    semantic_fingerprint: &str,
     rewrite_context_fingerprint: &str,
     rewritten_program: &Program,
 ) -> Result<(), String> {
@@ -661,7 +920,7 @@ fn save_rewritten_file_cache(
     let entry = RewrittenFileCacheEntry {
         schema: REWRITE_CACHE_SCHEMA.to_string(),
         compiler_version: env!("CARGO_PKG_VERSION").to_string(),
-        source_fingerprint: source_fingerprint.to_string(),
+        semantic_fingerprint: semantic_fingerprint.to_string(),
         rewrite_context_fingerprint: rewrite_context_fingerprint.to_string(),
         rewritten_program: rewritten_program.clone(),
     };
@@ -718,13 +977,14 @@ fn compute_object_build_fingerprint(link: &LinkConfig<'_>) -> String {
     env!("CARGO_PKG_VERSION").hash(&mut hasher);
     link.opt_level.hash(&mut hasher);
     link.target.hash(&mut hasher);
+    "lld".hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
 fn load_object_cache_hit(
     project_root: &Path,
     file: &Path,
-    source_fingerprint: &str,
+    semantic_fingerprint: &str,
     rewrite_context_fingerprint: &str,
     object_build_fingerprint: &str,
 ) -> Result<Option<PathBuf>, String> {
@@ -742,18 +1002,14 @@ fn load_object_cache_hit(
             e
         )
     })?;
-    let meta: ObjectCacheEntry = serde_json::from_str(&raw).map_err(|e| {
-        format!(
-            "{}: Failed to parse object cache meta '{}': {}",
-            "error".red().bold(),
-            meta_path.display(),
-            e
-        )
-    })?;
+    let meta: ObjectCacheEntry = match serde_json::from_str(&raw) {
+        Ok(meta) => meta,
+        Err(_) => return Ok(None),
+    };
 
     if meta.schema != OBJECT_CACHE_SCHEMA
         || meta.compiler_version != env!("CARGO_PKG_VERSION")
-        || meta.source_fingerprint != source_fingerprint
+        || meta.semantic_fingerprint != semantic_fingerprint
         || meta.rewrite_context_fingerprint != rewrite_context_fingerprint
         || meta.object_build_fingerprint != object_build_fingerprint
     {
@@ -766,7 +1022,7 @@ fn load_object_cache_hit(
 fn save_object_cache_meta(
     project_root: &Path,
     file: &Path,
-    source_fingerprint: &str,
+    semantic_fingerprint: &str,
     rewrite_context_fingerprint: &str,
     object_build_fingerprint: &str,
 ) -> Result<(), String> {
@@ -785,7 +1041,7 @@ fn save_object_cache_meta(
     let meta = ObjectCacheEntry {
         schema: OBJECT_CACHE_SCHEMA.to_string(),
         compiler_version: env!("CARGO_PKG_VERSION").to_string(),
-        source_fingerprint: source_fingerprint.to_string(),
+        semantic_fingerprint: semantic_fingerprint.to_string(),
         rewrite_context_fingerprint: rewrite_context_fingerprint.to_string(),
         object_build_fingerprint: object_build_fingerprint.to_string(),
     };
@@ -823,9 +1079,16 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         .unwrap_or("unknown.apex");
 
     let source_fp = source_fingerprint(&source);
-    let (namespace, program, imports, from_parse_cache) =
+    let (namespace, program, imports, api_fingerprint, semantic_fingerprint, from_parse_cache) =
         if let Some(cache) = load_parsed_file_cache(project_root, file, &source_fp)? {
-            (cache.namespace, cache.program, cache.imports, true)
+            (
+                cache.namespace,
+                cache.program,
+                cache.imports,
+                cache.api_fingerprint,
+                cache.semantic_fingerprint,
+                true,
+            )
         } else {
             let tokens = lexer::tokenize(&source).map_err(|e| {
                 format!(
@@ -857,18 +1120,29 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                     _ => None,
                 })
                 .collect();
+            let api_fingerprint = api_program_fingerprint(&program);
+            let semantic_fingerprint = semantic_program_fingerprint(&program);
 
             let cache_entry = ParsedFileCacheEntry {
                 schema: PARSE_CACHE_SCHEMA.to_string(),
                 compiler_version: env!("CARGO_PKG_VERSION").to_string(),
                 source_fingerprint: source_fp.clone(),
+                api_fingerprint: api_fingerprint.clone(),
+                semantic_fingerprint: semantic_fingerprint.clone(),
                 namespace: namespace.clone(),
                 program: program.clone(),
                 imports: imports.clone(),
             };
             save_parsed_file_cache(project_root, file, &cache_entry)?;
 
-            (namespace, program, imports, false)
+            (
+                namespace,
+                program,
+                imports,
+                api_fingerprint,
+                semantic_fingerprint,
+                false,
+            )
         };
 
     let mut function_names = Vec::new();
@@ -915,7 +1189,8 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         namespace,
         program,
         imports,
-        source_fingerprint: source_fp,
+        api_fingerprint,
+        semantic_fingerprint,
         function_names,
         class_names,
         module_names,
@@ -1179,6 +1454,23 @@ fn build_project(
         );
     }
 
+    let semantic_fingerprint =
+        compute_semantic_project_fingerprint(&config, &parsed_files, emit_llvm, do_check);
+    if !check_only {
+        if let Some(cached) = load_semantic_cached_fingerprint(&project_root) {
+            if cached == semantic_fingerprint && project_build_artifact_exists(&output_path, emit_llvm) {
+                println!(
+                    "{} {} ({})",
+                    "Up to date".green().bold(),
+                    config.name.cyan(),
+                    "semantic cache".dimmed()
+                );
+                save_cached_fingerprint(&project_root, &fingerprint)?;
+                return Ok(());
+            }
+        }
+    }
+
     if !function_collisions.is_empty() {
         eprintln!(
             "{} Function name collisions detected across namespaces:",
@@ -1286,32 +1578,35 @@ fn build_project(
         .find(|unit| unit.file == entry_path)
         .map(|unit| unit.namespace.clone())
         .unwrap_or_else(|| "global".to_string());
-
-    let rewrite_context_fingerprint = compute_rewrite_context_fingerprint(
-        &entry_namespace,
-        &namespace_functions,
-        &global_function_map,
-        &namespace_class_map,
-        &global_class_map,
-        &namespace_module_map,
-        &global_module_map,
-    );
+    let namespace_api_fingerprints = compute_namespace_api_fingerprints(&parsed_files);
 
     // Phase 3: Build combined AST with deterministic namespace mangling.
     let rewritten_results: Vec<Result<RewrittenProjectUnit, String>> = parsed_files
         .par_iter()
         .map(|unit| {
+            let rewrite_context_fingerprint = compute_rewrite_context_fingerprint_for_unit(
+                unit,
+                &entry_namespace,
+                &namespace_functions,
+                &global_function_map,
+                &namespace_class_map,
+                &global_class_map,
+                &namespace_module_map,
+                &global_module_map,
+                &namespace_api_fingerprints,
+            );
             if let Some(cached) = load_rewritten_file_cache(
                 &project_root,
                 &unit.file,
-                &unit.source_fingerprint,
+                &unit.semantic_fingerprint,
                 &rewrite_context_fingerprint,
             )? {
                 let active_symbols = collect_active_symbols(&cached);
                 return Ok(RewrittenProjectUnit {
                     file: unit.file.clone(),
                     program: cached,
-                    source_fingerprint: unit.source_fingerprint.clone(),
+                    semantic_fingerprint: unit.semantic_fingerprint.clone(),
+                    rewrite_context_fingerprint: rewrite_context_fingerprint.clone(),
                     active_symbols,
                     from_rewrite_cache: true,
                 });
@@ -1332,7 +1627,7 @@ fn build_project(
             save_rewritten_file_cache(
                 &project_root,
                 &unit.file,
-                &unit.source_fingerprint,
+                &unit.semantic_fingerprint,
                 &rewrite_context_fingerprint,
                 &rewritten,
             )?;
@@ -1340,7 +1635,8 @@ fn build_project(
                 file: unit.file.clone(),
                 active_symbols: collect_active_symbols(&rewritten),
                 program: rewritten,
-                source_fingerprint: unit.source_fingerprint.clone(),
+                semantic_fingerprint: unit.semantic_fingerprint.clone(),
+                rewrite_context_fingerprint,
                 from_rewrite_cache: false,
             })
         })
@@ -1439,8 +1735,8 @@ fn build_project(
             if let Some(cached_obj) = load_object_cache_hit(
                 &project_root,
                 &unit.file,
-                &unit.source_fingerprint,
-                &rewrite_context_fingerprint,
+                &unit.semantic_fingerprint,
+                &unit.rewrite_context_fingerprint,
                 &object_build_fingerprint,
             )? {
                 object_paths[index] = Some(cached_obj);
@@ -1454,8 +1750,9 @@ fn build_project(
             .par_iter()
             .map(|(index, unit)| {
                 let obj_path = object_cache_object_path(&project_root, &unit.file);
+                let codegen_program = codegen_program_for_unit(&rewritten_files, &unit.file);
                 compile_program_ast_to_object_filtered(
-                    &combined_program,
+                    &codegen_program,
                     &unit.file,
                     &obj_path,
                     &link,
@@ -1464,8 +1761,8 @@ fn build_project(
                 save_object_cache_meta(
                     &project_root,
                     &unit.file,
-                    &unit.source_fingerprint,
-                    &rewrite_context_fingerprint,
+                    &unit.semantic_fingerprint,
+                    &unit.rewrite_context_fingerprint,
                     &object_build_fingerprint,
                 )?;
                 Ok::<(usize, PathBuf), String>((*index, obj_path))
@@ -1498,6 +1795,7 @@ fn build_project(
 
     if !check_only {
         save_cached_fingerprint(&project_root, &fingerprint)?;
+        save_semantic_cached_fingerprint(&project_root, &semantic_fingerprint)?;
     }
 
     Ok(())
@@ -1809,8 +2107,39 @@ struct LinkConfig<'a> {
     link_args: &'a [String],
 }
 
+fn shutil_which(tool: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|dir| {
+            let candidate = dir.join(tool);
+            if candidate.is_file() {
+                return true;
+            }
+            #[cfg(windows)]
+            {
+                let exe = dir.join(format!("{}.exe", tool));
+                exe.is_file()
+            }
+            #[cfg(not(windows))]
+            {
+                false
+            }
+        })
+    })
+}
+
+fn require_lld_linker() -> Result<(), String> {
+    if shutil_which("ld.lld") || shutil_which("lld") {
+        return Ok(());
+    }
+    Err(format!(
+        "{}: Required linker 'lld' not found in PATH. Install LLVM lld and retry.",
+        "error".red().bold()
+    ))
+}
+
 /// Compile LLVM IR using clang
 fn compile_ir(ir_path: &Path, output_path: &Path, link: &LinkConfig<'_>) -> Result<(), String> {
+    require_lld_linker()?;
     let opt_flag = resolve_clang_opt_flag(link.opt_level);
     let run_clang = |march_native: bool, mtune_native: bool| {
         let mut cmd = Command::new("clang");
@@ -1818,7 +2147,8 @@ fn compile_ir(ir_path: &Path, output_path: &Path, link: &LinkConfig<'_>) -> Resu
             .arg("-o")
             .arg(output_path)
             .arg("-Wno-override-module")
-            .arg(opt_flag);
+            .arg(opt_flag)
+            .arg("-fuse-ld=lld");
 
         match link.output_kind {
             OutputKind::Bin => {}
@@ -1932,6 +2262,7 @@ fn compile_ir_to_object(
     object_path: &Path,
     link: &LinkConfig<'_>,
 ) -> Result<(), String> {
+    require_lld_linker()?;
     let opt_flag = resolve_clang_opt_flag(link.opt_level);
     let mut cmd = Command::new("clang");
     cmd.arg("-c")
@@ -1939,7 +2270,8 @@ fn compile_ir_to_object(
         .arg("-o")
         .arg(object_path)
         .arg("-Wno-override-module")
-        .arg(opt_flag);
+        .arg(opt_flag)
+        .arg("-fuse-ld=lld");
 
     if let Some(target_triple) = link.target {
         cmd.arg("--target").arg(target_triple);
@@ -1973,6 +2305,7 @@ fn link_objects(
     output_path: &Path,
     link: &LinkConfig<'_>,
 ) -> Result<(), String> {
+    require_lld_linker()?;
     if objects.is_empty() {
         return Err(format!(
             "{}: No object files generated for project build.",
@@ -2005,7 +2338,11 @@ fn link_objects(
         }
         OutputKind::Bin | OutputKind::Shared => {
             let mut cmd = Command::new("clang");
-            cmd.args(objects).arg("-o").arg(output_path).arg(opt_flag);
+            cmd.args(objects)
+                .arg("-o")
+                .arg(output_path)
+                .arg(opt_flag)
+                .arg("-fuse-ld=lld");
 
             if link.output_kind == OutputKind::Shared {
                 cmd.arg("-shared");
@@ -2666,4 +3003,101 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
         eprintln!("{} Generated {} binding(s)", "OK".green().bold(), count);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{api_program_fingerprint, semantic_program_fingerprint};
+    use crate::ast::Program;
+    use crate::parser::Parser;
+
+    fn parse_program(source: &str) -> Program {
+        let tokens = crate::lexer::tokenize(source).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        parser.parse_program().expect("parse")
+    }
+
+    fn fingerprint_for(source: &str) -> String {
+        let program = parse_program(source);
+        semantic_program_fingerprint(&program)
+    }
+
+    #[test]
+    fn semantic_program_fingerprint_ignores_comments_and_whitespace() {
+        let a = r#"
+import std.io.*;
+
+function main(): None {
+    println("hi");
+    return None;
+}
+"#;
+        let b = r#"
+// top comment
+import std.io.*;
+
+function main(): None {
+    // inside body
+    println("hi");
+    return None;
+}
+"#;
+
+        assert_eq!(fingerprint_for(a), fingerprint_for(b));
+    }
+
+    #[test]
+    fn semantic_program_fingerprint_changes_with_code_changes() {
+        let a = r#"
+function main(): None {
+    println("hi");
+    return None;
+}
+"#;
+        let b = r#"
+function main(): None {
+    println("bye");
+    return None;
+}
+"#;
+
+        assert_ne!(fingerprint_for(a), fingerprint_for(b));
+    }
+
+    #[test]
+    fn api_program_fingerprint_ignores_body_only_changes() {
+        let a = r#"
+function add(x: Integer): Integer {
+    return x + 1;
+}
+"#;
+        let b = r#"
+function add(x: Integer): Integer {
+    return x + 999;
+}
+"#;
+
+        let pa = parse_program(a);
+        let pb = parse_program(b);
+        assert_eq!(api_program_fingerprint(&pa), api_program_fingerprint(&pb));
+        assert_ne!(semantic_program_fingerprint(&pa), semantic_program_fingerprint(&pb));
+    }
+
+    #[test]
+    fn api_program_fingerprint_changes_with_signature_changes() {
+        let a = r#"
+function add(x: Integer): Integer {
+    return x + 1;
+}
+"#;
+        let b = r#"
+function add(x: Float): Float {
+    return x + 1.0;
+}
+"#;
+
+        let pa = parse_program(a);
+        let pb = parse_program(b);
+        assert_ne!(api_program_fingerprint(&pa), api_program_fingerprint(&pb));
+    }
 }

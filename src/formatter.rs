@@ -30,6 +30,12 @@ pub fn format_source(source: &str) -> Result<String, String> {
     }
 }
 
+pub fn format_program_canonical(program: &Program) -> String {
+    let mut formatter = Formatter::new();
+    formatter.format_program(program);
+    formatter.finish()
+}
+
 #[derive(Clone)]
 struct SourceComment {
     start: usize,

@@ -9,7 +9,7 @@ This document describes the internal architecture of the Apex compiler.
 3. **Type Checking** (`typeck.rs`): Traverses the AST to validate types, resolve names, and ensure type safety.
 4. **Borrow Checking** (`borrowck.rs`): Analyses ownership and lifetimes to ensure memory safety without GC.
 5. **Code Generation** (`codegen/core.rs`, `codegen/types.rs`, `codegen/util.rs`): Lowers the AST into LLVM IR (Intermediate Representation).
-6. **Linking**: LLVM IR is compiled to an object file and linked (using `clang`/`cc`) to produce the final executable.
+6. **Linking**: LLVM IR is compiled to object files and linked through `clang -fuse-ld=lld` to produce the final executable. Apex requires `lld`; there is no fallback linker path.
 
 ## Build Caching
 
@@ -20,11 +20,17 @@ This document describes the internal architecture of the Apex compiler.
   - Stores parsed AST + namespace/import metadata keyed by source fingerprint.
   - On incremental edits, unchanged files bypass tokenization/parsing and reuse cached AST.
 - **Rewritten file cache** (`.apexcache/rewritten/*.json`):
-  - Stores namespace-rewritten AST fragments keyed by source fingerprint + global rewrite context fingerprint.
-  - On incremental edits, unchanged files bypass rewrite phase and are stitched directly into combined AST.
+  - Stores namespace-rewritten AST fragments keyed by semantic fingerprint + per-file rewrite-context fingerprint.
+  - On incremental edits, files whose semantics and relevant namespace/import context did not change bypass rewrite and are stitched directly into combined AST.
 - **Object file cache** (`.apexcache/objects/*.{o|obj}` + `*.json`):
-  - Stores per-file compiled objects keyed by source fingerprint + rewrite-context fingerprint + build options (`opt_level`, `target`, compiler version).
+  - Stores per-file compiled objects keyed by semantic fingerprint + per-file rewrite-context fingerprint + build options (`opt_level`, `target`, compiler version, linker mode).
   - On incremental edits, unchanged files reuse cached object files and final build performs fast relink from cached + rebuilt objects.
+- **Semantic build fingerprint cache** (`.apexcache/semantic_build_fingerprint`):
+  - Hashes canonicalized AST content instead of raw file text.
+  - Comment-only / whitespace-only edits can now stop after parse/cache validation and return `Up to date ... (semantic cache)` without object rebuild or relink.
+- **Per-file rewrite invalidation**:
+  - Rewrite/object cache invalidation now hashes only the current file's namespace/import context and relevant imported namespace symbol maps.
+  - Unrelated namespace changes no longer force global rewrite-cache/object-cache misses across the entire project.
 - **Parallel project parse phase**:
   - Multi-file project parsing now runs in parallel workers (file read + lex + parse/cache lookup).
   - Import checks and rewrite/cache resolution run in parallel per file.

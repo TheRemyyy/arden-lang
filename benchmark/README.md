@@ -40,6 +40,7 @@ benchmark/
 - `clang` (for C)
 - `rustc` (for Rust)
 - `go` (for Go)
+- `lld` (required by Apex project builds; Apex does not fall back to another linker)
 - Apex compiler binary available at `target/release/apex-compiler`
 
 If the Apex compiler binary is missing, the runner will build it via:

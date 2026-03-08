@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Added cold-mode artifact/cache cleanup handling and Apex transient `.ll` retry guard in benchmark runner.
   - Added `incremental_rebuild_1_file` benchmark: compile once, mutate one source file, then recompile and report first/second compile timing.
   - Added `incremental_rebuild_central_file` benchmark: compile once, mutate shared core dependency file, then recompile for dependency-heavy invalidation path measurement.
+  - Added `incremental_rebuild_mega_project_10_files` benchmark: compile a generated 120-file mega-project, apply syntax-only edits to 10 spread-out files, then report cold full-build vs hot rebuild timing.
   - `python3 benchmark/run.py` now includes both `compile_project_10_files_hot` and `compile_project_10_files_cold` plus incremental rebuild output in one report by default.
   - Benchmark runner now normalizes executable path handling for Windows (`.exe`) and supports C compiler auto-detection (`CC`/`clang`/`gcc`).
 - New language coverage examples:
@@ -55,6 +56,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### ♻️ Changed
 
+- Apex project linking now requires `lld` and uses `clang -fuse-ld=lld` exclusively.
+  - Removed linker fallback behavior; missing `lld` is now a hard error.
+  - Object-cache build fingerprints now encode the enforced linker mode.
 - Switched internal stdlib metadata access to a shared lazy registry (`OnceLock`) instead of repeated `StdLib::new()` construction in hot paths (type checker, borrow checker, rewrite, codegen, and import-check entry points).
 - Namespace-only alias imports in project rewrite now resolve module-style calls (`alias.fn(...)`) to project-mangled function symbols.
 - Project object compilation for cache misses now runs in parallel (per-file LLVM context + codegen instance), then links sequentially.
@@ -88,7 +92,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Project builds now use `.apexcache` with:
   - early up-to-date skip via project fingerprint cache
   - parser-level per-file AST cache reuse for unchanged files in changed builds
-  - rewrite-level per-file AST cache reuse for unchanged files in changed builds
+  - semantic fingerprint cache to ignore comment-only / whitespace-only edits
+  - rewrite-level per-file AST cache reuse keyed by per-file import/namespace context instead of whole-project context
   - object-level per-file cache reuse for unchanged files plus relink-only final stage
   - parallel multi-file parse pipeline for lower front-end wall time on larger projects
   - parallel import-check and rewrite/cache resolution pass
