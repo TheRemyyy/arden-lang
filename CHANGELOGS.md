@@ -104,6 +104,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - rewritten file API projections are now precomputed once and reused across semantic delta checking plus per-file object rebuild misses
   - object-cache miss codegen now uses transitive file dependency closure instead of injecting API stubs from the entire project
   - changed-file object rebuilds now emit `.o/.obj` directly from LLVM target machines instead of round-tripping through textual `.ll` plus `clang -c`
+  - LLVM target initialization for direct object emission is now one-time per process instead of repeating for every rebuilt object
   - full combined rewritten AST is now materialized only for `emit_llvm`; normal object-link builds stay on narrower per-file program assembly
   - object-level per-file cache reuse for unchanged files plus relink-only final stage
   - final link is now skipped entirely when all object files are cache hits and the ordered link manifest matches the previous successful link

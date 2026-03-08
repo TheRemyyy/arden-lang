@@ -15,8 +15,12 @@ use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue, V
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 
 use std::path::Path;
+use std::sync::OnceLock;
 
 use crate::codegen::core::{Codegen, CodegenError, Result, Variable};
+
+static LLVM_NATIVE_TARGET_INIT: OnceLock<std::result::Result<(), String>> = OnceLock::new();
+static LLVM_ALL_TARGETS_INIT: OnceLock<()> = OnceLock::new();
 
 impl<'ctx> Codegen<'ctx> {
     // === C Library Definitions ===
@@ -1304,18 +1308,31 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn ensure_object_emission_targets_initialized(
+        target_triple: Option<&str>,
+    ) -> std::result::Result<(), String> {
+        if target_triple.is_some() {
+            LLVM_ALL_TARGETS_INIT.get_or_init(|| {
+                Target::initialize_all(&InitializationConfig::default());
+            });
+            return Ok(());
+        }
+
+        LLVM_NATIVE_TARGET_INIT
+            .get_or_init(|| {
+                Target::initialize_native(&InitializationConfig::default())
+                    .map_err(|e| format!("Failed to init target: {}", e))
+            })
+            .clone()
+    }
+
     pub fn write_object_with_config(
         &self,
         path: &Path,
         opt_level: Option<&str>,
         target_triple: Option<&str>,
     ) -> std::result::Result<(), String> {
-        if target_triple.is_some() {
-            Target::initialize_all(&InitializationConfig::default());
-        } else {
-            Target::initialize_native(&InitializationConfig::default())
-                .map_err(|e| format!("Failed to init target: {}", e))?;
-        }
+        Self::ensure_object_emission_targets_initialized(target_triple)?;
 
         let triple = target_triple
             .map(TargetTriple::create)
