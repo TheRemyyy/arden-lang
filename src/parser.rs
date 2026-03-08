@@ -344,7 +344,7 @@ impl<'src> Parser<'src> {
     fn parse_string_literal(&mut self) -> ParseResult<String> {
         match self.current() {
             Some(Token::String(s)) => {
-                let s = s.to_string();
+                let s = decode_escaped_string(s);
                 self.advance();
                 Ok(s)
             }
@@ -2222,13 +2222,24 @@ impl<'src> Parser<'src> {
 
         while let Some(c) = chars.next() {
             if c == '\\' {
-                if let Some(next) = chars.peek() {
-                    if *next == '{' || *next == '}' {
-                        current.push(chars.next().unwrap());
-                        continue;
+                if let Some(next) = chars.next() {
+                    match next {
+                        'n' => current.push('\n'),
+                        't' => current.push('\t'),
+                        'r' => current.push('\r'),
+                        '\\' => current.push('\\'),
+                        '"' => current.push('"'),
+                        '\'' => current.push('\''),
+                        '{' => current.push('{'),
+                        '}' => current.push('}'),
+                        other => {
+                            current.push('\\');
+                            current.push(other);
+                        }
                     }
+                } else {
+                    current.push('\\');
                 }
-                current.push(c);
             } else if c == '{' {
                 if !current.is_empty() {
                     parts.push(StringPart::Literal(std::mem::take(&mut current)));
@@ -2348,6 +2359,38 @@ impl<'src> Parser<'src> {
             )),
         }
     }
+}
+
+fn decode_escaped_string(raw: &str) -> String {
+    let mut decoded = String::new();
+    let mut chars = raw.chars();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            if let Some(next) = chars.next() {
+                match next {
+                    'n' => decoded.push('\n'),
+                    't' => decoded.push('\t'),
+                    'r' => decoded.push('\r'),
+                    '\\' => decoded.push('\\'),
+                    '"' => decoded.push('"'),
+                    '\'' => decoded.push('\''),
+                    '{' => decoded.push('{'),
+                    '}' => decoded.push('}'),
+                    other => {
+                        decoded.push('\\');
+                        decoded.push(other);
+                    }
+                }
+            } else {
+                decoded.push('\\');
+            }
+        } else {
+            decoded.push(ch);
+        }
+    }
+
+    decoded
 }
 
 #[cfg(test)]
@@ -2909,5 +2952,47 @@ mod tests {
             panic!("Expected string literal");
         };
         assert_eq!(s, "value: {x");
+    }
+
+    #[test]
+    fn test_string_literal_decodes_common_escapes() {
+        let source = r#"
+            function main(): None {
+                s: String = "line1\nline2\t\"ok\"\\";
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Let { value, .. } = &func.body[0].node else {
+            panic!("Expected let statement");
+        };
+        let Expr::Literal(Literal::String(s)) = &value.node else {
+            panic!("Expected string literal");
+        };
+        assert_eq!(s, "line1\nline2\t\"ok\"\\");
+    }
+
+    #[test]
+    fn test_string_interp_escaped_braces_stay_literal() {
+        let source = r#"
+            function main(): None {
+                s: String = "\{x\}";
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Let { value, .. } = &func.body[0].node else {
+            panic!("Expected let statement");
+        };
+        let Expr::Literal(Literal::String(s)) = &value.node else {
+            panic!("Expected string literal");
+        };
+        assert_eq!(s, "{x}");
     }
 }

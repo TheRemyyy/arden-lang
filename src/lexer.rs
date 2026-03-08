@@ -203,7 +203,19 @@ pub enum Token<'src> {
 
     #[regex(r"'([^'\\]|\\.)'", |lex| {
         let s = lex.slice();
-        s.chars().nth(1)
+        let inner = &s[1..s.len() - 1];
+        if let Some(escaped) = inner.strip_prefix('\\') {
+            escaped.chars().next().map(|ch| match ch {
+                'n' => '\n',
+                't' => '\t',
+                'r' => '\r',
+                '\\' => '\\',
+                '\'' => '\'',
+                other => other,
+            })
+        } else {
+            inner.chars().next()
+        }
     })]
     Char(char),
 
@@ -262,5 +274,14 @@ mod tests {
         let tokens = tokenize("#!/usr/bin/env apex\nfunction main(): None { return None; }")
             .expect("tokenization succeeds");
         assert!(matches!(tokens.first(), Some((Token::Function, _))));
+    }
+
+    #[test]
+    fn decodes_escaped_char_literals() {
+        let tokens = tokenize("'\\n' '\\t' '\\\\' '\\''").expect("tokenization succeeds");
+        assert!(matches!(tokens[0].0, Token::Char('\n')));
+        assert!(matches!(tokens[1].0, Token::Char('\t')));
+        assert!(matches!(tokens[2].0, Token::Char('\\')));
+        assert!(matches!(tokens[3].0, Token::Char('\'')));
     }
 }

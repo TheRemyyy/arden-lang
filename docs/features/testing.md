@@ -155,6 +155,7 @@ Notes:
 - `async main(...)` forms are also stripped from test-runner input before generated entrypoint insertion.
 - Bare `@Ignore` and `@Ignore("reason")` are both skipped correctly by `apex test`.
 - Final summary `Total` counts all discovered tests, including ignored ones.
+- String escapes inside tests follow normal Apex string semantics, so `\n`, `\t`, `\"`, `\\`, `\{`, and `\}` are decoded before execution.
 
 ## Complete Example
 

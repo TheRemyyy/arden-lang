@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `apex test` handling for `@Ignore` without a reason:
   - tests marked with bare `@Ignore` are now skipped correctly instead of being executed
   - ignored tests are now counted in the final `Total` summary as well as `Ignored`
+- Fixed string and char escape decoding in Apex source:
+  - escape sequences like `\n`, `\t`, `\"`, `\\`, and escaped char literals now decode correctly at runtime
+  - escaped interpolation braces (`\{` and `\}`) now remain literal text instead of incorrectly triggering string interpolation
 - Expanded CLI smoke coverage to assert the real `examples/24_test_attributes.apex` runner output and ignored-test totals.
 
 ## [1.3.5] - Bug Fixes - 2026-03-08

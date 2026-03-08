@@ -26,6 +26,9 @@ PROJECT_DIR="${TMP_DIR}/sample_project"
 UGLY_FILE="${TMP_DIR}/ugly.apex"
 LINT_FILE="${TMP_DIR}/linty.apex"
 TEST_FILE="${TMP_DIR}/sample_test.apex"
+ESCAPE_FILE="${TMP_DIR}/escapes.apex"
+ESCAPE_OUT="${TMP_DIR}/escapes_bin"
+ESCAPE_STDOUT="${TMP_DIR}/escapes.stdout"
 HEADER_FILE="${TMP_DIR}/sample.h"
 BINDINGS_FILE="${TMP_DIR}/bindings.apex"
 OUT_FILE="${TMP_DIR}/ugly_bin"
@@ -121,6 +124,19 @@ EOF_TEST
 "${COMPILER}" test --path "${REPO_ROOT}/examples/24_test_attributes.apex" >"${BORROW_ERR_OUT}" 2>&1
 grep -q "Total:   10" "${BORROW_ERR_OUT}"
 grep -q "Ignored: 2" "${BORROW_ERR_OUT}"
+
+cat <<'EOF_ESCAPE' > "${ESCAPE_FILE}"
+import std.io.*;
+function main(): None {
+    println("A\nB");
+    println("X\tY");
+    println("Q:\" Z");
+    return None;
+}
+EOF_ESCAPE
+"${COMPILER}" compile "${ESCAPE_FILE}" -o "${ESCAPE_OUT}" >/dev/null
+"${ESCAPE_OUT}" > "${ESCAPE_STDOUT}"
+cmp -s "${ESCAPE_STDOUT}" <(printf 'A\nB\nX\tY\nQ:" Z\n')
 
 cat <<'EOF_HEADER' > "${HEADER_FILE}"
 int add(int a, int b);

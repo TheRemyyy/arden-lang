@@ -6,6 +6,6 @@ extern(c) function printf(fmt: String, ...): Integer;
 
 function main(): None {
     puts("Generated binding call");
-    printf("Value: %d\\n", 42);
+    printf("Value: %d\n", 42);
     return None;
 }
