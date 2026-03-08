@@ -2610,10 +2610,7 @@ impl<'ctx> Codegen<'ctx> {
                 .unwrap()
         };
         self.builder
-            .build_store(
-                completed_field,
-                self.context.i8_type().const_int(0, false),
-            )
+            .build_store(completed_field, self.context.i8_type().const_int(0, false))
             .unwrap();
         self.builder
             .build_store(env_task_slot_ptr, task_ptr)
@@ -5311,12 +5308,11 @@ impl<'ctx> Codegen<'ctx> {
                         "task_done_bool",
                     )
                     .unwrap();
-                let completed_val = self
-                    .build_atomic_bool_load(
-                        completed_field,
-                        "task_completed",
-                        AtomicOrdering::Acquire,
-                    )?;
+                let completed_val = self.build_atomic_bool_load(
+                    completed_field,
+                    "task_completed",
+                    AtomicOrdering::Acquire,
+                )?;
                 Ok(self
                     .builder
                     .build_or(done_bool, completed_val, "task_is_done")
@@ -5338,12 +5334,11 @@ impl<'ctx> Codegen<'ctx> {
                         "task_done_bool",
                     )
                     .unwrap();
-                let completed_val = self
-                    .build_atomic_bool_load(
-                        completed_field,
-                        "task_completed",
-                        AtomicOrdering::Acquire,
-                    )?;
+                let completed_val = self.build_atomic_bool_load(
+                    completed_field,
+                    "task_completed",
+                    AtomicOrdering::Acquire,
+                )?;
                 let already_done = self
                     .builder
                     .build_or(done_bool, completed_val, "task_already_done")
@@ -5605,12 +5600,11 @@ impl<'ctx> Codegen<'ctx> {
                 self.builder.build_unconditional_branch(merge_bb).unwrap();
 
                 self.builder.position_at_end(check_bb);
-                let completed_val = self
-                    .build_atomic_bool_load(
-                        completed_field,
-                        "task_completed",
-                        AtomicOrdering::Acquire,
-                    )?;
+                let completed_val = self.build_atomic_bool_load(
+                    completed_field,
+                    "task_completed",
+                    AtomicOrdering::Acquire,
+                )?;
                 self.builder
                     .build_conditional_branch(completed_val, join_bb, loop_bb)
                     .unwrap();
