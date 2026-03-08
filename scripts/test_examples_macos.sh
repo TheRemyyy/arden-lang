@@ -10,14 +10,22 @@ echo "========================================"
 echo "     Apex Compiler Test Runner (macOS)"
 echo "========================================"
 echo
-echo "[1/5] Building compiler..."
-
-if ! cargo build --release; then
-  echo "Build failed!"
-  exit 1
+COMPILER_INPUT="${APEX_COMPILER_PATH:-${REPO_ROOT}/target/release/apex-compiler}"
+if [[ "${COMPILER_INPUT}" = /* ]]; then
+  COMPILER="${COMPILER_INPUT}"
+else
+  COMPILER="${REPO_ROOT}/${COMPILER_INPUT}"
 fi
 
-COMPILER="${REPO_ROOT}/target/release/apex-compiler"
+echo "[1/5] Preparing compiler..."
+
+if [[ "${CI_SKIP_COMPILER_BUILD:-0}" != "1" ]]; then
+  if ! cargo build --release; then
+    echo "Build failed!"
+    exit 1
+  fi
+fi
+
 if [[ ! -x "${COMPILER}" ]]; then
   echo "Compiler binary not found or not executable at ${COMPILER}"
   exit 1

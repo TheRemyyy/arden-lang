@@ -1,9 +1,10 @@
 name: Install LLVM 21
-description: Installs LLVM 21 on Ubuntu runners and exports LLVM_SYS_211_PREFIX.
+description: Installs LLVM 21 on GitHub-hosted runners and exports LLVM_SYS_211_PREFIX.
 runs:
   using: composite
   steps:
-    - name: Install LLVM
+    - name: Install LLVM (Ubuntu)
+      if: runner.os == 'Linux'
       shell: bash
       run: |
         wget https://apt.llvm.org/llvm.sh
@@ -18,3 +19,22 @@ runs:
         fi
         command -v ld.lld
         echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> "$GITHUB_ENV"
+    - name: Install LLVM (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        brew install llvm@21
+        echo "LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)" >> "$GITHUB_ENV"
+        echo "$(brew --prefix llvm@21)/bin" >> "$GITHUB_PATH"
+        command -v ld.lld || true
+    - name: Install LLVM (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        choco install llvm --version=21.1.7 -y --no-progress
+        $LLVMPath = "C:\Program Files\LLVM"
+        if (-not (Test-Path $LLVMPath)) {
+          throw "LLVM install path not found: $LLVMPath"
+        }
+        echo "LLVM_SYS_211_PREFIX=C:/Program Files/LLVM" >> $env:GITHUB_ENV
+        echo "$LLVMPath\bin" >> $env:GITHUB_PATH

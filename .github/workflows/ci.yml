@@ -7,11 +7,33 @@ on:
 
 jobs:
   build:
-    name: Build
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: apex-compiler-linux-x64
+            binary_path: target/x86_64-unknown-linux-gnu/release/apex-compiler
+          - label: macos-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: apex-compiler-macos-arm64
+            binary_path: target/aarch64-apple-darwin/release/apex-compiler
+          - label: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: apex-compiler-windows-x64
+            binary_path: target/x86_64-pc-windows-msvc/release/apex-compiler.exe
+
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - uses: ./.github/actions/install-llvm
       - uses: actions/cache@v4
         with:
@@ -19,18 +41,29 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Windows build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install libxml2:x64-windows-static
+          $LibPath = "C:\vcpkg\installed\x64-windows-static\lib"
+          Copy-Item "$LibPath\libxml2.lib" "$LibPath\libxml2s.lib" -Force
+          echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
       - name: Build release
-        run: cargo build --release
-      - uses: actions/upload-artifact@v4
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
+          RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: apex-compiler-linux-release
-          path: target/release/apex-compiler
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.binary_path }}
 
   checks:
-    name: Rust Checks
+    name: Rust Checks (linux-x64)
     runs-on: ubuntu-latest
-    needs: build
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -41,7 +74,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-checks-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: cargo check --locked --all-targets --all-features --verbose
       - run: cargo test --locked --verbose
       - run: cargo test --locked --release --all-targets --verbose
@@ -49,44 +82,76 @@ jobs:
       - run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
   smoke:
-    name: CLI Smoke
-    runs-on: ubuntu-latest
+    name: CLI Smoke (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x64
+            os: ubuntu-latest
+            artifact_name: apex-compiler-linux-x64
+            compiler_path: target/release/apex-compiler
+          - label: macos-arm64
+            os: macos-latest
+            artifact_name: apex-compiler-macos-arm64
+            compiler_path: target/release/apex-compiler
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install-llvm
       - uses: actions/download-artifact@v4
         with:
-          name: apex-compiler-linux-release
+          name: ${{ matrix.artifact_name }}
           path: target/release
-      - run: chmod +x target/release/apex-compiler
+      - run: chmod +x ${{ matrix.compiler_path }}
       - run: bash scripts/ci_cli_smoke.sh
         env:
           CI_SKIP_COMPILER_BUILD: "1"
-          APEX_COMPILER_PATH: ${{ github.workspace }}/target/release/apex-compiler
+          APEX_COMPILER_PATH: ${{ github.workspace }}/${{ matrix.compiler_path }}
 
   examples:
-    name: Check Examples
-    runs-on: ubuntu-latest
+    name: Examples (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x64
+            os: ubuntu-latest
+            artifact_name: apex-compiler-linux-x64
+            compiler_path: target/release/apex-compiler
+            prepare_cmd: chmod +x target/release/apex-compiler
+            run_cmd: bash scripts/test_examples_linux.sh
+          - label: macos-arm64
+            os: macos-latest
+            artifact_name: apex-compiler-macos-arm64
+            compiler_path: target/release/apex-compiler
+            prepare_cmd: chmod +x target/release/apex-compiler
+            run_cmd: bash scripts/test_examples_macos.sh
+          - label: windows-x64
+            os: windows-latest
+            artifact_name: apex-compiler-windows-x64
+            compiler_path: target/release/apex-compiler.exe
+            prepare_cmd: ''
+            run_cmd: scripts\\test_examples.bat
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/install-llvm
       - uses: actions/download-artifact@v4
         with:
-          name: apex-compiler-linux-release
+          name: ${{ matrix.artifact_name }}
           path: target/release
-      - run: chmod +x target/release/apex-compiler
+      - name: Prepare compiler
+        if: matrix.prepare_cmd != ''
+        run: ${{ matrix.prepare_cmd }}
       - name: Run examples
-        run: |
-          COMPILER=./target/release/apex-compiler
-          for file in examples/*.apex; do
-            "$COMPILER" check "$file"
-            "$COMPILER" run "$file"
-          done
-          for project in examples/multi_file_project examples/multi_file_depth_project examples/test_no_import; do
-            [ -d "$project" ] && (cd "$project" && ../../target/release/apex-compiler run)
-          done
+        shell: ${{ runner.os == 'Windows' && 'cmd' || 'bash' }}
+        run: ${{ matrix.run_cmd }}
+        env:
+          CI_SKIP_COMPILER_BUILD: "1"
+          APEX_COMPILER_PATH: ${{ github.workspace }}/${{ matrix.compiler_path }}
 
   web:
     name: Web
@@ -105,32 +170,27 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
-      
+
   benchmark:
-    name: Performance Benchmark
+    name: Performance Benchmark (linux-x64)
     runs-on: ubuntu-latest
     needs: build
     steps:
       - uses: actions/checkout@v4
-
       - uses: ./.github/actions/install-llvm
-
       - uses: actions/download-artifact@v4
         with:
-          name: apex-compiler-linux-release
+          name: apex-compiler-linux-x64
           path: target/release
-
       - name: Setup Environment
         run: |
           chmod +x target/release/apex-compiler
           echo "${{ github.workspace }}/target/release" >> $GITHUB_PATH
-
       - name: Run Benchmark
         run: |
           cd benchmark
           mkdir -p results
           python3 run.py
-
       - name: Display Results
         run: |
           if [ -f benchmark/results/latest.md ]; then

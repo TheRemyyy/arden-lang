@@ -42,40 +42,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install LLVM (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21 all
-          sudo apt-get install -y llvm-21-dev libpolly-21-dev lld-21
-          if [ -x /usr/bin/ld.lld-21 ]; then
-            sudo ln -sf /usr/bin/ld.lld-21 /usr/local/bin/ld.lld
-          fi
-          if [ -x /usr/bin/lld-21 ]; then
-            sudo ln -sf /usr/bin/lld-21 /usr/local/bin/lld
-          fi
-          command -v ld.lld
-          echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> $GITHUB_ENV
-
-      - name: Install LLVM (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install llvm@21
-          echo "LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)" >> $GITHUB_ENV
-          echo "$(brew --prefix llvm@21)/bin" >> $GITHUB_PATH
-
-      - name: Install LLVM (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          choco install llvm --version=21.1.7 -y --no-progress
-          $LLVMPath = "C:\Program Files\LLVM"
-          if (-not (Test-Path $LLVMPath)) {
-            throw "LLVM install path not found: $LLVMPath"
-          }
-          echo "LLVM_SYS_211_PREFIX=C:/Program Files/LLVM" >> $env:GITHUB_ENV
-          echo "$LLVMPath\bin" >> $env:GITHUB_PATH
+      - uses: ./.github/actions/install-llvm
 
       - name: Install Dependencies (Windows)
         if: matrix.os == 'windows-latest'

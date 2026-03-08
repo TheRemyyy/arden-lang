@@ -10,16 +10,22 @@ echo ========================================
 echo      Apex Compiler Test Runner
 echo ========================================
 
-echo.
-echo [1/5] Building Compiler...
-cargo build --release
-if %ERRORLEVEL% NEQ 0 (
-    echo Build failed!
-    popd >nul
-    exit /b 1
+if defined APEX_COMPILER_PATH (
+    set "COMPILER=%APEX_COMPILER_PATH%"
+) else (
+    set "COMPILER=%REPO_ROOT%\target\release\apex-compiler.exe"
 )
 
-set "COMPILER=%REPO_ROOT%\target\release\apex-compiler.exe"
+echo.
+echo [1/5] Preparing Compiler...
+if not "%CI_SKIP_COMPILER_BUILD%"=="1" (
+    cargo build --release
+    if %ERRORLEVEL% NEQ 0 (
+        echo Build failed!
+        popd >nul
+        exit /b 1
+    )
+)
 
 if not exist "%COMPILER%" (
     echo Compiler binary not found at %COMPILER%
