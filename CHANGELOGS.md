@@ -110,6 +110,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - final link is now skipped entirely when all object files are cache hits and the ordered link manifest matches the previous successful link
   - final executable/shared linking now feeds object inputs to `clang` through a response file instead of expanding huge object lists directly on the command line
   - codegen now skips the explicit-generic-call specialization rewrite entirely for programs that contain no explicit generic invocations
+  - `compile_filtered()` now prunes declaration-phase work to active symbols plus transitive API-referenced declaration closure instead of blanket-declaring the whole slim codegen program
+  - dependency API projections fed into object-miss codegen are now filtered down to the same declaration closure instead of carrying every stub declaration from every file in the dependency slice
   - parallel multi-file parse pipeline for lower front-end wall time on larger projects
   - parallel import-check and rewrite/cache resolution pass
 - CI workflow now builds Linux release compiler once and reuses the artifact for CLI smoke and examples jobs, avoiding duplicate release rebuilds.

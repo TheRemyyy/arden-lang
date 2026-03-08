@@ -59,6 +59,10 @@ This document describes the internal architecture of the Apex compiler.
 - **Codegen generic-specialization fast path**:
   - Object and full-program codegen now first checks whether the AST actually contains explicit generic call sites.
   - If none exist, Apex skips the generic-specialization rewrite pass entirely instead of cloning and rewalking the whole codegen input.
+- **Declaration-closure pruning for filtered codegen**:
+  - Per-file object rebuilds no longer blanket-declare every symbol from the slim codegen program.
+  - Apex now computes a declaration closure from the changed file's active symbols plus transitive API-visible references of dependency files, so filtered codegen only predeclares symbols that can actually be reached.
+  - Dependency API projection inputs are trimmed to that same closure, so object-miss codegen also stops carrying unrelated stub declarations through the front of the pipeline.
 - **Impacted semantic view**:
   - Type checking and borrow checking now run with full bodies only for changed files and real API dependents.
   - Unchanged unaffected files participate through API projections plus cached semantic summaries.

@@ -1338,18 +1338,30 @@ impl<'ctx> Codegen<'ctx> {
             .map(TargetTriple::create)
             .unwrap_or_else(TargetMachine::get_default_triple);
         let target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
+        let host_cpu_name = TargetMachine::get_host_cpu_name();
+        let host_cpu_features = TargetMachine::get_host_cpu_features();
         let cpu = if target_triple.is_some() {
-            "generic"
+            "generic".to_string()
         } else {
-            "native"
+            host_cpu_name
+                .to_str()
+                .map_err(|e| format!("Failed to decode host CPU name: {}", e))?
+                .to_string()
         };
-        let features = "";
+        let features = if target_triple.is_some() {
+            "".to_string()
+        } else {
+            host_cpu_features
+                .to_str()
+                .map_err(|e| format!("Failed to decode host CPU features: {}", e))?
+                .to_string()
+        };
 
         let machine = target
             .create_target_machine(
                 &triple,
-                cpu,
-                features,
+                &cpu,
+                &features,
                 Self::resolve_optimization_level(opt_level),
                 RelocMode::Default,
                 CodeModel::Default,

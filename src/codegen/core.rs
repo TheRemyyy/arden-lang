@@ -1459,7 +1459,7 @@ impl<'ctx> Codegen<'ctx> {
 
     /// Compile full program.
     pub fn compile(&mut self, program: &Program) -> Result<()> {
-        self.compile_internal(program, None)
+        self.compile_internal(program, None, None)
     }
 
     /// Compile program while only emitting bodies for selected top-level symbols.
@@ -1469,13 +1469,23 @@ impl<'ctx> Codegen<'ctx> {
         program: &Program,
         active_symbols: &HashSet<String>,
     ) -> Result<()> {
-        self.compile_internal(program, Some(active_symbols))
+        self.compile_internal(program, Some(active_symbols), None)
+    }
+
+    pub fn compile_filtered_with_decl_symbols(
+        &mut self,
+        program: &Program,
+        active_symbols: &HashSet<String>,
+        declaration_symbols: &HashSet<String>,
+    ) -> Result<()> {
+        self.compile_internal(program, Some(active_symbols), Some(declaration_symbols))
     }
 
     fn compile_internal(
         &mut self,
         program: &Program,
         active_symbols: Option<&HashSet<String>>,
+        declaration_symbols: Option<&HashSet<String>>,
     ) -> Result<()> {
         let specialized_program;
         let program = if Self::program_has_explicit_generic_calls(program) {
@@ -1497,6 +1507,12 @@ impl<'ctx> Codegen<'ctx> {
 
         // First pass (0): declare all enums first so Named(Enum) resolves correctly.
         for decl in &program.declarations {
+            let should_declare = declaration_symbols
+                .map(|symbols| self.should_compile_decl(&decl.node, symbols))
+                .unwrap_or(true);
+            if !should_declare {
+                continue;
+            }
             if let Decl::Enum(en) = &decl.node {
                 self.declare_enum(en)?;
             }
@@ -1504,6 +1520,12 @@ impl<'ctx> Codegen<'ctx> {
 
         // First pass: declare all classes and functions
         for decl in &program.declarations {
+            let should_declare = declaration_symbols
+                .map(|symbols| self.should_compile_decl(&decl.node, symbols))
+                .unwrap_or(true);
+            if !should_declare {
+                continue;
+            }
             match &decl.node {
                 Decl::Class(class) => self.declare_class(class)?,
                 Decl::Function(func) => {

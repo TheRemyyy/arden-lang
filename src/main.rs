@@ -437,6 +437,7 @@ struct ParsedProjectUnit {
     class_names: Vec<String>,
     module_names: Vec<String>,
     referenced_symbols: Vec<String>,
+    api_referenced_symbols: Vec<String>,
     from_parse_cache: bool,
 }
 
@@ -573,6 +574,58 @@ fn api_projection_program(program: &Program) -> Program {
     }
 }
 
+fn filter_codegen_decl_by_symbols(
+    decl: &Spanned<Decl>,
+    declaration_symbols: &HashSet<String>,
+) -> Option<Spanned<Decl>> {
+    match &decl.node {
+        Decl::Function(func) => declaration_symbols
+            .contains(&func.name)
+            .then(|| decl.clone()),
+        Decl::Class(class) => declaration_symbols
+            .contains(&class.name)
+            .then(|| decl.clone()),
+        Decl::Enum(en) => declaration_symbols.contains(&en.name).then(|| decl.clone()),
+        Decl::Module(module) => {
+            if declaration_symbols.contains(&module.name) {
+                return Some(decl.clone());
+            }
+
+            let filtered_declarations = module
+                .declarations
+                .iter()
+                .filter_map(|inner| filter_codegen_decl_by_symbols(inner, declaration_symbols))
+                .collect::<Vec<_>>();
+
+            if filtered_declarations.is_empty() {
+                None
+            } else {
+                let mut filtered_module = module.clone();
+                filtered_module.declarations = filtered_declarations;
+                Some(Spanned::new(
+                    Decl::Module(filtered_module),
+                    decl.span.clone(),
+                ))
+            }
+        }
+        Decl::Interface(_) | Decl::Import(_) => None,
+    }
+}
+
+fn filter_codegen_program_by_symbols(
+    program: &Program,
+    declaration_symbols: &HashSet<String>,
+) -> Program {
+    Program {
+        package: program.package.clone(),
+        declarations: program
+            .declarations
+            .iter()
+            .filter_map(|decl| filter_codegen_decl_by_symbols(decl, declaration_symbols))
+            .collect(),
+    }
+}
+
 fn api_program_fingerprint(program: &Program) -> String {
     let projected = api_projection_program(program);
     let canonical = formatter::format_program_canonical(&projected);
@@ -583,6 +636,7 @@ fn codegen_program_for_unit(
     rewritten_files: &[RewrittenProjectUnit],
     active_file: &Path,
     dependency_closure: Option<&HashSet<PathBuf>>,
+    declaration_symbols: Option<&HashSet<String>>,
 ) -> Program {
     let mut program = Program {
         package: None,
@@ -598,7 +652,9 @@ fn codegen_program_for_unit(
         let source_program = if unit.file == active_file {
             unit.program.clone()
         } else {
-            unit.api_program.clone()
+            declaration_symbols
+                .map(|symbols| filter_codegen_program_by_symbols(&unit.api_program, symbols))
+                .unwrap_or_else(|| unit.api_program.clone())
         };
         program.declarations.extend(source_program.declarations);
     }
@@ -640,6 +696,121 @@ fn combined_program_for_files(rewritten_files: &[RewrittenProjectUnit]) -> Progr
     }
 
     program
+}
+
+fn mangle_project_symbol_for_codegen(namespace: &str, entry_namespace: &str, name: &str) -> String {
+    if name == "main" && namespace == entry_namespace {
+        "main".to_string()
+    } else {
+        format!("{}__{}", namespace.replace('.', "__"), name)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CodegenReferenceMetadata {
+    referenced_symbols: Vec<String>,
+    api_referenced_symbols: Vec<String>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn extend_declaration_symbols_for_reference(
+    symbol: &str,
+    entry_namespace: &str,
+    declaration_symbols: &mut HashSet<String>,
+    stack: &mut Vec<PathBuf>,
+    closure_files: &HashSet<PathBuf>,
+    global_function_map: &HashMap<String, String>,
+    global_function_file_map: &HashMap<String, PathBuf>,
+    global_class_map: &HashMap<String, String>,
+    global_class_file_map: &HashMap<String, PathBuf>,
+    global_module_map: &HashMap<String, String>,
+    global_module_file_map: &HashMap<String, PathBuf>,
+) {
+    let mut push_owner = |owner_ns: &str, owner_file: &Path| {
+        if closure_files.contains(owner_file) {
+            declaration_symbols.insert(mangle_project_symbol_for_codegen(
+                owner_ns,
+                entry_namespace,
+                symbol,
+            ));
+            stack.push(owner_file.to_path_buf());
+        }
+    };
+
+    if let (Some(owner_ns), Some(owner_file)) = (
+        global_function_map.get(symbol),
+        global_function_file_map.get(symbol),
+    ) {
+        push_owner(owner_ns, owner_file);
+    }
+    if let (Some(owner_ns), Some(owner_file)) = (
+        global_class_map.get(symbol),
+        global_class_file_map.get(symbol),
+    ) {
+        push_owner(owner_ns, owner_file);
+    }
+    if let (Some(owner_ns), Some(owner_file)) = (
+        global_module_map.get(symbol),
+        global_module_file_map.get(symbol),
+    ) {
+        push_owner(owner_ns, owner_file);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn declaration_symbols_for_unit(
+    root_file: &Path,
+    root_active_symbols: &HashSet<String>,
+    forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
+    reference_metadata: &HashMap<PathBuf, CodegenReferenceMetadata>,
+    entry_namespace: &str,
+    global_function_map: &HashMap<String, String>,
+    global_function_file_map: &HashMap<String, PathBuf>,
+    global_class_map: &HashMap<String, String>,
+    global_class_file_map: &HashMap<String, PathBuf>,
+    global_module_map: &HashMap<String, String>,
+    global_module_file_map: &HashMap<String, PathBuf>,
+) -> HashSet<String> {
+    let mut closure_files = transitive_dependencies(forward_graph, root_file);
+    closure_files.insert(root_file.to_path_buf());
+
+    let mut declaration_symbols = root_active_symbols.clone();
+    let mut visited_files = HashSet::new();
+    let mut stack = vec![root_file.to_path_buf()];
+
+    while let Some(file) = stack.pop() {
+        if !visited_files.insert(file.clone()) {
+            continue;
+        }
+
+        let Some(metadata) = reference_metadata.get(&file) else {
+            continue;
+        };
+
+        let symbols = if file == root_file {
+            &metadata.referenced_symbols
+        } else {
+            &metadata.api_referenced_symbols
+        };
+
+        for symbol in symbols {
+            extend_declaration_symbols_for_reference(
+                symbol,
+                entry_namespace,
+                &mut declaration_symbols,
+                &mut stack,
+                &closure_files,
+                global_function_map,
+                global_function_file_map,
+                global_class_map,
+                global_class_file_map,
+                global_module_map,
+                global_module_file_map,
+            );
+        }
+    }
+
+    declaration_symbols
 }
 
 fn current_file_metadata_stamp(file: &Path) -> Result<FileMetadataStamp, String> {
@@ -2360,6 +2531,11 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         }
         collect_decl_refs(&decl.node, &mut referenced_symbols);
     }
+    let projected_program = api_projection_program(&program);
+    let mut api_referenced_symbols = HashSet::new();
+    for decl in &projected_program.declarations {
+        collect_decl_refs(&decl.node, &mut api_referenced_symbols);
+    }
 
     Ok(ParsedProjectUnit {
         file: file.to_path_buf(),
@@ -2372,6 +2548,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         class_names,
         module_names,
         referenced_symbols: referenced_symbols.into_iter().collect(),
+        api_referenced_symbols: api_referenced_symbols.into_iter().collect(),
         from_parse_cache,
     })
 }
@@ -3097,6 +3274,18 @@ fn build_project(
     } else {
         let object_build_fingerprint = compute_object_build_fingerprint(&link);
         let previous_link_manifest = load_link_manifest_cache(&project_root);
+        let codegen_reference_metadata: HashMap<PathBuf, CodegenReferenceMetadata> = parsed_files
+            .iter()
+            .map(|unit| {
+                (
+                    unit.file.clone(),
+                    CodegenReferenceMetadata {
+                        referenced_symbols: unit.referenced_symbols.clone(),
+                        api_referenced_symbols: unit.api_referenced_symbols.clone(),
+                    },
+                )
+            })
+            .collect();
         let mut object_paths: Vec<Option<PathBuf>> = vec![None; rewritten_files.len()];
         let mut object_cache_hits: usize = 0;
         let object_candidate_count = rewritten_files
@@ -3130,10 +3319,24 @@ fn build_project(
                 let obj_path = object_cache_object_path(&project_root, &unit.file);
                 let dependency_closure =
                     transitive_dependencies(&file_dependency_graph, &unit.file);
+                let declaration_symbols = declaration_symbols_for_unit(
+                    &unit.file,
+                    &unit.active_symbols,
+                    &file_dependency_graph,
+                    &codegen_reference_metadata,
+                    &entry_namespace,
+                    &global_function_map,
+                    &global_function_file_map,
+                    &global_class_map,
+                    &global_class_file_map,
+                    &global_module_map,
+                    &global_module_file_map,
+                );
                 let codegen_program = codegen_program_for_unit(
                     &rewritten_files,
                     &unit.file,
                     Some(&dependency_closure),
+                    Some(&declaration_symbols),
                 );
                 compile_program_ast_to_object_filtered(
                     &codegen_program,
@@ -3141,6 +3344,7 @@ fn build_project(
                     &obj_path,
                     &link,
                     &unit.active_symbols,
+                    &declaration_symbols,
                 )?;
                 save_object_cache_meta(
                     &project_root,
@@ -3244,6 +3448,7 @@ fn compile_program_ast_to_object_filtered(
     object_path: &Path,
     link: &LinkConfig<'_>,
     active_symbols: &HashSet<String>,
+    declaration_symbols: &HashSet<String>,
 ) -> Result<(), String> {
     let context = Context::create();
     let module_name = source_path
@@ -3252,7 +3457,7 @@ fn compile_program_ast_to_object_filtered(
         .unwrap_or("main");
     let mut codegen = Codegen::new(&context, module_name);
     codegen
-        .compile_filtered(program, active_symbols)
+        .compile_filtered_with_decl_symbols(program, active_symbols, declaration_symbols)
         .map_err(|e| format!("{}: Codegen error: {}", "error".red().bold(), e.message))?;
 
     if let Some(parent) = object_path.parent() {
@@ -4530,6 +4735,7 @@ function add(x: Float): Float {
             class_names: Vec::new(),
             module_names: Vec::new(),
             referenced_symbols: Vec::new(),
+            api_referenced_symbols: Vec::new(),
             from_parse_cache: false,
         }
     }
