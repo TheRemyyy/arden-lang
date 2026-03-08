@@ -45,9 +45,15 @@ This document describes the internal architecture of the Apex compiler.
 - **Transitive codegen closure**:
   - Object-cache misses now rebuild against the changed file plus only its transitive file dependency closure.
   - Unrelated project files are no longer injected as API-only declarations into every object rebuild miss.
+- **Reused API projection programs**:
+  - Each rewritten file now precomputes and keeps its API-only projection once.
+  - Semantic delta checking and object-cache miss codegen reuse that projected AST instead of regenerating body-stripped declarations repeatedly.
 - **Impacted semantic view**:
   - Type checking and borrow checking now run with full bodies only for changed files and real API dependents.
   - Unchanged unaffected files participate through API projections plus cached semantic summaries.
+- **Lazy full-program assembly**:
+  - Normal object-link builds no longer materialize the full combined rewritten AST up front.
+  - Full-project merged AST construction is deferred to the `emit_llvm` path that actually needs a single monolithic IR module.
 - **Parallel project parse phase**:
   - Multi-file project parsing now runs in parallel workers (file read + lex + parse/cache lookup).
   - Import checks and rewrite/cache resolution run in parallel per file.

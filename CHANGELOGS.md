@@ -100,7 +100,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - rewrite-level per-file AST cache reuse keyed by per-file import/namespace context instead of whole-project context
   - specific imports now track owner-file API fingerprints instead of invalidating on unrelated API changes elsewhere in the same namespace
   - type/borrow checking now runs on an impacted semantic view (changed files + true API dependents with full bodies, API projections elsewhere)
+  - rewritten file API projections are now precomputed once and reused across semantic delta checking plus per-file object rebuild misses
   - object-cache miss codegen now uses transitive file dependency closure instead of injecting API stubs from the entire project
+  - full combined rewritten AST is now materialized only for `emit_llvm`; normal object-link builds stay on narrower per-file program assembly
   - object-level per-file cache reuse for unchanged files plus relink-only final stage
   - parallel multi-file parse pipeline for lower front-end wall time on larger projects
   - parallel import-check and rewrite/cache resolution pass

@@ -435,6 +435,7 @@ struct ParsedProjectUnit {
 struct RewrittenProjectUnit {
     file: PathBuf,
     program: Program,
+    api_program: Program,
     semantic_fingerprint: String,
     rewrite_context_fingerprint: String,
     active_symbols: HashSet<String>,
@@ -588,7 +589,7 @@ fn codegen_program_for_unit(
         let source_program = if unit.file == active_file {
             unit.program.clone()
         } else {
-            api_projection_program(&unit.program)
+            unit.api_program.clone()
         };
         program.declarations.extend(source_program.declarations);
     }
@@ -609,9 +610,24 @@ fn semantic_program_for_files(
         let source_program = if full_files.contains(&unit.file) {
             unit.program.clone()
         } else {
-            api_projection_program(&unit.program)
+            unit.api_program.clone()
         };
         program.declarations.extend(source_program.declarations);
+    }
+
+    program
+}
+
+fn combined_program_for_files(rewritten_files: &[RewrittenProjectUnit]) -> Program {
+    let mut program = Program {
+        package: None,
+        declarations: Vec::new(),
+    };
+
+    for unit in rewritten_files {
+        program
+            .declarations
+            .extend(unit.program.declarations.clone());
     }
 
     program
@@ -2706,9 +2722,11 @@ fn build_project(
                 &rewrite_context_fingerprint,
             )? {
                 let active_symbols = collect_active_symbols(&cached);
+                let api_program = api_projection_program(&cached);
                 return Ok(RewrittenProjectUnit {
                     file: unit.file.clone(),
                     program: cached,
+                    api_program,
                     semantic_fingerprint: unit.semantic_fingerprint.clone(),
                     rewrite_context_fingerprint: rewrite_context_fingerprint.clone(),
                     active_symbols,
@@ -2735,9 +2753,12 @@ fn build_project(
                 &rewrite_context_fingerprint,
                 &rewritten,
             )?;
+            let active_symbols = collect_active_symbols(&rewritten);
+            let api_program = api_projection_program(&rewritten);
             Ok(RewrittenProjectUnit {
                 file: unit.file.clone(),
-                active_symbols: collect_active_symbols(&rewritten),
+                active_symbols,
+                api_program,
                 program: rewritten,
                 semantic_fingerprint: unit.semantic_fingerprint.clone(),
                 rewrite_context_fingerprint,
@@ -2763,16 +2784,6 @@ fn build_project(
             rewrite_cache_hits,
             rewritten_files.len()
         );
-    }
-
-    let mut combined_program = Program {
-        package: None,
-        declarations: Vec::new(),
-    };
-    for unit in &rewritten_files {
-        combined_program
-            .declarations
-            .extend(unit.program.declarations.iter().cloned());
     }
 
     if do_check {
@@ -2870,6 +2881,7 @@ fn build_project(
         link_args: &config.link_args,
     };
     if emit_llvm {
+        let combined_program = combined_program_for_files(&rewritten_files);
         compile_program_ast(
             &combined_program,
             &entry_path,
