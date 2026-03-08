@@ -139,10 +139,9 @@ runs:
           $shimSource = Join-Path $env:RUNNER_TEMP "llvm-config-shim.c"
           $shimCode = @(
             '#include <stdio.h>',
+            '#include <stdlib.h>',
             '#include <string.h>',
             '#include <windows.h>',
-            '',
-            '#define VERSION "' + $llvmVersion + '"',
             '',
             'static void get_prefix(char* out, size_t size)',
             '{',
@@ -215,7 +214,11 @@ runs:
             '        }',
             '',
             '        if (strcmp(command, "--version") == 0) {',
-            '            printf("%s\\n", VERSION);',
+            '            const char* version = getenv("APEX_LLVM_SHIM_VERSION");',
+            '            if (version == NULL || version[0] == ''\0'') {',
+            '                version = "21.1.7";',
+            '            }',
+            '            printf("%s\\n", version);',
             '            return 0;',
             '        }',
             '        if (strcmp(command, "--libdir") == 0) {',
@@ -257,6 +260,7 @@ runs:
           $llvmPrefix = $shimRoot
         }
 
+        echo "APEX_LLVM_SHIM_VERSION=$llvmVersion" >> $env:GITHUB_ENV
         echo "LLVM_SYS_211_PREFIX=$llvmPrefix" >> $env:GITHUB_ENV
         echo "LLVM_CONFIG_PATH=$llvmConfig" >> $env:GITHUB_ENV
         echo "$llvmBin" >> $env:GITHUB_PATH
