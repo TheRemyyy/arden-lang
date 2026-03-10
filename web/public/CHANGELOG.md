@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed tagged release publishing by removing the unsupported Intel macOS GitHub runner from the release matrix so GitHub Releases still publish Windows, Linux, and macOS arm64 assets.
 - Fixed Windows async task/runtime codegen to use Win32 thread primitives instead of unresolved `pthread_*` symbols during Apex program linking.
 - Fixed Windows CLI smoke coverage by running the canonical `scripts/ci_cli_smoke.sh` through a Windows PowerShell wrapper instead of maintaining a reduced forked smoke script.
+- Fixed Apex CLI wording by tightening help text, command descriptions, scaffold output, and runtime status messages across `new`, `build`, `run`, `check`, `fmt`, `lint`, `fix`, `test`, `bindgen`, `bench`, and `profile`.
 
 ### ⚡ Changed
 

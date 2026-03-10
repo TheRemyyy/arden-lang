@@ -44,9 +44,11 @@ use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary, TypeCheck
 
 #[derive(ClapParser)]
 #[command(name = "apex")]
+#[command(bin_name = "apex")]
 #[command(author = "TheRemyyy")]
 #[command(version = "1.3.5")]
-#[command(about = "Apex Programming Language Compiler")]
+#[command(about = "Apex compiler and project CLI")]
+#[command(long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -54,128 +56,128 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Create a new Apex project
+    /// Create a project skeleton
     New {
         /// Project name
         name: String,
-        /// Project path (default: current directory)
+        /// Project directory (defaults to ./<name>)
         #[arg(short, long)]
         path: Option<PathBuf>,
     },
     /// Build the current project
     Build {
-        /// Release build (optimized)
+        /// Enable optimized code generation
         #[arg(short, long)]
         release: bool,
-        /// Emit LLVM IR
+        /// Write LLVM IR instead of a final artifact
         #[arg(long)]
         emit_llvm: bool,
-        /// Skip type checking
+        /// Skip type and borrow checking
         #[arg(long)]
         no_check: bool,
     },
-    /// Build and run the current project (or a single file)
+    /// Build and run a project or single file
     Run {
-        /// Input file (optional, runs project if not specified)
+        /// Input file (defaults to the current project)
         file: Option<PathBuf>,
-        /// Arguments to pass to the program
+        /// Arguments passed through to the compiled program
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
-        /// Release build (optimized)
+        /// Enable optimized code generation
         #[arg(short, long)]
         release: bool,
-        /// Skip type checking
+        /// Skip type and borrow checking
         #[arg(long)]
         no_check: bool,
     },
-    /// Compile a single file (legacy mode)
+    /// Compile a single Apex file
     Compile {
         /// Input file
         file: PathBuf,
         /// Output file
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Optimization level: 0,1,2,3,s,z,fast (default: 3)
+        /// Optimization level: 0, 1, 2, 3, s, z, or fast
         #[arg(long)]
         opt_level: Option<String>,
-        /// Target triple passed to clang (example: x86_64-unknown-linux-gnu)
+        /// Target triple passed through to clang
         #[arg(long)]
         target: Option<String>,
-        /// Emit LLVM IR
+        /// Write LLVM IR instead of a final artifact
         #[arg(long)]
         emit_llvm: bool,
-        /// Skip type checking
+        /// Skip type and borrow checking
         #[arg(long)]
         no_check: bool,
     },
-    /// Check syntax and types of a file
+    /// Parse, type-check, and borrow-check source
     Check {
-        /// Input file (default: project entry point)
+        /// Input file (defaults to the project entry point)
         file: Option<PathBuf>,
     },
-    /// Show project info
+    /// Print project configuration and build settings
     Info,
-    /// Run static lint checks
+    /// Report static findings
     Lint {
-        /// File to lint (default: project entry point)
+        /// File to lint (defaults to the project entry point)
         path: Option<PathBuf>,
     },
-    /// Apply safe automated fixes
+    /// Apply safe fixes and reformat the result
     Fix {
-        /// File to fix (default: project entry point)
+        /// File to fix (defaults to the project entry point)
         path: Option<PathBuf>,
     },
-    /// Format Apex source files
+    /// Format Apex source
     Fmt {
-        /// File or directory to format (default: current project or current directory)
+        /// File or directory to format
         path: Option<PathBuf>,
         /// Check formatting without writing changes
         #[arg(long)]
         check: bool,
     },
-    /// Show tokens (debug)
+    /// Print lexer tokens
     Lex {
         /// Input file
         file: PathBuf,
     },
-    /// Show AST (debug)
+    /// Print the parsed AST
     Parse {
         /// Input file
         file: PathBuf,
     },
-    /// Start LSP server
+    /// Start the language server
     Lsp,
-    /// Run tests
+    /// Discover and run @Test suites
     Test {
-        /// Input file or directory (default: project test files)
+        /// Input file or directory (defaults to project test files)
         #[arg(short, long)]
         path: Option<PathBuf>,
         /// List tests without running them
         #[arg(short, long)]
         list: bool,
-        /// Filter tests by name pattern
+        /// Keep only tests whose names contain the pattern
         #[arg(short, long)]
         filter: Option<String>,
     },
-    /// Generate extern bindings from a C header file
+    /// Generate Apex extern bindings from a C header
     Bindgen {
         /// Input C header file
         header: PathBuf,
-        /// Output Apex file (prints to stdout if omitted)
+        /// Output Apex file (defaults to stdout)
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Benchmark execution time
+    /// Measure end-to-end execution time
     Bench {
-        /// Input file (optional, runs project if not specified)
+        /// Input file (defaults to the current project)
         file: Option<PathBuf>,
         /// Number of measured runs
         #[arg(short, long, default_value_t = 5)]
         iterations: usize,
     },
-    /// Profile a single execution
+    /// Run once and print a timing summary
     Profile {
-        /// Input file (optional, runs project if not specified)
+        /// Input file (defaults to the current project)
         file: Option<PathBuf>,
     },
 }
@@ -2599,15 +2601,12 @@ fn new_project(name: &str, path: Option<&Path>) -> Result<(), String> {
     let main_content = format!(
         r#"import std.io.*;
 
-// Welcome to {}!
-// This is the entry point of your application.
-
 function main(): None {{
-    println("Hello from {}!");
+    println("hello from {}");
     return None;
 }}
 "#,
-        name, name
+        name
     );
 
     let main_path = project_path.join("src").join("main.apex");
@@ -2635,11 +2634,12 @@ Apex project created with `apex new`.
 └── README.md       # This file
 ```
 
-## Commands
+## Common Commands
 
 - `apex build` - Build the project
 - `apex run` - Build and run the project
-- `apex info` - Show project information
+- `apex check` - Parse and type-check the project
+- `apex test` - Run test files in the project
 
 ## Configuration
 
@@ -2667,22 +2667,17 @@ output_kind = "bin"
         )
     })?;
 
-    println!(
-        "{} {} project '{}'",
-        "Created".green().bold(),
-        "Apex".cyan(),
-        name
-    );
+    println!("{} {}", "Created project".green().bold(), name.cyan());
     println!(
         "  {} {}",
-        "Location:".dimmed(),
+        "Root".dimmed(),
         project_path
             .canonicalize()
             .unwrap_or(project_path)
             .display()
     );
-    println!("\nTo get started:");
-    println!("  cd {}", name);
+    println!("\n{}", "Next".dimmed());
+    println!("  cd {}", path.unwrap_or(Path::new(name)).display());
     println!("  apex run");
 
     Ok(())
@@ -2712,10 +2707,9 @@ fn build_project(
         if let Some(cached) = load_cached_fingerprint(&project_root) {
             if cached == fingerprint && project_build_artifact_exists(&output_path, emit_llvm) {
                 println!(
-                    "{} {} ({})",
-                    "Up to date".green().bold(),
+                    "{} {}",
+                    "Build cache hit".green().bold(),
                     config.name.cyan(),
-                    "build cache".dimmed()
                 );
                 return Ok(());
             }
@@ -2925,10 +2919,9 @@ fn build_project(
                 && project_build_artifact_exists(&output_path, emit_llvm)
             {
                 println!(
-                    "{} {} ({})",
-                    "Up to date".green().bold(),
+                    "{} {}",
+                    "Semantic cache hit".green().bold(),
                     config.name.cyan(),
-                    "semantic cache".dimmed()
                 );
                 save_cached_fingerprint(&project_root, &fingerprint)?;
                 return Ok(());
@@ -2959,7 +2952,7 @@ fn build_project(
         );
         for (name, ns_a, ns_b) in class_collisions {
             eprintln!(
-                "  â†’ '{}' is defined in both '{}' and '{}'",
+                "  → '{}' is defined in both '{}' and '{}'",
                 name, ns_a, ns_b
             );
         }
@@ -2975,7 +2968,7 @@ fn build_project(
         );
         for (name, ns_a, ns_b) in module_collisions {
             eprintln!(
-                "  â†’ '{}' is defined in both '{}' and '{}'",
+                "  → '{}' is defined in both '{}' and '{}'",
                 name, ns_a, ns_b
             );
         }
@@ -3254,8 +3247,7 @@ fn build_project(
     }
 
     if check_only {
-        println!("{} {}", "Checked".green().bold(), config.name.cyan());
-        println!("{}", "No errors found.".green());
+        println!("{} {}", "Check passed".green().bold(), config.name.cyan());
         return Ok(());
     }
 
@@ -3501,7 +3493,7 @@ fn run_project(args: &[String], release: bool, do_check: bool) -> Result<(), Str
     let config = ProjectConfig::load(&config_path)?;
     let output_path = project_root.join(&config.output);
 
-    println!("{} {}", "Running".cyan().bold(), config.name);
+    println!("{} {}", "Running".cyan().bold(), output_path.display());
     println!();
 
     let status = Command::new(&output_path)
@@ -3511,7 +3503,7 @@ fn run_project(args: &[String], release: bool, do_check: bool) -> Result<(), Str
 
     if !status.success() {
         return Err(format!(
-            "\n{}: Program exited with code: {}",
+            "{}: process exited with code {}",
             "error".red().bold(),
             status.code().unwrap_or(-1)
         ));
@@ -3534,7 +3526,7 @@ fn run_single_file(
 
     compile_file(file, Some(&output), false, do_check, None, None)?;
 
-    println!("{}", "Running...".cyan().bold());
+    println!("{} {}", "Running".cyan().bold(), output.display());
     println!();
 
     let status = Command::new(&output)
@@ -3546,7 +3538,7 @@ fn run_single_file(
 
     if !status.success() {
         return Err(format!(
-            "{}: Program exited with code: {}",
+            "{}: process exited with code {}",
             "error".red().bold(),
             status.code().unwrap_or(-1)
         ));
@@ -3579,7 +3571,7 @@ fn compile_file(
         if file.starts_with(&project_root) {
             println!(
                 "{}",
-                "Note: Running in project context. Consider using `apex build` instead.".yellow()
+                "note: file is inside a project; prefer `apex build` for project builds".yellow()
             );
         }
     }
@@ -3608,7 +3600,7 @@ fn compile_file(
         target,
     )?;
 
-    println!("{} {}", "Output".green().bold(), output_path.display());
+    println!("{} {}", "Wrote".green().bold(), output_path.display());
     Ok(())
 }
 
@@ -4144,7 +4136,7 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
         return Err(borrowck::format_borrow_errors(&errors, &source, filename));
     }
 
-    println!("{}", "No errors found.".green());
+    println!("{} {}", "Check passed".green().bold(), file_path.display());
     Ok(())
 }
 
@@ -4180,41 +4172,41 @@ fn show_project_info() -> Result<(), String> {
     let config_path = project_root.join("apex.toml");
     let config = ProjectConfig::load(&config_path)?;
 
-    println!("{}", "Project Information".cyan().bold());
-    println!("  {}: {}", "Name".dimmed(), config.name);
-    println!("  {}: {}", "Version".dimmed(), config.version);
-    println!("  {}: {}", "Entry".dimmed(), config.entry);
-    println!("  {}: {}", "Output".dimmed(), config.output);
-    println!("  {}: {:?}", "Output Kind".dimmed(), config.output_kind);
-    println!("  {}: {}", "Opt Level".dimmed(), config.opt_level);
+    println!("{}", "Project".cyan().bold());
+    println!("  {}: {}", "name".dimmed(), config.name);
+    println!("  {}: {}", "version".dimmed(), config.version);
+    println!("  {}: {}", "entry".dimmed(), config.entry);
+    println!("  {}: {}", "output".dimmed(), config.output);
+    println!("  {}: {:?}", "output kind".dimmed(), config.output_kind);
+    println!("  {}: {}", "opt level".dimmed(), config.opt_level);
     println!(
         "  {}: {}",
-        "Target".dimmed(),
+        "target".dimmed(),
         config.target.as_deref().unwrap_or("native/default")
     );
-    println!("  {}: {}", "Root".dimmed(), project_root.display());
+    println!("  {}: {}", "root".dimmed(), project_root.display());
 
-    println!("\n{}", "Source Files:".dimmed());
+    println!("\n{}", "source files".dimmed());
     for file in &config.files {
         println!("  - {}", file);
     }
 
     if !config.dependencies.is_empty() {
-        println!("\n{}", "Dependencies:".dimmed());
+        println!("\n{}", "dependencies".dimmed());
         for (name, version) in &config.dependencies {
             println!("  - {} = {}", name, version);
         }
     }
 
     if !config.link_search.is_empty() {
-        println!("\n{}", "Link Search Paths:".dimmed());
+        println!("\n{}", "link search".dimmed());
         for path in &config.link_search {
             println!("  - {}", path);
         }
     }
 
     if !config.link_libs.is_empty() {
-        println!("\n{}", "Link Libraries:".dimmed());
+        println!("\n{}", "link libraries".dimmed());
         for lib in &config.link_libs {
             println!("  - {}", lib);
         }
@@ -4235,7 +4227,7 @@ fn format_targets(path: Option<&Path>, check_only: bool) -> Result<(), String> {
     };
 
     if targets.is_empty() {
-        return Err("No Apex files found to format.".to_string());
+        return Err("No .apex files found to format".to_string());
     }
 
     let mut changed = Vec::new();
@@ -4264,21 +4256,21 @@ fn format_targets(path: Option<&Path>, check_only: bool) -> Result<(), String> {
 
     if check_only {
         if changed.is_empty() {
-            println!("{}", "All Apex files are properly formatted.".green());
+            println!("{}", "Format check passed".green());
             return Ok(());
         }
 
-        eprintln!("{} Formatting differences found:", "error".red().bold());
+        eprintln!("{} format check failed for:", "error".red().bold());
         for file in changed {
             eprintln!("  - {}", file.display());
         }
-        return Err("Formatting check failed".to_string());
+        return Err("format check failed".to_string());
     }
 
     if changed.is_empty() {
-        println!("{}", "No formatting changes needed.".green());
+        println!("{}", "No formatting changes".green());
     } else {
-        println!("{} {} file(s).", "Formatted".green().bold(), changed.len());
+        println!("{} {} file(s)", "Formatted".green().bold(), changed.len());
         for file in changed {
             println!("  - {}", file.display());
         }
@@ -4298,7 +4290,7 @@ fn resolve_default_file(path: Option<&Path>) -> Result<PathBuf, String> {
         return Ok(config.get_entry_path(&project_root));
     }
 
-    Err("No file specified and no apex.toml found in current directory.".to_string())
+    Err("No file specified and no apex.toml found in the current directory".to_string())
 }
 
 fn lint_target(path: Option<&Path>) -> Result<(), String> {
@@ -4309,19 +4301,19 @@ fn lint_target(path: Option<&Path>) -> Result<(), String> {
         .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
 
     if result.findings.is_empty() {
-        println!("{}", "No lint findings.".green());
+        println!("{} {}", "Lint clean".green().bold(), file.display());
         return Ok(());
     }
 
     eprintln!(
-        "{} Lint findings in {}:",
+        "{} lint findings in {}:",
         "warning".yellow().bold(),
         file.display()
     );
     for finding in result.findings {
         eprintln!("  {}", finding.format());
     }
-    Err("Lint failed".to_string())
+    Err("lint failed".to_string())
 }
 
 fn fix_target(path: Option<&Path>) -> Result<(), String> {
@@ -4336,13 +4328,13 @@ fn fix_target(path: Option<&Path>) -> Result<(), String> {
         .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
 
     if source == formatted_source {
-        println!("{}", "No safe fixes needed.".green());
+        println!("{} {}", "No safe fixes".green().bold(), file.display());
         return Ok(());
     }
 
     fs::write(&file, formatted_source)
         .map_err(|e| format!("{}: Failed to write file: {}", "error".red().bold(), e))?;
-    println!("{} {}", "Fixed".green().bold(), file.display());
+    println!("{} {}", "Updated".green().bold(), file.display());
     Ok(())
 }
 
@@ -4405,11 +4397,11 @@ fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(), String> {
         .fold(f64::NEG_INFINITY, |acc, value| acc.max(value));
     let mean = samples_ms.iter().sum::<f64>() / samples_ms.len() as f64;
 
-    println!("{}", "Benchmark Summary".cyan().bold());
-    println!("  Runs: {}", samples_ms.len());
-    println!("  Min:  {:.3} ms", min);
-    println!("  Mean: {:.3} ms", mean);
-    println!("  Max:  {:.3} ms", max);
+    println!("{}", "Benchmark".cyan().bold());
+    println!("  runs: {}", samples_ms.len());
+    println!("  min:  {:.3} ms", min);
+    println!("  mean: {:.3} ms", mean);
+    println!("  max:  {:.3} ms", max);
     Ok(())
 }
 
@@ -4422,11 +4414,9 @@ fn profile_target(file: Option<&Path>) -> Result<(), String> {
     }
     let elapsed = start.elapsed();
 
-    println!("{}", "Profile Summary".cyan().bold());
-    println!("  Wall time: {:.3} ms", elapsed.as_secs_f64() * 1000.0);
-    println!(
-        "  CPU/RSS profiling is not wired yet; this command currently reports execution time."
-    );
+    println!("{}", "Profile".cyan().bold());
+    println!("  wall time: {:.3} ms", elapsed.as_secs_f64() * 1000.0);
+    println!("  metrics: wall time only");
     Ok(())
 }
 
@@ -4438,7 +4428,7 @@ fn lex_file(file: &Path) -> Result<(), String> {
     let tokens = lexer::tokenize(&source)
         .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
 
-    println!("{} tokens:", "Found".cyan().bold());
+    println!("{}", "Tokens".cyan().bold());
     for (token, span) in tokens {
         println!("  {:?} @ {}..{}", token, span.start, span.end);
     }
@@ -4459,7 +4449,7 @@ fn parse_file(file: &Path) -> Result<(), String> {
         .parse_program()
         .map_err(|e| format!("{}: Parse error: {}", "error".red().bold(), e.message))?;
 
-    println!("{}", "AST:".cyan().bold());
+    println!("{}", "AST".cyan().bold());
     println!("{:#?}", program);
 
     Ok(())
@@ -4531,8 +4521,8 @@ fn run_tests(
     };
 
     if test_files.is_empty() {
-        println!("{}", "No test files found.".yellow());
-        println!("Create test files with functions marked with @Test attribute.");
+        println!("{}", "No test files found".yellow());
+        println!("Create files with functions marked `@Test`.");
         return Ok(());
     }
 
@@ -4576,7 +4566,7 @@ fn run_tests(
 
         if filtered_suites.is_empty() {
             println!(
-                "{}: No tests matching filter '{}'",
+                "{}: no tests matched '{}'",
                 test_file.display(),
                 filter.unwrap_or("")
             );
@@ -4621,8 +4611,8 @@ fn run_tests(
     }
 
     if !all_tests_found {
-        println!("{}", "No tests found in any test files.".yellow());
-        println!("Mark functions with @Test to create tests:");
+        println!("{}", "No tests discovered".yellow());
+        println!("Mark functions with `@Test`:");
         println!("  {} function myTest(): None {{ ... }}", "@Test".cyan());
     }
 
@@ -4660,12 +4650,12 @@ fn compile_and_run_test(source_path: &Path, exe_path: &Path) -> Result<(), Strin
     compile_source(&source, source_path, exe_path, false, true, None, None)?;
 
     // Run the compiled test
-    println!("\n{}", "Running tests...".cyan().bold());
+    println!("\n{}", "Running tests".cyan().bold());
     println!();
 
     let output = Command::new(exe_path)
         .output()
-        .map_err(|e| format!("Failed to run tests: {}", e))?;
+        .map_err(|e| format!("Failed to run test runner: {}", e))?;
 
     // Print output
     print!("{}", String::from_utf8_lossy(&output.stdout));
@@ -4673,7 +4663,7 @@ fn compile_and_run_test(source_path: &Path, exe_path: &Path) -> Result<(), Strin
 
     // Check exit code
     if !output.status.success() {
-        return Err("Tests failed".to_string());
+        return Err("test run failed".to_string());
     }
 
     Ok(())
@@ -4683,13 +4673,13 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
     let count = bindgen::generate_bindings(header, output)?;
     if let Some(out) = output {
         println!(
-            "{} Generated {} binding(s) -> {}",
-            "OK".green().bold(),
+            "{} {} binding(s) -> {}",
+            "Generated".green().bold(),
             count,
             out.display()
         );
     } else {
-        eprintln!("{} Generated {} binding(s)", "OK".green().bold(), count);
+        eprintln!("{} {} binding(s)", "Generated".green().bold(), count);
     }
     Ok(())
 }
