@@ -15,6 +15,8 @@ use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType
 use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue, ValueKind};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -22,6 +24,20 @@ use crate::codegen::core::{Codegen, CodegenError, Result, Variable};
 
 static LLVM_NATIVE_TARGET_INIT: OnceLock<std::result::Result<(), String>> = OnceLock::new();
 static LLVM_ALL_TARGETS_INIT: OnceLock<()> = OnceLock::new();
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct TargetMachineCacheKey {
+    triple: String,
+    cpu: String,
+    features: String,
+    opt_level: &'static str,
+    reloc_mode: &'static str,
+}
+
+thread_local! {
+    static TARGET_MACHINE_CACHE: RefCell<HashMap<TargetMachineCacheKey, TargetMachine>> =
+        RefCell::new(HashMap::new());
+}
 
 impl<'ctx> Codegen<'ctx> {
     // === C Library Definitions ===
@@ -1327,19 +1343,17 @@ impl<'ctx> Codegen<'ctx> {
             .clone()
     }
 
-    pub fn write_object_with_config(
-        &self,
-        path: &Path,
+    fn target_machine_config(
         opt_level: Option<&str>,
         target_triple: Option<&str>,
         output_kind: &OutputKind,
-    ) -> std::result::Result<(), String> {
+    ) -> std::result::Result<(TargetMachineCacheKey, TargetTriple), String> {
         Self::ensure_object_emission_targets_initialized(target_triple)?;
 
         let triple = target_triple
             .map(TargetTriple::create)
             .unwrap_or_else(TargetMachine::get_default_triple);
-        let target = Target::from_triple(&triple).map_err(|e| e.to_string())?;
+        let triple_string = triple.as_str().to_string_lossy().into_owned();
         let host_cpu_name = TargetMachine::get_host_cpu_name();
         let host_cpu_features = TargetMachine::get_host_cpu_features();
         let cpu = if target_triple.is_some() {
@@ -1358,28 +1372,84 @@ impl<'ctx> Codegen<'ctx> {
                 .map_err(|e| format!("Failed to decode host CPU features: {}", e))?
                 .to_string()
         };
+        let opt_key = match Self::resolve_optimization_level(opt_level) {
+            OptimizationLevel::None => "0",
+            OptimizationLevel::Less => "1",
+            OptimizationLevel::Default => "2",
+            OptimizationLevel::Aggressive => "3",
+        };
+        let reloc_mode = match output_kind {
+            OutputKind::Shared => "pic",
+            OutputKind::Bin | OutputKind::Static => "default",
+        };
 
-        let machine = target
-            .create_target_machine(
-                &triple,
-                &cpu,
-                &features,
-                Self::resolve_optimization_level(opt_level),
-                match output_kind {
-                    OutputKind::Shared => RelocMode::PIC,
-                    OutputKind::Bin | OutputKind::Static => RelocMode::Default,
-                },
-                CodeModel::Default,
-            )
-            .ok_or("Failed to create target machine")?;
+        Ok((
+            TargetMachineCacheKey {
+                triple: triple_string,
+                cpu,
+                features,
+                opt_level: opt_key,
+                reloc_mode,
+            },
+            triple,
+        ))
+    }
 
-        self.module.set_triple(&triple);
-        self.module
-            .set_data_layout(&machine.get_target_data().get_data_layout());
+    fn with_target_machine<R>(
+        opt_level: Option<&str>,
+        target_triple: Option<&str>,
+        output_kind: &OutputKind,
+        f: impl FnOnce(&TargetMachine, &TargetTriple) -> std::result::Result<R, String>,
+    ) -> std::result::Result<R, String> {
+        let (key, triple) = Self::target_machine_config(opt_level, target_triple, output_kind)?;
+        TARGET_MACHINE_CACHE.with(|cache| {
+            let mut cache = cache.borrow_mut();
+            let machine = cache.entry(key.clone()).or_insert_with(|| {
+                let target = Target::from_triple(&triple).expect("target triple should be valid");
+                target
+                    .create_target_machine(
+                        &triple,
+                        &key.cpu,
+                        &key.features,
+                        Self::resolve_optimization_level(opt_level),
+                        match output_kind {
+                            OutputKind::Shared => RelocMode::PIC,
+                            OutputKind::Bin | OutputKind::Static => RelocMode::Default,
+                        },
+                        CodeModel::Default,
+                    )
+                    .expect("failed to create target machine")
+            });
+            f(machine, &triple)
+        })
+    }
 
-        machine
-            .write_to_file(&self.module, FileType::Object, path)
-            .map_err(|e| e.to_string())
+    pub fn emit_object_bytes(
+        &self,
+        opt_level: Option<&str>,
+        target_triple: Option<&str>,
+        output_kind: &OutputKind,
+    ) -> std::result::Result<Vec<u8>, String> {
+        Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
+            self.module.set_triple(triple);
+            self.module
+                .set_data_layout(&machine.get_target_data().get_data_layout());
+            let buffer = machine
+                .write_to_memory_buffer(&self.module, FileType::Object)
+                .map_err(|e| e.to_string())?;
+            Ok(buffer.as_slice().to_vec())
+        })
+    }
+
+    pub fn write_object_with_config(
+        &self,
+        path: &Path,
+        opt_level: Option<&str>,
+        target_triple: Option<&str>,
+        output_kind: &OutputKind,
+    ) -> std::result::Result<(), String> {
+        let object = self.emit_object_bytes(opt_level, target_triple, output_kind)?;
+        std::fs::write(path, object).map_err(|e| e.to_string())
     }
 
     pub fn identify_captures(&self, expr: &Expr, params: &[Parameter]) -> Vec<(String, Type)> {

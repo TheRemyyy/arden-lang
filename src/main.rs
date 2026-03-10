@@ -21,6 +21,7 @@ use clap::{Parser as ClapParser, Subcommand};
 use colored::*;
 use inkwell::context::Context;
 use rayon::prelude::*;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -275,6 +276,50 @@ fn semantic_project_cache_file(project_root: &Path) -> PathBuf {
 
 fn stable_hasher() -> XxHash64 {
     XxHash64::with_seed(0)
+}
+
+fn decode_cache_blob<T: DeserializeOwned>(blob: &[u8]) -> Option<T> {
+    bincode::deserialize(blob)
+        .ok()
+        .or_else(|| serde_json::from_slice(blob).ok())
+}
+
+fn read_cache_blob<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Option<T>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read(path).map_err(|e| {
+        format!(
+            "{}: Failed to read {} '{}': {}",
+            "error".red().bold(),
+            label,
+            path.display(),
+            e
+        )
+    })?;
+    Ok(decode_cache_blob(&raw))
+}
+
+fn write_cache_blob<T: Serialize>(path: &Path, label: &str, value: &T) -> Result<(), String> {
+    let bytes = bincode::serialize(value).map_err(|e| {
+        format!(
+            "{}: Failed to serialize {} '{}': {}",
+            "error".red().bold(),
+            label,
+            path.display(),
+            e
+        )
+    })?;
+    fs::write(path, bytes).map_err(|e| {
+        format!(
+            "{}: Failed to write {} '{}': {}",
+            "error".red().bold(),
+            label,
+            path.display(),
+            e
+        )
+    })
 }
 
 fn project_build_artifact_exists(output_path: &Path, emit_llvm: bool) -> bool {
@@ -853,22 +898,9 @@ fn load_parsed_file_cache_entry(
     file: &Path,
 ) -> Result<Option<ParsedFileCacheEntry>, String> {
     let path = parsed_file_cache_path(project_root, file);
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let raw = fs::read_to_string(&path).map_err(|e| {
-        format!(
-            "{}: Failed to read parse cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-
-    let entry: ParsedFileCacheEntry = match serde_json::from_str(&raw) {
-        Ok(entry) => entry,
-        Err(_) => return Ok(None),
+    let entry: ParsedFileCacheEntry = match read_cache_blob(&path, "parse cache")? {
+        Some(entry) => entry,
+        None => return Ok(None),
     };
 
     if entry.schema != PARSE_CACHE_SCHEMA || entry.compiler_version != env!("CARGO_PKG_VERSION") {
@@ -894,24 +926,7 @@ fn save_parsed_file_cache(
             )
         })?;
     }
-
-    let json = serde_json::to_string(entry).map_err(|e| {
-        format!(
-            "{}: Failed to serialize parse cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-
-    fs::write(&path, json).map_err(|e| {
-        format!(
-            "{}: Failed to write parse cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })
+    write_cache_blob(&path, "parse cache", entry)
 }
 
 const IMPORT_CHECK_CACHE_SCHEMA: &str = "v1";
@@ -942,21 +957,9 @@ fn load_import_check_cache_hit(
     rewrite_context_fingerprint: &str,
 ) -> Result<bool, String> {
     let path = import_check_cache_path(project_root, file);
-    if !path.exists() {
-        return Ok(false);
-    }
-
-    let raw = fs::read_to_string(&path).map_err(|e| {
-        format!(
-            "{}: Failed to read import-check cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-    let entry: ImportCheckCacheEntry = match serde_json::from_str(&raw) {
-        Ok(entry) => entry,
-        Err(_) => return Ok(false),
+    let entry: ImportCheckCacheEntry = match read_cache_blob(&path, "import-check cache")? {
+        Some(entry) => entry,
+        None => return Ok(false),
     };
 
     Ok(entry.schema == IMPORT_CHECK_CACHE_SCHEMA
@@ -989,22 +992,7 @@ fn save_import_check_cache_hit(
         semantic_fingerprint: semantic_fingerprint.to_string(),
         rewrite_context_fingerprint: rewrite_context_fingerprint.to_string(),
     };
-    let json = serde_json::to_string(&entry).map_err(|e| {
-        format!(
-            "{}: Failed to serialize import-check cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-    fs::write(&path, json).map_err(|e| {
-        format!(
-            "{}: Failed to write import-check cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })
+    write_cache_blob(&path, "import-check cache", &entry)
 }
 
 fn dependency_graph_cache_path(project_root: &Path) -> PathBuf {
@@ -1018,21 +1006,9 @@ fn load_dependency_graph_cache(
     project_root: &Path,
 ) -> Result<Option<DependencyGraphCache>, String> {
     let path = dependency_graph_cache_path(project_root);
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let raw = fs::read_to_string(&path).map_err(|e| {
-        format!(
-            "{}: Failed to read dependency graph cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-    let cache: DependencyGraphCache = match serde_json::from_str(&raw) {
-        Ok(cache) => cache,
-        Err(_) => return Ok(None),
+    let cache: DependencyGraphCache = match read_cache_blob(&path, "dependency graph cache")? {
+        Some(cache) => cache,
+        None => return Ok(None),
     };
     if cache.schema != DEPENDENCY_GRAPH_CACHE_SCHEMA
         || cache.compiler_version != env!("CARGO_PKG_VERSION")
@@ -1058,22 +1034,7 @@ fn save_dependency_graph_cache(
         })?;
     }
 
-    let json = serde_json::to_string(cache).map_err(|e| {
-        format!(
-            "{}: Failed to serialize dependency graph cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-    fs::write(&path, json).map_err(|e| {
-        format!(
-            "{}: Failed to write dependency graph cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })
+    write_cache_blob(&path, "dependency graph cache", cache)
 }
 
 fn semantic_summary_cache_path(project_root: &Path) -> PathBuf {
@@ -1087,21 +1048,9 @@ fn load_semantic_summary_cache(
     project_root: &Path,
 ) -> Result<Option<SemanticSummaryCache>, String> {
     let path = semantic_summary_cache_path(project_root);
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let raw = fs::read_to_string(&path).map_err(|e| {
-        format!(
-            "{}: Failed to read semantic summary cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-    let cache: SemanticSummaryCache = match serde_json::from_str(&raw) {
-        Ok(cache) => cache,
-        Err(_) => return Ok(None),
+    let cache: SemanticSummaryCache = match read_cache_blob(&path, "semantic summary cache")? {
+        Some(cache) => cache,
+        None => return Ok(None),
     };
     if cache.schema != SEMANTIC_SUMMARY_CACHE_SCHEMA
         || cache.compiler_version != env!("CARGO_PKG_VERSION")
@@ -1127,22 +1076,7 @@ fn save_semantic_summary_cache(
         })?;
     }
 
-    let json = serde_json::to_string(cache).map_err(|e| {
-        format!(
-            "{}: Failed to serialize semantic summary cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-    fs::write(&path, json).map_err(|e| {
-        format!(
-            "{}: Failed to write semantic summary cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })
+    write_cache_blob(&path, "semantic summary cache", cache)
 }
 
 const REWRITE_CACHE_SCHEMA: &str = "v2";
@@ -1407,54 +1341,89 @@ fn resolve_import_dependency_files(
     deps
 }
 
-fn build_file_dependency_graph(
+fn resolve_direct_dependencies_for_unit(
+    unit: &ParsedProjectUnit,
+    ctx: &DependencyResolutionContext<'_>,
+) -> HashSet<PathBuf> {
+    let mut deps = HashSet::new();
+
+    for symbol in &unit.referenced_symbols {
+        if let Some(owner_file) = ctx
+            .namespace_function_files
+            .get(&unit.namespace)
+            .and_then(|map| map.get(symbol))
+        {
+            if owner_file != &unit.file {
+                deps.insert(owner_file.clone());
+            }
+        }
+        if let Some(owner_file) = ctx
+            .namespace_class_files
+            .get(&unit.namespace)
+            .and_then(|map| map.get(symbol))
+        {
+            if owner_file != &unit.file {
+                deps.insert(owner_file.clone());
+            }
+        }
+        if let Some(owner_file) = ctx
+            .namespace_module_files
+            .get(&unit.namespace)
+            .and_then(|map| map.get(symbol))
+        {
+            if owner_file != &unit.file {
+                deps.insert(owner_file.clone());
+            }
+        }
+    }
+
+    for import in &unit.imports {
+        deps.extend(resolve_import_dependency_files(import, ctx));
+    }
+
+    deps.remove(&unit.file);
+    deps
+}
+
+fn build_file_dependency_graph_incremental(
     parsed_files: &[ParsedProjectUnit],
     ctx: &DependencyResolutionContext<'_>,
-) -> HashMap<PathBuf, HashSet<PathBuf>> {
+    previous: Option<&DependencyGraphCache>,
+) -> (HashMap<PathBuf, HashSet<PathBuf>>, usize) {
+    let previous_entries = previous
+        .map(|cache| {
+            cache
+                .files
+                .iter()
+                .map(|entry| (&entry.file, entry))
+                .collect::<HashMap<_, _>>()
+        })
+        .unwrap_or_default();
+
     let mut graph = HashMap::new();
+    let mut reused = 0usize;
 
     for unit in parsed_files {
-        let mut deps = HashSet::new();
-
-        for symbol in &unit.referenced_symbols {
-            if let Some(owner_file) = ctx
-                .namespace_function_files
-                .get(&unit.namespace)
-                .and_then(|map| map.get(symbol))
+        let deps = if let Some(previous_entry) = previous_entries.get(&unit.file) {
+            if previous_entry.semantic_fingerprint == unit.semantic_fingerprint
+                && previous_entry.api_fingerprint == unit.api_fingerprint
             {
-                if owner_file != &unit.file {
-                    deps.insert(owner_file.clone());
-                }
+                reused += 1;
+                previous_entry
+                    .direct_dependencies
+                    .iter()
+                    .cloned()
+                    .collect::<HashSet<_>>()
+            } else {
+                resolve_direct_dependencies_for_unit(unit, ctx)
             }
-            if let Some(owner_file) = ctx
-                .namespace_class_files
-                .get(&unit.namespace)
-                .and_then(|map| map.get(symbol))
-            {
-                if owner_file != &unit.file {
-                    deps.insert(owner_file.clone());
-                }
-            }
-            if let Some(owner_file) = ctx
-                .namespace_module_files
-                .get(&unit.namespace)
-                .and_then(|map| map.get(symbol))
-            {
-                if owner_file != &unit.file {
-                    deps.insert(owner_file.clone());
-                }
-            }
-        }
-
-        for import in &unit.imports {
-            deps.extend(resolve_import_dependency_files(import, ctx));
-        }
-
-        deps.remove(&unit.file);
+        } else {
+            resolve_direct_dependencies_for_unit(unit, ctx)
+        };
         graph.insert(unit.file.clone(), deps);
     }
 
-    graph
+    (graph, reused)
 }
 
 fn build_reverse_dependency_graph(
@@ -1776,22 +1745,9 @@ fn load_rewritten_file_cache(
     rewrite_context_fingerprint: &str,
 ) -> Result<Option<Program>, String> {
     let path = rewritten_file_cache_path(project_root, file);
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let raw = fs::read_to_string(&path).map_err(|e| {
-        format!(
-            "{}: Failed to read rewrite cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-
-    let entry: RewrittenFileCacheEntry = match serde_json::from_str(&raw) {
-        Ok(entry) => entry,
-        Err(_) => return Ok(None),
+    let entry: RewrittenFileCacheEntry = match read_cache_blob(&path, "rewrite cache")? {
+        Some(entry) => entry,
+        None => return Ok(None),
     };
 
     if entry.schema != REWRITE_CACHE_SCHEMA
@@ -1831,23 +1787,7 @@ fn save_rewritten_file_cache(
         rewrite_context_fingerprint: rewrite_context_fingerprint.to_string(),
         rewritten_program: rewritten_program.clone(),
     };
-    let json = serde_json::to_string(&entry).map_err(|e| {
-        format!(
-            "{}: Failed to serialize rewrite cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-
-    fs::write(&path, json).map_err(|e| {
-        format!(
-            "{}: Failed to write rewrite cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })
+    write_cache_blob(&path, "rewrite cache", &entry)
 }
 
 fn object_ext() -> &'static str {
@@ -1910,8 +1850,7 @@ fn compute_link_fingerprint(
 
 fn load_link_manifest_cache(project_root: &Path) -> Option<LinkManifestCache> {
     let path = link_manifest_cache_path(project_root);
-    let raw = fs::read_to_string(path).ok()?;
-    let cache: LinkManifestCache = serde_json::from_str(&raw).ok()?;
+    let cache: LinkManifestCache = read_cache_blob(&path, "link manifest cache").ok()??;
     if cache.schema != LINK_MANIFEST_CACHE_SCHEMA
         || cache.compiler_version != env!("CARGO_PKG_VERSION")
     {
@@ -1933,22 +1872,7 @@ fn save_link_manifest_cache(project_root: &Path, cache: &LinkManifestCache) -> R
         })?;
     }
 
-    let json = serde_json::to_string(cache).map_err(|e| {
-        format!(
-            "{}: Failed to serialize link manifest cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-    fs::write(&path, json).map_err(|e| {
-        format!(
-            "{}: Failed to write link manifest cache '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })
+    write_cache_blob(&path, "link manifest cache", cache)
 }
 
 fn should_skip_final_link(
@@ -1986,18 +1910,9 @@ fn load_object_cache_hit(
     if !meta_path.exists() || !obj_path.exists() {
         return Ok(None);
     }
-
-    let raw = fs::read_to_string(&meta_path).map_err(|e| {
-        format!(
-            "{}: Failed to read object cache meta '{}': {}",
-            "error".red().bold(),
-            meta_path.display(),
-            e
-        )
-    })?;
-    let meta: ObjectCacheEntry = match serde_json::from_str(&raw) {
-        Ok(meta) => meta,
-        Err(_) => return Ok(None),
+    let meta: ObjectCacheEntry = match read_cache_blob(&meta_path, "object cache meta")? {
+        Some(meta) => meta,
+        None => return Ok(None),
     };
 
     if meta.schema != OBJECT_CACHE_SCHEMA
@@ -2038,22 +1953,7 @@ fn save_object_cache_meta(
         rewrite_context_fingerprint: rewrite_context_fingerprint.to_string(),
         object_build_fingerprint: object_build_fingerprint.to_string(),
     };
-    let json = serde_json::to_string(&meta).map_err(|e| {
-        format!(
-            "{}: Failed to serialize object cache meta '{}': {}",
-            "error".red().bold(),
-            meta_path.display(),
-            e
-        )
-    })?;
-    fs::write(&meta_path, json).map_err(|e| {
-        format!(
-            "{}: Failed to write object cache meta '{}': {}",
-            "error".red().bold(),
-            meta_path.display(),
-            e
-        )
-    })
+    write_cache_blob(&meta_path, "object cache meta", &meta)
 }
 
 fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectUnit, String> {
@@ -2860,11 +2760,23 @@ fn build_project(
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
     };
-    let file_dependency_graph =
-        build_file_dependency_graph(&parsed_files, &dependency_resolution_ctx);
+    let (file_dependency_graph, dependency_graph_cache_hits) =
+        build_file_dependency_graph_incremental(
+            &parsed_files,
+            &dependency_resolution_ctx,
+            previous_dependency_graph.as_ref(),
+        );
     let reverse_file_dependency_graph = build_reverse_dependency_graph(&file_dependency_graph);
     let current_dependency_graph_cache =
         dependency_graph_cache_from_state(&parsed_files, &file_dependency_graph);
+    if dependency_graph_cache_hits > 0 {
+        println!(
+            "{} Reused dependency graph entries for {}/{} files",
+            "→".cyan(),
+            dependency_graph_cache_hits,
+            parsed_files.len()
+        );
+    }
 
     let previous_semantic_summary = load_semantic_summary_cache(&project_root)?;
     let mut body_only_changed = HashSet::new();
@@ -4687,12 +4599,12 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        api_program_fingerprint, build_file_dependency_graph, build_reverse_dependency_graph,
-        compute_link_fingerprint, compute_rewrite_context_fingerprint_for_unit,
-        escape_response_file_arg, parse_project_unit, semantic_program_fingerprint,
-        should_skip_final_link, transitive_dependents, DependencyResolutionContext, LinkConfig,
-        LinkManifestCache, OutputKind, ParsedProjectUnit, RewriteFingerprintContext,
-        LINK_MANIFEST_CACHE_SCHEMA,
+        api_program_fingerprint, build_file_dependency_graph_incremental,
+        build_reverse_dependency_graph, compute_link_fingerprint,
+        compute_rewrite_context_fingerprint_for_unit, escape_response_file_arg, parse_project_unit,
+        semantic_program_fingerprint, should_skip_final_link, transitive_dependents,
+        DependencyResolutionContext, LinkConfig, LinkManifestCache, OutputKind, ParsedProjectUnit,
+        RewriteFingerprintContext, LINK_MANIFEST_CACHE_SCHEMA,
     };
     use crate::ast::{ImportDecl, Program};
     use crate::parser::Parser;
@@ -4995,7 +4907,7 @@ function add(x: Float): Float {
             global_module_map: &global_module_map,
             global_module_file_map: &global_module_file_map,
         };
-        let graph = build_file_dependency_graph(&parsed_files, &ctx);
+        let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None);
 
         assert_eq!(
             graph.get(&app.file).cloned().unwrap_or_default(),
@@ -5043,7 +4955,7 @@ function add(x: Float): Float {
             global_module_file_map: &global_module_file_map,
         };
 
-        let graph = build_file_dependency_graph(&parsed_files, &ctx);
+        let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None);
 
         assert_eq!(
             graph.get(&app.file).cloned().unwrap_or_default(),

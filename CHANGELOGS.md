@@ -28,6 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed Windows CLI smoke coverage by running the canonical `scripts/ci_cli_smoke.sh` through a Windows PowerShell wrapper instead of maintaining a reduced forked smoke script.
 - Fixed the Windows smoke wrapper to normalize paths for Git Bash, `chmod +x` the downloaded compiler/script pair, and return the underlying bash exit code instead of failing opaquely in PowerShell.
 - Fixed Apex CLI wording by tightening help text, command descriptions, scaffold output, and runtime status messages across `new`, `build`, `run`, `check`, `fmt`, `lint`, `fix`, `test`, `bindgen`, `bench`, and `profile`.
+- Changed internal compiler caches from JSON-first parsing to bincode with transparent JSON fallback, cutting cache decode overhead without breaking existing `.apexcache` data.
+- Changed object emission to reuse thread-local LLVM `TargetMachine` instances and emit object bytes from an in-memory buffer before persisting cache objects.
+- Changed dependency graph rebuilds to reuse unchanged per-file entries from the previous cache instead of recomputing the whole graph every run.
 
 ### ⚡ Changed
 
