@@ -2391,8 +2391,13 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>> {
         let var = self.variables.get(range_name).unwrap();
         let var_ptr = var.ptr;
-        let i64_type = self.context.i64_type();
         let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let range_element_ty = match &var.ty {
+            Type::Range(inner) => &**inner,
+            _ => return Err(CodegenError::new("Expected Range type")),
+        };
+        let element_llvm_ty = self.llvm_type(range_element_ty);
+        let range_type = self.get_range_type(element_llvm_ty)?;
 
         // Load the range pointer from the variable alloca
         let range_ptr = self
@@ -2406,118 +2411,174 @@ impl<'ctx> Codegen<'ctx> {
         let two = i32_type.const_int(2, false);
         let three = i32_type.const_int(3, false);
 
-        // Get range struct type: { i64, i64, i64, i64 }
-        let range_type = self.context.struct_type(
-            &[
-                i64_type.into(),
-                i64_type.into(),
-                i64_type.into(),
-                i64_type.into(),
-            ],
-            false,
-        );
-
         // Range struct layout: { start: i64, end: i64, step: i64, current: i64 }
         match method {
             "has_next" => {
-                // Load step
                 let step_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, two], "step_ptr")
                         .unwrap()
                 };
-                let step = self
-                    .builder
-                    .build_load(i64_type, step_ptr, "step")
-                    .unwrap()
-                    .into_int_value();
-
-                // Load current
                 let current_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, three], "current_ptr")
                         .unwrap()
                 };
-                let current = self
-                    .builder
-                    .build_load(i64_type, current_ptr, "current")
-                    .unwrap()
-                    .into_int_value();
-
-                // Load end
                 let end_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, one], "end_ptr")
                         .unwrap()
                 };
-                let end = self
-                    .builder
-                    .build_load(i64_type, end_ptr, "end")
-                    .unwrap()
-                    .into_int_value();
 
-                // Check if step > 0: current < end
-                // Check if step < 0: current > end
-                let zero_i64 = i64_type.const_int(0, false);
-                let step_positive = self
-                    .builder
-                    .build_int_compare(inkwell::IntPredicate::SGT, step, zero_i64, "step_positive")
-                    .unwrap();
+                match element_llvm_ty {
+                    inkwell::types::BasicTypeEnum::IntType(int_ty) => {
+                        let step = self
+                            .builder
+                            .build_load(int_ty, step_ptr, "step")
+                            .unwrap()
+                            .into_int_value();
+                        let current = self
+                            .builder
+                            .build_load(int_ty, current_ptr, "current")
+                            .unwrap()
+                            .into_int_value();
+                        let end = self
+                            .builder
+                            .build_load(int_ty, end_ptr, "end")
+                            .unwrap()
+                            .into_int_value();
 
-                let current_lt_end = self
-                    .builder
-                    .build_int_compare(inkwell::IntPredicate::SLT, current, end, "current_lt_end")
-                    .unwrap();
+                        let step_positive = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::SGT,
+                                step,
+                                int_ty.const_zero(),
+                                "step_positive",
+                            )
+                            .unwrap();
+                        let current_lt_end = self
+                            .builder
+                            .build_int_compare(IntPredicate::SLT, current, end, "current_lt_end")
+                            .unwrap();
+                        let current_gt_end = self
+                            .builder
+                            .build_int_compare(IntPredicate::SGT, current, end, "current_gt_end")
+                            .unwrap();
+                        let result = self
+                            .builder
+                            .build_select(step_positive, current_lt_end, current_gt_end, "has_next")
+                            .unwrap();
+                        Ok(result.into_int_value().into())
+                    }
+                    inkwell::types::BasicTypeEnum::FloatType(float_ty) => {
+                        let step = self
+                            .builder
+                            .build_load(float_ty, step_ptr, "step")
+                            .unwrap()
+                            .into_float_value();
+                        let current = self
+                            .builder
+                            .build_load(float_ty, current_ptr, "current")
+                            .unwrap()
+                            .into_float_value();
+                        let end = self
+                            .builder
+                            .build_load(float_ty, end_ptr, "end")
+                            .unwrap()
+                            .into_float_value();
 
-                let current_gt_end = self
-                    .builder
-                    .build_int_compare(inkwell::IntPredicate::SGT, current, end, "current_gt_end")
-                    .unwrap();
-
-                // Select based on step direction
-                let result = self
-                    .builder
-                    .build_select(step_positive, current_lt_end, current_gt_end, "has_next")
-                    .unwrap();
-
-                Ok(result.into_int_value().into())
+                        let step_positive = self
+                            .builder
+                            .build_float_compare(
+                                inkwell::FloatPredicate::OGT,
+                                step,
+                                float_ty.const_float(0.0),
+                                "step_positive",
+                            )
+                            .unwrap();
+                        let current_lt_end = self
+                            .builder
+                            .build_float_compare(
+                                inkwell::FloatPredicate::OLT,
+                                current,
+                                end,
+                                "current_lt_end",
+                            )
+                            .unwrap();
+                        let current_gt_end = self
+                            .builder
+                            .build_float_compare(
+                                inkwell::FloatPredicate::OGT,
+                                current,
+                                end,
+                                "current_gt_end",
+                            )
+                            .unwrap();
+                        let result = self
+                            .builder
+                            .build_select(step_positive, current_lt_end, current_gt_end, "has_next")
+                            .unwrap();
+                        Ok(result.into_int_value().into())
+                    }
+                    _ => Err(CodegenError::new(
+                        "Range<T> codegen supports only Integer and Float elements",
+                    )),
+                }
             }
             "next" => {
-                // Load current
                 let current_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, three], "current_ptr")
                         .unwrap()
                 };
-                let current = self
-                    .builder
-                    .build_load(i64_type, current_ptr, "current")
-                    .unwrap()
-                    .into_int_value();
-
-                // Load step
                 let step_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, two], "step_ptr")
                         .unwrap()
                 };
-                let step = self
-                    .builder
-                    .build_load(i64_type, step_ptr, "step")
-                    .unwrap()
-                    .into_int_value();
 
-                // Increment current: current + step
-                let new_current = self
-                    .builder
-                    .build_int_add(current, step, "new_current")
-                    .unwrap();
-
-                // Store new current
-                self.builder.build_store(current_ptr, new_current).unwrap();
-
-                // Return old current
-                Ok(current.into())
+                match element_llvm_ty {
+                    inkwell::types::BasicTypeEnum::IntType(int_ty) => {
+                        let current = self
+                            .builder
+                            .build_load(int_ty, current_ptr, "current")
+                            .unwrap()
+                            .into_int_value();
+                        let step = self
+                            .builder
+                            .build_load(int_ty, step_ptr, "step")
+                            .unwrap()
+                            .into_int_value();
+                        let new_current = self
+                            .builder
+                            .build_int_add(current, step, "new_current")
+                            .unwrap();
+                        self.builder.build_store(current_ptr, new_current).unwrap();
+                        Ok(current.into())
+                    }
+                    inkwell::types::BasicTypeEnum::FloatType(float_ty) => {
+                        let current = self
+                            .builder
+                            .build_load(float_ty, current_ptr, "current")
+                            .unwrap()
+                            .into_float_value();
+                        let step = self
+                            .builder
+                            .build_load(float_ty, step_ptr, "step")
+                            .unwrap()
+                            .into_float_value();
+                        let new_current = self
+                            .builder
+                            .build_float_add(current, step, "new_current")
+                            .unwrap();
+                        self.builder.build_store(current_ptr, new_current).unwrap();
+                        Ok(current.into())
+                    }
+                    _ => Err(CodegenError::new(
+                        "Range<T> codegen supports only Integer and Float elements",
+                    )),
+                }
             }
             _ => Err(CodegenError::new(format!(
                 "Unknown Range method: {}",

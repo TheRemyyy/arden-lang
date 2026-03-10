@@ -8,6 +8,7 @@ The `Range<T>` type represents a half-open interval `[start, end)` that can be i
 - Looping over numeric sequences
 - Generating sequences with custom steps
 - Iterating backwards (counting down)
+- Walking Float sequences with explicit step sizes
 
 ## Creating Ranges
 
@@ -22,9 +23,12 @@ r = range(0, 10, 2);    // 0, 2, 4, 6, 8
 
 // Counting down
 r = range(10, 0, -1);   // 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+
+// Float range
+r = range(0.5, 2.0, 0.5); // 0.5, 1.0, 1.5
 ```
 
-`range()` currently accepts `Integer` arguments only. The optional `step` must be non-zero.
+`range()` accepts either all-`Integer` arguments or all-`Float` arguments. Mixed numeric types are rejected. The optional `step` must be non-zero.
 
 ## Type Annotation
 
@@ -32,6 +36,7 @@ Explicitly type your range variables:
 
 ```apex
 r: Range<Integer> = range(0, 10);
+r2: Range<Float> = range(0.0, 1.0, 0.25);
 ```
 
 ## Iterator Interface
@@ -112,6 +117,17 @@ function countdown(): None {
 }
 ```
 
+### Float Steps
+
+```apex
+function sample_curve(): None {
+    r: Range<Float> = range(0.0, 1.0, 0.25);
+    while (r.has_next()) {
+        println(to_string(r.next()));
+    }
+}
+```
+
 ### Sum Calculation
 
 ```apex
@@ -138,6 +154,7 @@ result: Integer = sum_range(1, 6);  // Returns 15 (1+2+3+4+5)
   - Positive step: iterates while current < end
   - Negative step: iterates while current > end
   - Zero step is invalid and is rejected
+  - Integer and Float ranges both follow the same half-open semantics
 
 - **One-time use**: A Range iterator can only be traversed once. To iterate again, create a new range.
 

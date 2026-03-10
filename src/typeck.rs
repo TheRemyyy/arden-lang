@@ -3434,25 +3434,49 @@ impl TypeChecker {
                 Some(ResolvedType::None)
             }
             "range" => {
-                // range(start, end) -> Range<Integer> or range(start, end, step) -> Range<Integer>
+                // range(start, end) or range(start, end, step) -> Range<Integer|Float>
                 if args.len() < 2 || args.len() > 3 {
                     self.error("range() requires 2 or 3 arguments: range(start, end) or range(start, end, step)".to_string(), span.clone());
                 }
-                for arg in args {
-                    let t = self.check_expr(&arg.node, arg.span.clone());
-                    if !matches!(t, ResolvedType::Integer) {
+                let mut range_ty = ResolvedType::Unknown;
+                if let Some(first_arg) = args.first() {
+                    let first_ty = self.check_expr(&first_arg.node, first_arg.span.clone());
+                    if !matches!(first_ty, ResolvedType::Integer | ResolvedType::Float) {
                         self.error(
-                            "range() arguments must be Integer".to_string(),
+                            "range() arguments must be all Integer or all Float".to_string(),
                             span.clone(),
                         );
+                    } else {
+                        range_ty = first_ty.clone();
+                    }
+                    for arg in &args[1..] {
+                        let arg_ty = self.check_expr(&arg.node, arg.span.clone());
+                        if !matches!(arg_ty, ResolvedType::Integer | ResolvedType::Float) {
+                            self.error(
+                                "range() arguments must be all Integer or all Float".to_string(),
+                                span.clone(),
+                            );
+                            continue;
+                        }
+                        if !matches!(range_ty, ResolvedType::Unknown) && arg_ty != range_ty {
+                            self.error(
+                                format!(
+                                    "range() arguments must use the same numeric type, got {} and {}",
+                                    range_ty, arg_ty
+                                ),
+                                arg.span.clone(),
+                            );
+                        }
                     }
                 }
                 if let Some(step) = args.get(2) {
-                    if matches!(step.node, Expr::Literal(Literal::Integer(0))) {
+                    if matches!(step.node, Expr::Literal(Literal::Integer(0)))
+                        || matches!(step.node, Expr::Literal(Literal::Float(f)) if f == 0.0)
+                    {
                         self.error("range() step cannot be 0".to_string(), step.span.clone());
                     }
                 }
-                Some(ResolvedType::Range(Box::new(ResolvedType::Integer)))
+                Some(ResolvedType::Range(Box::new(range_ty)))
             }
             // File I/O
             "File__read" => {
@@ -5161,21 +5185,32 @@ mod tests {
     }
 
     #[test]
-    fn range_rejects_float_arguments() {
+    fn range_accepts_float_arguments() {
         let src = r#"
             function main(): None {
-                r: Range<Integer> = range(0.0, 3.0, 1.0);
+                r: Range<Float> = range(0.0, 3.0, 1.0);
                 return None;
             }
         "#;
-        let errors = check_source(src).expect_err("float range arguments should fail");
+        check_source(src).expect("float range arguments should type check");
+    }
+
+    #[test]
+    fn range_rejects_mixed_numeric_arguments() {
+        let src = r#"
+            function main(): None {
+                r = range(0, 3.0, 1.0);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("mixed numeric range arguments should fail");
         let joined = errors
             .iter()
             .map(|e| e.message.as_str())
             .collect::<Vec<_>>()
             .join("\n");
         assert!(
-            joined.contains("range() arguments must be Integer"),
+            joined.contains("range() arguments must use the same numeric type"),
             "{joined}"
         );
     }
@@ -5189,6 +5224,23 @@ mod tests {
             }
         "#;
         let errors = check_source(src).expect_err("zero range step should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("range() step cannot be 0"), "{joined}");
+    }
+
+    #[test]
+    fn range_rejects_zero_float_literal_step() {
+        let src = r#"
+            function main(): None {
+                r: Range<Float> = range(0.0, 3.0, 0.0);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("zero float range step should fail");
         let joined = errors
             .iter()
             .map(|e| e.message.as_str())

@@ -1726,31 +1726,27 @@ impl<'ctx> Codegen<'ctx> {
 
     // === Range Implementation ===
 
-    /// Get or create the Range struct type: { i64 start, i64 end, i64 step, i64 current }
-    pub fn get_range_type(&self) -> StructType<'ctx> {
-        let range_name = "Range";
+    /// Get or create the Range struct type: { start, end, step, current }
+    pub fn get_range_type(
+        &self,
+        element_type: inkwell::types::BasicTypeEnum<'ctx>,
+    ) -> Result<StructType<'ctx>> {
+        let range_name = match element_type {
+            inkwell::types::BasicTypeEnum::IntType(_) => "RangeI64",
+            inkwell::types::BasicTypeEnum::FloatType(_) => "RangeF64",
+            _ => {
+                return Err(CodegenError::new(
+                    "Range<T> codegen supports only Integer and Float elements",
+                ));
+            }
+        };
         if let Some(s) = self.module.get_struct_type(range_name) {
-            return s;
+            return Ok(s);
         }
-        let range_type = self.context.struct_type(
-            &[
-                self.context.i64_type().into(), // start
-                self.context.i64_type().into(), // end
-                self.context.i64_type().into(), // step
-                self.context.i64_type().into(), // current
-            ],
-            false,
-        );
-        range_type.set_body(
-            &[
-                self.context.i64_type().into(),
-                self.context.i64_type().into(),
-                self.context.i64_type().into(),
-                self.context.i64_type().into(),
-            ],
-            false,
-        );
-        range_type
+        let range_type = self.context.opaque_struct_type(range_name);
+        let fields = [element_type, element_type, element_type, element_type];
+        range_type.set_body(&fields, false);
+        Ok(range_type)
     }
 
     /// Create a new Range instance
@@ -1760,7 +1756,13 @@ impl<'ctx> Codegen<'ctx> {
         end: BasicValueEnum<'ctx>,
         step: BasicValueEnum<'ctx>,
     ) -> Result<PointerValue<'ctx>> {
-        let range_type = self.get_range_type();
+        let element_type = start.get_type();
+        if end.get_type() != element_type || step.get_type() != element_type {
+            return Err(CodegenError::new(
+                "range() codegen requires start/end/step to share the same type",
+            ));
+        }
+        let range_type = self.get_range_type(element_type)?;
         let malloc = self.get_or_declare_malloc();
         let printf = self.get_or_declare_printf();
         let exit_fn = self.get_or_declare_exit();
@@ -1787,21 +1789,36 @@ impl<'ctx> Codegen<'ctx> {
 
         // Initialize fields - use i32 for GEP indices as required by LLVM
         let i32_type = self.context.i32_type();
-        let i64_type = self.context.i64_type();
         let zero = i32_type.const_int(0, false);
         let one = i32_type.const_int(1, false);
         let two = i32_type.const_int(2, false);
         let three = i32_type.const_int(3, false);
 
-        let step_is_zero = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::EQ,
-                step.into_int_value(),
-                i64_type.const_int(0, false),
-                "range_step_is_zero",
-            )
-            .unwrap();
+        let step_is_zero = match step {
+            BasicValueEnum::IntValue(step) => self
+                .builder
+                .build_int_compare(
+                    inkwell::IntPredicate::EQ,
+                    step,
+                    step.get_type().const_zero(),
+                    "range_step_is_zero",
+                )
+                .unwrap(),
+            BasicValueEnum::FloatValue(step) => self
+                .builder
+                .build_float_compare(
+                    inkwell::FloatPredicate::OEQ,
+                    step,
+                    step.get_type().const_float(0.0),
+                    "range_step_is_zero",
+                )
+                .unwrap(),
+            _ => {
+                return Err(CodegenError::new(
+                    "range() codegen supports only Integer and Float elements",
+                ));
+            }
+        };
         self.builder
             .build_conditional_branch(step_is_zero, zero_step_bb, ok_bb)
             .unwrap();
@@ -1875,7 +1892,7 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         range_ptr: PointerValue<'ctx>,
     ) -> Result<(BasicValueEnum<'ctx>, BasicValueEnum<'ctx>)> {
-        let range_type = self.get_range_type();
+        let range_type = self.get_range_type(self.context.i64_type().into())?;
         let i64_type = self.context.i64_type();
         let i32_type = self.context.i32_type();
         let zero = i32_type.const_int(0, false);
@@ -1963,7 +1980,7 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         range_ptr: PointerValue<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>> {
-        let range_type = self.get_range_type();
+        let range_type = self.get_range_type(self.context.i64_type().into())?;
         let i64_type = self.context.i64_type();
         let i32_type = self.context.i32_type();
         let zero = i32_type.const_int(0, false);

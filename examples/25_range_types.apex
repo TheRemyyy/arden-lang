@@ -38,6 +38,13 @@ function main(): None {
         sum = sum + r4.next();
     }
     println("  Sum of 1 to 5: " + to_string(sum));
+
+    println("\n5. Float range(0.5, 2.0, 0.5):");
+    r5: Range<Float> = range(0.5, 2.0, 0.5);
+    while (r5.has_next()) {
+        val5: Float = r5.next();
+        println("  Value: " + to_string(val5));
+    }
     
     println("\n=== Range Example Complete ===");
     return None;

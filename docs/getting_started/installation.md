@@ -7,7 +7,7 @@ Before installing the Apex compiler, ensure you have the following dependencies 
 - **Rust**: Version 1.83 or later (stable).
 - **LLVM**: Version 21.0 or later (21.1.7 is recommended).
 - **Clang**: Required for IR/object compilation.
-- **LLD**: Required linker for Apex builds. Apex now links exclusively through `lld` with no fallback linker path.
+- **Linker**: `mold` is preferred for Apex builds on Unix-like systems. `lld` is supported as a fallback, and Windows keeps using LLVM's linker path.
 - **Git**: To clone the repository.
 
 ## Installing from Source
@@ -26,7 +26,7 @@ cd apex-compiler
 Install toolchain dependencies first:
 
 ```bash
-sudo dnf install -y git clang lld cmake ninja-build make gcc gcc-c++ llvm llvm-devel llvm-libs
+sudo dnf install -y git clang mold cmake ninja-build make gcc gcc-c++ llvm llvm-devel llvm-libs
 ```
 
 Then point `llvm-sys` to the installed LLVM prefix (usually `/usr` on Fedora):
@@ -43,7 +43,7 @@ Use Cargo to build the project in release mode:
 cargo build --release
 ```
 
-If `lld` is missing, Apex project builds will fail immediately with an explicit error instead of silently falling back to a slower system linker.
+If neither `mold` nor `lld` is available, Apex project builds will fail immediately with an explicit error.
 
 The compiled binary will be located at `target/release/apex-compiler` (or `target/release/apex-compiler.exe` on Windows).
 

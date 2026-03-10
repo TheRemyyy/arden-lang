@@ -109,7 +109,12 @@ r = range(0, 10, 2);                  // 0, 2, 4, 6, 8
 
 // Counting down
 r = range(10, 0, -1);                 // 10, 9, 8, ..., 1
+
+// Float range
+r = range(0.0, 1.0, 0.25);            // 0.0, 0.25, 0.5, 0.75
 ```
+
+`range()` accepts either all-`Integer` arguments or all-`Float` arguments. The optional `step` must be non-zero.
 
 ### Range Methods
 

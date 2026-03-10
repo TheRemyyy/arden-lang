@@ -7082,7 +7082,15 @@ impl<'ctx> Codegen<'ctx> {
                 let step = if args.len() == 3 {
                     self.compile_expr(&args[2].node)?
                 } else {
-                    self.context.i64_type().const_int(1, false).into()
+                    match start {
+                        BasicValueEnum::IntValue(v) => v.get_type().const_int(1, false).into(),
+                        BasicValueEnum::FloatValue(v) => v.get_type().const_float(1.0).into(),
+                        _ => {
+                            return Err(CodegenError::new(
+                                "range() codegen supports only Integer and Float elements",
+                            ));
+                        }
+                    }
                 };
 
                 // Allocate and initialize Range struct

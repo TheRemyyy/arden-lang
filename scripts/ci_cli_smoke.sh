@@ -168,16 +168,20 @@ grep -Fq 'Book: Apex Language' "${EXAMPLE_STDOUT}"
 grep -Fq 'abs=42, upper=APEX' "${EXAMPLE_STDOUT}"
 
 cat <<'EOF_RANGE_FLOAT' > "${RANGE_FLOAT_FILE}"
+import std.io.*;
+
 function main(): None {
-    r: Range<Integer> = range(0.0, 3.0, 1.0);
+    r: Range<Float> = range(0.0, 3.0, 1.0);
+    while (r.has_next()) {
+        println(to_string(r.next()));
+    }
     return None;
 }
 EOF_RANGE_FLOAT
-if "${COMPILER}" check "${RANGE_FLOAT_FILE}" >"${BORROW_ERR_OUT}" 2>&1; then
-  echo "range() unexpectedly accepted Float arguments" >&2
-  exit 1
-fi
-grep -q "range() arguments must be Integer" "${BORROW_ERR_OUT}"
+"${COMPILER}" run "${RANGE_FLOAT_FILE}" > "${EXAMPLE_STDOUT}"
+grep -Fq '0.000000' "${EXAMPLE_STDOUT}"
+grep -Fq '1.000000' "${EXAMPLE_STDOUT}"
+grep -Fq '2.000000' "${EXAMPLE_STDOUT}"
 
 cat <<'EOF_RANGE_ZERO' > "${RANGE_ZERO_RUNTIME_FILE}"
 function choose_zero(): Integer {

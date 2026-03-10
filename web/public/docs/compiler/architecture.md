@@ -9,7 +9,7 @@ This document describes the internal architecture of the Apex compiler.
 3. **Type Checking** (`typeck.rs`): Traverses the AST to validate types, resolve names, and ensure type safety.
 4. **Borrow Checking** (`borrowck.rs`): Analyses ownership and lifetimes to ensure memory safety without GC.
 5. **Code Generation** (`codegen/core.rs`, `codegen/types.rs`, `codegen/util.rs`): Lowers the AST into LLVM IR (Intermediate Representation).
-6. **Linking**: LLVM IR is compiled to object files and linked through `clang -fuse-ld=lld` to produce the final executable. Apex requires `lld`; there is no fallback linker path.
+6. **Linking**: LLVM IR is compiled to object files and linked through Clang. Apex prefers `mold` when available, falls back to `lld`, and fingerprints caches with the selected linker mode.
 
 ## Build Caching
 
@@ -41,8 +41,8 @@ This document describes the internal architecture of the Apex compiler.
   - LLVM target registries for direct object emission are initialized once per process, so parallel object rebuilds do not repeatedly pay startup cost.
 - **Link manifest cache** (`.apexcache/link/latest.json`):
   - Records the ordered object input list plus final link configuration for the last successful build.
-  - If a rebuild produces zero object cache misses and the manifest still matches, Apex skips the final `lld` link invocation entirely and reuses the existing output artifact.
-  - When linking does run, Apex now passes large object input sets through a response file to keep `clang`/`lld` startup overhead bounded on large projects.
+  - If a rebuild produces zero object cache misses and the manifest still matches, Apex skips the final linker invocation entirely and reuses the existing output artifact.
+  - When linking does run, Apex now passes large object input sets through a response file to keep Clang + linker startup overhead bounded on large projects.
 - **Semantic build fingerprint cache** (`.apexcache/semantic_build_fingerprint`):
   - Hashes canonicalized AST content instead of raw file text.
   - Comment-only / whitespace-only edits can now stop after parse/cache validation and return `Up to date ... (semantic cache)` without object rebuild or relink.

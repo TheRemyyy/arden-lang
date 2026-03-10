@@ -1890,6 +1890,9 @@ fn compute_link_fingerprint(
     link: &LinkConfig<'_>,
 ) -> String {
     let mut hasher = stable_hasher();
+    let linker = detect_linker_flavor()
+        .map(|flavor| flavor.cache_key())
+        .unwrap_or("missing");
     env!("CARGO_PKG_VERSION").hash(&mut hasher);
     output_path.hash(&mut hasher);
     link.opt_level.hash(&mut hasher);
@@ -1899,7 +1902,7 @@ fn compute_link_fingerprint(
     link.link_libs.hash(&mut hasher);
     link.link_args.hash(&mut hasher);
     link_inputs.hash(&mut hasher);
-    "lld".hash(&mut hasher);
+    linker.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
@@ -1959,10 +1962,13 @@ fn should_skip_final_link(
 
 fn compute_object_build_fingerprint(link: &LinkConfig<'_>) -> String {
     let mut hasher = stable_hasher();
+    let linker = detect_linker_flavor()
+        .map(|flavor| flavor.cache_key())
+        .unwrap_or("missing");
     env!("CARGO_PKG_VERSION").hash(&mut hasher);
     link.opt_level.hash(&mut hasher);
     link.target.hash(&mut hasher);
-    "lld".hash(&mut hasher);
+    linker.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
@@ -3743,12 +3749,35 @@ fn shutil_which(tool: &str) -> bool {
     })
 }
 
-fn require_lld_linker() -> Result<(), String> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum LinkerFlavor {
+    Mold,
+    Lld,
+}
+
+impl LinkerFlavor {
+    fn clang_fuse_ld(self) -> &'static str {
+        match self {
+            LinkerFlavor::Mold => "mold",
+            LinkerFlavor::Lld => "lld",
+        }
+    }
+
+    fn cache_key(self) -> &'static str {
+        self.clang_fuse_ld()
+    }
+}
+
+fn detect_linker_flavor() -> Result<LinkerFlavor, String> {
+    #[cfg(not(windows))]
+    if shutil_which("mold") || shutil_which("ld.mold") {
+        return Ok(LinkerFlavor::Mold);
+    }
     if shutil_which("ld.lld") || shutil_which("lld") {
-        return Ok(());
+        return Ok(LinkerFlavor::Lld);
     }
     Err(format!(
-        "{}: Required linker 'lld' not found in PATH. Install LLVM lld and retry.",
+        "{}: No supported linker found in PATH. Install mold (preferred) or lld and retry.",
         "error".red().bold()
     ))
 }
@@ -3795,7 +3824,7 @@ fn write_link_response_file(path: &Path, objects: &[PathBuf]) -> Result<(), Stri
 
 /// Compile LLVM IR using clang
 fn compile_ir(ir_path: &Path, output_path: &Path, link: &LinkConfig<'_>) -> Result<(), String> {
-    require_lld_linker()?;
+    let linker = detect_linker_flavor()?;
     let opt_flag = resolve_clang_opt_flag(link.opt_level);
     let run_clang = |march_native: bool, mtune_native: bool| {
         let mut cmd = Command::new("clang");
@@ -3804,7 +3833,7 @@ fn compile_ir(ir_path: &Path, output_path: &Path, link: &LinkConfig<'_>) -> Resu
             .arg(output_path)
             .arg("-Wno-override-module")
             .arg(opt_flag)
-            .arg("-fuse-ld=lld");
+            .arg(format!("-fuse-ld={}", linker.clang_fuse_ld()));
 
         match link.output_kind {
             OutputKind::Bin => {}
@@ -3925,7 +3954,7 @@ fn link_objects(
     output_path: &Path,
     link: &LinkConfig<'_>,
 ) -> Result<(), String> {
-    require_lld_linker()?;
+    let linker = detect_linker_flavor()?;
     if objects.is_empty() {
         return Err(format!(
             "{}: No object files generated for project build.",
@@ -3964,7 +3993,7 @@ fn link_objects(
                 .arg("-o")
                 .arg(output_path)
                 .arg(opt_flag)
-                .arg("-fuse-ld=lld");
+                .arg(format!("-fuse-ld={}", linker.clang_fuse_ld()));
 
             if link.output_kind == OutputKind::Shared {
                 cmd.arg("-shared");

@@ -10,15 +10,10 @@ runs:
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
         sudo ./llvm.sh 21 all
-        sudo apt-get install -y llvm-21-dev libpolly-21-dev lld-21
-        if [ -x /usr/bin/ld.lld-21 ]; then
-          sudo ln -sf /usr/bin/ld.lld-21 /usr/local/bin/ld.lld
-        fi
-        if [ -x /usr/bin/lld-21 ]; then
-          sudo ln -sf /usr/bin/lld-21 /usr/local/bin/lld
-        fi
-        command -v ld.lld
+        sudo apt-get install -y llvm-21-dev libpolly-21-dev mold
+        command -v mold
         echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> "$GITHUB_ENV"
+
     - name: Install LLVM (macOS)
       if: runner.os == 'macOS'
       shell: bash
@@ -42,54 +37,25 @@ runs:
         echo "${LLD_BIN}" >> "$GITHUB_PATH"
         echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
         command -v ld.lld
+
     - name: Install LLVM (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
         choco install llvm --version=21.1.7 -y --no-progress
         $llvmPrefix = $null
-        $llvmConfig = $null
-        $llvmVersion = "21.1.7"
         $prefixCandidates = @(
           "C:\Program Files\LLVM",
           "$env:ChocolateyInstall\lib\llvm\tools\llvm"
         ) | Where-Object { $_ -and (Test-Path $_) }
 
         foreach ($prefix in $prefixCandidates) {
-          $candidateConfig = Join-Path $prefix "bin\llvm-config.exe"
-          if (Test-Path $candidateConfig) {
-            $llvmPrefix = $prefix
-            $llvmConfig = $candidateConfig
-            break
-          }
-        }
-
-        if (-not $llvmPrefix) {
-          foreach ($prefix in $prefixCandidates) {
-            $candidateClang = Join-Path $prefix "bin\clang.exe"
-            if (Test-Path $candidateClang) {
-              $version = (& $candidateClang --version 2>$null | Select-Object -First 1)
-              if ($version -match 'clang version 21\.') {
-                $llvmPrefix = $prefix
-                break
-              }
-            }
-          }
-        }
-
-        if (-not $llvmPrefix) {
-          $chocoRoot = Join-Path $env:ChocolateyInstall "lib"
-          if (Test-Path $chocoRoot) {
-            $found = Get-ChildItem -Path $chocoRoot -Filter llvm-config.exe -Recurse -File -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match '\\llvm(\\|-)'} |
-              Select-Object -ExpandProperty FullName
-            foreach ($candidate in $found) {
-              $version = (& $candidate --version 2>$null | Select-Object -First 1)
-              if ($version -match 'version 21\.') {
-                $llvmPrefix = Split-Path -Parent (Split-Path -Parent $candidate)
-                $llvmConfig = $candidate
-                break
-              }
+          $clangPath = Join-Path $prefix "bin\clang.exe"
+          if (Test-Path $clangPath) {
+            $version = (& $clangPath --version 2>$null | Select-Object -First 1)
+            if ($version -match 'clang version 21\.') {
+              $llvmPrefix = $prefix
+              break
             }
           }
         }
@@ -116,174 +82,18 @@ runs:
 
         $llvmBin = Join-Path $llvmPrefix "bin"
         $llvmLib = Join-Path $llvmPrefix "lib"
-        $clangPath = Join-Path $llvmBin "clang.exe"
-        if (-not (Test-Path $clangPath)) {
+        $llvmInclude = Join-Path $llvmPrefix "include"
+
+        if (-not (Test-Path (Join-Path $llvmBin "clang.exe"))) {
           throw "clang.exe not found in LLVM bin directory: $llvmBin"
         }
         if (-not (Test-Path $llvmLib)) {
           throw "LLVM lib directory not found: $llvmLib"
         }
-
-        if (-not $llvmConfig) {
-          $llvmConfig = Join-Path $llvmBin "llvm-config.exe"
+        if (-not (Test-Path $llvmInclude)) {
+          throw "LLVM include directory not found: $llvmInclude"
         }
 
-        $realLlvmPrefix = $llvmPrefix
-
-        if (-not (Test-Path $llvmConfig)) {
-          $clangVersionLine = (& $clangPath --version 2>$null | Select-Object -First 1)
-          if ($clangVersionLine -notmatch 'clang version ([0-9]+\.[0-9]+\.[0-9]+)') {
-            throw "Unable to derive LLVM version from clang.exe at $clangPath"
-          }
-          $llvmVersion = $Matches[1]
-          $shimRoot = Join-Path $env:RUNNER_TEMP "llvm-shim"
-          $shimBin = Join-Path $shimRoot "bin"
-          $shimInclude = Join-Path $shimRoot "include"
-          if (Test-Path $shimRoot) {
-            Remove-Item -Recurse -Force $shimRoot
-          }
-          New-Item -ItemType Directory -Force -Path $shimBin | Out-Null
-          Copy-Item -Recurse -Force (Join-Path $realLlvmPrefix "include") $shimInclude
-          if (-not (Test-Path (Join-Path $shimInclude "llvm-c\\Target.h"))) {
-            throw "Failed to prepare llvm-shim include copy"
-          }
-          $shimSource = Join-Path $env:RUNNER_TEMP "llvm-config-shim.c"
-          $shimCode = @(
-            '#include <stdio.h>',
-            '#include <stdlib.h>',
-            '#include <string.h>',
-            '#include <windows.h>',
-            '',
-            'static void get_prefix(char* out, size_t size)',
-            '{',
-            '    char path[MAX_PATH];',
-            '    char* slash;',
-            '',
-            '    if (GetModuleFileNameA(NULL, path, MAX_PATH) == 0) {',
-            '        out[0] = ''\0'';',
-            '        return;',
-            '    }',
-            '    slash = strrchr(path, ''\\'');',
-            '    if (slash) {',
-            '        *slash = ''\0'';',
-            '        slash = strrchr(path, ''\\'');',
-            '        if (slash) {',
-            '            *slash = ''\0'';',
-            '        }',
-            '    }',
-            '    snprintf(out, size, "%s", path);',
-            '}',
-            '',
-            'static const char* get_real_prefix(void)',
-            '{',
-            '    const char* from_env = getenv("APEX_LLVM_REAL_PREFIX");',
-            '    if (from_env != NULL && from_env[0] != ''\0'') {',
-            '        return from_env;',
-            '    }',
-            '    return NULL;',
-            '}',
-            '',
-            'static void print_libnames(const char* prefix)',
-            '{',
-            '    char pattern[MAX_PATH];',
-            '    WIN32_FIND_DATAA find_data;',
-            '    HANDLE handle;',
-            '    int first = 1;',
-            '',
-            '    snprintf(pattern, sizeof(pattern), "%s\\lib\\*.lib", prefix);',
-            '    handle = FindFirstFileA(pattern, &find_data);',
-            '    if (handle == INVALID_HANDLE_VALUE) {',
-            '        return;',
-            '    }',
-            '',
-            '    do {',
-            '        const char* name = find_data.cFileName;',
-            '        if (strncmp(name, "LLVM", 4) == 0 || strcmp(name, "LTO.lib") == 0 || strcmp(name, "Remarks.lib") == 0 || strncmp(name, "Polly", 5) == 0) {',
-            '            if (!first) {',
-            '                printf(" ");',
-            '            }',
-            '            printf("%s", name);',
-            '            first = 0;',
-            '        }',
-            '    } while (FindNextFileA(handle, &find_data));',
-            '',
-            '    FindClose(handle);',
-            '}',
-            '',
-            'int main(int argc, char** argv)',
-            '    {',
-            '        int i;',
-            '        char prefix[MAX_PATH];',
-            '        const char* real_prefix;',
-            '        const char* command = NULL;',
-            '',
-            '        get_prefix(prefix, sizeof(prefix));',
-            '        if (prefix[0] == ''\0'') {',
-            '            return 1;',
-            '        }',
-            '        real_prefix = get_real_prefix();',
-            '        if (real_prefix == NULL) {',
-            '            return 1;',
-            '        }',
-            '',
-            '        for (i = 1; i < argc; ++i) {',
-            '            if (strcmp(argv[i], "--link-static") == 0 || strcmp(argv[i], "--link-shared") == 0) {',
-            '                continue;',
-            '            }',
-            '            command = argv[i];',
-            '            break;',
-            '        }',
-            '',
-            '        if (command == NULL) {',
-            '            return 1;',
-            '        }',
-            '',
-            '        if (strcmp(command, "--version") == 0) {',
-            '            const char* version = getenv("APEX_LLVM_SHIM_VERSION");',
-            '            if (version == NULL || version[0] == ''\0'') {',
-            '                version = "21.1.7";',
-            '            }',
-            '            printf("%s\n", version);',
-            '            return 0;',
-            '        }',
-            '        if (strcmp(command, "--libdir") == 0) {',
-            '            printf("%s\\lib\n", real_prefix);',
-            '            return 0;',
-            '        }',
-            '        if (strcmp(command, "--cflags") == 0) {',
-            '            printf("-I%s\\include\n", prefix);',
-            '            return 0;',
-            '        }',
-            '        if (strcmp(command, "--build-mode") == 0) {',
-            '            printf("Release\n");',
-            '            return 0;',
-            '        }',
-            '        if (strcmp(command, "--libnames") == 0) {',
-            '            print_libnames(real_prefix);',
-            '            printf("\n");',
-            '            return 0;',
-            '        }',
-            '        if (strcmp(command, "--system-libs") == 0) {',
-            '            printf("\n");',
-            '            return 0;',
-            '        }',
-            '',
-            '        return 1;',
-            '}'
-          ) -join "`n"
-          $shimCode | Set-Content -Path $shimSource -Encoding UTF8
-
-          & $clangPath -O2 -o (Join-Path $shimBin "llvm-config.exe") $shimSource
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to compile llvm-config shim with clang.exe"
-          }
-
-          $llvmConfig = Join-Path $shimBin "llvm-config.exe"
-          $llvmPrefix = $shimRoot
-        }
-
-        echo "APEX_LLVM_REAL_PREFIX=$realLlvmPrefix" >> $env:GITHUB_ENV
-        echo "APEX_LLVM_SHIM_VERSION=$llvmVersion" >> $env:GITHUB_ENV
         echo "LLVM_SYS_211_PREFIX=$llvmPrefix" >> $env:GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=$llvmConfig" >> $env:GITHUB_ENV
         echo "$llvmBin" >> $env:GITHUB_PATH
+        Get-Command clang | Out-Null
