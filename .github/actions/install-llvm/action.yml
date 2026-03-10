@@ -42,7 +42,7 @@ runs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        $llvmVersion = "21.1.7"
+        $llvmVersion = "21.1.8"
         $llvmPrefix = "C:\apex-toolchains\llvm-$llvmVersion"
         $llvmBin = Join-Path $llvmPrefix "bin"
         $llvmLib = Join-Path $llvmPrefix "lib"
@@ -54,19 +54,25 @@ runs:
         $llvmConfig = Join-Path $shimBin "llvm-config.exe"
 
         if (-not (Test-Path $clangExe)) {
-          $archiveName = "LLVM-$llvmVersion-win64.exe"
+          $archiveName = "clang+llvm-$llvmVersion-x86_64-pc-windows-msvc.tar.xz"
           $archiveUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmVersion/$archiveName"
           $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
+          $extractRoot = Join-Path $env:RUNNER_TEMP "llvm-extract"
           if (Test-Path $llvmPrefix) {
             Remove-Item -Recurse -Force $llvmPrefix
           }
-          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $llvmPrefix) | Out-Null
-          Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath
-          $installArg = "/S /D=$llvmPrefix"
-          $process = Start-Process -FilePath $archivePath -ArgumentList $installArg -Wait -PassThru
-          if ($process.ExitCode -ne 0) {
-            throw "LLVM installer failed with exit code $($process.ExitCode)"
+          if (Test-Path $extractRoot) {
+            Remove-Item -Recurse -Force $extractRoot
           }
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $llvmPrefix) | Out-Null
+          New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
+          Invoke-WebRequest -Uri $archiveUrl -OutFile $archivePath
+          tar -xf $archivePath -C $extractRoot
+          $extractedDir = Get-ChildItem -Path $extractRoot -Directory | Select-Object -First 1
+          if (-not $extractedDir) {
+            throw "Failed to extract LLVM archive: $archiveName"
+          }
+          Move-Item -Path $extractedDir.FullName -Destination $llvmPrefix
         }
 
         if (-not (Test-Path $clangExe)) {
@@ -132,7 +138,7 @@ runs:
           '        return 1;',
           '    }',
           '    if (version == NULL || version[0] == ''\0'') {',
-          '        version = "21.1.7";',
+          '        version = "21.1.8";',
           '    }',
           '',
           '    for (i = 1; i < argc; ++i) {',
