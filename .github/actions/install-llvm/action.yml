@@ -48,6 +48,7 @@ runs:
         $llvmLib = Join-Path $llvmPrefix "lib"
         $llvmInclude = Join-Path $llvmPrefix "include"
         $clangExe = Join-Path $llvmBin "clang.exe"
+        $lldLinkExe = Join-Path $llvmBin "lld-link.exe"
 
         if (-not (Test-Path $clangExe)) {
           $archiveName = "LLVM-$llvmVersion-win64.exe"
@@ -68,6 +69,9 @@ runs:
         if (-not (Test-Path $clangExe)) {
           throw "clang.exe not found in LLVM bin directory: $llvmBin"
         }
+        if (-not (Test-Path $lldLinkExe)) {
+          throw "lld-link.exe not found in LLVM bin directory: $llvmBin"
+        }
         if (-not (Test-Path $llvmLib)) {
           throw "LLVM lib directory not found: $llvmLib"
         }
@@ -77,5 +81,3 @@ runs:
 
         echo "LLVM_SYS_211_PREFIX=$llvmPrefix" >> $env:GITHUB_ENV
         echo "$llvmBin" >> $env:GITHUB_PATH
-        Get-Command lld-link | Out-Null
-        Get-Command clang | Out-Null
