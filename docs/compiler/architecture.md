@@ -162,6 +162,14 @@ This document describes the internal architecture of the Apex compiler.
 - **Declaration inheritance parser hardening**:
   - Empty class `implements` lists are rejected directly.
   - Empty interface `extends` lists are rejected directly.
+- **Else-if parser/formatter hardening**:
+  - Statement-form and expression-form `else if` chains are now accepted by `src/parser.rs`.
+  - `src/formatter.rs` preserves nested `else if` chains instead of rewriting them as `else { if ... }`.
+- **Declaration-header parser hardening**:
+  - Visibility modifiers on `module` declarations now produce a direct parser error instead of falling through to a token mismatch.
+  - `class ... extends ...` now rejects comma-suffixed multi-base syntax with a direct single-base-class diagnostic.
+- **Match parser hardening**:
+  - Empty `match` statement and expression bodies are now rejected directly in `src/parser.rs` instead of surviving into later compiler stages.
 
 ## Directory Structure
 

@@ -5094,15 +5094,16 @@ mod tests {
                 return None;
             }
         "#;
-        let errors = check_source(src).expect_err("empty match statement should fail");
-        let joined = errors
-            .iter()
-            .map(|e| e.message.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let tokens = tokenize(src).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let err = parser
+            .parse_program()
+            .expect_err("empty match statement should now fail in parser");
         assert!(
-            joined.contains("Non-exhaustive match statement"),
-            "{joined}"
+            err.message
+                .contains("match statements must contain at least one arm"),
+            "{}",
+            err.message
         );
     }
 
@@ -5137,15 +5138,16 @@ mod tests {
                 return None;
             }
         "#;
-        let errors = check_source(src).expect_err("empty match expression should fail");
-        let joined = errors
-            .iter()
-            .map(|e| e.message.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
+        let tokens = tokenize(src).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let err = parser
+            .parse_program()
+            .expect_err("empty match expression should now fail in parser");
         assert!(
-            joined.contains("Non-exhaustive match expression"),
-            "{joined}"
+            err.message
+                .contains("match expressions must contain at least one arm"),
+            "{}",
+            err.message
         );
     }
 

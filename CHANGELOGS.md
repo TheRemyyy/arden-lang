@@ -102,6 +102,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Tightened parser handling for empty declaration inheritance lists:
   - empty class `implements` lists like `class C implements {}` are now rejected directly
   - empty interface `extends` lists like `interface C extends {}` are now rejected directly
+- Fixed parser/formatter handling for `else if` chains:
+  - statement-form `if (...) { ... } else if (...) { ... }` now parses correctly instead of rejecting a documented control-flow form
+  - expression-form `if (...) { ... } else if (...) { ... } else { ... }` now parses as nested `Expr::IfExpr` branches
+  - `apex fmt` now preserves nested `else if` chains instead of degrading them into `else { if ... }`
+- Tightened declaration-header parser diagnostics:
+  - visibility modifiers on `module` declarations are now rejected directly instead of falling through to a confusing token error
+  - `class Child extends Base,` now fails with a direct single-base-class parser diagnostic
+- Tightened `match` parser validation:
+  - empty `match` statements are now rejected directly
+  - empty `match` expressions are now rejected directly before later semantic/codegen stages
 
 ### ⚡ Changed
 

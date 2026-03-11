@@ -362,7 +362,12 @@ impl<'src> Parser<'src> {
                     Some(Token::Class) => Decl::Class(self.parse_class(attributes)?),
                     Some(Token::Enum) => Decl::Enum(self.parse_enum(attributes)?),
                     Some(Token::Interface) => Decl::Interface(self.parse_interface(attributes)?),
-                    Some(Token::Module) => Decl::Module(self.parse_module(attributes)?),
+                    Some(Token::Module) => {
+                        return Err(ParseError::new(
+                            "Visibility modifiers are not supported on modules",
+                            self.current_span(),
+                        ));
+                    }
                     _ => {
                         return Err(ParseError::new(
                             format!(
@@ -748,7 +753,14 @@ impl<'src> Parser<'src> {
         // Parse extends clause
         let extends = if self.check(&Token::Extends) {
             self.advance();
-            Some(self.parse_ident()?)
+            let parent = self.parse_ident()?;
+            if self.check(&Token::Comma) {
+                return Err(ParseError::new(
+                    "Class extends clause accepts exactly one base class",
+                    self.current_span(),
+                ));
+            }
+            Some(parent)
         } else {
             None
         };
@@ -1474,10 +1486,20 @@ impl<'src> Parser<'src> {
 
         let else_block = if self.check(&Token::Else) {
             self.advance();
-            self.eat(&Token::LBrace)?;
-            let block = self.parse_block()?;
-            self.eat(&Token::RBrace)?;
-            Some(block)
+            if self.check(&Token::If) {
+                let nested_if_start = self.current_span().start;
+                let nested_if = self.parse_if()?;
+                let nested_if_end = self.current_span().start;
+                Some(vec![Spanned::new(
+                    nested_if,
+                    nested_if_start..nested_if_end,
+                )])
+            } else {
+                self.eat(&Token::LBrace)?;
+                let block = self.parse_block()?;
+                self.eat(&Token::RBrace)?;
+                Some(block)
+            }
         } else {
             None
         };
@@ -1501,10 +1523,18 @@ impl<'src> Parser<'src> {
 
         let else_branch = if self.check(&Token::Else) {
             self.advance();
-            self.eat(&Token::LBrace)?;
-            let block = self.parse_block()?;
-            self.eat(&Token::RBrace)?;
-            Some(block)
+            if self.check(&Token::If) {
+                let nested_if = self.parse_if_expr()?;
+                Some(vec![Spanned::new(
+                    Stmt::Expr(nested_if.clone()),
+                    nested_if.span,
+                )])
+            } else {
+                self.eat(&Token::LBrace)?;
+                let block = self.parse_block()?;
+                self.eat(&Token::RBrace)?;
+                Some(block)
+            }
         } else {
             None
         };
@@ -1583,6 +1613,12 @@ impl<'src> Parser<'src> {
         let expr = self.parse_expr()?;
         self.eat(&Token::RParen)?;
         self.eat(&Token::LBrace)?;
+        if self.check(&Token::RBrace) {
+            return Err(ParseError::new(
+                "match statements must contain at least one arm",
+                self.current_span(),
+            ));
+        }
 
         let mut arms = Vec::new();
         while !self.check(&Token::RBrace) && !self.is_at_end() {
@@ -2310,6 +2346,12 @@ impl<'src> Parser<'src> {
                 let match_expr = self.parse_expr()?;
                 self.eat(&Token::RParen)?;
                 self.eat(&Token::LBrace)?;
+                if self.check(&Token::RBrace) {
+                    return Err(ParseError::new(
+                        "match expressions must contain at least one arm",
+                        self.current_span(),
+                    ));
+                }
 
                 let mut arms = Vec::new();
                 while !self.check(&Token::RBrace) && !self.is_at_end() {
@@ -2916,6 +2958,62 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_if_statement_with_else_if() {
+        let source = r#"
+            function main(): None {
+                if (true) {
+                    return None;
+                } else if (false) {
+                    return None;
+                } else {
+                    return None;
+                }
+            }
+        "#;
+        let program = parse_source(source).expect("else-if statement should parse");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::If { else_block, .. } = &func.body[0].node else {
+            panic!("Expected if statement");
+        };
+        let else_block = else_block
+            .as_ref()
+            .expect("else-if should build else block");
+        assert!(matches!(else_block[0].node, Stmt::If { .. }));
+    }
+
+    #[test]
+    fn test_parse_if_expression_with_else_if() {
+        let source = r#"
+            function main(): None {
+                x: Integer = if (true) { 1; } else if (false) { 2; } else { 3; };
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("else-if expression should parse");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Let { value, .. } = &func.body[0].node else {
+            panic!("Expected let statement");
+        };
+        let Expr::IfExpr { else_branch, .. } = &value.node else {
+            panic!("Expected if expression");
+        };
+        let else_branch = else_branch
+            .as_ref()
+            .expect("else-if should build else branch");
+        assert!(matches!(
+            else_branch[0].node,
+            Stmt::Expr(Spanned {
+                node: Expr::IfExpr { .. },
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn test_parse_match_statement_with_trailing_semicolon() {
         let source = r#"
             function main(): None {
@@ -2931,6 +3029,42 @@ mod tests {
             panic!("Expected function declaration");
         };
         assert!(matches!(func.body[0].node, Stmt::Match { .. }));
+    }
+
+    #[test]
+    fn test_reject_empty_match_statement() {
+        let source = r#"
+            function main(): None {
+                match (1) {
+                }
+                return None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("empty match statement should fail");
+        assert!(
+            err.message
+                .contains("match statements must contain at least one arm"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_empty_match_expression() {
+        let source = r#"
+            function main(): None {
+                x: Integer = match (1) {
+                };
+                return None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("empty match expression should fail");
+        assert!(
+            err.message
+                .contains("match expressions must contain at least one arm"),
+            "{}",
+            err.message
+        );
     }
 
     #[test]
@@ -3284,6 +3418,36 @@ mod tests {
         assert!(
             err.message
                 .contains("interface extends list cannot be empty"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_visibility_modifier_on_module() {
+        let source = r#"
+            public module Tools {
+            }
+        "#;
+        let err = parse_source(source).expect_err("module visibility modifier should fail");
+        assert!(
+            err.message
+                .contains("Visibility modifiers are not supported on modules"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_class_extends_trailing_comma() {
+        let source = r#"
+            class Child extends Base, {
+            }
+        "#;
+        let err = parse_source(source).expect_err("class extends trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Class extends clause accepts exactly one base class"),
             "{}",
             err.message
         );

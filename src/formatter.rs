@@ -379,11 +379,7 @@ impl Formatter {
                 self.format_block_contents(then_block);
                 self.indent -= 1;
                 if let Some(else_block) = else_block {
-                    self.push_line("} else {");
-                    self.indent += 1;
-                    self.format_block_contents(else_block);
-                    self.indent -= 1;
-                    self.push_line("}");
+                    self.format_else_tail(else_block);
                 } else {
                     self.push_line("}");
                 }
@@ -586,7 +582,19 @@ impl Formatter {
                 );
                 if let Some(else_branch) = else_branch {
                     formatted.push_str(" else ");
-                    formatted.push_str(&self.format_inline_block(else_branch));
+                    if let [nested] = else_branch.as_slice() {
+                        if let Stmt::Expr(expr) = &nested.node {
+                            if let Expr::IfExpr { .. } = &expr.node {
+                                formatted.push_str(&self.format_expr(&expr.node));
+                            } else {
+                                formatted.push_str(&self.format_inline_block(else_branch));
+                            }
+                        } else {
+                            formatted.push_str(&self.format_inline_block(else_branch));
+                        }
+                    } else {
+                        formatted.push_str(&self.format_inline_block(else_branch));
+                    }
                 }
                 formatted
             }
@@ -600,6 +608,37 @@ impl Formatter {
             self.format_pattern(&arm.pattern),
             self.format_inline_block(&arm.body)
         )
+    }
+
+    fn format_else_tail(&mut self, else_block: &Block) {
+        if let [nested] = else_block.as_slice() {
+            if let Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } = &nested.node
+            {
+                self.push_line(&format!(
+                    "}} else if ({}) {{",
+                    self.format_expr(&condition.node)
+                ));
+                self.indent += 1;
+                self.format_block_contents(then_block);
+                self.indent -= 1;
+                if let Some(else_block) = else_block {
+                    self.format_else_tail(else_block);
+                } else {
+                    self.push_line("}");
+                }
+                return;
+            }
+        }
+
+        self.push_line("} else {");
+        self.indent += 1;
+        self.format_block_contents(else_block);
+        self.indent -= 1;
+        self.push_line("}");
     }
 
     fn format_inline_block(&self, block: &Block) -> String {
@@ -1046,5 +1085,28 @@ function main(): None { return None; }
 "#;
         let formatted = format_source(source).expect("format succeeds");
         assert!(formatted.starts_with("#!/usr/bin/env apex\n"));
+    }
+
+    #[test]
+    fn formats_else_if_statement_chain() {
+        let source = r#"
+function main(): None {
+    if (true) { return None; } else { if (false) { return None; } else { return None; } }
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("} else if (false) {"), "{formatted}");
+    }
+
+    #[test]
+    fn formats_else_if_expression_chain() {
+        let source = r#"
+function main(): None {
+    x: Integer = if (true) { 1; } else if (false) { 2; } else { 3; };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("else if (false)"), "{formatted}");
     }
 }
