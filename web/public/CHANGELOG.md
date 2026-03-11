@@ -112,6 +112,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Tightened `match` parser validation:
   - empty `match` statements are now rejected directly
   - empty `match` expressions are now rejected directly before later semantic/codegen stages
+- Tightened parser diagnostics for malformed declaration/path headers:
+  - leading-dot `import` and `package` paths are now rejected directly
+  - empty class `extends` clauses are now rejected directly
+  - visibility modifiers on `import` and `package` declarations now report dedicated parser errors
 
 ### ⚡ Changed
 

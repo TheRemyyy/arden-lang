@@ -307,6 +307,12 @@ impl<'src> Parser<'src> {
         // Parse optional package declaration at start
         if self.check(&Token::Package) {
             self.advance();
+            if self.check(&Token::Dot) || self.check(&Token::DotDot) {
+                return Err(ParseError::new(
+                    "Package path cannot start with '.'",
+                    self.current_span(),
+                ));
+            }
 
             // Parse qualified package name
             let mut pkg_parts = vec![self.parse_ident()?];
@@ -365,6 +371,18 @@ impl<'src> Parser<'src> {
                     Some(Token::Module) => {
                         return Err(ParseError::new(
                             "Visibility modifiers are not supported on modules",
+                            self.current_span(),
+                        ));
+                    }
+                    Some(Token::Import) => {
+                        return Err(ParseError::new(
+                            "Visibility modifiers are not supported on imports",
+                            self.current_span(),
+                        ));
+                    }
+                    Some(Token::Package) => {
+                        return Err(ParseError::new(
+                            "Visibility modifiers are not supported on package declarations",
                             self.current_span(),
                         ));
                     }
@@ -753,6 +771,12 @@ impl<'src> Parser<'src> {
         // Parse extends clause
         let extends = if self.check(&Token::Extends) {
             self.advance();
+            if self.check(&Token::LBrace) {
+                return Err(ParseError::new(
+                    "Class extends clause cannot be empty",
+                    self.current_span(),
+                ));
+            }
             let parent = self.parse_ident()?;
             if self.check(&Token::Comma) {
                 return Err(ParseError::new(
@@ -1088,6 +1112,12 @@ impl<'src> Parser<'src> {
 
     fn parse_import(&mut self) -> ParseResult<ImportDecl> {
         self.eat(&Token::Import)?;
+        if self.check(&Token::Dot) || self.check(&Token::DotDot) {
+            return Err(ParseError::new(
+                "Import path cannot start with '.'",
+                self.current_span(),
+            ));
+        }
 
         // Parse qualified path: utils.math.* or utils.math.factorial
         let mut path_parts = vec![self.parse_ident()?];
@@ -2760,6 +2790,20 @@ mod tests {
     }
 
     #[test]
+    fn test_reject_import_with_leading_dot() {
+        let source = r#"
+            import .std.math;
+            function main(): None { return None; }
+        "#;
+        let err = parse_source(source).expect_err("leading-dot import should fail");
+        assert!(
+            err.message.contains("Import path cannot start with '.'"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
     fn test_reject_package_with_empty_path_segment() {
         let source = r#"
             package app..core;
@@ -2769,6 +2813,20 @@ mod tests {
         assert!(
             err.message
                 .contains("Package path cannot contain an empty segment"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_package_with_leading_dot() {
+        let source = r#"
+            package .app.core;
+            function main(): None { return None; }
+        "#;
+        let err = parse_source(source).expect_err("leading-dot package should fail");
+        assert!(
+            err.message.contains("Package path cannot start with '.'"),
             "{}",
             err.message
         );
@@ -3392,6 +3450,20 @@ mod tests {
     }
 
     #[test]
+    fn test_reject_empty_class_extends_clause() {
+        let source = r#"
+            class Child extends {
+            }
+        "#;
+        let err = parse_source(source).expect_err("empty class extends should fail");
+        assert!(
+            err.message.contains("Class extends clause cannot be empty"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
     fn test_reject_trailing_comma_in_interface_extends_list() {
         let source = r#"
             interface Child extends Parent, {
@@ -3433,6 +3505,36 @@ mod tests {
         assert!(
             err.message
                 .contains("Visibility modifiers are not supported on modules"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_visibility_modifier_on_import() {
+        let source = r#"
+            public import std.io.*;
+            function main(): None { return None; }
+        "#;
+        let err = parse_source(source).expect_err("import visibility modifier should fail");
+        assert!(
+            err.message
+                .contains("Visibility modifiers are not supported on imports"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_visibility_modifier_on_package() {
+        let source = r#"
+            public package app;
+            function main(): None { return None; }
+        "#;
+        let err = parse_source(source).expect_err("package visibility modifier should fail");
+        assert!(
+            err.message
+                .contains("Visibility modifiers are not supported on package declarations"),
             "{}",
             err.message
         );

@@ -170,6 +170,10 @@ This document describes the internal architecture of the Apex compiler.
   - `class ... extends ...` now rejects comma-suffixed multi-base syntax with a direct single-base-class diagnostic.
 - **Match parser hardening**:
   - Empty `match` statement and expression bodies are now rejected directly in `src/parser.rs` instead of surviving into later compiler stages.
+- **Declaration/path diagnostic hardening**:
+  - Leading-dot `import` and `package` paths are now rejected directly.
+  - Empty class `extends` clauses are now rejected directly.
+  - Visibility modifiers on `import` and `package` declarations now produce dedicated parser diagnostics.
 
 ## Directory Structure
 
