@@ -1660,8 +1660,21 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
             },
-            Expr::Field { object, .. } => {
-                let _obj_ty = self.infer_expr_type(&object.node, params);
+            Expr::Field { object, field } => {
+                let obj_ty = self.infer_expr_type(&object.node, params);
+                if let Some(class_name) = self.type_to_class_name(&obj_ty) {
+                    if let Some(class_info) = self.classes.get(&class_name) {
+                        if let Some(field_ty) = class_info.field_types.get(field) {
+                            return field_ty.clone();
+                        }
+                    }
+                    if let Some(method_name) = self.resolve_method_function_name(&class_name, field)
+                    {
+                        if let Some((_, ty)) = self.functions.get(&method_name) {
+                            return ty.clone();
+                        }
+                    }
+                }
                 Type::Integer
             }
             Expr::Lambda { params, body } => {

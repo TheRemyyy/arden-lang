@@ -38,6 +38,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed explicit generic method calls so `obj.id<Integer>(...)` now specializes into class-local method implementations during codegen instead of failing at runtime compilation.
 - Fixed generic class instance dispatch in codegen helpers so `Boxed<Integer>.get()` and generic field access resolve their base class correctly.
 - Fixed closure-valued callee codegen so lambda / other expression-valued call sites can be invoked directly instead of failing with `Invalid callee`.
+- Fixed function-valued class field calls so `obj.f(...)` is typechecked and lowered as a closure call instead of being misclassified as a method call.
+- Fixed higher-order generic methods returning closures so `obj.mk<Integer>(...)` can return and later invoke function values without method/field dispatch confusion.
+- Fixed nested function types inside generic wrappers so `List<(Integer) -> Integer>` and `Option<(Integer) -> Integer>` no longer fail as false type mismatches.
+- Fixed frontend support for `Option.some/none` and `Result.ok/error`, aligning typechecking with the existing backend/static-constructor lowering paths.
+- Fixed project-mode rewrite of bare function references used as values, so multi-file expressions like `return add1;` and `this.f = add1;` now mangle correctly.
+- Bumped rewrite cache schema to invalidate stale cached rewrites after function-reference rewrite changes.
 - Changed project codegen to precompute full transitive dependency closures once per build, probe object-cache hits in parallel, and build per-file codegen programs from an indexed rewritten-file map instead of rescanning every rewritten unit.
 - Reduced object-cache bookkeeping overhead by precomputing per-file object/meta cache paths once per build instead of rehashing them repeatedly during cache probes and object emission.
 - Changed semantic cache reuse from project-global all-or-nothing reuse to component-level reuse:

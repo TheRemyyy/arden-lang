@@ -455,7 +455,7 @@ fn save_semantic_cached_fingerprint(project_root: &Path, fingerprint: &str) -> R
     })
 }
 
-const PARSE_CACHE_SCHEMA: &str = "v5";
+const PARSE_CACHE_SCHEMA: &str = "v6";
 const DEPENDENCY_GRAPH_CACHE_SCHEMA: &str = "v2";
 const SEMANTIC_SUMMARY_CACHE_SCHEMA: &str = "v2";
 const TYPECHECK_SUMMARY_CACHE_SCHEMA: &str = "v2";
@@ -1284,7 +1284,7 @@ fn save_typecheck_summary_cache(
     write_cache_blob(&path, "typecheck summary cache", cache)
 }
 
-const REWRITE_CACHE_SCHEMA: &str = "v2";
+const REWRITE_CACHE_SCHEMA: &str = "v3";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RewrittenFileCacheEntry {
@@ -2986,7 +2986,9 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
     ) {
         match expr {
             Expr::Literal(_) | Expr::This => {}
-            Expr::Ident(_) => {}
+            Expr::Ident(name) => {
+                out.insert(name.clone());
+            }
             Expr::Binary { left, right, .. } => {
                 collect_expr_refs(&left.node, out, qualified_out);
                 collect_expr_refs(&right.node, out, qualified_out);
@@ -6306,6 +6308,34 @@ function main(): None {
     }
 
     #[test]
+    fn project_check_supports_cross_file_function_value_references() {
+        let temp_root = make_temp_project_root("function-value-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package app;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction main(): None { o: Option<(Integer) -> Integer> = Option.some(add1); r: Result<(Integer) -> Integer, String> = Result.ok(add1); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("project check should support function value refs");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn cli_check_command_succeeds_for_temp_project() {
         let temp_root = make_temp_project_root("cli-check");
         let src_dir = temp_root.join("src");
@@ -6425,6 +6455,58 @@ function main(): None {
         fs::write(&source_path, source).expect("write source");
         compile_source(source, &source_path, &output_path, true, true, None, None)
             .expect("lambda callee codegen should succeed");
+        assert!(output_path.with_extension("ll").exists());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_supports_function_valued_field_calls() {
+        let temp_root = make_temp_project_root("function-field-call-codegen");
+        let source_path = temp_root.join("function_field_call.apex");
+        let output_path = temp_root.join("function_field_call");
+        let source = r#"
+            class C {
+                f: (Integer) -> Integer;
+                constructor() { this.f = (n: Integer) => n + 1; }
+            }
+
+            function main(): None {
+                c: C = C();
+                x: Integer = c.f(2);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, true, true, None, None)
+            .expect("function-valued field calls should codegen");
+        assert!(output_path.with_extension("ll").exists());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_supports_generic_method_returning_lambda() {
+        let temp_root = make_temp_project_root("generic-method-lambda-codegen");
+        let source_path = temp_root.join("generic_method_lambda.apex");
+        let output_path = temp_root.join("generic_method_lambda");
+        let source = r#"
+            class C {
+                function mk<T>(x: T): () -> T { return () => x; }
+            }
+
+            function main(): None {
+                c: C = C();
+                f: () -> Integer = c.mk<Integer>(7);
+                x: Integer = f();
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, true, true, None, None)
+            .expect("generic method returning lambda should codegen");
         assert!(output_path.with_extension("ll").exists());
 
         let _ = fs::remove_dir_all(temp_root);

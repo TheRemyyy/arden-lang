@@ -184,6 +184,11 @@ This document describes the internal architecture of the Apex compiler.
   - `src/codegen/util.rs` now resolves `Type::Generic(name, ...)` back to the owning class for generic instance field/method dispatch.
 - **Closure callee codegen hardening**:
   - `src/codegen/core.rs` now allows non-identifier closure-valued expressions to go through the same indirect-call path as named function variables, so lambda callees compile instead of failing with `Invalid callee`.
+  - `src/typeck.rs` and `src/codegen/core.rs` now distinguish function-valued fields from methods, so `obj.f(...)` routes through closure-call checking/lowering instead of member-method dispatch.
+  - Higher-order generic methods that return closures now survive specialization and subsequent invocation without confusing generated method symbols for fields.
+  - `src/typeck.rs` now parses function-type strings nested inside generic wrappers during normalization/substitution, so wrapper types containing function values compare correctly.
+  - `src/typeck.rs` now recognizes `Option.some/none` and `Result.ok/error` as frontend static constructors instead of treating `Option`/`Result` as undefined variables.
+  - `src/project_rewrite.rs` now rewrites bare function identifiers used as values in project mode, and the rewrite cache schema was bumped so old pre-fix rewrites are dropped.
 
 ## Directory Structure
 

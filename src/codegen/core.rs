@@ -2097,7 +2097,11 @@ impl<'ctx> Codegen<'ctx> {
         name.to_string()
     }
 
-    fn resolve_method_function_name(&self, class_name: &str, method: &str) -> Option<String> {
+    pub(crate) fn resolve_method_function_name(
+        &self,
+        class_name: &str,
+        method: &str,
+    ) -> Option<String> {
         let mut current = class_name.to_string();
         let mut depth = 0usize;
         while depth < 64 {
@@ -5464,6 +5468,59 @@ impl<'ctx> Codegen<'ctx> {
 
         // Method call on object
         if let Expr::Field { object, field } = callee {
+            let field_ty = self
+                .infer_object_type(&object.node)
+                .and_then(|ty| self.type_to_class_name(&ty))
+                .and_then(|class_name| {
+                    self.classes
+                        .get(&class_name)
+                        .and_then(|class_info| class_info.field_types.get(field).cloned())
+                });
+            if let Some(Type::Function(param_types, ret_type)) = field_ty {
+                let closure_val = self.compile_expr(callee)?.into_struct_value();
+                let ptr = self
+                    .builder
+                    .build_extract_value(closure_val, 0, "fn_ptr")
+                    .unwrap()
+                    .into_pointer_value();
+                let env_ptr = self
+                    .builder
+                    .build_extract_value(closure_val, 1, "env_ptr")
+                    .unwrap();
+
+                let llvm_ret = self.llvm_type(&ret_type);
+                let mut llvm_params: Vec<BasicMetadataTypeEnum> =
+                    vec![self.context.ptr_type(AddressSpace::default()).into()];
+                for p in &param_types {
+                    llvm_params.push(self.llvm_type(p).into());
+                }
+
+                let fn_type = match llvm_ret {
+                    BasicTypeEnum::IntType(i) => i.fn_type(&llvm_params, false),
+                    BasicTypeEnum::FloatType(f) => f.fn_type(&llvm_params, false),
+                    BasicTypeEnum::PointerType(p) => p.fn_type(&llvm_params, false),
+                    BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
+                    _ => self.context.i8_type().fn_type(&llvm_params, false),
+                };
+
+                let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
+                for a in args {
+                    compiled_args.push(self.compile_expr(&a.node)?);
+                }
+
+                let args_meta: Vec<BasicMetadataValueEnum> =
+                    compiled_args.iter().map(|a| (*a).into()).collect();
+                let call = self
+                    .builder
+                    .build_indirect_call(fn_type, ptr, &args_meta, "call")
+                    .unwrap();
+
+                return Ok(match call.try_as_basic_value() {
+                    ValueKind::Basic(val) => val,
+                    ValueKind::Instruction(_) => self.context.i8_type().const_int(0, false).into(),
+                });
+            }
+
             // Check for File static methods
             if let Expr::Ident(name) = &object.node {
                 let resolved_name = self.resolve_module_alias(name);

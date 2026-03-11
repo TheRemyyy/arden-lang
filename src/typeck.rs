@@ -270,6 +270,34 @@ impl TypeChecker {
         None
     }
 
+    fn resolve_function_value_name<'a>(&'a self, name: &'a str) -> Option<&'a str> {
+        if self.functions.contains_key(name) {
+            return Some(name);
+        }
+
+        let suffix = if name.contains("__") {
+            name.rsplit("__").next().unwrap_or(name)
+        } else {
+            name
+        };
+
+        let mut matches = self
+            .functions
+            .keys()
+            .filter(|candidate| {
+                *candidate == suffix || candidate.ends_with(&format!("__{}", suffix))
+            })
+            .map(|candidate| candidate.as_str())
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        if matches.len() == 1 {
+            Some(matches[0])
+        } else {
+            None
+        }
+    }
+
     pub fn new(source: String) -> Self {
         let global_scope = Scope {
             variables: HashMap::new(),
@@ -2301,9 +2329,9 @@ impl TypeChecker {
             Expr::Ident(name) => {
                 if let Some(var) = self.lookup_variable(name) {
                     var.ty.clone()
-                } else if self.functions.contains_key(name) {
+                } else if let Some(function_name) = self.resolve_function_value_name(name) {
                     // Function reference
-                    let sig = &self.functions[name];
+                    let sig = &self.functions[function_name];
                     ResolvedType::Function(
                         sig.params.iter().map(|(_, t)| t.clone()).collect(),
                         Box::new(sig.return_type.clone()),
@@ -3077,6 +3105,71 @@ impl TypeChecker {
 
             // Special handling for static calls (e.g. File.read, Time.now)
             if let Expr::Ident(name) = &object.node {
+                match name.as_str() {
+                    "Option" => {
+                        if !type_args.is_empty() {
+                            self.error(
+                                "Option static methods do not accept explicit type arguments"
+                                    .to_string(),
+                                span.clone(),
+                            );
+                        }
+                        match field.as_str() {
+                            "some" => {
+                                self.check_arg_count("Option.some", args, 1, span.clone());
+                                let inner = if let Some(arg) = args.first() {
+                                    self.check_expr(&arg.node, arg.span.clone())
+                                } else {
+                                    ResolvedType::Unknown
+                                };
+                                return ResolvedType::Option(Box::new(inner));
+                            }
+                            "none" => {
+                                self.check_arg_count("Option.none", args, 0, span.clone());
+                                return ResolvedType::Option(Box::new(self.fresh_type_var()));
+                            }
+                            _ => {}
+                        }
+                    }
+                    "Result" => {
+                        if !type_args.is_empty() {
+                            self.error(
+                                "Result static methods do not accept explicit type arguments"
+                                    .to_string(),
+                                span.clone(),
+                            );
+                        }
+                        match field.as_str() {
+                            "ok" => {
+                                self.check_arg_count("Result.ok", args, 1, span.clone());
+                                let ok_ty = if let Some(arg) = args.first() {
+                                    self.check_expr(&arg.node, arg.span.clone())
+                                } else {
+                                    ResolvedType::Unknown
+                                };
+                                return ResolvedType::Result(
+                                    Box::new(ok_ty),
+                                    Box::new(self.fresh_type_var()),
+                                );
+                            }
+                            "error" => {
+                                self.check_arg_count("Result.error", args, 1, span.clone());
+                                let err_ty = if let Some(arg) = args.first() {
+                                    self.check_expr(&arg.node, arg.span.clone())
+                                } else {
+                                    ResolvedType::Unknown
+                                };
+                                return ResolvedType::Result(
+                                    Box::new(self.fresh_type_var()),
+                                    Box::new(err_ty),
+                                );
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+
                 if let Some(canonical) = self.resolve_stdlib_alias_call_name(name, field) {
                     if let Some(required) = Self::builtin_required_effect(&canonical) {
                         self.enforce_required_effect(required, span.clone(), &canonical);
@@ -3194,6 +3287,50 @@ impl TypeChecker {
             }
 
             let obj_type = self.check_expr(&object.node, object.span.clone());
+            if let ResolvedType::Class(name) = &obj_type {
+                let (base_name, class_substitutions) = self.instantiated_class_substitutions(name);
+                if let Some((owner, field_type, _, visibility)) =
+                    self.lookup_class_field(&base_name, field)
+                {
+                    self.check_member_visibility(&owner, visibility, "Field", field, span.clone());
+                    let field_type = Self::substitute_type_vars(&field_type, &class_substitutions);
+                    if let ResolvedType::Function(param_types, return_type) = field_type {
+                        if !type_args.is_empty() {
+                            self.error(
+                                format!(
+                                    "Function-valued field '{}.{}' does not accept explicit type arguments",
+                                    name, field
+                                ),
+                                span.clone(),
+                            );
+                        }
+                        if args.len() != param_types.len() {
+                            self.error(
+                                format!(
+                                    "Function field call expects {} arguments, got {}",
+                                    param_types.len(),
+                                    args.len()
+                                ),
+                                span.clone(),
+                            );
+                        } else {
+                            for (arg, param_type) in args.iter().zip(param_types.iter()) {
+                                let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                                if !self.types_compatible(param_type, &arg_type) {
+                                    self.error(
+                                        format!(
+                                            "Argument type mismatch: expected {}, got {}",
+                                            param_type, arg_type
+                                        ),
+                                        arg.span.clone(),
+                                    );
+                                }
+                            }
+                        }
+                        return *return_type;
+                    }
+                }
+            }
             return self.check_method_call(&obj_type, field, args, type_args, span);
         }
 
@@ -4396,12 +4533,18 @@ impl TypeChecker {
             (ResolvedType::Ref(e), ResolvedType::Ref(a)) => self.types_compatible(e, a),
             (ResolvedType::MutRef(e), ResolvedType::MutRef(a)) => self.types_compatible(e, a),
             (ResolvedType::Ptr(e), ResolvedType::Ptr(a)) => self.types_compatible(e, a),
+            (ResolvedType::Box(e), ResolvedType::Box(a)) => self.types_compatible(e, a),
+            (ResolvedType::Rc(e), ResolvedType::Rc(a)) => self.types_compatible(e, a),
+            (ResolvedType::Arc(e), ResolvedType::Arc(a)) => self.types_compatible(e, a),
             // Can use &mut T where &T is expected
             (ResolvedType::Ref(e), ResolvedType::MutRef(a)) => self.types_compatible(e, a),
             // List compatibility
             (ResolvedType::List(e), ResolvedType::List(a)) => self.types_compatible(e, a),
+            (ResolvedType::Set(e), ResolvedType::Set(a)) => self.types_compatible(e, a),
             // Option compatibility
             (ResolvedType::Option(e), ResolvedType::Option(a)) => self.types_compatible(e, a),
+            (ResolvedType::Task(e), ResolvedType::Task(a)) => self.types_compatible(e, a),
+            (ResolvedType::Range(e), ResolvedType::Range(a)) => self.types_compatible(e, a),
             // Result compatibility
             (ResolvedType::Result(e_ok, e_err), ResolvedType::Result(a_ok, a_err)) => {
                 self.types_compatible(e_ok, a_ok) && self.types_compatible(e_err, a_err)
@@ -4409,6 +4552,14 @@ impl TypeChecker {
             // Map compatibility
             (ResolvedType::Map(ek, ev), ResolvedType::Map(ak, av)) => {
                 self.types_compatible(ek, ak) && self.types_compatible(ev, av)
+            }
+            (ResolvedType::Function(e_params, e_ret), ResolvedType::Function(a_params, a_ret)) => {
+                e_params.len() == a_params.len()
+                    && e_params
+                        .iter()
+                        .zip(a_params.iter())
+                        .all(|(e, a)| self.types_compatible(e, a))
+                    && self.types_compatible(e_ret, a_ret)
             }
             _ => false,
         }
@@ -4478,6 +4629,12 @@ impl TypeChecker {
             "Char" => ResolvedType::Char,
             "None" => ResolvedType::None,
             _ => {
+                if let Some((params, ret)) = self.parse_function_type_string(s) {
+                    return ResolvedType::Function(
+                        params.iter().map(|p| self.parse_type_string(p)).collect(),
+                        Box::new(self.parse_type_string(&ret)),
+                    );
+                }
                 if let Some(open_bracket) = s.find('<') {
                     if s.ends_with('>') {
                         let base = &s[..open_bracket];
@@ -4531,6 +4688,84 @@ impl TypeChecker {
                 }
             }
         }
+    }
+
+    fn parse_function_type_string(&self, s: &str) -> Option<(Vec<String>, String)> {
+        if !s.starts_with('(') {
+            return None;
+        }
+
+        let mut paren_depth = 0usize;
+        let mut angle_depth = 0usize;
+        let mut close_idx = None;
+        for (idx, ch) in s.char_indices() {
+            match ch {
+                '(' => paren_depth += 1,
+                ')' => {
+                    paren_depth = paren_depth.saturating_sub(1);
+                    if paren_depth == 0 && angle_depth == 0 {
+                        close_idx = Some(idx);
+                        break;
+                    }
+                }
+                '<' => angle_depth += 1,
+                '>' => angle_depth = angle_depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+
+        let close_idx = close_idx?;
+        let rest = s[close_idx + 1..].trim();
+        let rest = rest.strip_prefix("->")?.trim();
+        let params_str = &s[1..close_idx];
+        let params = if params_str.trim().is_empty() {
+            Vec::new()
+        } else {
+            self.split_type_list(params_str)
+        };
+        Some((params, rest.to_string()))
+    }
+
+    fn split_type_list(&self, s: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut current = String::new();
+        let mut angle_depth = 0usize;
+        let mut paren_depth = 0usize;
+
+        for ch in s.chars() {
+            match ch {
+                ',' if angle_depth == 0 && paren_depth == 0 => {
+                    let trimmed = current.trim();
+                    if !trimmed.is_empty() {
+                        parts.push(trimmed.to_string());
+                    }
+                    current.clear();
+                }
+                '<' => {
+                    angle_depth += 1;
+                    current.push(ch);
+                }
+                '>' => {
+                    angle_depth = angle_depth.saturating_sub(1);
+                    current.push(ch);
+                }
+                '(' => {
+                    paren_depth += 1;
+                    current.push(ch);
+                }
+                ')' => {
+                    paren_depth = paren_depth.saturating_sub(1);
+                    current.push(ch);
+                }
+                _ => current.push(ch),
+            }
+        }
+
+        let trimmed = current.trim();
+        if !trimmed.is_empty() {
+            parts.push(trimmed.to_string());
+        }
+        parts
     }
 
     /// Split generic arguments by comma, respecting nested < >
@@ -5008,6 +5243,56 @@ mod tests {
             }
         "#;
         check_source(src).expect("explicit generic nested module dot call should typecheck");
+    }
+
+    #[test]
+    fn list_of_function_types_typechecks() {
+        let src = r#"
+            function main(): None {
+                fs: List<(Integer) -> Integer> = List<(Integer) -> Integer>();
+                return None;
+            }
+        "#;
+        check_source(src).expect("list of function types should typecheck");
+    }
+
+    #[test]
+    fn option_some_static_constructor_typechecks() {
+        let src = r#"
+            function main(): None {
+                maybe: Option<Integer> = Option.some(1);
+                return None;
+            }
+        "#;
+        check_source(src).expect("Option.some should typecheck");
+    }
+
+    #[test]
+    fn option_of_function_type_typechecks() {
+        let src = r#"
+            function add1(x: Integer): Integer { return x + 1; }
+            function main(): None {
+                maybe: Option<(Integer) -> Integer> = Option.some(add1);
+                return None;
+            }
+        "#;
+        check_source(src).expect("Option of function type should typecheck");
+    }
+
+    #[test]
+    fn function_valued_field_call_typechecks() {
+        let src = r#"
+            class C {
+                f: (Integer) -> Integer;
+                constructor() { this.f = (n: Integer) => n + 1; }
+            }
+            function main(): None {
+                c: C = C();
+                x: Integer = c.f(2);
+                return None;
+            }
+        "#;
+        check_source(src).expect("function-valued field calls should typecheck");
     }
 
     #[test]

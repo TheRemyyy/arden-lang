@@ -1496,6 +1496,30 @@ fn rewrite_expr_calls_for_project(
                 body: Box::new(ast::Spanned::new(rewritten_body, body.span.clone())),
             }
         }
+        Expr::Ident(name) => {
+            if is_shadowed(name, scopes) {
+                Expr::Ident(name.clone())
+            } else if local_functions.contains(name) {
+                Expr::Ident(mangle_project_symbol(
+                    current_namespace,
+                    entry_namespace,
+                    name,
+                ))
+            } else if let Some((ns, symbol_name)) = imported_map.get(name) {
+                if stdlib_registry()
+                    .get_namespace(symbol_name)
+                    .is_some_and(|owner| owner == ns)
+                {
+                    Expr::Ident(symbol_name.clone())
+                } else {
+                    Expr::Ident(mangle_project_symbol(ns, entry_namespace, symbol_name))
+                }
+            } else if let Some(ns) = global_function_map.get(name) {
+                Expr::Ident(mangle_project_symbol(ns, entry_namespace, name))
+            } else {
+                Expr::Ident(name.clone())
+            }
+        }
         _ => expr.clone(),
     }
 }
@@ -2295,5 +2319,89 @@ mod tests {
         };
         assert_eq!(name, "Math");
         assert_eq!(field, "abs");
+    }
+
+    #[test]
+    fn rewrites_function_value_identifiers_outside_call_positions() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Function(ast::FunctionDecl {
+                    name: "add1".to_string(),
+                    generic_params: vec![],
+                    params: vec![ast::Parameter {
+                        name: "x".to_string(),
+                        ty: ast::Type::Integer,
+                        mutable: false,
+                        mode: ast::ParamMode::Owned,
+                    }],
+                    is_variadic: false,
+                    extern_abi: None,
+                    extern_link_name: None,
+                    return_type: ast::Type::Integer,
+                    body: vec![sp(Stmt::Return(Some(sp(Expr::Binary {
+                        op: ast::BinOp::Add,
+                        left: Box::new(sp(Expr::Ident("x".to_string()))),
+                        right: Box::new(sp(Expr::Literal(ast::Literal::Integer(1)))),
+                    }))))],
+                    is_async: false,
+                    is_extern: false,
+                    visibility: ast::Visibility::Private,
+                    attributes: vec![],
+                })),
+                sp(Decl::Function(ast::FunctionDecl {
+                    name: "main".to_string(),
+                    generic_params: vec![],
+                    params: vec![],
+                    is_variadic: false,
+                    extern_abi: None,
+                    extern_link_name: None,
+                    return_type: ast::Type::None,
+                    body: vec![sp(Stmt::Let {
+                        name: "f".to_string(),
+                        ty: ast::Type::Function(
+                            vec![ast::Type::Integer],
+                            Box::new(ast::Type::Integer),
+                        ),
+                        value: sp(Expr::Ident("add1".to_string())),
+                        mutable: false,
+                    })],
+                    is_async: false,
+                    is_extern: false,
+                    visibility: ast::Visibility::Private,
+                    attributes: vec![],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::from([(
+                "app".to_string(),
+                HashSet::from(["add1".to_string(), "main".to_string()]),
+            )]),
+            &HashMap::from([
+                ("add1".to_string(), "app".to_string()),
+                ("main".to_string(), "app".to_string()),
+            ]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let Decl::Function(func) = &rewritten.declarations[1].node else {
+            panic!("expected function declaration");
+        };
+        let Stmt::Let { value, .. } = &func.body[0].node else {
+            panic!("expected let statement");
+        };
+        let Expr::Ident(name) = &value.node else {
+            panic!("expected rewritten function reference ident");
+        };
+        assert_eq!(name, "app__add1");
     }
 }
