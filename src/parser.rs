@@ -504,6 +504,12 @@ impl<'src> Parser<'src> {
             return Ok(params);
         }
         self.advance(); // eat '<'
+        if self.check(&Token::Gt) {
+            return Err(ParseError::new(
+                "Generic parameter list cannot be empty",
+                self.current_span(),
+            ));
+        }
 
         while !self.check(&Token::Gt) && !self.is_at_end() {
             let name = self.parse_ident()?;
@@ -536,6 +542,12 @@ impl<'src> Parser<'src> {
 
             if self.check(&Token::Comma) {
                 self.advance();
+                if self.check(&Token::Gt) {
+                    return Err(ParseError::new(
+                        "Trailing comma is not allowed in generic parameter lists",
+                        self.current_span(),
+                    ));
+                }
             }
         }
 
@@ -627,6 +639,12 @@ impl<'src> Parser<'src> {
 
             if self.check(&Token::Comma) {
                 self.advance();
+                if self.check(&Token::RParen) {
+                    return Err(ParseError::new(
+                        "Trailing comma is not allowed in extern parameter lists",
+                        self.current_span(),
+                    ));
+                }
             } else {
                 break;
             }
@@ -679,6 +697,12 @@ impl<'src> Parser<'src> {
 
     fn parse_extern_options(&mut self) -> ParseResult<(Option<String>, Option<String>)> {
         self.eat(&Token::LParen)?;
+        if self.check(&Token::RParen) {
+            return Err(ParseError::new(
+                "extern(...) options cannot be empty",
+                self.current_span(),
+            ));
+        }
         let abi_ident = self.parse_ident()?;
         let abi = match abi_ident.as_str() {
             "c" | "system" => abi_ident,
@@ -696,7 +720,19 @@ impl<'src> Parser<'src> {
         let mut link_name = None;
         if self.check(&Token::Comma) {
             self.advance();
+            if self.check(&Token::RParen) {
+                return Err(ParseError::new(
+                    "Trailing comma is not allowed in extern options",
+                    self.current_span(),
+                ));
+            }
             link_name = Some(self.parse_string_literal()?);
+            if self.check(&Token::Comma) {
+                return Err(ParseError::new(
+                    "extern(...) accepts at most ABI and optional link name",
+                    self.current_span(),
+                ));
+            }
         }
         self.eat(&Token::RParen)?;
         Ok((Some(abi), link_name))
@@ -721,9 +757,21 @@ impl<'src> Parser<'src> {
         let mut implements = Vec::new();
         if self.check(&Token::Implements) {
             self.advance();
+            if self.check(&Token::LBrace) {
+                return Err(ParseError::new(
+                    "implements list cannot be empty",
+                    self.current_span(),
+                ));
+            }
             implements.push(self.parse_ident()?);
             while self.check(&Token::Comma) {
                 self.advance();
+                if self.check(&Token::LBrace) {
+                    return Err(ParseError::new(
+                        "Trailing comma is not allowed in implements lists",
+                        self.current_span(),
+                    ));
+                }
                 implements.push(self.parse_ident()?);
             }
         }
@@ -866,6 +914,12 @@ impl<'src> Parser<'src> {
                             fields.push(EnumField { name: None, ty });
                             if !self.check(&Token::RParen) {
                                 self.eat(&Token::Comma)?;
+                                if self.check(&Token::RParen) {
+                                    return Err(ParseError::new(
+                                        "Trailing comma is not allowed in enum field lists",
+                                        self.current_span(),
+                                    ));
+                                }
                             }
                             continue;
                         }
@@ -881,6 +935,12 @@ impl<'src> Parser<'src> {
 
                     if !self.check(&Token::RParen) {
                         self.eat(&Token::Comma)?;
+                        if self.check(&Token::RParen) {
+                            return Err(ParseError::new(
+                                "Trailing comma is not allowed in enum field lists",
+                                self.current_span(),
+                            ));
+                        }
                     }
                 }
                 self.eat(&Token::RParen)?;
@@ -893,6 +953,12 @@ impl<'src> Parser<'src> {
 
             if self.check(&Token::Comma) {
                 self.advance();
+                if self.check(&Token::RBrace) {
+                    return Err(ParseError::new(
+                        "Trailing comma is not allowed in enum variant lists",
+                        self.current_span(),
+                    ));
+                }
             }
         }
 
@@ -931,9 +997,21 @@ impl<'src> Parser<'src> {
         let mut extends = Vec::new();
         if self.check(&Token::Extends) {
             self.advance();
+            if self.check(&Token::LBrace) {
+                return Err(ParseError::new(
+                    "interface extends list cannot be empty",
+                    self.current_span(),
+                ));
+            }
             extends.push(self.parse_ident()?);
             while self.check(&Token::Comma) {
                 self.advance();
+                if self.check(&Token::LBrace) {
+                    return Err(ParseError::new(
+                        "Trailing comma is not allowed in interface extends lists",
+                        self.current_span(),
+                    ));
+                }
                 extends.push(self.parse_ident()?);
             }
         }
@@ -1090,6 +1168,12 @@ impl<'src> Parser<'src> {
 
             if !self.check(&Token::RParen) {
                 self.eat(&Token::Comma)?;
+                if self.check(&Token::RParen) {
+                    return Err(ParseError::new(
+                        "Trailing comma is not allowed in parameter lists",
+                        self.current_span(),
+                    ));
+                }
             }
         }
 
@@ -1549,6 +1633,12 @@ impl<'src> Parser<'src> {
                         bindings.push(self.parse_ident()?);
                         if !self.check(&Token::RParen) {
                             self.eat(&Token::Comma)?;
+                            if self.check(&Token::RParen) {
+                                return Err(ParseError::new(
+                                    "Trailing comma is not allowed in pattern binding lists",
+                                    self.current_span(),
+                                ));
+                            }
                         }
                     }
                     self.eat(&Token::RParen)?;
@@ -1993,6 +2083,12 @@ impl<'src> Parser<'src> {
                     });
                     if self.check(&Token::Comma) {
                         self.advance();
+                        if self.check(&Token::Pipe) {
+                            return Err(ParseError::new(
+                                "Trailing comma is not allowed in lambda parameter lists",
+                                self.current_span(),
+                            ));
+                        }
                     }
                 }
                 self.eat(&Token::Pipe)?;
@@ -2129,6 +2225,12 @@ impl<'src> Parser<'src> {
 
                             if self.check(&Token::Comma) {
                                 self.advance();
+                                if self.check(&Token::RParen) {
+                                    return Err(ParseError::new(
+                                        "Trailing comma is not allowed in lambda parameter lists",
+                                        self.current_span(),
+                                    ));
+                                }
                             } else if !self.check(&Token::RParen) {
                                 is_lambda = false;
                             }
@@ -2170,6 +2272,12 @@ impl<'src> Parser<'src> {
                 let condition = self.parse_expr()?;
                 let message = if self.check(&Token::Comma) {
                     self.advance();
+                    if self.check(&Token::RParen) {
+                        return Err(ParseError::new(
+                            "Trailing comma is not allowed in require(...)",
+                            self.current_span(),
+                        ));
+                    }
                     Some(Box::new(self.parse_expr()?))
                 } else {
                     None
@@ -2369,6 +2477,12 @@ impl<'src> Parser<'src> {
             args.push(self.parse_expr()?);
             if !self.check(&Token::RParen) {
                 self.eat(&Token::Comma)?;
+                if self.check(&Token::RParen) {
+                    return Err(ParseError::new(
+                        "Trailing comma is not allowed in argument lists",
+                        self.current_span(),
+                    ));
+                }
             }
         }
 
@@ -3029,6 +3143,277 @@ mod tests {
             .expect_err("nested module generic call trailing comma should fail");
         assert!(
             err.message.contains("Trailing comma") || err.message.contains("Expected"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_empty_generic_parameter_list() {
+        let source = r#"
+            function id<>(): Integer {
+                return 1;
+            }
+        "#;
+        let err = parse_source(source).expect_err("empty generic parameter list should fail");
+        assert!(
+            err.message
+                .contains("Generic parameter list cannot be empty"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_generic_parameter_list() {
+        let source = r#"
+            function id<T,>(x: T): T {
+                return x;
+            }
+        "#;
+        let err = parse_source(source).expect_err("generic parameter trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic parameter lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_parameter_list() {
+        let source = r#"
+            function add(x: Integer,): Integer {
+                return x;
+            }
+        "#;
+        let err = parse_source(source).expect_err("parameter trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in parameter lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_extern_parameter_list() {
+        let source = r#"
+            extern(c) function puts(msg: String,): Integer;
+        "#;
+        let err = parse_source(source).expect_err("extern parameter trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in extern parameter lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_argument_list() {
+        let source = r#"
+            function add(x: Integer): Integer { return x; }
+            function main(): None {
+                value: Integer = add(1,);
+                return None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("argument trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in argument lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_implements_list() {
+        let source = r#"
+            class C implements A, {
+            }
+        "#;
+        let err = parse_source(source).expect_err("implements trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in implements lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_empty_implements_list() {
+        let source = r#"
+            class C implements {
+            }
+        "#;
+        let err = parse_source(source).expect_err("empty implements list should fail");
+        assert!(
+            err.message.contains("implements list cannot be empty"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_interface_extends_list() {
+        let source = r#"
+            interface Child extends Parent, {
+                function run(): None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("interface extends trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in interface extends lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_empty_interface_extends_list() {
+        let source = r#"
+            interface Child extends {
+                function run(): None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("empty interface extends list should fail");
+        assert!(
+            err.message
+                .contains("interface extends list cannot be empty"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_enum_field_list() {
+        let source = r#"
+            enum Value {
+                One(Integer,),
+            }
+        "#;
+        let err = parse_source(source).expect_err("enum field trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in enum field lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_enum_variant_list() {
+        let source = r#"
+            enum Value {
+                One,
+            }
+        "#;
+        let err = parse_source(source).expect_err("enum variant trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in enum variant lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_pattern_binding_list() {
+        let source = r#"
+            enum Value {
+                One(Integer)
+            }
+
+            function main(): None {
+                match (One(1)) {
+                    One(x,) => { return None; },
+                    _ => { return None; }
+                }
+            }
+        "#;
+        let err = parse_source(source).expect_err("pattern binding trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in pattern binding lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_empty_extern_options() {
+        let source = r#"
+            extern() function puts(msg: String): Integer;
+        "#;
+        let err = parse_source(source).expect_err("empty extern options should fail");
+        assert!(
+            err.message.contains("extern(...) options cannot be empty"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_extern_options() {
+        let source = r#"
+            extern(c,) function puts(msg: String): Integer;
+        "#;
+        let err = parse_source(source).expect_err("extern options trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in extern options"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_extra_extern_option_argument() {
+        let source = r#"
+            extern(c, "puts", "extra") function puts(msg: String): Integer;
+        "#;
+        let err = parse_source(source).expect_err("extra extern option should fail");
+        assert!(
+            err.message
+                .contains("extern(...) accepts at most ABI and optional link name"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_lambda_parameter_list() {
+        let source = r#"
+            function main(): None {
+                f: None = |x: Integer,| 1;
+                return None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("lambda parameter trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in lambda parameter lists"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_trailing_comma_in_require_call() {
+        let source = r#"
+            function main(): None {
+                require(true,);
+                return None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("require trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in require(...)"),
             "{}",
             err.message
         );

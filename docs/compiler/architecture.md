@@ -141,6 +141,27 @@ This document describes the internal architecture of the Apex compiler.
 - **Compiler hardening loops**:
   - `src/parser.rs` now includes ignored deterministic stress tests for generated lexer/parser noise.
   - `fuzz/fuzz_targets/lexer_parser.rs` provides a `cargo-fuzz` entrypoint for lexer+parser panic hunting outside the default test suite.
+- **Generic parameter parser hardening**:
+  - Empty declaration lists like `function f<>` are rejected directly.
+  - Trailing commas in declaration generics like `function f<T,>` are rejected directly.
+- **List parser hardening**:
+  - Trailing commas in function parameter lists are rejected directly.
+  - Trailing commas in extern parameter lists are rejected directly.
+  - Trailing commas in call argument lists are rejected directly.
+- **Declaration list parser hardening**:
+  - Trailing commas in class `implements` lists are rejected directly.
+  - Trailing commas in interface `extends` lists are rejected directly.
+  - Trailing commas in enum field lists are rejected directly.
+- **Extern header parser hardening**:
+  - Empty `extern(...)` option lists are rejected directly.
+  - Trailing commas in `extern(...)` option lists are rejected directly.
+  - Extra `extern(...)` option arguments beyond ABI and optional link name are rejected directly.
+- **Enum/pattern list parser hardening**:
+  - Trailing commas in enum variant lists are rejected directly.
+  - Trailing commas in pattern binding lists are rejected directly.
+- **Declaration inheritance parser hardening**:
+  - Empty class `implements` lists are rejected directly.
+  - Empty interface `extends` lists are rejected directly.
 
 ## Directory Structure
 

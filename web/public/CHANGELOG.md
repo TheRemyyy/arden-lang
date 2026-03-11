@@ -81,6 +81,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added longer-running hardening hooks:
   - a new `fuzz/` cargo-fuzz target now exercises lexer+parser panic hunting outside the default test suite
   - parser tests now include an ignored deterministic stress runner so deeper generated-noise coverage can be run with `cargo test -- --ignored`
+- Tightened parser handling for generic parameter declarations:
+  - empty generic parameter lists like `function f<>` are now rejected instead of being accepted as malformed declarations
+  - trailing commas in generic parameter lists like `function f<T,>` are now rejected with direct parser diagnostics
+- Tightened parser handling for trailing commas in declaration and call lists:
+  - function parameter lists like `function f(x: Integer,)` are now rejected directly
+  - extern parameter lists like `extern(c) function f(x: Integer,)` are now rejected directly
+  - call argument lists like `f(1,)` are now rejected directly
+- Tightened parser handling for trailing commas in declaration inheritance/field lists:
+  - class implements lists like `class C implements A,` are now rejected directly
+  - interface extends lists like `interface C extends A,` are now rejected directly
+  - enum field lists like `Variant(Integer,)` are now rejected directly
+- Tightened parser handling for `extern(...)` option headers:
+  - empty option lists like `extern()` are now rejected directly
+  - trailing commas like `extern(c,)` are now rejected directly
+  - extra option arguments beyond ABI and optional link name are now rejected directly
+- Tightened parser handling for enum and pattern lists:
+  - enum variant lists like `enum E { A, }` are now rejected directly
+  - pattern binding lists like `Some(x,)` are now rejected directly
+- Tightened parser handling for empty declaration inheritance lists:
+  - empty class `implements` lists like `class C implements {}` are now rejected directly
+  - empty interface `extends` lists like `interface C extends {}` are now rejected directly
 
 ### ⚡ Changed
 
