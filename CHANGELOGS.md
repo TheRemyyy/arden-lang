@@ -47,6 +47,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Tightened same-namespace rewrite/import invalidation to hash exact owner-file API fingerprints instead of pessimistically hashing the whole current namespace, sharply reducing false cache misses in wide `global` namespaces.
 - Fixed rewrite/import/object cache fingerprint stability by sorting collected symbol/reference inputs before hashing, so hot rebuild reuse is deterministic across runs instead of depending on `HashSet` iteration order.
 - Tightened import-check caching to key off a narrower import/reference fingerprint instead of full semantic-body fingerprints, so body-only caller rewrites can reuse import validation when imports and referenced symbols did not change.
+- Extended parsed-file cache entries to persist extracted symbol/reference metadata, removing repeated AST rewalks for unchanged files on the warm semantic-cache-hit path.
+- Extended `--timings` output with an explicit `semantic cache gate` phase so warm rebuild regressions can be separated from parse/dependency work.
 
 ### ⚡ Changed
 

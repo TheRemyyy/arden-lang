@@ -455,7 +455,7 @@ fn save_semantic_cached_fingerprint(project_root: &Path, fingerprint: &str) -> R
     })
 }
 
-const PARSE_CACHE_SCHEMA: &str = "v4";
+const PARSE_CACHE_SCHEMA: &str = "v5";
 const DEPENDENCY_GRAPH_CACHE_SCHEMA: &str = "v2";
 const SEMANTIC_SUMMARY_CACHE_SCHEMA: &str = "v2";
 const TYPECHECK_SUMMARY_CACHE_SCHEMA: &str = "v2";
@@ -475,9 +475,16 @@ struct ParsedFileCacheEntry {
     source_fingerprint: String,
     api_fingerprint: String,
     semantic_fingerprint: String,
+    import_check_fingerprint: String,
     namespace: String,
     program: Program,
     imports: Vec<ImportDecl>,
+    function_names: Vec<String>,
+    class_names: Vec<String>,
+    module_names: Vec<String>,
+    referenced_symbols: Vec<String>,
+    qualified_symbol_refs: Vec<Vec<String>>,
+    api_referenced_symbols: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -2752,93 +2759,25 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         .unwrap_or("unknown.apex");
     let file_metadata = current_file_metadata_stamp(file)?;
     let cached_entry = load_parsed_file_cache_entry(project_root, file)?;
-    let (namespace, program, imports, api_fingerprint, semantic_fingerprint, from_parse_cache) =
-        if let Some(cache) = cached_entry.as_ref() {
-            if cache.file_metadata == file_metadata {
-                (
-                    cache.namespace.clone(),
-                    cache.program.clone(),
-                    cache.imports.clone(),
-                    cache.api_fingerprint.clone(),
-                    cache.semantic_fingerprint.clone(),
-                    true,
-                )
-            } else {
-                let source = fs::read_to_string(file).map_err(|e| {
-                    format!(
-                        "{}: Failed to read '{}': {}",
-                        "error".red().bold(),
-                        file.display(),
-                        e
-                    )
-                })?;
-                let source_fp = source_fingerprint(&source);
-                if cache.source_fingerprint == source_fp {
-                    (
-                        cache.namespace.clone(),
-                        cache.program.clone(),
-                        cache.imports.clone(),
-                        cache.api_fingerprint.clone(),
-                        cache.semantic_fingerprint.clone(),
-                        true,
-                    )
-                } else {
-                    let tokens = lexer::tokenize(&source).map_err(|e| {
-                        format!(
-                            "{}: Lexer error in {}: {}",
-                            "error".red().bold(),
-                            filename,
-                            e
-                        )
-                    })?;
-                    let mut parser = Parser::new(tokens);
-                    let program = parser.parse_program().map_err(|e| {
-                        format!(
-                            "{}: Parse error in {}: {}",
-                            "error".red().bold(),
-                            filename,
-                            e.message
-                        )
-                    })?;
-
-                    let namespace = program
-                        .package
-                        .clone()
-                        .unwrap_or_else(|| "global".to_string());
-                    let imports: Vec<ImportDecl> = program
-                        .declarations
-                        .iter()
-                        .filter_map(|d| match &d.node {
-                            Decl::Import(import) => Some(import.clone()),
-                            _ => None,
-                        })
-                        .collect();
-                    let api_fingerprint = api_program_fingerprint(&program);
-                    let semantic_fingerprint = semantic_program_fingerprint(&program);
-
-                    let cache_entry = ParsedFileCacheEntry {
-                        schema: PARSE_CACHE_SCHEMA.to_string(),
-                        compiler_version: env!("CARGO_PKG_VERSION").to_string(),
-                        file_metadata: file_metadata.clone(),
-                        source_fingerprint: source_fp,
-                        api_fingerprint: api_fingerprint.clone(),
-                        semantic_fingerprint: semantic_fingerprint.clone(),
-                        namespace: namespace.clone(),
-                        program: program.clone(),
-                        imports: imports.clone(),
-                    };
-                    save_parsed_file_cache(project_root, file, &cache_entry)?;
-
-                    (
-                        namespace,
-                        program,
-                        imports,
-                        api_fingerprint,
-                        semantic_fingerprint,
-                        false,
-                    )
-                }
-            }
+    let (
+        namespace,
+        program,
+        imports,
+        api_fingerprint,
+        semantic_fingerprint,
+        source_fingerprint_for_cache,
+        from_parse_cache,
+    ) = if let Some(cache) = cached_entry.as_ref() {
+        if cache.file_metadata == file_metadata {
+            (
+                cache.namespace.clone(),
+                cache.program.clone(),
+                cache.imports.clone(),
+                cache.api_fingerprint.clone(),
+                cache.semantic_fingerprint.clone(),
+                None,
+                true,
+            )
         } else {
             let source = fs::read_to_string(file).map_err(|e| {
                 format!(
@@ -2849,61 +2788,114 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 )
             })?;
             let source_fp = source_fingerprint(&source);
-            let tokens = lexer::tokenize(&source).map_err(|e| {
-                format!(
-                    "{}: Lexer error in {}: {}",
-                    "error".red().bold(),
-                    filename,
-                    e
+            if cache.source_fingerprint == source_fp {
+                (
+                    cache.namespace.clone(),
+                    cache.program.clone(),
+                    cache.imports.clone(),
+                    cache.api_fingerprint.clone(),
+                    cache.semantic_fingerprint.clone(),
+                    None,
+                    true,
                 )
-            })?;
-            let mut parser = Parser::new(tokens);
-            let program = parser.parse_program().map_err(|e| {
-                format!(
-                    "{}: Parse error in {}: {}",
-                    "error".red().bold(),
-                    filename,
-                    e.message
+            } else {
+                let tokens = lexer::tokenize(&source).map_err(|e| {
+                    format!(
+                        "{}: Lexer error in {}: {}",
+                        "error".red().bold(),
+                        filename,
+                        e
+                    )
+                })?;
+                let mut parser = Parser::new(tokens);
+                let program = parser.parse_program().map_err(|e| {
+                    format!(
+                        "{}: Parse error in {}: {}",
+                        "error".red().bold(),
+                        filename,
+                        e.message
+                    )
+                })?;
+
+                let namespace = program
+                    .package
+                    .clone()
+                    .unwrap_or_else(|| "global".to_string());
+                let imports: Vec<ImportDecl> = program
+                    .declarations
+                    .iter()
+                    .filter_map(|d| match &d.node {
+                        Decl::Import(import) => Some(import.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                let api_fingerprint = api_program_fingerprint(&program);
+                let semantic_fingerprint = semantic_program_fingerprint(&program);
+
+                (
+                    namespace,
+                    program,
+                    imports,
+                    api_fingerprint,
+                    semantic_fingerprint,
+                    Some(source_fp),
+                    false,
                 )
-            })?;
-
-            let namespace = program
-                .package
-                .clone()
-                .unwrap_or_else(|| "global".to_string());
-            let imports: Vec<ImportDecl> = program
-                .declarations
-                .iter()
-                .filter_map(|d| match &d.node {
-                    Decl::Import(import) => Some(import.clone()),
-                    _ => None,
-                })
-                .collect();
-            let api_fingerprint = api_program_fingerprint(&program);
-            let semantic_fingerprint = semantic_program_fingerprint(&program);
-
-            let cache_entry = ParsedFileCacheEntry {
-                schema: PARSE_CACHE_SCHEMA.to_string(),
-                compiler_version: env!("CARGO_PKG_VERSION").to_string(),
-                file_metadata,
-                source_fingerprint: source_fp,
-                api_fingerprint: api_fingerprint.clone(),
-                semantic_fingerprint: semantic_fingerprint.clone(),
-                namespace: namespace.clone(),
-                program: program.clone(),
-                imports: imports.clone(),
-            };
-            save_parsed_file_cache(project_root, file, &cache_entry)?;
-
-            (
-                namespace,
-                program,
-                imports,
-                api_fingerprint,
-                semantic_fingerprint,
-                false,
+            }
+        }
+    } else {
+        let source = fs::read_to_string(file).map_err(|e| {
+            format!(
+                "{}: Failed to read '{}': {}",
+                "error".red().bold(),
+                file.display(),
+                e
             )
-        };
+        })?;
+        let source_fp = source_fingerprint(&source);
+        let tokens = lexer::tokenize(&source).map_err(|e| {
+            format!(
+                "{}: Lexer error in {}: {}",
+                "error".red().bold(),
+                filename,
+                e
+            )
+        })?;
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().map_err(|e| {
+            format!(
+                "{}: Parse error in {}: {}",
+                "error".red().bold(),
+                filename,
+                e.message
+            )
+        })?;
+
+        let namespace = program
+            .package
+            .clone()
+            .unwrap_or_else(|| "global".to_string());
+        let imports: Vec<ImportDecl> = program
+            .declarations
+            .iter()
+            .filter_map(|d| match &d.node {
+                Decl::Import(import) => Some(import.clone()),
+                _ => None,
+            })
+            .collect();
+        let api_fingerprint = api_program_fingerprint(&program);
+        let semantic_fingerprint = semantic_program_fingerprint(&program);
+
+        (
+            namespace,
+            program,
+            imports,
+            api_fingerprint,
+            semantic_fingerprint,
+            Some(source_fp),
+            false,
+        )
+    };
 
     let mut function_names = Vec::new();
     let mut class_names = Vec::new();
@@ -3237,46 +3229,99 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         }
     }
 
-    for decl in &program.declarations {
-        match &decl.node {
-            Decl::Function(_) => collect_function_names(&decl.node, None, &mut function_names),
-            Decl::Module(module) => {
-                module_names.push(module.name.clone());
-                collect_function_names(&decl.node, None, &mut function_names);
+    let (
+        function_names,
+        class_names,
+        module_names,
+        referenced_symbols,
+        qualified_symbol_refs,
+        api_referenced_symbols,
+        import_check_fingerprint,
+    ) = if from_parse_cache {
+        let cache = cached_entry
+            .as_ref()
+            .expect("parse cache hit should have cache entry available");
+        (
+            cache.function_names.clone(),
+            cache.class_names.clone(),
+            cache.module_names.clone(),
+            cache.referenced_symbols.clone(),
+            cache.qualified_symbol_refs.clone(),
+            cache.api_referenced_symbols.clone(),
+            cache.import_check_fingerprint.clone(),
+        )
+    } else {
+        for decl in &program.declarations {
+            match &decl.node {
+                Decl::Function(_) => collect_function_names(&decl.node, None, &mut function_names),
+                Decl::Module(module) => {
+                    module_names.push(module.name.clone());
+                    collect_function_names(&decl.node, None, &mut function_names);
+                }
+                Decl::Class(class) => class_names.push(class.name.clone()),
+                _ => {}
             }
-            Decl::Class(class) => class_names.push(class.name.clone()),
-            _ => {}
+            collect_decl_refs(
+                &decl.node,
+                &mut referenced_symbols,
+                &mut qualified_symbol_refs,
+            );
         }
-        collect_decl_refs(
-            &decl.node,
-            &mut referenced_symbols,
-            &mut qualified_symbol_refs,
-        );
-    }
-    let projected_program = api_projection_program(&program);
-    let mut api_referenced_symbols = HashSet::new();
-    let mut ignored_api_qualified_symbol_refs = HashSet::new();
-    for decl in &projected_program.declarations {
-        collect_decl_refs(
-            &decl.node,
-            &mut api_referenced_symbols,
-            &mut ignored_api_qualified_symbol_refs,
-        );
-    }
+        let projected_program = api_projection_program(&program);
+        let mut api_referenced_symbols = HashSet::new();
+        let mut ignored_api_qualified_symbol_refs = HashSet::new();
+        for decl in &projected_program.declarations {
+            collect_decl_refs(
+                &decl.node,
+                &mut api_referenced_symbols,
+                &mut ignored_api_qualified_symbol_refs,
+            );
+        }
 
-    let mut referenced_symbols = referenced_symbols.into_iter().collect::<Vec<_>>();
-    referenced_symbols.sort();
-    let mut qualified_symbol_refs = qualified_symbol_refs.into_iter().collect::<Vec<_>>();
-    qualified_symbol_refs.sort();
-    let mut api_referenced_symbols = api_referenced_symbols.into_iter().collect::<Vec<_>>();
-    api_referenced_symbols.sort();
+        let mut referenced_symbols = referenced_symbols.into_iter().collect::<Vec<_>>();
+        referenced_symbols.sort();
+        let mut qualified_symbol_refs = qualified_symbol_refs.into_iter().collect::<Vec<_>>();
+        qualified_symbol_refs.sort();
+        let mut api_referenced_symbols = api_referenced_symbols.into_iter().collect::<Vec<_>>();
+        api_referenced_symbols.sort();
+        let import_check_fingerprint = compute_import_check_fingerprint(
+            &namespace,
+            &imports,
+            &referenced_symbols,
+            &qualified_symbol_refs,
+        );
 
-    let import_check_fingerprint = compute_import_check_fingerprint(
-        &namespace,
-        &imports,
-        &referenced_symbols,
-        &qualified_symbol_refs,
-    );
+        let cache_entry = ParsedFileCacheEntry {
+            schema: PARSE_CACHE_SCHEMA.to_string(),
+            compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+            file_metadata,
+            source_fingerprint: source_fingerprint_for_cache
+                .expect("fresh parse should have source fingerprint"),
+            api_fingerprint: api_fingerprint.clone(),
+            semantic_fingerprint: semantic_fingerprint.clone(),
+            import_check_fingerprint: import_check_fingerprint.clone(),
+            namespace: namespace.clone(),
+            program: program.clone(),
+            imports: imports.clone(),
+            function_names: function_names.clone(),
+            class_names: class_names.clone(),
+            module_names: module_names.clone(),
+            referenced_symbols: referenced_symbols.clone(),
+            qualified_symbol_refs: qualified_symbol_refs.clone(),
+            api_referenced_symbols: api_referenced_symbols.clone(),
+        };
+        save_parsed_file_cache(project_root, file, &cache_entry)?;
+
+        (
+            function_names,
+            class_names,
+            module_names,
+            referenced_symbols,
+            qualified_symbol_refs,
+            api_referenced_symbols,
+            import_check_fingerprint,
+        )
+    };
 
     Ok(ParsedProjectUnit {
         file: file.to_path_buf(),
@@ -3688,23 +3733,39 @@ fn build_project(
         }
     }
 
-    let semantic_fingerprint =
-        compute_semantic_project_fingerprint(&config, &parsed_files, emit_llvm, do_check);
-    if !check_only {
-        if let Some(cached) = load_semantic_cached_fingerprint(&project_root) {
-            if cached == semantic_fingerprint
-                && project_build_artifact_exists(&output_path, emit_llvm)
-            {
-                println!(
-                    "{} {}",
-                    "Semantic cache hit".green().bold(),
-                    config.name.cyan(),
-                );
-                save_cached_fingerprint(&project_root, &fingerprint)?;
-                build_timings.print();
-                return Ok(());
-            }
-        }
+    let (semantic_fingerprint, semantic_cache_hit) =
+        build_timings.measure("semantic cache gate", || {
+            let semantic_fingerprint =
+                compute_semantic_project_fingerprint(&config, &parsed_files, emit_llvm, do_check);
+            let semantic_cache_hit = if !check_only {
+                load_semantic_cached_fingerprint(&project_root).is_some_and(|cached| {
+                    cached == semantic_fingerprint
+                        && project_build_artifact_exists(&output_path, emit_llvm)
+                })
+            } else {
+                false
+            };
+            Ok::<_, String>((semantic_fingerprint, semantic_cache_hit))
+        })?;
+    build_timings.record_counts(
+        "semantic cache gate",
+        &[
+            ("files", parsed_files.len()),
+            ("body_only", body_only_changed.len()),
+            ("api", api_changed.len()),
+            ("downstream", dependent_api_impact.len()),
+            ("hit", usize::from(semantic_cache_hit)),
+        ],
+    );
+    if semantic_cache_hit {
+        println!(
+            "{} {}",
+            "Semantic cache hit".green().bold(),
+            config.name.cyan(),
+        );
+        save_cached_fingerprint(&project_root, &fingerprint)?;
+        build_timings.print();
+        return Ok(());
     }
 
     if !function_collisions.is_empty() {
