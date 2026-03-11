@@ -116,6 +116,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - leading-dot `import` and `package` paths are now rejected directly
   - empty class `extends` clauses are now rejected directly
   - visibility modifiers on `import` and `package` declarations now report dedicated parser errors
+- Fixed formatter precedence for callable expression callees:
+  - `apex fmt` now preserves parentheses when lambda / `if` / `match` / `async` expressions are used as the callee in a call expression
+  - this prevents formatter output from changing program meaning or producing unparseable lambda-call syntax
+- Fixed user-defined generic class instantiation/type propagation:
+  - constructors like `Boxed<Integer>(1)` now resolve against the base class constructor instead of failing as unknown types
+  - class-level generic parameters now flow through fields, constructors, and methods during type checking (`b.get()` on `Boxed<Integer>` now yields `Integer`)
+  - codegen constructor lookup now strips user generic arguments before resolving `Class__new`
 
 ### ⚡ Changed
 

@@ -6090,7 +6090,8 @@ impl<'ctx> Codegen<'ctx> {
             return self.create_empty_arc();
         }
 
-        let func_name = format!("{}__new", ty);
+        let ctor_ty = ty.split('<').next().unwrap_or(ty);
+        let func_name = format!("{}__new", ctor_ty);
 
         let (func, _) = self
             .functions

@@ -174,6 +174,11 @@ This document describes the internal architecture of the Apex compiler.
   - Leading-dot `import` and `package` paths are now rejected directly.
   - Empty class `extends` clauses are now rejected directly.
   - Visibility modifiers on `import` and `package` declarations now produce dedicated parser diagnostics.
+- **Formatter precedence hardening**:
+  - `src/formatter.rs` now preserves parentheses when lambda / `if` / `match` / `async` expressions are used as call callees, preventing roundtrip drift.
+- **Generic class typechecking hardening**:
+  - `src/typeck.rs` now preserves user-defined generic class instantiations as `Class("Name<...>")` and substitutes class-level type variables through fields, constructors, and methods.
+  - `src/codegen/core.rs` now normalizes generic constructor names back to the base class symbol during constructor codegen.
 
 ## Directory Structure
 

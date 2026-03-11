@@ -157,6 +157,7 @@ pub struct ClassInfo {
     pub methods: HashMap<String, FuncSig>,
     pub method_visibilities: HashMap<String, Visibility>,
     pub constructor: Option<Vec<(String, ResolvedType)>>,
+    pub generic_type_vars: Vec<usize>,
     pub visibility: Visibility,
     pub extends: Option<String>,
     pub implements: Vec<String>,
@@ -492,7 +493,14 @@ impl TypeChecker {
                 "Range" if args.len() == 1 => ResolvedType::Range(Box::new(
                     self.resolve_type_with_bindings(&args[0], bindings),
                 )),
-                _ => ResolvedType::Class(name.clone()),
+                _ => {
+                    let args = args
+                        .iter()
+                        .map(|arg| self.resolve_type_with_bindings(arg, bindings).to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    ResolvedType::Class(format!("{}<{}>", name, args))
+                }
             },
         }
     }
@@ -1148,12 +1156,49 @@ impl TypeChecker {
         self.types_compatible(&expected.return_type, &actual.return_type)
     }
 
+    fn class_base_name<'a>(&self, class_name: &'a str) -> &'a str {
+        class_name.split('<').next().unwrap_or(class_name)
+    }
+
+    fn instantiated_class_substitutions(
+        &self,
+        class_name: &str,
+    ) -> (String, HashMap<usize, ResolvedType>) {
+        let base_name = self.class_base_name(class_name).to_string();
+        let Some(class) = self.classes.get(&base_name) else {
+            return (base_name, HashMap::new());
+        };
+        if class.generic_type_vars.is_empty()
+            || !class_name.contains('<')
+            || !class_name.ends_with('>')
+        {
+            return (base_name, HashMap::new());
+        }
+
+        let Some(open_bracket) = class_name.find('<') else {
+            return (base_name, HashMap::new());
+        };
+        let inner = &class_name[open_bracket + 1..class_name.len() - 1];
+        let parts = self.split_generic_args(inner);
+        if parts.len() != class.generic_type_vars.len() {
+            return (base_name, HashMap::new());
+        }
+
+        let substitutions = class
+            .generic_type_vars
+            .iter()
+            .zip(parts.iter())
+            .map(|(id, part)| (*id, self.parse_type_string(part)))
+            .collect();
+        (base_name, substitutions)
+    }
+
     fn lookup_class_method(
         &self,
         class_name: &str,
         method_name: &str,
     ) -> Option<(String, FuncSig, Visibility)> {
-        let mut current = class_name.to_string();
+        let mut current = self.class_base_name(class_name).to_string();
         let mut depth = 0usize;
         while depth < 64 {
             let class = self.classes.get(&current)?;
@@ -1179,7 +1224,7 @@ impl TypeChecker {
         class_name: &str,
         field_name: &str,
     ) -> Option<(String, ResolvedType, bool, Visibility)> {
-        let mut current = class_name.to_string();
+        let mut current = self.class_base_name(class_name).to_string();
         let mut depth = 0usize;
         while depth < 64 {
             let class = self.classes.get(&current)?;
@@ -1271,7 +1316,9 @@ impl TypeChecker {
 
     fn check_type_visibility(&mut self, ty: &ResolvedType, span: Span) {
         match ty {
-            ResolvedType::Class(name) => self.check_class_visibility(name, span),
+            ResolvedType::Class(name) => {
+                self.check_class_visibility(self.class_base_name(name), span)
+            }
             ResolvedType::Option(inner)
             | ResolvedType::List(inner)
             | ResolvedType::Set(inner)
@@ -1346,12 +1393,22 @@ impl TypeChecker {
                     self.insert_function_signature(func, &func.name, decl.span.clone(), None);
                 }
                 Decl::Class(class) => {
+                    let class_generic_bindings =
+                        self.make_generic_type_bindings(&class.generic_params);
+                    let class_generic_type_vars: Vec<usize> = class
+                        .generic_params
+                        .iter()
+                        .filter_map(|p| match class_generic_bindings.get(&p.name) {
+                            Some(ResolvedType::TypeVar(id)) => Some(*id),
+                            _ => None,
+                        })
+                        .collect();
                     let mut fields = HashMap::new();
                     for field in &class.fields {
                         fields.insert(
                             field.name.clone(),
                             (
-                                self.resolve_type(&field.ty),
+                                self.resolve_type_with_bindings(&field.ty, &class_generic_bindings),
                                 field.mutable,
                                 field.visibility,
                             ),
@@ -1366,16 +1423,18 @@ impl TypeChecker {
                             decl.span.clone(),
                             &format!("Method '{}.{}'", class.name, method.name),
                         );
-                        let generic_bindings =
+                        let mut generic_bindings = class_generic_bindings.clone();
+                        let method_generic_bindings =
                             self.make_generic_type_bindings(&method.generic_params);
                         let generic_type_vars: Vec<usize> = method
                             .generic_params
                             .iter()
-                            .filter_map(|p| match generic_bindings.get(&p.name) {
+                            .filter_map(|p| match method_generic_bindings.get(&p.name) {
                                 Some(ResolvedType::TypeVar(id)) => Some(*id),
                                 _ => None,
                             })
                             .collect();
+                        generic_bindings.extend(method_generic_bindings);
                         let params: Vec<(String, ResolvedType)> = method
                             .params
                             .iter()
@@ -1416,7 +1475,12 @@ impl TypeChecker {
                     let constructor = class.constructor.as_ref().map(|c| {
                         c.params
                             .iter()
-                            .map(|p| (p.name.clone(), self.resolve_type(&p.ty)))
+                            .map(|p| {
+                                (
+                                    p.name.clone(),
+                                    self.resolve_type_with_bindings(&p.ty, &class_generic_bindings),
+                                )
+                            })
                             .collect()
                     });
 
@@ -1427,6 +1491,7 @@ impl TypeChecker {
                             methods,
                             method_visibilities,
                             constructor,
+                            generic_type_vars: class_generic_type_vars,
                             visibility: class.visibility,
                             extends: class.extends.clone(),
                             implements: class.implements.clone(),
@@ -1692,6 +1757,8 @@ impl TypeChecker {
     /// Check a class
     fn check_class(&mut self, class: &ClassDecl, span: Span) {
         let saved_class = self.current_class.clone();
+        let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
+        self.current_generic_type_bindings = self.make_generic_type_bindings(&class.generic_params);
         self.current_class = Some(class.name.clone());
         if let Some(parent) = &class.extends {
             if self.interfaces.contains_key(parent) {
@@ -1834,8 +1901,9 @@ impl TypeChecker {
         // Check methods
         for method in &class.methods {
             let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
-            self.current_generic_type_bindings =
-                self.make_generic_type_bindings(&method.generic_params);
+            let mut method_bindings = saved_generic_bindings.clone();
+            method_bindings.extend(self.make_generic_type_bindings(&method.generic_params));
+            self.current_generic_type_bindings = method_bindings;
             self.enter_scope();
             let saved_effects = std::mem::take(&mut self.current_effects);
             let saved_pure = self.current_is_pure;
@@ -1888,6 +1956,7 @@ impl TypeChecker {
             self.current_generic_type_bindings = saved_generic_bindings;
         }
         self.current_class = saved_class;
+        self.current_generic_type_bindings = saved_generic_bindings;
     }
 
     /// Check a block of statements
@@ -2322,15 +2391,26 @@ impl TypeChecker {
                     }
                 }
 
-                if self.interfaces.contains_key(ty) {
+                let (class_name, class_substitutions) = self.instantiated_class_substitutions(ty);
+
+                if self.interfaces.contains_key(ty) || self.interfaces.contains_key(&class_name) {
                     self.error(format!("Cannot construct interface type '{}'", ty), span);
                     return ResolvedType::Unknown;
                 }
 
                 // Check if it's a class constructor
-                if let Some(class) = self.classes.get(ty).cloned() {
-                    self.check_class_visibility(ty, span.clone());
+                if let Some(class) = self.classes.get(&class_name).cloned() {
+                    self.check_class_visibility(&class_name, span.clone());
                     if let Some(ctor_params) = &class.constructor {
+                        let ctor_params = ctor_params
+                            .iter()
+                            .map(|(name, ty)| {
+                                (
+                                    name.clone(),
+                                    Self::substitute_type_vars(ty, &class_substitutions),
+                                )
+                            })
+                            .collect::<Vec<_>>();
                         if args.len() != ctor_params.len() {
                             self.error(
                                 format!(
@@ -2356,7 +2436,7 @@ impl TypeChecker {
                             }
                         }
                     }
-                    ResolvedType::Class(ty.clone())
+                    self.parse_type_string(ty)
                 } else if ty == "List"
                     || ty == "Map"
                     || ty == "Set"
@@ -2756,9 +2836,10 @@ impl TypeChecker {
     fn validate_resolved_type_exists(&mut self, ty: &ResolvedType, span: Span) {
         match ty {
             ResolvedType::Class(name) => {
-                if !self.classes.contains_key(name)
-                    && !self.interfaces.contains_key(name)
-                    && !self.enums.contains_key(name)
+                let base_name = self.class_base_name(name);
+                if !self.classes.contains_key(base_name)
+                    && !self.interfaces.contains_key(base_name)
+                    && !self.enums.contains_key(base_name)
                 {
                     self.error(format!("Unknown type: {}", name), span);
                 }
@@ -3871,11 +3952,15 @@ impl TypeChecker {
                 }
             },
             ResolvedType::Class(name) => {
-                if let Some(interface) = self.interfaces.get(name).cloned() {
+                let (base_name, class_substitutions) = self.instantiated_class_substitutions(name);
+                if let Some(interface) = self.interfaces.get(&base_name).cloned() {
                     if let Some(sig) = interface.methods.get(method) {
                         if !type_args.is_empty() {
                             self.error(
-                                format!("Interface method '{}.{}' is not generic", name, method),
+                                format!(
+                                    "Interface method '{}.{}' is not generic",
+                                    base_name, method
+                                ),
                                 span.clone(),
                             );
                         }
@@ -3905,14 +3990,31 @@ impl TypeChecker {
                         sig.return_type.clone()
                     } else {
                         self.error(
-                            format!("Unknown method '{}' on interface '{}'", method, name),
+                            format!("Unknown method '{}' on interface '{}'", method, base_name),
                             span,
                         );
                         ResolvedType::Unknown
                     }
                 } else if let Some((owner, sig, visibility)) =
-                    self.lookup_class_method(name, method)
+                    self.lookup_class_method(&base_name, method)
                 {
+                    let sig = FuncSig {
+                        params: sig
+                            .params
+                            .iter()
+                            .map(|(name, ty)| {
+                                (
+                                    name.clone(),
+                                    Self::substitute_type_vars(ty, &class_substitutions),
+                                )
+                            })
+                            .collect(),
+                        return_type: Self::substitute_type_vars(
+                            &sig.return_type,
+                            &class_substitutions,
+                        ),
+                        ..sig
+                    };
                     self.check_member_visibility(
                         &owner,
                         visibility,
@@ -4031,7 +4133,8 @@ impl TypeChecker {
     ) -> ResolvedType {
         match obj_type {
             ResolvedType::Class(name) => {
-                if self.interfaces.contains_key(name) {
+                let (base_name, class_substitutions) = self.instantiated_class_substitutions(name);
+                if self.interfaces.contains_key(&base_name) {
                     self.error(
                         format!("Interfaces do not expose fields ('{}')", field),
                         span,
@@ -4039,10 +4142,10 @@ impl TypeChecker {
                     return ResolvedType::Unknown;
                 }
                 if let Some((owner, field_type, _, visibility)) =
-                    self.lookup_class_field(name, field)
+                    self.lookup_class_field(&base_name, field)
                 {
                     self.check_member_visibility(&owner, visibility, "Field", field, span.clone());
-                    return field_type;
+                    return Self::substitute_type_vars(&field_type, &class_substitutions);
                 }
                 self.error(
                     format!("Unknown field '{}' on class '{}'", field, name),
@@ -4221,7 +4324,14 @@ impl TypeChecker {
                     "Range" if args.len() == 1 => {
                         ResolvedType::Range(Box::new(self.resolve_type(&args[0])))
                     }
-                    _ => ResolvedType::Class(name.clone()),
+                    _ => {
+                        let args = args
+                            .iter()
+                            .map(|arg| self.resolve_type(arg).to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        ResolvedType::Class(format!("{}<{}>", name, args))
+                    }
                 }
             }
         }
@@ -4270,12 +4380,14 @@ impl TypeChecker {
         if let (ResolvedType::Class(expected_name), ResolvedType::Class(actual_name)) =
             (expected, actual)
         {
-            if self.interfaces.contains_key(expected_name) {
-                return self.class_implements_interface(actual_name, expected_name)
-                    || self.interface_extends(actual_name, expected_name);
+            let expected_base = self.class_base_name(expected_name);
+            let actual_base = self.class_base_name(actual_name);
+            if self.interfaces.contains_key(expected_base) {
+                return self.class_implements_interface(actual_base, expected_base)
+                    || self.interface_extends(actual_base, expected_base);
             }
-            if self.classes.contains_key(expected_name) && self.classes.contains_key(actual_name) {
-                return self.is_same_or_subclass_of(actual_name, expected_name);
+            if self.classes.contains_key(expected_base) && self.classes.contains_key(actual_base) {
+                return self.is_same_or_subclass_of(actual_base, expected_base);
             }
         }
 
@@ -4740,6 +4852,23 @@ mod tests {
             }
         "#;
         check_source(src).expect("valid built-in generic constructors should typecheck");
+    }
+
+    #[test]
+    fn accepts_user_defined_generic_class_construction_and_methods() {
+        let src = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+            function main(): None {
+                b: Boxed<Integer> = Boxed<Integer>(1);
+                out: Integer = if (true) { b.get(); } else { b.value; };
+                return None;
+            }
+        "#;
+        check_source(src).expect("generic class construction and member use should typecheck");
     }
 
     #[test]

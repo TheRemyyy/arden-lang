@@ -520,7 +520,12 @@ impl Formatter {
             ),
             Expr::Lambda { params, body } => {
                 let body = self.format_expr(&body.node);
-                format!("({}) => {}", format_params(params), body)
+                let formatted = format!("({}) => {}", format_params(params), body);
+                if 9 <= parent_prec {
+                    format!("({})", formatted)
+                } else {
+                    formatted
+                }
             }
             Expr::This => "this".to_string(),
             Expr::Match { expr, arms } => {
@@ -529,7 +534,12 @@ impl Formatter {
                     .map(|arm| self.format_match_arm_inline(arm))
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("match ({}) {{ {} }}", self.format_expr(&expr.node), arms)
+                let formatted = format!("match ({}) {{ {} }}", self.format_expr(&expr.node), arms);
+                if 9 <= parent_prec {
+                    format!("({})", formatted)
+                } else {
+                    formatted
+                }
             }
             Expr::StringInterp(parts) => self.format_string_interp(parts),
             Expr::Try(expr) => format!("{}?", self.format_expr_with_prec(&expr.node, 8)),
@@ -543,7 +553,12 @@ impl Formatter {
                 nested.format_block_contents(block);
                 let body = nested.finish();
                 let body = body.trim_end_matches('\n');
-                format!("async {{\n{}\n}}", body)
+                let formatted = format!("async {{\n{}\n}}", body);
+                if 9 <= parent_prec {
+                    format!("({})", formatted)
+                } else {
+                    formatted
+                }
             }
             Expr::Require { condition, message } => {
                 let mut parts = vec![self.format_expr(&condition.node)];
@@ -596,7 +611,11 @@ impl Formatter {
                         formatted.push_str(&self.format_inline_block(else_branch));
                     }
                 }
-                formatted
+                if 9 <= parent_prec {
+                    format!("({})", formatted)
+                } else {
+                    formatted
+                }
             }
             Expr::Block(block) => self.format_inline_block(block),
         }
@@ -1108,5 +1127,59 @@ function main(): None {
 "#;
         let formatted = format_source(source).expect("format succeeds");
         assert!(formatted.contains("else if (false)"), "{formatted}");
+    }
+
+    #[test]
+    fn wraps_lambda_callee_for_roundtrip() {
+        let source = r#"
+function main(): None {
+    y: Integer = ((x: Integer) => x + 1)(2);
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("((x: Integer) => x + 1)(2)"),
+            "{formatted}"
+        );
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn wraps_if_expression_callee_for_roundtrip() {
+        let source = r#"
+function main(): None {
+    y: Integer = (if (true) { foo; } else { bar; })(2);
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("(if (true)"), "{formatted}");
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn wraps_match_expression_callee_for_roundtrip() {
+        let source = r#"
+function main(): None {
+    y: Integer = (match (1) { 1 => { foo; }, _ => { bar; } })(2);
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("(match (1)"), "{formatted}");
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
     }
 }
