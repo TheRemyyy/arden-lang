@@ -37,3 +37,6 @@ examples/multi_file_depth_project/multi_file_depth_project
 examples/multi_file_project/multi_file_project
 examples/.apexcache/
 .apexcache/
+fuzz/artifacts/
+fuzz/coverage/
+fuzz/corpus/

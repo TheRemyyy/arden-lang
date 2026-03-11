@@ -72,6 +72,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - formatter smoke tests now verify `apex fmt --check` failure, `apex fmt` rewrite, and subsequent clean `--check` on project files
   - test discovery smoke now exercises filtered `apex test --list` style flow on real `.apex` test files without spawning external processes
   - negative temp project tests now verify cross-file type errors and cross-file use-after-move diagnostics through the same project-mode `check` path
+- Added incremental invalidation fixture coverage:
+  - real multi-file project fixtures now verify rewrite/import-context fingerprint stability for body-only dependency edits
+  - companion fixtures now verify rewrite/import-context fingerprint invalidation when an imported symbol is removed or renamed across files
+- Added deterministic chaos-style corpus coverage:
+  - generated malformed parser matrices now sweep multiple wrapper contexts and broken expression fragments under panic guards
+  - generated multi-file invalidation matrices now sweep multiple body-only and import-breaking dependency variants against rewrite/import-context fingerprint expectations
+- Added longer-running hardening hooks:
+  - a new `fuzz/` cargo-fuzz target now exercises lexer+parser panic hunting outside the default test suite
+  - parser tests now include an ignored deterministic stress runner so deeper generated-noise coverage can be run with `cargo test -- --ignored`
 
 ### ⚡ Changed
 

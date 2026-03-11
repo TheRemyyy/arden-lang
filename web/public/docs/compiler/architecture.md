@@ -138,6 +138,9 @@ This document describes the internal architecture of the Apex compiler.
   - Unclosed interpolation fragments (`"{...`) are preserved as literal text.
   - Empty braces (`{}`) are preserved as literal text.
   - Interpolation nodes that end up fully literal are normalized back to plain string literals.
+- **Compiler hardening loops**:
+  - `src/parser.rs` now includes ignored deterministic stress tests for generated lexer/parser noise.
+  - `fuzz/fuzz_targets/lexer_parser.rs` provides a `cargo-fuzz` entrypoint for lexer+parser panic hunting outside the default test suite.
 
 ## Directory Structure
 
@@ -152,6 +155,7 @@ This document describes the internal architecture of the Apex compiler.
 - `src/codegen/core.rs`: Core IR generation and lowering.
 - `src/codegen/types.rs`: Built-in collection/Option/Result/Range codegen helpers.
 - `src/codegen/util.rs`: C runtime bindings and utility helpers.
+- `fuzz/fuzz_targets/lexer_parser.rs`: `cargo-fuzz` lexer/parser hardening target.
 
 ## Contributing
 

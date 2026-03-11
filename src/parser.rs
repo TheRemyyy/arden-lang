@@ -3330,4 +3330,69 @@ mod tests {
             parse_source(&formatted).expect("canonical formatted corpus should still parse");
         }
     }
+
+    #[test]
+    fn test_generated_malformed_syntax_matrix_never_panics() {
+        let prefixes = [
+            "function main(): None { ",
+            "module M { function main(): None { ",
+            "class C { function main(): None { ",
+        ];
+        let fragments = [
+            "x: Integer = (1 + );",
+            "x: Integer = foo<Integer,>(1);",
+            "x: Integer = if (true) { 1; } else ;",
+            "x: String = \"value {1+}\";",
+            "match (1) { 1 => { }, _ => };",
+            "items: List<Integer = range(0, 1);",
+            "x: Integer = foo(,);",
+            "x: Integer = arr[);",
+        ];
+        let suffixes = [" return None; }", " } }", " return None; } }"];
+
+        for prefix in prefixes {
+            for fragment in fragments {
+                for suffix in suffixes {
+                    let source = format!("{prefix}{fragment}{suffix}");
+                    let result = std::panic::catch_unwind(|| parse_source(&source));
+                    assert!(
+                        result.is_ok(),
+                        "parser panicked on generated input: {source}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "deterministic stress runner for manual hardening passes"]
+    fn stress_deterministic_generated_noise_never_panics() {
+        let seeds = [1u64, 7, 17, 29, 53, 97, 193, 389];
+        let alphabet = [
+            "function", "main", "(", ")", "{", "}", "<", ">", ",", ";", ":", "=", "+", "-", "*",
+            "/", "if", "else", "match", "module", "class", "import", "package", "foo", "bar",
+            "baz", "Integer", "None", "\"x\"", "1", "true", "\n", " ",
+        ];
+
+        for seed in seeds {
+            let mut state = seed;
+            for _case in 0..256 {
+                let mut source = String::new();
+                let len = 8 + (state as usize % 48);
+                for _ in 0..len {
+                    state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                    let idx = (state as usize) % alphabet.len();
+                    source.push_str(alphabet[idx]);
+                }
+                let result = std::panic::catch_unwind(|| {
+                    let tokens = tokenize(&source).ok();
+                    if let Some(tokens) = tokens {
+                        let mut parser = Parser::new(tokens);
+                        let _ = parser.parse_program();
+                    }
+                });
+                assert!(result.is_ok(), "generated stress input panicked: {source}");
+            }
+        }
+    }
 }

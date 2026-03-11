@@ -5794,7 +5794,7 @@ mod tests {
     use super::{
         api_program_fingerprint, build_file_dependency_graph_incremental,
         build_reverse_dependency_graph, check_command, codegen_program_for_unit,
-        component_fingerprint, compute_link_fingerprint,
+        component_fingerprint, compute_link_fingerprint, compute_namespace_api_fingerprints,
         compute_rewrite_context_fingerprint_for_unit, escape_response_file_arg, format_targets,
         parse_project_unit, precompute_all_transitive_dependencies,
         reusable_component_fingerprints, run_tests, semantic_program_fingerprint,
@@ -5931,6 +5931,81 @@ mod tests {
             entry, files_toml, output
         );
         fs::write(root.join("apex.toml"), config).expect("write apex.toml");
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn collect_project_symbol_maps(
+        parsed_files: &[ParsedProjectUnit],
+    ) -> (
+        HashMap<String, Vec<PathBuf>>,
+        HashMap<String, HashMap<String, PathBuf>>,
+        HashMap<String, HashMap<String, PathBuf>>,
+        HashMap<String, HashMap<String, PathBuf>>,
+        HashMap<String, String>,
+        HashMap<String, PathBuf>,
+        HashMap<String, String>,
+        HashMap<String, PathBuf>,
+        HashMap<String, String>,
+        HashMap<String, PathBuf>,
+    ) {
+        let mut namespace_files_map = HashMap::new();
+        let mut namespace_function_files = HashMap::new();
+        let mut namespace_class_files = HashMap::new();
+        let mut namespace_module_files = HashMap::new();
+        let mut global_function_map = HashMap::new();
+        let mut global_function_file_map = HashMap::new();
+        let mut global_class_map = HashMap::new();
+        let mut global_class_file_map = HashMap::new();
+        let mut global_module_map = HashMap::new();
+        let mut global_module_file_map = HashMap::new();
+
+        for unit in parsed_files {
+            namespace_files_map
+                .entry(unit.namespace.clone())
+                .or_insert_with(Vec::new)
+                .push(unit.file.clone());
+            for name in &unit.function_names {
+                namespace_function_files
+                    .entry(unit.namespace.clone())
+                    .or_insert_with(HashMap::new)
+                    .insert(name.clone(), unit.file.clone());
+                global_function_map.insert(name.clone(), unit.namespace.clone());
+                global_function_file_map.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.class_names {
+                namespace_class_files
+                    .entry(unit.namespace.clone())
+                    .or_insert_with(HashMap::new)
+                    .insert(name.clone(), unit.file.clone());
+                global_class_map.insert(name.clone(), unit.namespace.clone());
+                global_class_file_map.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.module_names {
+                namespace_module_files
+                    .entry(unit.namespace.clone())
+                    .or_insert_with(HashMap::new)
+                    .insert(name.clone(), unit.file.clone());
+                global_module_map.insert(name.clone(), unit.namespace.clone());
+                global_module_file_map.insert(name.clone(), unit.file.clone());
+            }
+        }
+
+        for files in namespace_files_map.values_mut() {
+            files.sort();
+        }
+
+        (
+            namespace_files_map,
+            namespace_function_files,
+            namespace_class_files,
+            namespace_module_files,
+            global_function_map,
+            global_function_file_map,
+            global_class_map,
+            global_class_file_map,
+            global_module_map,
+            global_module_file_map,
+        )
     }
 
     #[test]
@@ -6372,6 +6447,719 @@ function main(): None {
         });
 
         let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
+        let temp_root = make_temp_project_root("rewrite-fp-body-only");
+        let src_dir = temp_root.join("src");
+        let main_file = src_dir.join("main.apex");
+        let helper_file = src_dir.join("helper.apex");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            &main_file,
+            "package app;\nimport lib.foo;\nfunction main(): None { value: Integer = foo(); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            &helper_file,
+            "package lib;\nfunction foo(): Integer { return 1; }\n",
+        )
+        .expect("write helper");
+        let parsed_before = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main before"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        ];
+        let (
+            _namespace_files_map_before,
+            namespace_function_files_before,
+            namespace_class_files_before,
+            namespace_module_files_before,
+            global_function_map_before,
+            global_function_file_map_before,
+            global_class_map_before,
+            global_class_file_map_before,
+            global_module_map_before,
+            global_module_file_map_before,
+        ) = collect_project_symbol_maps(&parsed_before);
+        let namespace_functions_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.function_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_classes_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.class_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_modules_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.module_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_api_fingerprints_before = compute_namespace_api_fingerprints(&parsed_before);
+        let file_api_fingerprints_before = parsed_before
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+            .collect::<HashMap<_, _>>();
+        let rewrite_ctx_before = RewriteFingerprintContext {
+            namespace_functions: &namespace_functions_before,
+            namespace_function_files: &namespace_function_files_before,
+            global_function_map: &global_function_map_before,
+            global_function_file_map: &global_function_file_map_before,
+            namespace_classes: &namespace_classes_before,
+            namespace_class_files: &namespace_class_files_before,
+            global_class_map: &global_class_map_before,
+            global_class_file_map: &global_class_file_map_before,
+            namespace_modules: &namespace_modules_before,
+            namespace_module_files: &namespace_module_files_before,
+            global_module_map: &global_module_map_before,
+            global_module_file_map: &global_module_file_map_before,
+            namespace_api_fingerprints: &namespace_api_fingerprints_before,
+            file_api_fingerprints: &file_api_fingerprints_before,
+        };
+        let main_before = parsed_before
+            .iter()
+            .find(|u| u.file == main_file)
+            .expect("main");
+        let rewrite_fp_before =
+            compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
+
+        thread::sleep(Duration::from_millis(5));
+        fs::write(
+            &helper_file,
+            "package lib;\nfunction foo(): Integer { return 2; }\n",
+        )
+        .expect("rewrite helper body");
+
+        let parsed_files = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main after"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+        ];
+        let (
+            namespace_files_map,
+            namespace_function_files,
+            namespace_class_files,
+            namespace_module_files,
+            global_function_map,
+            global_function_file_map,
+            global_class_map,
+            global_class_file_map,
+            global_module_map,
+            global_module_file_map,
+        ) = collect_project_symbol_maps(&parsed_files);
+        let namespace_functions = parsed_files.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.function_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_classes = parsed_files.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.class_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_modules = parsed_files.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.module_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_api_fingerprints = compute_namespace_api_fingerprints(&parsed_files);
+        let file_api_fingerprints = parsed_files
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+            .collect::<HashMap<_, _>>();
+        let rewrite_ctx = RewriteFingerprintContext {
+            namespace_functions: &namespace_functions,
+            namespace_function_files: &namespace_function_files,
+            global_function_map: &global_function_map,
+            global_function_file_map: &global_function_file_map,
+            namespace_classes: &namespace_classes,
+            namespace_class_files: &namespace_class_files,
+            global_class_map: &global_class_map,
+            global_class_file_map: &global_class_file_map,
+            namespace_modules: &namespace_modules,
+            namespace_module_files: &namespace_module_files,
+            global_module_map: &global_module_map,
+            global_module_file_map: &global_module_file_map,
+            namespace_api_fingerprints: &namespace_api_fingerprints,
+            file_api_fingerprints: &file_api_fingerprints,
+        };
+        let main_unit = parsed_files
+            .iter()
+            .find(|u| u.file == main_file)
+            .expect("main");
+        let rewrite_fp_after =
+            compute_rewrite_context_fingerprint_for_unit(main_unit, "app", &rewrite_ctx);
+        let _ = namespace_files_map;
+
+        assert_eq!(rewrite_fp_before, rewrite_fp_after);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
+        let temp_root = make_temp_project_root("rewrite-fp-api-change");
+        let src_dir = temp_root.join("src");
+        let main_file = src_dir.join("main.apex");
+        let helper_file = src_dir.join("helper.apex");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            &main_file,
+            "package app;\nimport lib.foo;\nfunction main(): None { value: Integer = foo(); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            &helper_file,
+            "package lib;\nfunction foo(): Integer { return 1; }\n",
+        )
+        .expect("write helper");
+        let parsed_before = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main before"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        ];
+        let (
+            _namespace_files_map_before,
+            namespace_function_files_before,
+            namespace_class_files_before,
+            namespace_module_files_before,
+            global_function_map_before,
+            global_function_file_map_before,
+            global_class_map_before,
+            global_class_file_map_before,
+            global_module_map_before,
+            global_module_file_map_before,
+        ) = collect_project_symbol_maps(&parsed_before);
+        let namespace_functions_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.function_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_classes_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.class_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_modules_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.module_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_api_fingerprints_before = compute_namespace_api_fingerprints(&parsed_before);
+        let file_api_fingerprints_before = parsed_before
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+            .collect::<HashMap<_, _>>();
+        let rewrite_ctx_before = RewriteFingerprintContext {
+            namespace_functions: &namespace_functions_before,
+            namespace_function_files: &namespace_function_files_before,
+            global_function_map: &global_function_map_before,
+            global_function_file_map: &global_function_file_map_before,
+            namespace_classes: &namespace_classes_before,
+            namespace_class_files: &namespace_class_files_before,
+            global_class_map: &global_class_map_before,
+            global_class_file_map: &global_class_file_map_before,
+            namespace_modules: &namespace_modules_before,
+            namespace_module_files: &namespace_module_files_before,
+            global_module_map: &global_module_map_before,
+            global_module_file_map: &global_module_file_map_before,
+            namespace_api_fingerprints: &namespace_api_fingerprints_before,
+            file_api_fingerprints: &file_api_fingerprints_before,
+        };
+        let main_before = parsed_before
+            .iter()
+            .find(|u| u.file == main_file)
+            .expect("main");
+        let rewrite_fp_before =
+            compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
+
+        thread::sleep(Duration::from_millis(5));
+        fs::write(
+            &helper_file,
+            "package lib;\nfunction bar(): Integer { return 1; }\n",
+        )
+        .expect("rewrite helper api");
+
+        let parsed_files = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper"),
+        ];
+        let (
+            _namespace_files_map,
+            namespace_function_files,
+            namespace_class_files,
+            namespace_module_files,
+            global_function_map,
+            global_function_file_map,
+            global_class_map,
+            global_class_file_map,
+            global_module_map,
+            global_module_file_map,
+        ) = collect_project_symbol_maps(&parsed_files);
+        let namespace_functions = parsed_files.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.function_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_classes = parsed_files.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.class_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_modules = parsed_files.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.module_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_api_fingerprints = compute_namespace_api_fingerprints(&parsed_files);
+        let file_api_fingerprints = parsed_files
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+            .collect::<HashMap<_, _>>();
+        let rewrite_ctx = RewriteFingerprintContext {
+            namespace_functions: &namespace_functions,
+            namespace_function_files: &namespace_function_files,
+            global_function_map: &global_function_map,
+            global_function_file_map: &global_function_file_map,
+            namespace_classes: &namespace_classes,
+            namespace_class_files: &namespace_class_files,
+            global_class_map: &global_class_map,
+            global_class_file_map: &global_class_file_map,
+            namespace_modules: &namespace_modules,
+            namespace_module_files: &namespace_module_files,
+            global_module_map: &global_module_map,
+            global_module_file_map: &global_module_file_map,
+            namespace_api_fingerprints: &namespace_api_fingerprints,
+            file_api_fingerprints: &file_api_fingerprints,
+        };
+        let main_unit = parsed_files
+            .iter()
+            .find(|u| u.file == main_file)
+            .expect("main");
+        let rewrite_fp_after =
+            compute_rewrite_context_fingerprint_for_unit(main_unit, "app", &rewrite_ctx);
+
+        assert_ne!(rewrite_fp_before, rewrite_fp_after);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() {
+        let body_only_variants = [
+            "package lib;\nfunction foo(): Integer { return 2; }\n",
+            "package lib;\nfunction foo(): Integer { return 99; }\n",
+        ];
+        let import_breaking_variants = [
+            "package lib;\nfunction bar(): Integer { return 1; }\n",
+            "package lib;\nfunction foo(x: Integer): Integer { return x; }\n",
+        ];
+
+        for helper_after in body_only_variants {
+            let temp_root = make_temp_project_root("generated-rewrite-body");
+            let src_dir = temp_root.join("src");
+            let main_file = src_dir.join("main.apex");
+            let helper_file = src_dir.join("helper.apex");
+            write_test_project_config(
+                &temp_root,
+                &["src/main.apex", "src/helper.apex"],
+                "src/main.apex",
+                "smoke",
+            );
+            fs::write(
+                &main_file,
+                "package app;\nimport lib.foo;\nfunction main(): None { value: Integer = foo(); return None; }\n",
+            )
+            .expect("write main");
+            fs::write(
+                &helper_file,
+                "package lib;\nfunction foo(): Integer { return 1; }\n",
+            )
+            .expect("write helper");
+
+            let parsed_before = vec![
+                parse_project_unit(&temp_root, &main_file).expect("parse main before"),
+                parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+            ];
+            let (
+                _namespace_files_map_before,
+                namespace_function_files_before,
+                namespace_class_files_before,
+                namespace_module_files_before,
+                global_function_map_before,
+                global_function_file_map_before,
+                global_class_map_before,
+                global_class_file_map_before,
+                global_module_map_before,
+                global_module_file_map_before,
+            ) = collect_project_symbol_maps(&parsed_before);
+            let namespace_functions_before = parsed_before.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.function_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_classes_before = parsed_before.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.class_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_modules_before = parsed_before.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.module_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_api_fingerprints_before =
+                compute_namespace_api_fingerprints(&parsed_before);
+            let file_api_fingerprints_before = parsed_before
+                .iter()
+                .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+                .collect::<HashMap<_, _>>();
+            let rewrite_ctx_before = RewriteFingerprintContext {
+                namespace_functions: &namespace_functions_before,
+                namespace_function_files: &namespace_function_files_before,
+                global_function_map: &global_function_map_before,
+                global_function_file_map: &global_function_file_map_before,
+                namespace_classes: &namespace_classes_before,
+                namespace_class_files: &namespace_class_files_before,
+                global_class_map: &global_class_map_before,
+                global_class_file_map: &global_class_file_map_before,
+                namespace_modules: &namespace_modules_before,
+                namespace_module_files: &namespace_module_files_before,
+                global_module_map: &global_module_map_before,
+                global_module_file_map: &global_module_file_map_before,
+                namespace_api_fingerprints: &namespace_api_fingerprints_before,
+                file_api_fingerprints: &file_api_fingerprints_before,
+            };
+            let main_before = parsed_before
+                .iter()
+                .find(|u| u.file == main_file)
+                .expect("main");
+            let rewrite_fp_before = compute_rewrite_context_fingerprint_for_unit(
+                main_before,
+                "app",
+                &rewrite_ctx_before,
+            );
+
+            fs::write(&helper_file, helper_after).expect("rewrite helper body variant");
+            let parsed_after = vec![
+                parse_project_unit(&temp_root, &main_file).expect("parse main after"),
+                parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+            ];
+            let (
+                _namespace_files_map_after,
+                namespace_function_files_after,
+                namespace_class_files_after,
+                namespace_module_files_after,
+                global_function_map_after,
+                global_function_file_map_after,
+                global_class_map_after,
+                global_class_file_map_after,
+                global_module_map_after,
+                global_module_file_map_after,
+            ) = collect_project_symbol_maps(&parsed_after);
+            let namespace_functions_after = parsed_after.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.function_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_classes_after = parsed_after.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.class_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_modules_after = parsed_after.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.module_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_api_fingerprints_after =
+                compute_namespace_api_fingerprints(&parsed_after);
+            let file_api_fingerprints_after = parsed_after
+                .iter()
+                .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+                .collect::<HashMap<_, _>>();
+            let rewrite_ctx_after = RewriteFingerprintContext {
+                namespace_functions: &namespace_functions_after,
+                namespace_function_files: &namespace_function_files_after,
+                global_function_map: &global_function_map_after,
+                global_function_file_map: &global_function_file_map_after,
+                namespace_classes: &namespace_classes_after,
+                namespace_class_files: &namespace_class_files_after,
+                global_class_map: &global_class_map_after,
+                global_class_file_map: &global_class_file_map_after,
+                namespace_modules: &namespace_modules_after,
+                namespace_module_files: &namespace_module_files_after,
+                global_module_map: &global_module_map_after,
+                global_module_file_map: &global_module_file_map_after,
+                namespace_api_fingerprints: &namespace_api_fingerprints_after,
+                file_api_fingerprints: &file_api_fingerprints_after,
+            };
+            let main_after = parsed_after
+                .iter()
+                .find(|u| u.file == main_file)
+                .expect("main");
+            let rewrite_fp_after =
+                compute_rewrite_context_fingerprint_for_unit(main_after, "app", &rewrite_ctx_after);
+
+            assert_eq!(rewrite_fp_before, rewrite_fp_after);
+            let _ = fs::remove_dir_all(temp_root);
+        }
+
+        for helper_after in import_breaking_variants {
+            let temp_root = make_temp_project_root("generated-rewrite-api");
+            let src_dir = temp_root.join("src");
+            let main_file = src_dir.join("main.apex");
+            let helper_file = src_dir.join("helper.apex");
+            write_test_project_config(
+                &temp_root,
+                &["src/main.apex", "src/helper.apex"],
+                "src/main.apex",
+                "smoke",
+            );
+            fs::write(
+                &main_file,
+                "package app;\nimport lib.foo;\nfunction main(): None { value: Integer = foo(); return None; }\n",
+            )
+            .expect("write main");
+            fs::write(
+                &helper_file,
+                "package lib;\nfunction foo(): Integer { return 1; }\n",
+            )
+            .expect("write helper");
+
+            let parsed_before = vec![
+                parse_project_unit(&temp_root, &main_file).expect("parse main before"),
+                parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+            ];
+            let (
+                _namespace_files_map_before,
+                namespace_function_files_before,
+                namespace_class_files_before,
+                namespace_module_files_before,
+                global_function_map_before,
+                global_function_file_map_before,
+                global_class_map_before,
+                global_class_file_map_before,
+                global_module_map_before,
+                global_module_file_map_before,
+            ) = collect_project_symbol_maps(&parsed_before);
+            let namespace_functions_before = parsed_before.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.function_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_classes_before = parsed_before.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.class_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_modules_before = parsed_before.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.module_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_api_fingerprints_before =
+                compute_namespace_api_fingerprints(&parsed_before);
+            let file_api_fingerprints_before = parsed_before
+                .iter()
+                .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+                .collect::<HashMap<_, _>>();
+            let rewrite_ctx_before = RewriteFingerprintContext {
+                namespace_functions: &namespace_functions_before,
+                namespace_function_files: &namespace_function_files_before,
+                global_function_map: &global_function_map_before,
+                global_function_file_map: &global_function_file_map_before,
+                namespace_classes: &namespace_classes_before,
+                namespace_class_files: &namespace_class_files_before,
+                global_class_map: &global_class_map_before,
+                global_class_file_map: &global_class_file_map_before,
+                namespace_modules: &namespace_modules_before,
+                namespace_module_files: &namespace_module_files_before,
+                global_module_map: &global_module_map_before,
+                global_module_file_map: &global_module_file_map_before,
+                namespace_api_fingerprints: &namespace_api_fingerprints_before,
+                file_api_fingerprints: &file_api_fingerprints_before,
+            };
+            let main_before = parsed_before
+                .iter()
+                .find(|u| u.file == main_file)
+                .expect("main");
+            let rewrite_fp_before = compute_rewrite_context_fingerprint_for_unit(
+                main_before,
+                "app",
+                &rewrite_ctx_before,
+            );
+
+            fs::write(&helper_file, helper_after).expect("rewrite helper api variant");
+            let parsed_after = vec![
+                parse_project_unit(&temp_root, &main_file).expect("parse main after"),
+                parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+            ];
+            let (
+                _namespace_files_map_after,
+                namespace_function_files_after,
+                namespace_class_files_after,
+                namespace_module_files_after,
+                global_function_map_after,
+                global_function_file_map_after,
+                global_class_map_after,
+                global_class_file_map_after,
+                global_module_map_after,
+                global_module_file_map_after,
+            ) = collect_project_symbol_maps(&parsed_after);
+            let namespace_functions_after = parsed_after.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.function_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_classes_after = parsed_after.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.class_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_modules_after = parsed_after.iter().fold(
+                HashMap::<String, HashSet<String>>::new(),
+                |mut acc, unit| {
+                    acc.entry(unit.namespace.clone())
+                        .or_default()
+                        .extend(unit.module_names.iter().cloned());
+                    acc
+                },
+            );
+            let namespace_api_fingerprints_after =
+                compute_namespace_api_fingerprints(&parsed_after);
+            let file_api_fingerprints_after = parsed_after
+                .iter()
+                .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+                .collect::<HashMap<_, _>>();
+            let rewrite_ctx_after = RewriteFingerprintContext {
+                namespace_functions: &namespace_functions_after,
+                namespace_function_files: &namespace_function_files_after,
+                global_function_map: &global_function_map_after,
+                global_function_file_map: &global_function_file_map_after,
+                namespace_classes: &namespace_classes_after,
+                namespace_class_files: &namespace_class_files_after,
+                global_class_map: &global_class_map_after,
+                global_class_file_map: &global_class_file_map_after,
+                namespace_modules: &namespace_modules_after,
+                namespace_module_files: &namespace_module_files_after,
+                global_module_map: &global_module_map_after,
+                global_module_file_map: &global_module_file_map_after,
+                namespace_api_fingerprints: &namespace_api_fingerprints_after,
+                file_api_fingerprints: &file_api_fingerprints_after,
+            };
+            let main_after = parsed_after
+                .iter()
+                .find(|u| u.file == main_file)
+                .expect("main");
+            let rewrite_fp_after =
+                compute_rewrite_context_fingerprint_for_unit(main_after, "app", &rewrite_ctx_after);
+
+            assert_ne!(rewrite_fp_before, rewrite_fp_after);
+            let _ = fs::remove_dir_all(temp_root);
+        }
     }
 
     fn make_unit(file: &str, namespace: &str, imports: &[&str]) -> ParsedProjectUnit {

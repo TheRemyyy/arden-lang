@@ -84,6 +84,18 @@ Run all bundled examples with platform-specific scripts from the repo root:
 
 Async runtime examples and task controls (`await`, `await_timeout`, `is_done`, `cancel`) are intended to behave consistently across Linux, macOS, and Windows.
 
+## Compiler Hardening
+
+For compiler robustness work there are now 2 additional loops beyond the normal unit/integration suite:
+
+- Ignored deterministic stress tests:
+  - `cargo test -- --ignored`
+- `cargo-fuzz` lexer/parser target:
+  - `cargo install cargo-fuzz`
+  - `cargo fuzz run lexer_parser`
+
+The ignored stress tests stay out of the default fast suite, while `cargo-fuzz` is intended for longer local or CI hardening runs.
+
 ## 📁 Quick Start: Multi-File Project
 
 ```bash
