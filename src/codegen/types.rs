@@ -53,13 +53,13 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         set_name: &str,
         method: &str,
-        _args: &[Spanned<Expr>],
+        args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (set_ptr, set_ty) = {
             let var = self.variables.get(set_name).unwrap();
             (var.ptr, var.ty.clone())
         };
-        self.compile_set_method_on_value(set_ptr.into(), &set_ty, method)
+        self.compile_set_method_on_value(set_ptr.into(), &set_ty, method, args)
     }
 
     pub fn compile_set_method_on_value(
@@ -67,6 +67,7 @@ impl<'ctx> Codegen<'ctx> {
         set_value: BasicValueEnum<'ctx>,
         set_ty: &Type,
         method: &str,
+        args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let set_ptr = self.materialize_value_pointer_for_type(set_value, set_ty, "set_tmp")?;
         let set_type = self.context.struct_type(
@@ -99,8 +100,444 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(length)
             }
             "add" | "contains" | "remove" => {
-                // Stubs for now
-                Ok(self.context.bool_type().const_int(0, false).into())
+                let inner_ty = match set_ty {
+                    Type::Set(inner) => &**inner,
+                    _ => return Err(CodegenError::new("Expected Set type")),
+                };
+                let elem_llvm_ty = self.llvm_type(inner_ty);
+                let elem_size = elem_llvm_ty
+                    .size_of()
+                    .and_then(|size| size.get_zero_extended_constant())
+                    .unwrap_or(8);
+                let i32_type = self.context.i32_type();
+                let i64_type = self.context.i64_type();
+                let zero = i32_type.const_int(0, false);
+                let capacity_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            set_type.as_basic_type_enum(),
+                            set_ptr,
+                            &[zero, i32_type.const_int(0, false)],
+                            "set_capacity_ptr",
+                        )
+                        .unwrap()
+                };
+                let length_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            set_type.as_basic_type_enum(),
+                            set_ptr,
+                            &[zero, i32_type.const_int(1, false)],
+                            "set_length_ptr",
+                        )
+                        .unwrap()
+                };
+                let data_ptr_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            set_type.as_basic_type_enum(),
+                            set_ptr,
+                            &[zero, i32_type.const_int(2, false)],
+                            "set_data_ptr_ptr",
+                        )
+                        .unwrap()
+                };
+                let needle = self.compile_expr(&args[0].node)?;
+                let length = self
+                    .builder
+                    .build_load(i64_type, length_ptr, "set_len")
+                    .unwrap()
+                    .into_int_value();
+                let data_ptr = self
+                    .builder
+                    .build_load(
+                        self.context.ptr_type(AddressSpace::default()),
+                        data_ptr_ptr,
+                        "set_data_ptr",
+                    )
+                    .unwrap()
+                    .into_pointer_value();
+                let idx_ptr = self.builder.build_alloca(i64_type, "set_idx").unwrap();
+                self.builder
+                    .build_store(idx_ptr, i64_type.const_zero())
+                    .unwrap();
+                let found_ptr = self
+                    .builder
+                    .build_alloca(i64_type, "set_found_idx")
+                    .unwrap();
+                self.builder
+                    .build_store(found_ptr, i64_type.const_all_ones())
+                    .unwrap();
+
+                let current_fn = self.current_function.unwrap();
+                let cond_bb = self
+                    .context
+                    .append_basic_block(current_fn, "set_search.cond");
+                let body_bb = self
+                    .context
+                    .append_basic_block(current_fn, "set_search.body");
+                let found_bb = self
+                    .context
+                    .append_basic_block(current_fn, "set_search.found");
+                let done_bb = self
+                    .context
+                    .append_basic_block(current_fn, "set_search.done");
+
+                self.builder.build_unconditional_branch(cond_bb).unwrap();
+                self.builder.position_at_end(cond_bb);
+                let idx = self
+                    .builder
+                    .build_load(i64_type, idx_ptr, "set_idx_val")
+                    .unwrap()
+                    .into_int_value();
+                let in_bounds = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULT, idx, length, "set_idx_in_bounds")
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(in_bounds, body_bb, done_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(body_bb);
+                let offset = self
+                    .builder
+                    .build_int_mul(idx, i64_type.const_int(elem_size, false), "set_offset")
+                    .unwrap();
+                let elem_ptr = unsafe {
+                    self.builder
+                        .build_gep(self.context.i8_type(), data_ptr, &[offset], "set_elem_ptr")
+                        .unwrap()
+                };
+                let typed_elem_ptr = self
+                    .builder
+                    .build_pointer_cast(
+                        elem_ptr,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "set_typed_elem_ptr",
+                    )
+                    .unwrap();
+                let existing = self
+                    .builder
+                    .build_load(elem_llvm_ty, typed_elem_ptr, "set_existing")
+                    .unwrap();
+                let eq = if matches!(inner_ty, Type::String) {
+                    let strcmp = self.get_or_declare_strcmp();
+                    let cmp = self
+                        .builder
+                        .build_call(strcmp, &[existing.into(), needle.into()], "set_strcmp")
+                        .unwrap();
+                    let cmp_v = match cmp.try_as_basic_value() {
+                        ValueKind::Basic(v) => v.into_int_value(),
+                        _ => self.context.i32_type().const_int(1, false),
+                    };
+                    self.builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            cmp_v,
+                            self.context.i32_type().const_zero(),
+                            "set_eq",
+                        )
+                        .unwrap()
+                } else if existing.is_int_value() && needle.is_int_value() {
+                    self.builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            existing.into_int_value(),
+                            needle.into_int_value(),
+                            "set_eq",
+                        )
+                        .unwrap()
+                } else if existing.is_float_value() && needle.is_float_value() {
+                    self.builder
+                        .build_float_compare(
+                            inkwell::FloatPredicate::OEQ,
+                            existing.into_float_value(),
+                            needle.into_float_value(),
+                            "set_eq",
+                        )
+                        .unwrap()
+                } else {
+                    self.context.bool_type().const_zero()
+                };
+                let next_bb = self
+                    .context
+                    .append_basic_block(current_fn, "set_search.next");
+                self.builder
+                    .build_conditional_branch(eq, found_bb, next_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(found_bb);
+                self.builder.build_store(found_ptr, idx).unwrap();
+                self.builder.build_unconditional_branch(done_bb).unwrap();
+
+                self.builder.position_at_end(next_bb);
+                let next_idx = self
+                    .builder
+                    .build_int_add(idx, i64_type.const_int(1, false), "set_next_idx")
+                    .unwrap();
+                self.builder.build_store(idx_ptr, next_idx).unwrap();
+                self.builder.build_unconditional_branch(cond_bb).unwrap();
+
+                self.builder.position_at_end(done_bb);
+                let found_idx = self
+                    .builder
+                    .build_load(i64_type, found_ptr, "set_found_idx_val")
+                    .unwrap()
+                    .into_int_value();
+                let found = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        found_idx,
+                        i64_type.const_all_ones(),
+                        "set_found",
+                    )
+                    .unwrap();
+
+                match method {
+                    "contains" => Ok(found.into()),
+                    "add" => {
+                        let append_bb = self
+                            .context
+                            .append_basic_block(current_fn, "set_add.append");
+                        let merge_bb = self.context.append_basic_block(current_fn, "set_add.merge");
+                        self.builder
+                            .build_conditional_branch(found, merge_bb, append_bb)
+                            .unwrap();
+
+                        self.builder.position_at_end(append_bb);
+                        let capacity = self
+                            .builder
+                            .build_load(i64_type, capacity_ptr, "set_capacity")
+                            .unwrap()
+                            .into_int_value();
+                        let need_growth = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::UGE,
+                                length,
+                                capacity,
+                                "set_need_growth",
+                            )
+                            .unwrap();
+                        let grow_bb = self.context.append_basic_block(current_fn, "set_add.grow");
+                        let store_bb = self.context.append_basic_block(current_fn, "set_add.store");
+                        self.builder
+                            .build_conditional_branch(need_growth, grow_bb, store_bb)
+                            .unwrap();
+
+                        self.builder.position_at_end(grow_bb);
+                        let realloc = self.get_or_declare_realloc();
+                        let grown_capacity = self
+                            .builder
+                            .build_int_mul(
+                                capacity,
+                                i64_type.const_int(2, false),
+                                "set_grown_capacity",
+                            )
+                            .unwrap();
+                        let new_size = self
+                            .builder
+                            .build_int_mul(
+                                grown_capacity,
+                                i64_type.const_int(elem_size, false),
+                                "set_new_size",
+                            )
+                            .unwrap();
+                        let grown_ptr = self
+                            .builder
+                            .build_call(
+                                realloc,
+                                &[data_ptr.into(), new_size.into()],
+                                "set_grown_ptr",
+                            )
+                            .unwrap()
+                            .try_as_basic_value();
+                        let grown_ptr = match grown_ptr {
+                            ValueKind::Basic(BasicValueEnum::PointerValue(ptr)) => ptr,
+                            _ => return Err(CodegenError::new("realloc failed for Set growth")),
+                        };
+                        self.builder.build_store(data_ptr_ptr, grown_ptr).unwrap();
+                        self.builder
+                            .build_store(capacity_ptr, grown_capacity)
+                            .unwrap();
+                        self.builder.build_unconditional_branch(store_bb).unwrap();
+
+                        self.builder.position_at_end(store_bb);
+                        let active_data_ptr = self
+                            .builder
+                            .build_load(
+                                self.context.ptr_type(AddressSpace::default()),
+                                data_ptr_ptr,
+                                "set_active_data_ptr",
+                            )
+                            .unwrap()
+                            .into_pointer_value();
+                        let offset = self
+                            .builder
+                            .build_int_mul(
+                                length,
+                                i64_type.const_int(elem_size, false),
+                                "set_append_offset",
+                            )
+                            .unwrap();
+                        let elem_ptr = unsafe {
+                            self.builder
+                                .build_gep(
+                                    self.context.i8_type(),
+                                    active_data_ptr,
+                                    &[offset],
+                                    "set_append_ptr",
+                                )
+                                .unwrap()
+                        };
+                        let typed_elem_ptr = self
+                            .builder
+                            .build_pointer_cast(
+                                elem_ptr,
+                                self.context.ptr_type(AddressSpace::default()),
+                                "set_append_typed_ptr",
+                            )
+                            .unwrap();
+                        self.builder.build_store(typed_elem_ptr, needle).unwrap();
+                        let new_length = self
+                            .builder
+                            .build_int_add(length, i64_type.const_int(1, false), "set_new_length")
+                            .unwrap();
+                        self.builder.build_store(length_ptr, new_length).unwrap();
+                        self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                        self.builder.position_at_end(merge_bb);
+                        let phi = self
+                            .builder
+                            .build_phi(self.context.bool_type(), "set_add_phi")
+                            .unwrap();
+                        phi.add_incoming(&[
+                            (&self.context.bool_type().const_zero(), done_bb),
+                            (&self.context.bool_type().const_int(1, false), store_bb),
+                        ]);
+                        Ok(phi.as_basic_value())
+                    }
+                    "remove" => {
+                        let remove_bb = self
+                            .context
+                            .append_basic_block(current_fn, "set_remove.body");
+                        let merge_bb = self
+                            .context
+                            .append_basic_block(current_fn, "set_remove.merge");
+                        self.builder
+                            .build_conditional_branch(found, remove_bb, merge_bb)
+                            .unwrap();
+
+                        self.builder.position_at_end(remove_bb);
+                        let last_idx = self
+                            .builder
+                            .build_int_sub(length, i64_type.const_int(1, false), "set_last_idx")
+                            .unwrap();
+                        let remove_is_last = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::EQ,
+                                found_idx,
+                                last_idx,
+                                "set_remove_is_last",
+                            )
+                            .unwrap();
+                        let shift_bb = self
+                            .context
+                            .append_basic_block(current_fn, "set_remove.shift");
+                        let shrink_bb = self
+                            .context
+                            .append_basic_block(current_fn, "set_remove.shrink");
+                        self.builder
+                            .build_conditional_branch(remove_is_last, shrink_bb, shift_bb)
+                            .unwrap();
+
+                        self.builder.position_at_end(shift_bb);
+                        let src_offset = self
+                            .builder
+                            .build_int_mul(
+                                last_idx,
+                                i64_type.const_int(elem_size, false),
+                                "set_src_offset",
+                            )
+                            .unwrap();
+                        let dst_offset = self
+                            .builder
+                            .build_int_mul(
+                                found_idx,
+                                i64_type.const_int(elem_size, false),
+                                "set_dst_offset",
+                            )
+                            .unwrap();
+                        let src_ptr = unsafe {
+                            self.builder
+                                .build_gep(
+                                    self.context.i8_type(),
+                                    data_ptr,
+                                    &[src_offset],
+                                    "set_src_ptr",
+                                )
+                                .unwrap()
+                        };
+                        let dst_ptr = unsafe {
+                            self.builder
+                                .build_gep(
+                                    self.context.i8_type(),
+                                    data_ptr,
+                                    &[dst_offset],
+                                    "set_dst_ptr",
+                                )
+                                .unwrap()
+                        };
+                        let typed_src_ptr = self
+                            .builder
+                            .build_pointer_cast(
+                                src_ptr,
+                                self.context.ptr_type(AddressSpace::default()),
+                                "set_typed_src_ptr",
+                            )
+                            .unwrap();
+                        let typed_dst_ptr = self
+                            .builder
+                            .build_pointer_cast(
+                                dst_ptr,
+                                self.context.ptr_type(AddressSpace::default()),
+                                "set_typed_dst_ptr",
+                            )
+                            .unwrap();
+                        let last_value = self
+                            .builder
+                            .build_load(elem_llvm_ty, typed_src_ptr, "set_last_value")
+                            .unwrap();
+                        self.builder.build_store(typed_dst_ptr, last_value).unwrap();
+                        self.builder.build_unconditional_branch(shrink_bb).unwrap();
+
+                        self.builder.position_at_end(shrink_bb);
+                        let new_length = self
+                            .builder
+                            .build_int_sub(
+                                length,
+                                i64_type.const_int(1, false),
+                                "set_removed_length",
+                            )
+                            .unwrap();
+                        self.builder.build_store(length_ptr, new_length).unwrap();
+                        self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                        self.builder.position_at_end(merge_bb);
+                        let phi = self
+                            .builder
+                            .build_phi(self.context.bool_type(), "set_remove_phi")
+                            .unwrap();
+                        phi.add_incoming(&[
+                            (&self.context.bool_type().const_zero(), done_bb),
+                            (&self.context.bool_type().const_int(1, false), shrink_bb),
+                        ]);
+                        Ok(phi.as_basic_value())
+                    }
+                    _ => unreachable!(),
+                }
             }
             _ => Err(CodegenError::new(format!("Unknown Set method: {}", method))),
         }

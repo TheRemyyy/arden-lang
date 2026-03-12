@@ -21,6 +21,7 @@ Task runtime semantic checks are also kept aligned with the implemented runtime 
 Backend method dispatch now also wires `String.length()` directly for expression receivers, keeping string literals and other non-local string values aligned with the same method surface accepted by the typechecker.
 That object-type inference now also treats string concatenation and interpolation as first-class `String` producers, so string method calls continue to work even when the receiver is not a named local or plain literal.
 The same inference layer now also preserves value types returned from built-in container getters such as `List.get()` and `Map.get()`, which keeps object field/method chains on those returned values valid during lowering.
+Built-in `Set<T>` lowering now also performs real membership/mutation work instead of placeholder boolean stubs, keeping `add`/`contains`/`remove` behavior aligned with the typechecked container API.
 The same built-in method tables are now kept aligned between typechecking and codegen for `Set<T>` as well, preventing frontend/backend drift where a method existed in one layer but not the other.
 
 ## Build Caching

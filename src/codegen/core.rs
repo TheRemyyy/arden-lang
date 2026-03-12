@@ -7130,7 +7130,7 @@ impl<'ctx> Codegen<'ctx> {
                         return self.compile_set_method(name, method, args);
                     }
                     let set_val = self.compile_expr(object)?;
-                    return self.compile_set_method_on_value(set_val, ty, method);
+                    return self.compile_set_method_on_value(set_val, ty, method, args);
                 }
                 Type::Option(_) => {
                     let option_val = self.compile_expr(object)?;

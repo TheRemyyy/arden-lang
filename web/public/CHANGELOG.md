@@ -19,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - string-producing expressions such as concatenation and interpolation now also preserve `String` object inference for method calls like `("a" + "bc").length()` and `("a{1}c").length()`
 - Fixed object-chain inference for built-in container getter calls:
   - `List.get()` / `List.pop()` and `Map.get()` now preserve their returned value types through backend object inference, so chains like `xs.get(0).value` and `m.get(1).value` no longer fail late during field or method lowering
+- Fixed `Set<T>` runtime method semantics in backend lowering:
+  - `add`, `contains`, and `remove` are no longer hardcoded `false` stubs
+  - returned sets now behave consistently for direct and expression-receiver calls such as `build().contains(7)` and `build().remove(7)`
 - Fixed `apex test` handling for `@Ignore` without a reason:
   - tests marked with bare `@Ignore` are now skipped correctly instead of being executed
   - ignored tests are now counted in the final `Total` summary as well as `Ignored`

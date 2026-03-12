@@ -7616,7 +7616,36 @@ function main(): None {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled set-call method binary");
-        assert_eq!(status.code(), Some(2));
+        assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_set_remove_on_call_results() {
+        let temp_root = make_temp_project_root("set-remove-call-method-runtime");
+        let source_path = temp_root.join("set_remove_call_method_runtime.apex");
+        let output_path = temp_root.join("set_remove_call_method_runtime");
+        let source = r#"
+            function build(): Set<Integer> {
+                s: Set<Integer> = Set<Integer>();
+                s.add(7);
+                return s;
+            }
+
+            function main(): Integer {
+                return if (build().remove(7)) { 1; } else { 2; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("set remove on call result should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled set-remove call binary");
+        assert_eq!(status.code(), Some(1));
 
         let _ = fs::remove_dir_all(temp_root);
     }
