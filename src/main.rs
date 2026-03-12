@@ -455,7 +455,7 @@ fn save_semantic_cached_fingerprint(project_root: &Path, fingerprint: &str) -> R
     })
 }
 
-const PARSE_CACHE_SCHEMA: &str = "v6";
+const PARSE_CACHE_SCHEMA: &str = "v7";
 const DEPENDENCY_GRAPH_CACHE_SCHEMA: &str = "v2";
 const SEMANTIC_SUMMARY_CACHE_SCHEMA: &str = "v2";
 const TYPECHECK_SUMMARY_CACHE_SCHEMA: &str = "v3";
@@ -481,6 +481,7 @@ struct ParsedFileCacheEntry {
     imports: Vec<ImportDecl>,
     function_names: Vec<String>,
     class_names: Vec<String>,
+    enum_names: Vec<String>,
     module_names: Vec<String>,
     referenced_symbols: Vec<String>,
     qualified_symbol_refs: Vec<Vec<String>>,
@@ -498,6 +499,7 @@ struct ParsedProjectUnit {
     import_check_fingerprint: String,
     function_names: Vec<String>,
     class_names: Vec<String>,
+    enum_names: Vec<String>,
     module_names: Vec<String>,
     referenced_symbols: Vec<String>,
     qualified_symbol_refs: Vec<Vec<String>>,
@@ -911,6 +913,8 @@ fn extend_declaration_symbols_for_reference(
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &HashMap<String, PathBuf>,
+    global_enum_map: &HashMap<String, String>,
+    global_enum_file_map: &HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
     global_module_file_map: &HashMap<String, PathBuf>,
 ) {
@@ -938,6 +942,12 @@ fn extend_declaration_symbols_for_reference(
         push_owner(owner_ns, owner_file);
     }
     if let (Some(owner_ns), Some(owner_file)) = (
+        global_enum_map.get(symbol),
+        global_enum_file_map.get(symbol),
+    ) {
+        push_owner(owner_ns, owner_file);
+    }
+    if let (Some(owner_ns), Some(owner_file)) = (
         global_module_map.get(symbol),
         global_module_file_map.get(symbol),
     ) {
@@ -956,6 +966,8 @@ fn extend_declaration_symbols_for_exact_import(
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &HashMap<String, PathBuf>,
+    global_enum_map: &HashMap<String, String>,
+    global_enum_file_map: &HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
     global_module_file_map: &HashMap<String, PathBuf>,
 ) {
@@ -987,6 +999,12 @@ fn extend_declaration_symbols_for_exact_import(
         push_owner(owner_ns, owner_file);
     }
     if let (Some(owner_ns), Some(owner_file)) = (
+        global_enum_map.get(symbol),
+        global_enum_file_map.get(symbol),
+    ) {
+        push_owner(owner_ns, owner_file);
+    }
+    if let (Some(owner_ns), Some(owner_file)) = (
         global_module_map.get(symbol),
         global_module_file_map.get(symbol),
     ) {
@@ -1011,6 +1029,8 @@ fn declaration_symbols_for_unit(
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &HashMap<String, PathBuf>,
+    global_enum_map: &HashMap<String, String>,
+    global_enum_file_map: &HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
     global_module_file_map: &HashMap<String, PathBuf>,
 ) -> DeclarationClosure {
@@ -1041,6 +1061,8 @@ fn declaration_symbols_for_unit(
                 global_function_file_map,
                 global_class_map,
                 global_class_file_map,
+                global_enum_map,
+                global_enum_file_map,
                 global_module_map,
                 global_module_file_map,
             );
@@ -1054,11 +1076,13 @@ fn declaration_symbols_for_unit(
                         rest,
                         global_function_map,
                         global_class_map,
+                        global_enum_map,
                         global_module_map,
                     ) {
                         let owner_file = global_function_file_map
                             .get(&candidate)
                             .or_else(|| global_class_file_map.get(&candidate))
+                            .or_else(|| global_enum_file_map.get(&candidate))
                             .or_else(|| global_module_file_map.get(&candidate));
                         if let Some(owner_file) = owner_file {
                             if closure_files.contains(owner_file) {
@@ -1091,6 +1115,8 @@ fn declaration_symbols_for_unit(
                 global_function_file_map,
                 global_class_map,
                 global_class_file_map,
+                global_enum_map,
+                global_enum_file_map,
                 global_module_map,
                 global_module_file_map,
             );
@@ -1545,6 +1571,8 @@ fn import_path_owner_file<'a>(
     global_function_file_map: &'a HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &'a HashMap<String, PathBuf>,
+    global_enum_map: &HashMap<String, String>,
+    global_enum_file_map: &'a HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
     global_module_file_map: &'a HashMap<String, PathBuf>,
 ) -> Option<&'a PathBuf> {
@@ -1561,6 +1589,12 @@ fn import_path_owner_file<'a>(
         .is_some_and(|owner_ns| owner_ns == namespace)
     {
         return global_class_file_map.get(symbol);
+    }
+    if global_enum_map
+        .get(symbol)
+        .is_some_and(|owner_ns| owner_ns == namespace)
+    {
+        return global_enum_file_map.get(symbol);
     }
     if global_module_map
         .get(symbol)
@@ -1581,6 +1615,8 @@ struct RewriteFingerprintContext<'a> {
     namespace_class_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     global_class_map: &'a HashMap<String, String>,
     global_class_file_map: &'a HashMap<String, PathBuf>,
+    global_enum_map: &'a HashMap<String, String>,
+    global_enum_file_map: &'a HashMap<String, PathBuf>,
     namespace_modules: &'a HashMap<String, HashSet<String>>,
     namespace_module_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     global_module_map: &'a HashMap<String, String>,
@@ -1598,6 +1634,8 @@ struct DependencyResolutionContext<'a> {
     global_function_file_map: &'a HashMap<String, PathBuf>,
     global_class_map: &'a HashMap<String, String>,
     global_class_file_map: &'a HashMap<String, PathBuf>,
+    global_enum_map: &'a HashMap<String, String>,
+    global_enum_file_map: &'a HashMap<String, PathBuf>,
     global_module_map: &'a HashMap<String, String>,
     global_module_file_map: &'a HashMap<String, PathBuf>,
 }
@@ -1718,6 +1756,7 @@ fn resolve_symbol_in_namespace_path(
     member_parts: &[String],
     global_function_map: &HashMap<String, String>,
     global_class_map: &HashMap<String, String>,
+    global_enum_map: &HashMap<String, String>,
     global_module_map: &HashMap<String, String>,
 ) -> Option<(String, String)> {
     if let Some(found) =
@@ -1732,6 +1771,11 @@ fn resolve_symbol_in_namespace_path(
 
     let candidate = member_parts.join("__");
     if let Some(owner_ns) = global_class_map.get(&candidate) {
+        if owner_ns == namespace_path {
+            return Some((owner_ns.clone(), candidate));
+        }
+    }
+    if let Some(owner_ns) = global_enum_map.get(&candidate) {
         if owner_ns == namespace_path {
             return Some((owner_ns.clone(), candidate));
         }
@@ -1752,6 +1796,8 @@ fn resolve_owner_file_in_namespace_path(
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &HashMap<String, PathBuf>,
+    global_enum_map: &HashMap<String, String>,
+    global_enum_file_map: &HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
     global_module_file_map: &HashMap<String, PathBuf>,
 ) -> Option<PathBuf> {
@@ -1774,6 +1820,12 @@ fn resolve_owner_file_in_namespace_path(
         .is_some_and(|owner_ns| owner_ns == namespace_path)
     {
         return global_class_file_map.get(&candidate).cloned();
+    }
+    if global_enum_map
+        .get(&candidate)
+        .is_some_and(|owner_ns| owner_ns == namespace_path)
+    {
+        return global_enum_file_map.get(&candidate).cloned();
     }
     if global_module_map
         .get(&candidate)
@@ -1813,6 +1865,15 @@ fn resolve_symbol_owner_files_in_namespace(
             }
         }
         if ctx
+            .global_enum_map
+            .get(symbol)
+            .is_some_and(|owner_ns| owner_ns == namespace)
+        {
+            if let Some(file) = ctx.global_enum_file_map.get(symbol) {
+                deps.insert(file.clone());
+            }
+        }
+        if ctx
             .global_module_map
             .get(symbol)
             .is_some_and(|owner_ns| owner_ns == namespace)
@@ -1831,6 +1892,8 @@ fn resolve_symbol_owner_files_in_namespace(
             ctx.global_function_file_map,
             ctx.global_class_map,
             ctx.global_class_file_map,
+            ctx.global_enum_map,
+            ctx.global_enum_file_map,
             ctx.global_module_map,
             ctx.global_module_file_map,
         ) {
@@ -1866,6 +1929,8 @@ fn resolve_import_dependency_files(
         ctx.global_function_file_map,
         ctx.global_class_map,
         ctx.global_class_file_map,
+        ctx.global_enum_map,
+        ctx.global_enum_file_map,
         ctx.global_module_map,
         ctx.global_module_file_map,
     ) {
@@ -1890,6 +1955,8 @@ fn resolve_import_dependency_files(
                     ctx.global_function_file_map,
                     ctx.global_class_map,
                     ctx.global_class_file_map,
+                    ctx.global_enum_map,
+                    ctx.global_enum_file_map,
                     ctx.global_module_map,
                     ctx.global_module_file_map,
                 ) {
@@ -2584,6 +2651,8 @@ fn compute_rewrite_context_fingerprint_for_unit(
         global_function_file_map: ctx.global_function_file_map,
         global_class_map: ctx.global_class_map,
         global_class_file_map: ctx.global_class_file_map,
+        global_enum_map: ctx.global_enum_map,
+        global_enum_file_map: ctx.global_enum_file_map,
         global_module_map: ctx.global_module_map,
         global_module_file_map: ctx.global_module_file_map,
     };
@@ -2649,6 +2718,8 @@ fn compute_rewrite_context_fingerprint_for_unit(
             ctx.global_function_file_map,
             ctx.global_class_map,
             ctx.global_class_file_map,
+            ctx.global_enum_map,
+            ctx.global_enum_file_map,
             ctx.global_module_map,
             ctx.global_module_file_map,
         ) {
@@ -3125,6 +3196,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
 
     let mut function_names = Vec::new();
     let mut class_names = Vec::new();
+    let mut enum_names = Vec::new();
     let mut module_names = Vec::new();
     let mut referenced_symbols = HashSet::new();
     let mut qualified_symbol_refs: HashSet<Vec<String>> = HashSet::new();
@@ -3460,6 +3532,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
     let (
         function_names,
         class_names,
+        enum_names,
         module_names,
         referenced_symbols,
         qualified_symbol_refs,
@@ -3472,6 +3545,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         (
             cache.function_names.clone(),
             cache.class_names.clone(),
+            cache.enum_names.clone(),
             cache.module_names.clone(),
             cache.referenced_symbols.clone(),
             cache.qualified_symbol_refs.clone(),
@@ -3487,6 +3561,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                     collect_function_names(&decl.node, None, &mut function_names);
                 }
                 Decl::Class(class) => class_names.push(class.name.clone()),
+                Decl::Enum(en) => enum_names.push(en.name.clone()),
                 _ => {}
             }
             collect_decl_refs(
@@ -3512,6 +3587,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         qualified_symbol_refs.sort();
         let mut api_referenced_symbols = api_referenced_symbols.into_iter().collect::<Vec<_>>();
         api_referenced_symbols.sort();
+        enum_names.sort();
         let import_check_fingerprint = compute_import_check_fingerprint(
             &namespace,
             &imports,
@@ -3533,6 +3609,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
             imports: imports.clone(),
             function_names: function_names.clone(),
             class_names: class_names.clone(),
+            enum_names: enum_names.clone(),
             module_names: module_names.clone(),
             referenced_symbols: referenced_symbols.clone(),
             qualified_symbol_refs: qualified_symbol_refs.clone(),
@@ -3543,6 +3620,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         (
             function_names,
             class_names,
+            enum_names,
             module_names,
             referenced_symbols,
             qualified_symbol_refs,
@@ -3561,6 +3639,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         import_check_fingerprint,
         function_names,
         class_names,
+        enum_names,
         module_names,
         referenced_symbols,
         qualified_symbol_refs,
@@ -3741,9 +3820,12 @@ fn build_project(
     let mut global_function_file_map: HashMap<String, PathBuf> = HashMap::new(); // func_name -> owner file
     let mut global_class_map: HashMap<String, String> = HashMap::new(); // class_name -> namespace
     let mut global_class_file_map: HashMap<String, PathBuf> = HashMap::new(); // class_name -> owner file
+    let mut global_enum_map: HashMap<String, String> = HashMap::new(); // enum_name -> namespace
+    let mut global_enum_file_map: HashMap<String, PathBuf> = HashMap::new(); // enum_name -> owner file
     let mut global_module_map: HashMap<String, String> = HashMap::new(); // module_name -> namespace
     let mut global_module_file_map: HashMap<String, PathBuf> = HashMap::new(); // module_name -> owner file
     let mut namespace_class_map: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut namespace_enum_map: HashMap<String, HashSet<String>> = HashMap::new();
     let mut namespace_module_map: HashMap<String, HashSet<String>> = HashMap::new();
     let mut function_collisions: Vec<(String, String, String)> = Vec::new();
     let mut class_collisions: Vec<(String, String, String)> = Vec::new();
@@ -3766,6 +3848,9 @@ fn build_project(
 
         // Extract symbol definitions for global maps
         let class_entry = namespace_class_map
+            .entry(unit.namespace.clone())
+            .or_default();
+        let enum_entry = namespace_enum_map
             .entry(unit.namespace.clone())
             .or_default();
         let module_entry = namespace_module_map
@@ -3800,6 +3885,11 @@ fn build_project(
                 global_class_map.insert(class_name.clone(), unit.namespace.clone());
                 global_class_file_map.insert(class_name.clone(), unit.file.clone());
             }
+        }
+        for enum_name in &unit.enum_names {
+            enum_entry.insert(enum_name.clone());
+            global_enum_map.insert(enum_name.clone(), unit.namespace.clone());
+            global_enum_file_map.insert(enum_name.clone(), unit.file.clone());
         }
         for module_name in &unit.module_names {
             module_entry.insert(module_name.clone());
@@ -3879,6 +3969,8 @@ fn build_project(
         global_function_file_map: &global_function_file_map,
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
+        global_enum_map: &global_enum_map,
+        global_enum_file_map: &global_enum_file_map,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
     };
@@ -4077,6 +4169,8 @@ fn build_project(
         namespace_class_files: &namespace_class_files,
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
+        global_enum_map: &global_enum_map,
+        global_enum_file_map: &global_enum_file_map,
         namespace_modules: &namespace_module_map,
         namespace_module_files: &namespace_module_files,
         global_module_map: &global_module_map,
@@ -4225,6 +4319,8 @@ fn build_project(
                             &global_function_map,
                             &namespace_class_map,
                             &global_class_map,
+                            &namespace_enum_map,
+                            &global_enum_map,
                             &namespace_module_map,
                             &global_module_map,
                             &unit.imports,
@@ -4643,6 +4739,8 @@ fn build_project(
                             &global_function_file_map,
                             &global_class_map,
                             &global_class_file_map,
+                            &global_enum_map,
+                            &global_enum_file_map,
                             &global_module_map,
                             &global_module_file_map,
                         );
@@ -6189,6 +6287,8 @@ mod tests {
         HashMap<String, PathBuf>,
         HashMap<String, String>,
         HashMap<String, PathBuf>,
+        HashMap<String, String>,
+        HashMap<String, PathBuf>,
     ) {
         let mut namespace_files_map = HashMap::new();
         let mut namespace_function_files = HashMap::new();
@@ -6198,6 +6298,8 @@ mod tests {
         let mut global_function_file_map = HashMap::new();
         let mut global_class_map = HashMap::new();
         let mut global_class_file_map = HashMap::new();
+        let mut global_enum_map = HashMap::new();
+        let mut global_enum_file_map = HashMap::new();
         let mut global_module_map = HashMap::new();
         let mut global_module_file_map = HashMap::new();
 
@@ -6222,6 +6324,10 @@ mod tests {
                 global_class_map.insert(name.clone(), unit.namespace.clone());
                 global_class_file_map.insert(name.clone(), unit.file.clone());
             }
+            for name in &unit.enum_names {
+                global_enum_map.insert(name.clone(), unit.namespace.clone());
+                global_enum_file_map.insert(name.clone(), unit.file.clone());
+            }
             for name in &unit.module_names {
                 namespace_module_files
                     .entry(unit.namespace.clone())
@@ -6245,6 +6351,8 @@ mod tests {
             global_function_file_map,
             global_class_map,
             global_class_file_map,
+            global_enum_map,
+            global_enum_file_map,
             global_module_map,
             global_module_file_map,
         )
@@ -6486,6 +6594,8 @@ function main(): None {
         let mut global_function_file_map: HashMap<String, PathBuf> = HashMap::new();
         let mut global_class_map: HashMap<String, String> = HashMap::new();
         let mut global_class_file_map: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_enum_map: HashMap<String, String> = HashMap::new();
+        let mut global_enum_file_map: HashMap<String, PathBuf> = HashMap::new();
         let mut global_module_map: HashMap<String, String> = HashMap::new();
         let mut global_module_file_map: HashMap<String, PathBuf> = HashMap::new();
 
@@ -6510,6 +6620,10 @@ function main(): None {
                 global_class_map.insert(name.clone(), unit.namespace.clone());
                 global_class_file_map.insert(name.clone(), unit.file.clone());
             }
+            for name in &unit.enum_names {
+                global_enum_map.insert(name.clone(), unit.namespace.clone());
+                global_enum_file_map.insert(name.clone(), unit.file.clone());
+            }
             for name in &unit.module_names {
                 namespace_module_files
                     .entry(unit.namespace.clone())
@@ -6529,6 +6643,8 @@ function main(): None {
             global_function_file_map: &global_function_file_map,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
             global_module_file_map: &global_module_file_map,
         };
@@ -7019,6 +7135,8 @@ function main(): None {
             global_function_file_map_before,
             global_class_map_before,
             global_class_file_map_before,
+            global_enum_map_before,
+            global_enum_file_map_before,
             global_module_map_before,
             global_module_file_map_before,
         ) = collect_project_symbol_maps(&parsed_before);
@@ -7063,6 +7181,8 @@ function main(): None {
             namespace_class_files: &namespace_class_files_before,
             global_class_map: &global_class_map_before,
             global_class_file_map: &global_class_file_map_before,
+            global_enum_map: &global_enum_map_before,
+            global_enum_file_map: &global_enum_file_map_before,
             namespace_modules: &namespace_modules_before,
             namespace_module_files: &namespace_module_files_before,
             global_module_map: &global_module_map_before,
@@ -7097,6 +7217,8 @@ function main(): None {
             global_function_file_map,
             global_class_map,
             global_class_file_map,
+            global_enum_map,
+            global_enum_file_map,
             global_module_map,
             global_module_file_map,
         ) = collect_project_symbol_maps(&parsed_files);
@@ -7141,6 +7263,8 @@ function main(): None {
             namespace_class_files: &namespace_class_files,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
             namespace_module_files: &namespace_module_files,
             global_module_map: &global_module_map,
@@ -7196,6 +7320,8 @@ function main(): None {
             global_function_file_map_before,
             global_class_map_before,
             global_class_file_map_before,
+            global_enum_map_before,
+            global_enum_file_map_before,
             global_module_map_before,
             global_module_file_map_before,
         ) = collect_project_symbol_maps(&parsed_before);
@@ -7240,6 +7366,8 @@ function main(): None {
             namespace_class_files: &namespace_class_files_before,
             global_class_map: &global_class_map_before,
             global_class_file_map: &global_class_file_map_before,
+            global_enum_map: &global_enum_map_before,
+            global_enum_file_map: &global_enum_file_map_before,
             namespace_modules: &namespace_modules_before,
             namespace_module_files: &namespace_module_files_before,
             global_module_map: &global_module_map_before,
@@ -7274,6 +7402,8 @@ function main(): None {
             global_function_file_map,
             global_class_map,
             global_class_file_map,
+            global_enum_map,
+            global_enum_file_map,
             global_module_map,
             global_module_file_map,
         ) = collect_project_symbol_maps(&parsed_files);
@@ -7318,6 +7448,8 @@ function main(): None {
             namespace_class_files: &namespace_class_files,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
             namespace_module_files: &namespace_module_files,
             global_module_map: &global_module_map,
@@ -7383,6 +7515,8 @@ function main(): None {
                 global_function_file_map_before,
                 global_class_map_before,
                 global_class_file_map_before,
+                global_enum_map_before,
+                global_enum_file_map_before,
                 global_module_map_before,
                 global_module_file_map_before,
             ) = collect_project_symbol_maps(&parsed_before);
@@ -7428,6 +7562,8 @@ function main(): None {
                 namespace_class_files: &namespace_class_files_before,
                 global_class_map: &global_class_map_before,
                 global_class_file_map: &global_class_file_map_before,
+                global_enum_map: &global_enum_map_before,
+                global_enum_file_map: &global_enum_file_map_before,
                 namespace_modules: &namespace_modules_before,
                 namespace_module_files: &namespace_module_files_before,
                 global_module_map: &global_module_map_before,
@@ -7459,6 +7595,8 @@ function main(): None {
                 global_function_file_map_after,
                 global_class_map_after,
                 global_class_file_map_after,
+                global_enum_map_after,
+                global_enum_file_map_after,
                 global_module_map_after,
                 global_module_file_map_after,
             ) = collect_project_symbol_maps(&parsed_after);
@@ -7504,6 +7642,8 @@ function main(): None {
                 namespace_class_files: &namespace_class_files_after,
                 global_class_map: &global_class_map_after,
                 global_class_file_map: &global_class_file_map_after,
+                global_enum_map: &global_enum_map_after,
+                global_enum_file_map: &global_enum_file_map_after,
                 namespace_modules: &namespace_modules_after,
                 namespace_module_files: &namespace_module_files_after,
                 global_module_map: &global_module_map_after,
@@ -7557,6 +7697,8 @@ function main(): None {
                 global_function_file_map_before,
                 global_class_map_before,
                 global_class_file_map_before,
+                global_enum_map_before,
+                global_enum_file_map_before,
                 global_module_map_before,
                 global_module_file_map_before,
             ) = collect_project_symbol_maps(&parsed_before);
@@ -7602,6 +7744,8 @@ function main(): None {
                 namespace_class_files: &namespace_class_files_before,
                 global_class_map: &global_class_map_before,
                 global_class_file_map: &global_class_file_map_before,
+                global_enum_map: &global_enum_map_before,
+                global_enum_file_map: &global_enum_file_map_before,
                 namespace_modules: &namespace_modules_before,
                 namespace_module_files: &namespace_module_files_before,
                 global_module_map: &global_module_map_before,
@@ -7633,6 +7777,8 @@ function main(): None {
                 global_function_file_map_after,
                 global_class_map_after,
                 global_class_file_map_after,
+                global_enum_map_after,
+                global_enum_file_map_after,
                 global_module_map_after,
                 global_module_file_map_after,
             ) = collect_project_symbol_maps(&parsed_after);
@@ -7678,6 +7824,8 @@ function main(): None {
                 namespace_class_files: &namespace_class_files_after,
                 global_class_map: &global_class_map_after,
                 global_class_file_map: &global_class_file_map_after,
+                global_enum_map: &global_enum_map_after,
+                global_enum_file_map: &global_enum_file_map_after,
                 namespace_modules: &namespace_modules_after,
                 namespace_module_files: &namespace_module_files_after,
                 global_module_map: &global_module_map_after,
@@ -7717,6 +7865,7 @@ function main(): None {
             import_check_fingerprint: "import".to_string(),
             function_names: Vec::new(),
             class_names: Vec::new(),
+            enum_names: Vec::new(),
             module_names: Vec::new(),
             referenced_symbols: Vec::new(),
             qualified_symbol_refs: Vec::new(),
@@ -7752,6 +7901,8 @@ function main(): None {
         let namespace_class_files = HashMap::new();
         let global_class_map = HashMap::new();
         let global_class_file_map = HashMap::new();
+        let global_enum_map = HashMap::new();
+        let global_enum_file_map = HashMap::new();
         let namespace_modules = HashMap::new();
         let namespace_module_files = HashMap::new();
         let global_module_map = HashMap::new();
@@ -7770,6 +7921,8 @@ function main(): None {
             namespace_class_files: &namespace_class_files,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
             namespace_module_files: &namespace_module_files,
             global_module_map: &global_module_map,
@@ -7794,6 +7947,8 @@ function main(): None {
             namespace_class_files: &namespace_class_files,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
             namespace_module_files: &namespace_module_files,
             global_module_map: &global_module_map,
@@ -7833,6 +7988,8 @@ function main(): None {
         let namespace_class_files = HashMap::new();
         let global_class_map = HashMap::new();
         let global_class_file_map = HashMap::new();
+        let global_enum_map = HashMap::new();
+        let global_enum_file_map = HashMap::new();
         let namespace_modules = HashMap::new();
         let namespace_module_files = HashMap::new();
         let global_module_map = HashMap::new();
@@ -7848,6 +8005,8 @@ function main(): None {
             namespace_class_files: &namespace_class_files,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
             namespace_module_files: &namespace_module_files,
             global_module_map: &global_module_map,
@@ -7867,6 +8026,8 @@ function main(): None {
             namespace_class_files: &namespace_class_files,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
             namespace_module_files: &namespace_module_files,
             global_module_map: &global_module_map,
@@ -7906,6 +8067,8 @@ function main(): None {
         ]);
         let global_class_map = HashMap::new();
         let global_class_file_map = HashMap::new();
+        let global_enum_map = HashMap::new();
+        let global_enum_file_map = HashMap::new();
         let global_module_map = HashMap::new();
         let global_module_file_map = HashMap::new();
         let namespace_function_files = HashMap::from([(
@@ -7926,6 +8089,8 @@ function main(): None {
             global_function_file_map: &global_function_file_map,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
             global_module_file_map: &global_module_file_map,
         };
@@ -7962,6 +8127,8 @@ function main(): None {
             HashMap::from([("helper".to_string(), PathBuf::from("src/helper.apex"))]);
         let global_class_map = HashMap::new();
         let global_class_file_map = HashMap::new();
+        let global_enum_map = HashMap::new();
+        let global_enum_file_map = HashMap::new();
         let global_module_map = HashMap::new();
         let global_module_file_map = HashMap::new();
         let ctx = DependencyResolutionContext {
@@ -7973,6 +8140,8 @@ function main(): None {
             global_function_file_map: &global_function_file_map,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
             global_module_file_map: &global_module_file_map,
         };
@@ -8031,6 +8200,8 @@ function main(): None {
             ]),
             global_class_map: &HashMap::new(),
             global_class_file_map: &HashMap::new(),
+            global_enum_map: &HashMap::new(),
+            global_enum_file_map: &HashMap::new(),
             global_module_map: &HashMap::new(),
             global_module_file_map: &HashMap::new(),
         };
@@ -8092,6 +8263,8 @@ function main(): None {
             )]),
             global_class_map: &HashMap::new(),
             global_class_file_map: &HashMap::new(),
+            global_enum_map: &HashMap::new(),
+            global_enum_file_map: &HashMap::new(),
             global_module_map: &HashMap::new(),
             global_module_file_map: &HashMap::new(),
         };

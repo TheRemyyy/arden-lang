@@ -790,6 +790,7 @@ This release introduces a complete multi-file project system with Java-style nam
 ### 🐛 Fixed
 
 - **Borrow Checker**: Fixed a bug where standard library calls would incorrectly mark string variables as moved.
+- **Aliased Constructors**: Fixed project import-check and rewrite paths for aliased constructors. Namespace alias enum variant constructors (`u.E.A(1)`), exact imported enum aliases (`import util.E as Enum; Enum.A(1)`), and exact imported class constructor aliases (`import util.Box as B; B(1)`) now compile end to end.
 
 ## [1.1.2] - 2025-12-28
 

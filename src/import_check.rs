@@ -159,6 +159,7 @@ impl<'a> ImportChecker<'a> {
                     let is_known_symbol_alias = function_namespaces
                         .get(symbol)
                         .is_some_and(|ns| ns == &symbol_ns)
+                        || known_namespaces.contains(&symbol_ns)
                         || stdlib
                             .get_namespace(symbol)
                             .is_some_and(|ns| ns == &symbol_ns)
@@ -444,6 +445,10 @@ impl<'a> ImportChecker<'a> {
                                     self.resolve_user_call_in_namespace_path(ns, field)
                                 {
                                     let _ = canonical_name;
+                                    handled_alias_call = true;
+                                } else if ns.contains('.') {
+                                    // Exact imported symbol aliases like `import util.E as Enum`
+                                    // may be used as constructor-like call roots (`Enum.A(...)`).
                                     handled_alias_call = true;
                                 }
                             } else if self.invalid_namespace_aliases.contains(module_or_type) {
@@ -907,6 +912,39 @@ function main(): None {
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].function_name, "n.call");
         assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn exact_imported_enum_alias_allows_variant_calls() {
+        let source = r#"
+package app;
+import util.E as Enum;
+
+function main(): None {
+    Enum.A(1);
+    return None;
+}
+"#;
+        let tokens = tokenize(source).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().expect("parse");
+        let imports = program
+            .declarations
+            .iter()
+            .filter_map(|d| match &d.node {
+                Decl::Import(i) => Some(i.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let mut checker = ImportChecker::new(
+            Arc::new(HashMap::new()),
+            Arc::new(HashSet::from(["util".to_string()])),
+            "app".to_string(),
+            imports,
+            stdlib_registry(),
+        );
+        let errors = checker.check_program(&program).err().unwrap_or_default();
+        assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]

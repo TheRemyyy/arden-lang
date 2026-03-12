@@ -190,6 +190,7 @@ This document describes the internal architecture of the Apex compiler.
   - `src/typeck.rs`, `src/project_rewrite.rs`, and filtered project codegen now also treat namespace-alias function values as first-class functions, so expressions like `u.add1` and calls like `u.add1(2)` survive typecheck, rewrite, and object-only codegen consistently.
   - The same alias rewrite/codegen path now handles nested module-qualified alias calls like `u.M.add1`, not just single-segment `u.func` lookups.
   - Namespace alias constructor calls like `u.Box(2)` now lower through project rewrite into constructor expressions and carry matching dependency edges/import-check knowledge, so class-only namespaces work with alias-based construction too.
+  - Aliased constructors now work on all currently supported paths: namespace-alias enum variants like `u.E.A(1)`, exact imported enum aliases like `import util.E as Enum; Enum.A(1)`, and exact imported class constructor aliases like `import util.Box as B; B(1)`.
   - Higher-order generic methods that return closures now survive specialization and subsequent invocation without confusing generated method symbols for fields.
   - `src/typeck.rs` now parses function-type strings nested inside generic wrappers during normalization/substitution, so wrapper types containing function values compare correctly.
   - `src/typeck.rs` now recognizes `Option.some/none` and `Result.ok/error` as frontend static constructors instead of treating `Option`/`Result` as undefined variables.
