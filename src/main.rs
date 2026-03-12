@@ -458,7 +458,7 @@ fn save_semantic_cached_fingerprint(project_root: &Path, fingerprint: &str) -> R
 const PARSE_CACHE_SCHEMA: &str = "v7";
 const DEPENDENCY_GRAPH_CACHE_SCHEMA: &str = "v2";
 const SEMANTIC_SUMMARY_CACHE_SCHEMA: &str = "v2";
-const TYPECHECK_SUMMARY_CACHE_SCHEMA: &str = "v3";
+const TYPECHECK_SUMMARY_CACHE_SCHEMA: &str = "v4";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct FileMetadataStamp {
@@ -6932,6 +6932,57 @@ function main(): None {
         with_current_dir(&temp_root, || {
             build_project(false, false, true, false, false)
                 .expect("project build should support dereferenced function-value callees");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_check_rejects_async_borrowed_reference_results() {
+        let temp_root = make_temp_project_root("async-borrowed-result-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): None { task: Task<&(Integer) -> Integer> = async { return &inc; }; return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = check_command(None, false)
+                .expect_err("project check should reject async borrowed reference results");
+            assert!(
+                err.contains("Async block cannot return a value containing borrowed references"),
+                "{err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_check_rejects_async_borrowed_reference_params_and_captures() {
+        let temp_root = make_temp_project_root("async-borrowed-param-capture-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nasync function read_ref(r: &Integer): Task<Integer> { return *r; }\nfunction main(): None { x: Integer = 1; alias: &Integer = &x; task: Task<Integer> = async { return *alias; }; return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = check_command(None, false).expect_err(
+                "project check should reject async borrowed reference parameters and captures",
+            );
+            assert!(
+                err.contains("Async function 'app__read_ref' cannot accept a parameter containing borrowed references"),
+                "{err}"
+            );
+            assert!(
+                err.contains("Async block cannot capture 'alias' because its type contains borrowed references"),
+                "{err}"
+            );
         });
 
         let _ = fs::remove_dir_all(temp_root);

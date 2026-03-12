@@ -57,6 +57,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unit enum variant values across project mode, so payload-less forms like `E.A`, `Enum.A`, and `u.E.A` now typecheck/codegen as enum values instead of falling through as invalid field access or undefined alias expressions.
 - Fixed higher-order `try`/borrow/deref callee codegen, so expressions like `(choose()?)(1)` and `(*f)(1)` now compile end to end instead of failing with `Invalid callee` / `Unknown variable` backend errors.
 - Fixed formatter callee precedence for deref/`try`-unwrapped function values, so `apex fmt` now preserves forms like `(*f)(1)` and `(choose()?)(1)` instead of rewriting them into different expressions.
+- Fixed async soundness around borrowed references:
+  - async blocks and async functions now reject return values that contain borrowed references across the task boundary
+  - async functions now reject parameters that contain borrowed references
+  - async blocks now reject captures whose types already contain borrowed references
+- Bumped typecheck summary cache schema so stale semantic/typecheck caches cannot hide the new async borrowed-reference diagnostics.
 - Fixed extern function values to fail during typechecking instead of later in codegen, so assignments like `f = puts` now report a direct semantic error instead of a late `Codegen error`.
 - Fixed filtered codegen declaration-closure seeding for qualified import paths, so namespace-alias references now pull the owning declaration files/symbols into object rebuilds instead of omitting reachable imported functions like `util__twice`.
 - Fixed import-check namespace alias discovery so class-only or enum-only namespaces can still be imported with `as` aliases even when they do not expose top-level functions.

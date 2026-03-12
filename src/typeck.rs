@@ -180,7 +180,7 @@ pub struct InterfaceInfo {
 }
 
 /// Scope for symbol table
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Scope {
     variables: HashMap<String, VarInfo>,
     /// Parent scope index
@@ -1699,6 +1699,168 @@ impl TypeChecker {
         )
     }
 
+    fn type_contains_borrowed_reference(ty: &ResolvedType) -> bool {
+        match ty {
+            ResolvedType::Ref(_) | ResolvedType::MutRef(_) => true,
+            ResolvedType::Option(inner)
+            | ResolvedType::List(inner)
+            | ResolvedType::Set(inner)
+            | ResolvedType::Box(inner)
+            | ResolvedType::Rc(inner)
+            | ResolvedType::Arc(inner)
+            | ResolvedType::Ptr(inner)
+            | ResolvedType::Task(inner)
+            | ResolvedType::Range(inner) => Self::type_contains_borrowed_reference(inner),
+            ResolvedType::Result(ok, err) | ResolvedType::Map(ok, err) => {
+                Self::type_contains_borrowed_reference(ok)
+                    || Self::type_contains_borrowed_reference(err)
+            }
+            ResolvedType::Function(params, ret) => {
+                params.iter().any(Self::type_contains_borrowed_reference)
+                    || Self::type_contains_borrowed_reference(ret)
+            }
+            _ => false,
+        }
+    }
+
+    fn check_async_result_type(&mut self, ty: &ResolvedType, context: &str, span: Span) {
+        if Self::type_contains_borrowed_reference(ty) {
+            self.error(
+                format!(
+                    "{} cannot return a value containing borrowed references across an async boundary: {}",
+                    context, ty
+                ),
+                span,
+            );
+        }
+    }
+
+    fn expr_mentions_ident(expr: &Expr, ident: &str) -> bool {
+        match expr {
+            Expr::Ident(name) => name == ident,
+            Expr::Binary { left, right, .. } => {
+                Self::expr_mentions_ident(&left.node, ident)
+                    || Self::expr_mentions_ident(&right.node, ident)
+            }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr) => Self::expr_mentions_ident(&expr.node, ident),
+            Expr::Call { callee, args, .. } => {
+                Self::expr_mentions_ident(&callee.node, ident)
+                    || args
+                        .iter()
+                        .any(|arg| Self::expr_mentions_ident(&arg.node, ident))
+            }
+            Expr::Field { object, .. } => Self::expr_mentions_ident(&object.node, ident),
+            Expr::Index { object, index } => {
+                Self::expr_mentions_ident(&object.node, ident)
+                    || Self::expr_mentions_ident(&index.node, ident)
+            }
+            Expr::Construct { args, .. } => args
+                .iter()
+                .any(|arg| Self::expr_mentions_ident(&arg.node, ident)),
+            Expr::Lambda { body, .. } => Self::expr_mentions_ident(&body.node, ident),
+            Expr::Match { expr, arms } => {
+                Self::expr_mentions_ident(&expr.node, ident)
+                    || arms.iter().any(|arm| {
+                        arm.body
+                            .iter()
+                            .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                    })
+            }
+            Expr::StringInterp(parts) => parts.iter().any(|part| match part {
+                StringPart::Literal(_) => false,
+                StringPart::Expr(expr) => Self::expr_mentions_ident(&expr.node, ident),
+            }),
+            Expr::AsyncBlock(body) | Expr::Block(body) => body
+                .iter()
+                .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident)),
+            Expr::Require { condition, message } => {
+                Self::expr_mentions_ident(&condition.node, ident)
+                    || message
+                        .as_ref()
+                        .is_some_and(|msg| Self::expr_mentions_ident(&msg.node, ident))
+            }
+            Expr::Range { start, end, .. } => {
+                start
+                    .as_ref()
+                    .is_some_and(|expr| Self::expr_mentions_ident(&expr.node, ident))
+                    || end
+                        .as_ref()
+                        .is_some_and(|expr| Self::expr_mentions_ident(&expr.node, ident))
+            }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                Self::expr_mentions_ident(&condition.node, ident)
+                    || then_branch
+                        .iter()
+                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                    || else_branch.as_ref().is_some_and(|stmts| {
+                        stmts
+                            .iter()
+                            .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                    })
+            }
+            Expr::Literal(_) | Expr::This => false,
+        }
+    }
+
+    fn stmt_mentions_ident(stmt: &Stmt, ident: &str) -> bool {
+        match stmt {
+            Stmt::Let { value, .. } => Self::expr_mentions_ident(&value.node, ident),
+            Stmt::Assign { target, value } => {
+                Self::expr_mentions_ident(&target.node, ident)
+                    || Self::expr_mentions_ident(&value.node, ident)
+            }
+            Stmt::Expr(expr) => Self::expr_mentions_ident(&expr.node, ident),
+            Stmt::Return(expr) => expr
+                .as_ref()
+                .is_some_and(|expr| Self::expr_mentions_ident(&expr.node, ident)),
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                Self::expr_mentions_ident(&condition.node, ident)
+                    || then_block
+                        .iter()
+                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                    || else_block.as_ref().is_some_and(|stmts| {
+                        stmts
+                            .iter()
+                            .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                    })
+            }
+            Stmt::While { condition, body } => {
+                Self::expr_mentions_ident(&condition.node, ident)
+                    || body
+                        .iter()
+                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+            }
+            Stmt::For { iterable, body, .. } => {
+                Self::expr_mentions_ident(&iterable.node, ident)
+                    || body
+                        .iter()
+                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+            }
+            Stmt::Match { expr, arms } => {
+                Self::expr_mentions_ident(&expr.node, ident)
+                    || arms.iter().any(|arm| {
+                        arm.body
+                            .iter()
+                            .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                    })
+            }
+            Stmt::Break | Stmt::Continue => false,
+        }
+    }
+
     /// Check a declaration
     fn check_decl_with_prefix(&mut self, decl: &Decl, span: Span, module_prefix: Option<&str>) {
         match decl {
@@ -1808,6 +1970,15 @@ impl TypeChecker {
         for param in &func.params {
             let ty = self.resolve_type(&param.ty);
             self.check_type_visibility(&ty, span.clone());
+            if func.is_async && Self::type_contains_borrowed_reference(&ty) {
+                self.error(
+                    format!(
+                        "Async function '{}' cannot accept a parameter containing borrowed references: {}",
+                        func.name, ty
+                    ),
+                    span.clone(),
+                );
+            }
             self.declare_variable(&param.name, ty, param.mutable, span.clone());
         }
 
@@ -1819,6 +1990,11 @@ impl TypeChecker {
             if let ResolvedType::Task(inner) = &return_type {
                 inner_return_type = (**inner).clone();
             }
+            self.check_async_result_type(
+                &inner_return_type,
+                &format!("Async function '{}'", func.name),
+                span.clone(),
+            );
         }
         self.current_return_type = Some(inner_return_type);
 
@@ -2772,6 +2948,7 @@ impl TypeChecker {
             }
 
             Expr::AsyncBlock(body) => {
+                let captured_outer_scopes = self.scopes.clone();
                 self.enter_scope();
                 let mut return_type = ResolvedType::None;
 
@@ -2801,8 +2978,27 @@ impl TypeChecker {
                     self.check_stmt(&stmt.node, stmt.span.clone());
                 }
 
+                for scope in &captured_outer_scopes {
+                    for (name, var) in &scope.variables {
+                        if Self::type_contains_borrowed_reference(&var.ty)
+                            && body
+                                .iter()
+                                .any(|stmt| Self::stmt_mentions_ident(&stmt.node, name))
+                        {
+                            self.error(
+                                format!(
+                                    "Async block cannot capture '{}' because its type contains borrowed references: {}",
+                                    name, var.ty
+                                ),
+                                span.clone(),
+                            );
+                        }
+                    }
+                }
+
                 self.current_return_type = saved_return_type;
                 self.exit_scope();
+                self.check_async_result_type(&return_type, "Async block", span.clone());
                 ResolvedType::Task(Box::new(return_type))
             }
 
@@ -5927,6 +6123,92 @@ mod tests {
             }
         "#;
         check_source(src).expect("unit enum variants should typecheck as values");
+    }
+
+    #[test]
+    fn rejects_async_blocks_returning_borrowed_references() {
+        let src = r#"
+            function inc(x: Integer): Integer { return x + 1; }
+
+            function main(): None {
+                task: Task<&(Integer) -> Integer> = async {
+                    return &inc;
+                };
+                return None;
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("async block returning borrowed reference should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Async block cannot return a value containing borrowed references"));
+    }
+
+    #[test]
+    fn rejects_async_functions_returning_borrowed_references() {
+        let src = r#"
+            function inc(x: Integer): Integer { return x + 1; }
+
+            async function make_ref(): Task<&(Integer) -> Integer> {
+                return &inc;
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("async function returning borrowed reference should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains(
+            "Async function 'make_ref' cannot return a value containing borrowed references"
+        ));
+    }
+
+    #[test]
+    fn rejects_async_functions_accepting_borrowed_reference_parameters() {
+        let src = r#"
+            async function read_ref(r: &Integer): Task<Integer> {
+                return *r;
+            }
+        "#;
+        let errors = check_source(src)
+            .expect_err("async function accepting borrowed reference parameter should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains(
+            "Async function 'read_ref' cannot accept a parameter containing borrowed references"
+        ));
+    }
+
+    #[test]
+    fn rejects_async_blocks_capturing_borrowed_reference_variables() {
+        let src = r#"
+            function main(): None {
+                x: Integer = 1;
+                r: &Integer = &x;
+                task: Task<Integer> = async {
+                    return *r;
+                };
+                return None;
+            }
+        "#;
+        let errors = check_source(src)
+            .expect_err("async block capturing borrowed reference variable should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains(
+            "Async block cannot capture 'r' because its type contains borrowed references"
+        ));
     }
 
     #[test]
