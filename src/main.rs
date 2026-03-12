@@ -7726,6 +7726,112 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_runs_string_length_on_concatenation_receiver() {
+        let temp_root = make_temp_project_root("string-length-concat-runtime");
+        let source_path = temp_root.join("string_length_concat_runtime.apex");
+        let output_path = temp_root.join("string_length_concat_runtime");
+        let source = r#"
+            function main(): Integer {
+                return ("a" + "bc").length();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string length on concatenation receiver should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string-length concat binary");
+        assert_eq!(status.code(), Some(3));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_length_on_interpolation_receiver() {
+        let temp_root = make_temp_project_root("string-length-interp-runtime");
+        let source_path = temp_root.join("string_length_interp_runtime.apex");
+        let output_path = temp_root.join("string_length_interp_runtime");
+        let source = r#"
+            function main(): Integer {
+                return ("a{1}c").length();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string length on interpolation receiver should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string-length interpolation binary");
+        assert_eq!(status.code(), Some(3));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_field_access_on_list_get_object_results() {
+        let temp_root = make_temp_project_root("list-get-object-field-runtime");
+        let source_path = temp_root.join("list_get_object_field_runtime.apex");
+        let output_path = temp_root.join("list_get_object_field_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                xs: List<Boxed> = List<Boxed>();
+                xs.push(Boxed(5));
+                return xs.get(0).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("field access on list.get object result should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled list-get object field binary");
+        assert_eq!(status.code(), Some(5));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_field_access_on_map_get_object_results() {
+        let temp_root = make_temp_project_root("map-get-object-field-runtime");
+        let source_path = temp_root.join("map_get_object_field_runtime.apex");
+        let output_path = temp_root.join("map_get_object_field_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                m: Map<Integer, Boxed> = Map<Integer, Boxed>();
+                m.set(1, Boxed(6));
+                return m.get(1).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("field access on map.get object result should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map-get object field binary");
+        assert_eq!(status.code(), Some(6));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_supports_lambda_callee_calls() {
         let temp_root = make_temp_project_root("lambda-callee-codegen");
         let source_path = temp_root.join("lambda_callee.apex");

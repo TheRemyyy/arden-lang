@@ -19,6 +19,8 @@ Special-method dispatch for built-in container/runtime types now also accepts ex
 Boolean helper methods such as `Option.is_some()` and `Result.is_ok()` now lower to real `i1` conditions in LLVM, which keeps direct conditional use sound when those helpers are invoked on returned/container-produced values.
 Task runtime semantic checks are also kept aligned with the implemented runtime surface, so stray undocumented methods are rejected during typechecking instead of leaking through to backend `Unknown Task method` failures.
 Backend method dispatch now also wires `String.length()` directly for expression receivers, keeping string literals and other non-local string values aligned with the same method surface accepted by the typechecker.
+That object-type inference now also treats string concatenation and interpolation as first-class `String` producers, so string method calls continue to work even when the receiver is not a named local or plain literal.
+The same inference layer now also preserves value types returned from built-in container getters such as `List.get()` and `Map.get()`, which keeps object field/method chains on those returned values valid during lowering.
 The same built-in method tables are now kept aligned between typechecking and codegen for `Set<T>` as well, preventing frontend/backend drift where a method existed in one layer but not the other.
 
 ## Build Caching

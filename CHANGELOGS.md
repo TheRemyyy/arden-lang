@@ -16,6 +16,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - code that used the stray method now fails early during semantic analysis instead of surviving until backend lowering
 - Fixed string method dispatch in backend lowering:
   - `String.length()` now works on real expression receivers such as string literals instead of failing late with `Cannot determine object type for method call`
+  - string-producing expressions such as concatenation and interpolation now also preserve `String` object inference for method calls like `("a" + "bc").length()` and `("a{1}c").length()`
+- Fixed object-chain inference for built-in container getter calls:
+  - `List.get()` / `List.pop()` and `Map.get()` now preserve their returned value types through backend object inference, so chains like `xs.get(0).value` and `m.get(1).value` no longer fail late during field or method lowering
 - Fixed `apex test` handling for `@Ignore` without a reason:
   - tests marked with bare `@Ignore` are now skipped correctly instead of being executed
   - ignored tests are now counted in the final `Total` summary as well as `Ignored`

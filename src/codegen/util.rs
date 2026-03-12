@@ -1288,11 +1288,38 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Ident(name) => self.variables.get(name).map(|v| v.ty.clone()),
             Expr::This => self.variables.get("this").map(|v| v.ty.clone()),
             Expr::Literal(Literal::String(_)) => Some(Type::String),
+            Expr::StringInterp(_) => Some(Type::String),
             Expr::Construct { ty, .. } => parse_type_source(ty).ok(),
+            Expr::Binary {
+                op: BinOp::Add,
+                left,
+                right,
+            } => {
+                let left_ty = self.infer_object_type(&left.node)?;
+                let right_ty = self.infer_object_type(&right.node)?;
+                if matches!(left_ty, Type::String) && matches!(right_ty, Type::String) {
+                    Some(Type::String)
+                } else {
+                    None
+                }
+            }
             Expr::Call { callee, .. } => match &callee.node {
                 Expr::Field { object, field } => {
                     let obj_ty = self.infer_object_type(&object.node)?;
                     match &obj_ty {
+                        Type::List(inner) => match field.as_str() {
+                            "get" | "pop" => Some((**inner).clone()),
+                            "length" => Some(Type::Integer),
+                            "push" | "set" => Some(Type::None),
+                            _ => None,
+                        },
+                        Type::Map(_, value) => match field.as_str() {
+                            "get" => Some((**value).clone()),
+                            "contains" => Some(Type::Boolean),
+                            "length" => Some(Type::Integer),
+                            "insert" | "set" => Some(Type::None),
+                            _ => None,
+                        },
                         Type::Option(inner) => match field.as_str() {
                             "unwrap" => Some((**inner).clone()),
                             "is_some" | "is_none" => Some(Type::Boolean),
@@ -1306,6 +1333,15 @@ impl<'ctx> Codegen<'ctx> {
                         Type::Task(inner) => match field.as_str() {
                             "await_timeout" => Some(Type::Option(inner.clone())),
                             "is_done" | "cancel" => Some(Type::Boolean),
+                            _ => None,
+                        },
+                        Type::Range(inner) => match field.as_str() {
+                            "next" => Some((**inner).clone()),
+                            "has_next" => Some(Type::Boolean),
+                            _ => None,
+                        },
+                        Type::String => match field.as_str() {
+                            "length" => Some(Type::Integer),
                             _ => None,
                         },
                         _ => {
