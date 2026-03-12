@@ -42,6 +42,14 @@ thread_local! {
 }
 
 impl<'ctx> Codegen<'ctx> {
+    fn infer_block_tail_type(&self, block: &[Spanned<Stmt>]) -> Option<Type> {
+        let last = block.last()?;
+        match &last.node {
+            Stmt::Expr(expr) => self.infer_object_type(&expr.node),
+            _ => None,
+        }
+    }
+
     // === C Library Definitions ===
 
     pub fn get_or_declare_fopen(&mut self) -> FunctionValue<'ctx> {
@@ -1280,20 +1288,56 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Ident(name) => self.variables.get(name).map(|v| v.ty.clone()),
             Expr::This => self.variables.get("this").map(|v| v.ty.clone()),
             Expr::Construct { ty, .. } => parse_type_source(ty).ok(),
-            Expr::Call { callee, .. } => {
-                let callee_ty = match &callee.node {
-                    Expr::Ident(name) => self
+            Expr::Call { callee, .. } => match &callee.node {
+                Expr::Field { object, field } => {
+                    let obj_ty = self.infer_object_type(&object.node)?;
+                    match &obj_ty {
+                        Type::Option(inner) => match field.as_str() {
+                            "unwrap" => Some((**inner).clone()),
+                            "is_some" | "is_none" => Some(Type::Boolean),
+                            _ => None,
+                        },
+                        Type::Result(ok, _) => match field.as_str() {
+                            "unwrap" => Some((**ok).clone()),
+                            "is_ok" | "is_error" => Some(Type::Boolean),
+                            _ => None,
+                        },
+                        Type::Task(inner) => match field.as_str() {
+                            "await_timeout" => Some(Type::Option(inner.clone())),
+                            "is_done" | "cancel" => Some(Type::Boolean),
+                            _ => None,
+                        },
+                        _ => {
+                            let class_name = self.type_to_class_name(&obj_ty)?;
+                            let method_name =
+                                self.resolve_method_function_name(&class_name, field)?;
+                            let (_, ty) = self.functions.get(&method_name)?;
+                            match ty {
+                                Type::Function(_, ret) => Some((**ret).clone()),
+                                _ => None,
+                            }
+                        }
+                    }
+                }
+                Expr::Ident(name) => {
+                    let callee_ty = self
                         .variables
                         .get(name)
                         .map(|v| v.ty.clone())
-                        .or_else(|| self.functions.get(name).map(|(_, ty)| ty.clone())),
-                    _ => self.infer_object_type(&callee.node),
-                }?;
-                match callee_ty {
-                    Type::Function(_, ret) => Some((*ret).clone()),
-                    _ => None,
+                        .or_else(|| self.functions.get(name).map(|(_, ty)| ty.clone()))?;
+                    match callee_ty {
+                        Type::Function(_, ret) => Some((*ret).clone()),
+                        _ => None,
+                    }
                 }
-            }
+                _ => {
+                    let callee_ty = self.infer_object_type(&callee.node)?;
+                    match callee_ty {
+                        Type::Function(_, ret) => Some((*ret).clone()),
+                        _ => None,
+                    }
+                }
+            },
             Expr::Try(inner) => match self.infer_object_type(&inner.node)? {
                 Type::Result(ok, _) => Some((*ok).clone()),
                 Type::Option(inner) => Some((*inner).clone()),
@@ -1305,6 +1349,37 @@ impl<'ctx> Codegen<'ctx> {
             },
             Expr::Deref(inner) => match self.infer_object_type(&inner.node)? {
                 Type::Ref(inner) | Type::MutRef(inner) | Type::Ptr(inner) => Some((*inner).clone()),
+                _ => None,
+            },
+            Expr::IfExpr {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                let then_ty = self.infer_block_tail_type(then_branch)?;
+                let else_ty = else_branch
+                    .as_ref()
+                    .and_then(|block| self.infer_block_tail_type(block))?;
+                if then_ty == else_ty {
+                    Some(then_ty)
+                } else {
+                    None
+                }
+            }
+            Expr::Match { arms, .. } => {
+                let mut arm_types = arms
+                    .iter()
+                    .filter_map(|arm| self.infer_block_tail_type(&arm.body));
+                let first = arm_types.next()?;
+                if arm_types.all(|ty| ty == first) {
+                    Some(first)
+                } else {
+                    None
+                }
+            }
+            Expr::Block(block) | Expr::AsyncBlock(block) => self.infer_block_tail_type(block),
+            Expr::Index { object, .. } => match self.infer_object_type(&object.node)? {
+                Type::List(inner) => Some((*inner).clone()),
                 _ => None,
             },
             Expr::Field { object, field } => {

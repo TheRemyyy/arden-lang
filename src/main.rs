@@ -7350,6 +7350,190 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_runs_if_expression_generic_constructor_branches() {
+        let temp_root = make_temp_project_root("ifexpr-generic-ctor-runtime");
+        let source_path = temp_root.join("ifexpr_generic_ctor_runtime.apex");
+        let output_path = temp_root.join("ifexpr_generic_ctor_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function make(flag: Boolean): Boxed<Integer> {
+                return if (flag) { Boxed<Integer>(1); } else { Boxed<Integer>(2); };
+            }
+
+            function main(): Integer {
+                return make(true).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("if-expression generic constructors should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled if-expression generic constructor binary");
+        assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_method_calls_on_if_expression_objects() {
+        let temp_root = make_temp_project_root("ifexpr-object-method-runtime");
+        let source_path = temp_root.join("ifexpr_object_method_runtime.apex");
+        let output_path = temp_root.join("ifexpr_object_method_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function main(): Integer {
+                return (if (true) { Boxed<Integer>(17); } else { Boxed<Integer>(18); }).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("method call on if-expression object should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled if-expression object binary");
+        assert_eq!(status.code(), Some(17));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_field_access_on_match_expression_objects() {
+        let temp_root = make_temp_project_root("match-object-field-runtime");
+        let source_path = temp_root.join("match_object_field_runtime.apex");
+        let output_path = temp_root.join("match_object_field_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                return (match (0) { 0 => { Boxed<Integer>(19); }, _ => { Boxed<Integer>(20); }, }).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("field access on match-expression object should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled match-expression object binary");
+        assert_eq!(status.code(), Some(19));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_method_calls_on_indexed_objects() {
+        let temp_root = make_temp_project_root("index-object-method-runtime");
+        let source_path = temp_root.join("index_object_method_runtime.apex");
+        let output_path = temp_root.join("index_object_method_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function main(): Integer {
+                xs: List<Boxed<Integer>> = List<Boxed<Integer>>();
+                xs.push(Boxed<Integer>(30));
+                return xs[0].get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("method call on indexed object should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled indexed-object method binary");
+        assert_eq!(status.code(), Some(30));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_field_access_on_indexed_objects() {
+        let temp_root = make_temp_project_root("index-object-field-runtime");
+        let source_path = temp_root.join("index_object_field_runtime.apex");
+        let output_path = temp_root.join("index_object_field_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                xs: List<Boxed<Integer>> = List<Boxed<Integer>>();
+                xs.push(Boxed<Integer>(31));
+                return xs[0].value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("field access on indexed object should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled indexed-object field binary");
+        assert_eq!(status.code(), Some(31));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_option_unwrap_method_chains_on_call_results() {
+        let temp_root = make_temp_project_root("option-call-unwrap-method-runtime");
+        let source_path = temp_root.join("option_call_unwrap_method_runtime.apex");
+        let output_path = temp_root.join("option_call_unwrap_method_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function choose(): Option<Boxed<Integer>> {
+                return Option.some(Boxed<Integer>(32));
+            }
+
+            function main(): Integer {
+                return choose().unwrap().get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("option unwrap method chain on call result should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled option-unwrap method chain binary");
+        assert_eq!(status.code(), Some(32));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_supports_lambda_callee_calls() {
         let temp_root = make_temp_project_root("lambda-callee-codegen");
         let source_path = temp_root.join("lambda_callee.apex");

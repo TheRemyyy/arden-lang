@@ -9,6 +9,25 @@ use inkwell::{AddressSpace, IntPredicate};
 use crate::codegen::core::{Codegen, CodegenError, Result};
 
 impl<'ctx> Codegen<'ctx> {
+    fn materialize_value_pointer_for_type(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        ty: &Type,
+        name: &str,
+    ) -> Result<PointerValue<'ctx>> {
+        if let BasicValueEnum::PointerValue(ptr) = value {
+            return Ok(ptr);
+        }
+        let alloca = self
+            .builder
+            .build_alloca(self.llvm_type(ty), name)
+            .map_err(|_| CodegenError::new("failed to allocate temporary value storage"))?;
+        self.builder
+            .build_store(alloca, value)
+            .map_err(|_| CodegenError::new("failed to store temporary value"))?;
+        Ok(alloca)
+    }
+
     pub(crate) fn list_element_layout_from_list_type(
         &self,
         list_ty: &Type,
@@ -83,11 +102,24 @@ impl<'ctx> Codegen<'ctx> {
         method: &str,
         _args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
-        let var = self.variables.get(option_name).unwrap();
-        let option_ptr = var.ptr;
+        let (ptr, ty) = {
+            let var = self.variables.get(option_name).unwrap();
+            (var.ptr, var.ty.clone())
+        };
+        self.compile_option_method_on_value(ptr.into(), &ty, method)
+    }
+
+    pub fn compile_option_method_on_value(
+        &mut self,
+        option_value: BasicValueEnum<'ctx>,
+        option_expr_ty: &Type,
+        method: &str,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let option_ptr =
+            self.materialize_value_pointer_for_type(option_value, option_expr_ty, "option_tmp")?;
         // Assuming Option<T> is { is_some: i8, value: T }
         // We need to infer T from var.ty
-        let option_ty = match &var.ty {
+        let option_ty = match option_expr_ty {
             Type::Option(inner_ty) => inner_ty,
             _ => return Err(CodegenError::new("Expected Option type")),
         };
@@ -238,10 +270,23 @@ impl<'ctx> Codegen<'ctx> {
         method: &str,
         _args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
-        let var = self.variables.get(result_name).unwrap();
-        let result_ptr = var.ptr;
+        let (ptr, ty) = {
+            let var = self.variables.get(result_name).unwrap();
+            (var.ptr, var.ty.clone())
+        };
+        self.compile_result_method_on_value(ptr.into(), &ty, method)
+    }
+
+    pub fn compile_result_method_on_value(
+        &mut self,
+        result_value: BasicValueEnum<'ctx>,
+        result_expr_ty: &Type,
+        method: &str,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let result_ptr =
+            self.materialize_value_pointer_for_type(result_value, result_expr_ty, "result_tmp")?;
         // Result<T, E> is struct { is_ok: i8, ok_value: T, err_value: E }
-        let (ok_ty, err_ty) = match &var.ty {
+        let (ok_ty, err_ty) = match result_expr_ty {
             Type::Result(ok, err) => (ok, err),
             _ => return Err(CodegenError::new("Expected Result type")),
         };

@@ -2049,13 +2049,56 @@ impl<'src> Parser<'src> {
                     self.advance();
                     let args = self.parse_args()?;
                     self.eat(&Token::RParen)?;
+                    let end = start..self.current_span().start;
+                    let maybe_ctor = match &expr.node {
+                        Expr::Ident(name) => {
+                            let is_builtin_generic_ctor = matches!(
+                                name.as_str(),
+                                "List"
+                                    | "Map"
+                                    | "Set"
+                                    | "Option"
+                                    | "Result"
+                                    | "Box"
+                                    | "Rc"
+                                    | "Arc"
+                                    | "Ptr"
+                                    | "Task"
+                                    | "Range"
+                            );
+                            let is_type_name = name
+                                .chars()
+                                .next()
+                                .map(|c| c.is_uppercase())
+                                .unwrap_or(false);
+                            if self.known_types.contains(name)
+                                || is_builtin_generic_ctor
+                                || (is_type_name
+                                    && !name.contains("__")
+                                    && !self.known_functions.contains(name))
+                            {
+                                let formatted = type_args
+                                    .iter()
+                                    .map(|t| self.format_type(t))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                Some(Expr::Construct {
+                                    ty: format!("{}<{}>", name, formatted),
+                                    args: args.clone(),
+                                })
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    };
                     expr = Spanned::new(
-                        Expr::Call {
+                        maybe_ctor.unwrap_or(Expr::Call {
                             callee: Box::new(expr),
                             args,
                             type_args,
-                        },
-                        start..self.current_span().start,
+                        }),
+                        end,
                     );
                 }
                 Some(Token::LBracket) => {
@@ -2222,7 +2265,11 @@ impl<'src> Parser<'src> {
                             | "Range"
                     );
                     let is_constructor = if has_explicit_type_args {
-                        self.known_types.contains(&name) || is_builtin_generic_ctor
+                        self.known_types.contains(&name)
+                            || is_builtin_generic_ctor
+                            || (is_type_name
+                                && !name.contains("__")
+                                && !self.known_functions.contains(&name))
                     } else if self.known_functions.contains(&name) {
                         false
                     } else if self.known_types.contains(&name) {
@@ -2239,10 +2286,43 @@ impl<'src> Parser<'src> {
                     } else {
                         let callee =
                             Spanned::new(Expr::Ident(name), start..self.current_span().start);
-                        Expr::Call {
+                        let call = Expr::Call {
                             callee: Box::new(callee),
                             args,
                             type_args: explicit_type_args,
+                        };
+                        match &call {
+                            Expr::Call {
+                                callee,
+                                args,
+                                type_args,
+                            } if !type_args.is_empty() => {
+                                if let Expr::Ident(call_name) = &callee.node {
+                                    let is_ctor_fallback = call_name
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.is_uppercase())
+                                        .unwrap_or(false)
+                                        && !call_name.contains("__")
+                                        && !self.known_functions.contains(call_name);
+                                    if is_ctor_fallback {
+                                        let formatted = type_args
+                                            .iter()
+                                            .map(|t| self.format_type(t))
+                                            .collect::<Vec<_>>()
+                                            .join(", ");
+                                        Expr::Construct {
+                                            ty: format!("{}<{}>", call_name, formatted),
+                                            args: args.clone(),
+                                        }
+                                    } else {
+                                        call
+                                    }
+                                } else {
+                                    call
+                                }
+                            }
+                            _ => call,
                         }
                     }
                 } else {
@@ -3088,6 +3168,50 @@ mod tests {
             else_branch[0].node,
             Stmt::Expr(Spanned {
                 node: Expr::IfExpr { .. },
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn test_parse_if_expression_generic_constructor_branches() {
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+            }
+
+            function make(flag: Boolean): Boxed<Integer> {
+                return if (flag) { Boxed<Integer>(1); } else { Boxed<Integer>(2); };
+            }
+        "#;
+        let program = parse_source(source)
+            .expect("generic constructors in if-expression branches should parse");
+        let Decl::Function(func) = &program.declarations[1].node else {
+            panic!("Expected make function declaration");
+        };
+        let Stmt::Return(Some(value)) = &func.body[0].node else {
+            panic!("Expected return statement");
+        };
+        let Expr::IfExpr {
+            then_branch,
+            else_branch,
+            ..
+        } = &value.node
+        else {
+            panic!("Expected if expression");
+        };
+        assert!(matches!(
+            then_branch[0].node,
+            Stmt::Expr(Spanned {
+                node: Expr::Construct { .. },
+                ..
+            })
+        ));
+        let else_branch = else_branch.as_ref().expect("expected else branch");
+        assert!(matches!(
+            else_branch[0].node,
+            Stmt::Expr(Spanned {
+                node: Expr::Construct { .. },
                 ..
             })
         ));

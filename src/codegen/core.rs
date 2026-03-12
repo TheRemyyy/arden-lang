@@ -7128,14 +7128,12 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
                 Type::Option(_) => {
-                    if let Expr::Ident(name) = object {
-                        return self.compile_option_method(name, method, args);
-                    }
+                    let option_val = self.compile_expr(object)?;
+                    return self.compile_option_method_on_value(option_val, ty, method);
                 }
                 Type::Result(_, _) => {
-                    if let Expr::Ident(name) = object {
-                        return self.compile_result_method(name, method, args);
-                    }
+                    let result_val = self.compile_expr(object)?;
+                    return self.compile_result_method_on_value(result_val, ty, method);
                 }
                 Type::Range(_) => {
                     if let Expr::Ident(name) = object {

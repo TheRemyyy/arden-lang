@@ -13,6 +13,8 @@ This document describes the internal architecture of the Apex compiler.
 
 Project rewrite and semantic passes now normalize namespace-alias constructor/type paths for module-scoped classes as well. That keeps expressions like `u.Box<Integer>(...)` and `u.M.Box<Integer>(...)` aligned with the same prefixed owner symbols used by dependency indexing, typechecking, and filtered codegen.
 Codegen now also keeps synthesized user-generic class specializations (`...__spec__...`) alive through filtered declaration passes and can infer object types from constructor results, function-returned objects, and `try`-unwrapped objects when lowering method/field chains.
+That object-expression inference now also covers expression-valued `if`/`match` results and block tails, so direct field/method chains on those objects survive lowering instead of failing late in codegen. Parser-side constructor heuristics now also recognize explicit generic constructors through postfix parsing paths, which keeps `Boxed<Integer>(...)` constructor syntax stable even inside nested expression branches.
+The same inference layer now also handles indexed list elements and method-return values from special container helpers like `Option.unwrap()` / `Result.unwrap()`, so chained object access keeps working even when the receiver is produced by a container/indexing expression rather than a named local.
 
 ## Build Caching
 
