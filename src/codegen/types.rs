@@ -2,14 +2,20 @@
 #![allow(dead_code)]
 
 use crate::ast::{Expr, Spanned, Type};
+use inkwell::targets::{
+    CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
+};
 use inkwell::types::BasicType;
 use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue, ValueKind};
-use inkwell::{AddressSpace, IntPredicate};
+use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
+use std::sync::OnceLock;
 
 use crate::codegen::core::{Codegen, CodegenError, Result};
 
+static CODEGEN_TARGET_DATA_LAYOUT: OnceLock<String> = OnceLock::new();
+
 impl<'ctx> Codegen<'ctx> {
-    fn emit_runtime_error(&mut self, message: &str, global_name: &str) -> Result<()> {
+    pub(crate) fn emit_runtime_error(&mut self, message: &str, global_name: &str) -> Result<()> {
         let printf = self.get_or_declare_printf();
         let exit_fn = self.get_or_declare_exit();
         let msg = self
@@ -296,6 +302,124 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(self.builder.build_and(tags_eq, payload_eq, name).unwrap());
         }
 
+        if let Type::Named(name) = ty {
+            if let Some(enum_info) = self.enums.get(name) {
+                let enum_struct_type = enum_info.struct_type;
+                let payload_slots = enum_info.payload_slots;
+                let lhs_ptr =
+                    self.materialize_value_pointer_for_type(lhs, ty, &format!("{name}_lhs_tmp"))?;
+                let rhs_ptr =
+                    self.materialize_value_pointer_for_type(rhs, ty, &format!("{name}_rhs_tmp"))?;
+                let i32_type = self.context.i32_type();
+                let zero = i32_type.const_zero();
+
+                let lhs_tag_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            enum_struct_type.as_basic_type_enum(),
+                            lhs_ptr,
+                            &[zero, zero],
+                            &format!("{name}_lhs_tag_ptr"),
+                        )
+                        .unwrap()
+                };
+                let rhs_tag_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            enum_struct_type.as_basic_type_enum(),
+                            rhs_ptr,
+                            &[zero, zero],
+                            &format!("{name}_rhs_tag_ptr"),
+                        )
+                        .unwrap()
+                };
+                let lhs_tag = self
+                    .builder
+                    .build_load(
+                        self.context.i8_type(),
+                        lhs_tag_ptr,
+                        &format!("{name}_lhs_tag"),
+                    )
+                    .unwrap()
+                    .into_int_value();
+                let rhs_tag = self
+                    .builder
+                    .build_load(
+                        self.context.i8_type(),
+                        rhs_tag_ptr,
+                        &format!("{name}_rhs_tag"),
+                    )
+                    .unwrap()
+                    .into_int_value();
+                let mut eq = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        lhs_tag,
+                        rhs_tag,
+                        &format!("{name}_tag_eq"),
+                    )
+                    .unwrap();
+
+                for slot in 0..payload_slots {
+                    let field_index = i32_type.const_int((slot + 1) as u64, false);
+                    let lhs_payload_ptr = unsafe {
+                        self.builder
+                            .build_gep(
+                                enum_struct_type.as_basic_type_enum(),
+                                lhs_ptr,
+                                &[zero, field_index],
+                                &format!("{name}_lhs_payload_ptr_{slot}"),
+                            )
+                            .unwrap()
+                    };
+                    let rhs_payload_ptr = unsafe {
+                        self.builder
+                            .build_gep(
+                                enum_struct_type.as_basic_type_enum(),
+                                rhs_ptr,
+                                &[zero, field_index],
+                                &format!("{name}_rhs_payload_ptr_{slot}"),
+                            )
+                            .unwrap()
+                    };
+                    let lhs_payload = self
+                        .builder
+                        .build_load(
+                            self.context.i64_type(),
+                            lhs_payload_ptr,
+                            &format!("{name}_lhs_payload_{slot}"),
+                        )
+                        .unwrap()
+                        .into_int_value();
+                    let rhs_payload = self
+                        .builder
+                        .build_load(
+                            self.context.i64_type(),
+                            rhs_payload_ptr,
+                            &format!("{name}_rhs_payload_{slot}"),
+                        )
+                        .unwrap()
+                        .into_int_value();
+                    let payload_eq = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            lhs_payload,
+                            rhs_payload,
+                            &format!("{name}_payload_eq_{slot}"),
+                        )
+                        .unwrap();
+                    eq = self
+                        .builder
+                        .build_and(eq, payload_eq, &format!("{name}_eq_{slot}"))
+                        .unwrap();
+                }
+
+                return Ok(eq);
+            }
+        }
+
         if matches!(ty, Type::String) {
             let strcmp = self.get_or_declare_strcmp();
             let cmp = self
@@ -314,6 +438,29 @@ impl<'ctx> Codegen<'ctx> {
                     self.context.i32_type().const_zero(),
                     name,
                 )
+                .unwrap());
+        }
+
+        if lhs.is_pointer_value() && rhs.is_pointer_value() {
+            let lhs_int = self
+                .builder
+                .build_ptr_to_int(
+                    lhs.into_pointer_value(),
+                    self.context.i64_type(),
+                    &format!("{name}_lhs_ptr_int"),
+                )
+                .unwrap();
+            let rhs_int = self
+                .builder
+                .build_ptr_to_int(
+                    rhs.into_pointer_value(),
+                    self.context.i64_type(),
+                    &format!("{name}_rhs_ptr_int"),
+                )
+                .unwrap();
+            return Ok(self
+                .builder
+                .build_int_compare(IntPredicate::EQ, lhs_int, rhs_int, name)
                 .unwrap());
         }
 
@@ -371,9 +518,10 @@ impl<'ctx> Codegen<'ctx> {
             let rhs_ptr =
                 self.materialize_value_pointer_for_type(rhs, ty, &format!("{name}_rhs_tmp"))?;
             let memcmp = self.get_or_declare_memcmp();
-            let size = llvm_ty
-                .size_of()
-                .ok_or_else(|| CodegenError::new("failed to size value for equality"))?;
+            let size = self
+                .context
+                .i64_type()
+                .const_int(self.storage_size_of_llvm_type(llvm_ty), false);
             let cmp = self
                 .builder
                 .build_call(
@@ -425,16 +573,43 @@ impl<'ctx> Codegen<'ctx> {
         Ok(alloca)
     }
 
+    pub(crate) fn storage_size_of_llvm_type(&self, ty: inkwell::types::BasicTypeEnum<'ctx>) -> u64 {
+        let layout_str = CODEGEN_TARGET_DATA_LAYOUT.get_or_init(|| {
+            Target::initialize_native(&InitializationConfig::default())
+                .expect("failed to initialize native LLVM target for codegen sizing");
+            let triple = TargetMachine::get_default_triple();
+            let target = Target::from_triple(&triple)
+                .expect("failed to create LLVM target from host triple");
+            let cpu = TargetMachine::get_host_cpu_name();
+            let features = TargetMachine::get_host_cpu_features();
+            let machine = target
+                .create_target_machine(
+                    &triple,
+                    cpu.to_str().unwrap_or("generic"),
+                    features.to_str().unwrap_or(""),
+                    OptimizationLevel::Default,
+                    RelocMode::Default,
+                    CodeModel::Default,
+                )
+                .expect("failed to create LLVM target machine for codegen sizing");
+            machine
+                .get_target_data()
+                .get_data_layout()
+                .as_str()
+                .to_string_lossy()
+                .into_owned()
+        });
+        let target_data = TargetData::create(layout_str);
+        target_data.get_abi_size(&ty)
+    }
+
     pub(crate) fn list_element_layout_from_list_type(
         &self,
         list_ty: &Type,
     ) -> (inkwell::types::BasicTypeEnum<'ctx>, u64) {
         if let Type::List(inner) = list_ty {
             let elem_llvm_ty = self.llvm_type(inner);
-            let elem_size = elem_llvm_ty
-                .size_of()
-                .and_then(|size| size.get_zero_extended_constant())
-                .unwrap_or(8);
+            let elem_size = self.storage_size_of_llvm_type(elem_llvm_ty);
             return (elem_llvm_ty, elem_size);
         }
         (self.context.i64_type().into(), 8)
@@ -502,10 +677,7 @@ impl<'ctx> Codegen<'ctx> {
                     _ => return Err(CodegenError::new("Expected Set type")),
                 };
                 let elem_llvm_ty = self.llvm_type(inner_ty);
-                let elem_size = elem_llvm_ty
-                    .size_of()
-                    .and_then(|size| size.get_zero_extended_constant())
-                    .unwrap_or(8);
+                let elem_size = self.storage_size_of_llvm_type(elem_llvm_ty);
                 let i32_type = self.context.i32_type();
                 let i64_type = self.context.i64_type();
                 let zero = i32_type.const_int(0, false);
@@ -539,7 +711,7 @@ impl<'ctx> Codegen<'ctx> {
                         )
                         .unwrap()
                 };
-                let needle = self.compile_expr(&args[0].node)?;
+                let needle = self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "set_len")
@@ -1269,11 +1441,54 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         value: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>> {
-        // Option is struct { is_some: i8, value: T }
         let option_type = self
             .context
             .struct_type(&[self.context.i8_type().into(), value.get_type()], false);
+        let alloca = self.builder.build_alloca(option_type, "option").unwrap();
 
+        let i32_type = self.context.i32_type();
+        let zero = i32_type.const_int(0, false);
+        let tag_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    option_type.as_basic_type_enum(),
+                    alloca,
+                    &[zero, i32_type.const_int(0, false)],
+                    "tag",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(tag_ptr, self.context.i8_type().const_int(1, false))
+            .unwrap();
+
+        let value_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    option_type.as_basic_type_enum(),
+                    alloca,
+                    &[zero, i32_type.const_int(1, false)],
+                    "value",
+                )
+                .unwrap()
+        };
+        self.builder.build_store(value_ptr, value).unwrap();
+
+        Ok(self
+            .builder
+            .build_load(option_type, alloca, "option")
+            .unwrap())
+    }
+
+    pub fn create_option_some_typed(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        inner_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let option_type = self.context.struct_type(
+            &[self.context.i8_type().into(), self.llvm_type(inner_ty)],
+            false,
+        );
         let alloca = self.builder.build_alloca(option_type, "option").unwrap();
 
         // Set is_some = 1
@@ -1313,15 +1528,14 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn create_option_none(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        // Option<i64> as default - struct { is_some: i8, value: i64 }
-        let option_type = self.context.struct_type(
-            &[
-                self.context.i8_type().into(),
-                self.context.i64_type().into(),
-            ],
-            false,
-        );
+        self.create_option_none_typed(&Type::Integer)
+    }
 
+    pub fn create_option_none_typed(&mut self, inner_ty: &Type) -> Result<BasicValueEnum<'ctx>> {
+        let inner_llvm = self.llvm_type(inner_ty);
+        let option_type = self
+            .context
+            .struct_type(&[self.context.i8_type().into(), inner_llvm], false);
         let alloca = self.builder.build_alloca(option_type, "option").unwrap();
 
         // Set is_some = 0
@@ -1353,7 +1567,7 @@ impl<'ctx> Codegen<'ctx> {
                 .unwrap()
         };
         self.builder
-            .build_store(value_ptr, self.context.i64_type().const_int(0, false))
+            .build_store(value_ptr, inner_llvm.const_zero())
             .unwrap();
 
         Ok(self
@@ -1368,16 +1582,74 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         value: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>> {
-        // Result is struct { is_ok: i8, ok_value: T, err_value: ptr }
         let result_type = self.context.struct_type(
             &[
                 self.context.i8_type().into(),
                 value.get_type(),
-                self.context.ptr_type(AddressSpace::default()).into(), // error as string ptr
+                self.context.ptr_type(AddressSpace::default()).into(),
             ],
             false,
         );
+        let alloca = self.builder.build_alloca(result_type, "result").unwrap();
 
+        let i32_type = self.context.i32_type();
+        let zero = i32_type.const_int(0, false);
+        let tag_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    result_type.as_basic_type_enum(),
+                    alloca,
+                    &[zero, i32_type.const_int(0, false)],
+                    "tag",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(tag_ptr, self.context.i8_type().const_int(1, false))
+            .unwrap();
+
+        let ok_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    result_type.as_basic_type_enum(),
+                    alloca,
+                    &[zero, i32_type.const_int(1, false)],
+                    "ok",
+                )
+                .unwrap()
+        };
+        self.builder.build_store(ok_ptr, value).unwrap();
+
+        let err_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    result_type.as_basic_type_enum(),
+                    alloca,
+                    &[zero, i32_type.const_int(2, false)],
+                    "err",
+                )
+                .unwrap()
+        };
+        let null = self.context.ptr_type(AddressSpace::default()).const_null();
+        self.builder.build_store(err_ptr, null).unwrap();
+
+        Ok(self
+            .builder
+            .build_load(result_type, alloca, "result")
+            .unwrap())
+    }
+
+    pub fn create_result_ok_typed(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        ok_ty: &Type,
+        err_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let ok_llvm = self.llvm_type(ok_ty);
+        let err_llvm = self.llvm_type(err_ty);
+        let result_type = self
+            .context
+            .struct_type(&[self.context.i8_type().into(), ok_llvm, err_llvm], false);
         let alloca = self.builder.build_alloca(result_type, "result").unwrap();
 
         // Set is_ok = 1
@@ -1421,8 +1693,9 @@ impl<'ctx> Codegen<'ctx> {
                 )
                 .unwrap()
         };
-        let null = self.context.ptr_type(AddressSpace::default()).const_null();
-        self.builder.build_store(err_ptr, null).unwrap();
+        self.builder
+            .build_store(err_ptr, err_llvm.const_zero())
+            .unwrap();
 
         Ok(self
             .builder
@@ -1434,16 +1707,20 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         error: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>> {
-        // Result is struct { is_ok: i8, ok_value: i64, err_value: ptr }
-        let result_type = self.context.struct_type(
-            &[
-                self.context.i8_type().into(),
-                self.context.i64_type().into(), // default ok type
-                self.context.ptr_type(AddressSpace::default()).into(),
-            ],
-            false,
-        );
+        self.create_result_error_typed(error, &Type::Integer, &Type::String)
+    }
 
+    pub fn create_result_error_typed(
+        &mut self,
+        error: BasicValueEnum<'ctx>,
+        ok_ty: &Type,
+        err_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let ok_llvm = self.llvm_type(ok_ty);
+        let err_llvm = self.llvm_type(err_ty);
+        let result_type = self
+            .context
+            .struct_type(&[self.context.i8_type().into(), ok_llvm, err_llvm], false);
         let alloca = self.builder.build_alloca(result_type, "result").unwrap();
 
         // Set is_ok = 0
@@ -1475,7 +1752,7 @@ impl<'ctx> Codegen<'ctx> {
                 .unwrap()
         };
         self.builder
-            .build_store(ok_ptr, self.context.i64_type().const_int(0, false))
+            .build_store(ok_ptr, ok_llvm.const_zero())
             .unwrap();
 
         // Set err_value
@@ -1932,16 +2209,8 @@ impl<'ctx> Codegen<'ctx> {
             Type::Map(key, value) => (&**key, &**value),
             _ => (&Type::Integer, &Type::Integer),
         };
-        let key_size = self
-            .llvm_type(key_ty)
-            .size_of()
-            .and_then(|size| size.get_zero_extended_constant())
-            .unwrap_or(8);
-        let value_size = self
-            .llvm_type(value_ty)
-            .size_of()
-            .and_then(|size| size.get_zero_extended_constant())
-            .unwrap_or(8);
+        let key_size = self.storage_size_of_llvm_type(self.llvm_type(key_ty));
+        let value_size = self.storage_size_of_llvm_type(self.llvm_type(value_ty));
         let keys_size = self
             .context
             .i64_type()
@@ -2053,11 +2322,7 @@ impl<'ctx> Codegen<'ctx> {
         // Allocate data - malloc(capacity * 8)
         let malloc = self.get_or_declare_malloc();
         let elem_size = match set_expr_ty {
-            Type::Set(inner) => self
-                .llvm_type(inner)
-                .size_of()
-                .and_then(|size| size.get_zero_extended_constant())
-                .unwrap_or(8),
+            Type::Set(inner) => self.storage_size_of_llvm_type(self.llvm_type(inner)),
             _ => 8,
         };
         let size = self
@@ -3088,14 +3353,8 @@ impl<'ctx> Codegen<'ctx> {
         };
         let key_llvm = self.llvm_type(&key_ty);
         let val_llvm = self.llvm_type(&val_ty);
-        let key_size = key_llvm
-            .size_of()
-            .and_then(|size| size.get_zero_extended_constant())
-            .unwrap_or(8);
-        let val_size = val_llvm
-            .size_of()
-            .and_then(|size| size.get_zero_extended_constant())
-            .unwrap_or(8);
+        let key_size = self.storage_size_of_llvm_type(key_llvm);
+        let val_size = self.storage_size_of_llvm_type(val_llvm);
 
         let length_ptr = unsafe {
             self.builder
@@ -3135,8 +3394,8 @@ impl<'ctx> Codegen<'ctx> {
                 .unwrap()),
             "insert" => self.compile_map_method_on_value(map_value, map_expr_ty, "set", args),
             "set" => {
-                let key = self.compile_expr(&args[0].node)?;
-                let value = self.compile_expr(&args[1].node)?;
+                let key = self.compile_expr_with_expected_type(&args[0].node, &key_ty)?;
+                let value = self.compile_expr_with_expected_type(&args[1].node, &val_ty)?;
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "len")
@@ -3203,9 +3462,17 @@ impl<'ctx> Codegen<'ctx> {
                         .build_gep(self.context.i8_type(), keys_ptr, &[offset], "key_slot")
                         .unwrap()
                 };
+                let typed_key_slot = self
+                    .builder
+                    .build_pointer_cast(
+                        key_slot,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "typed_key_slot",
+                    )
+                    .unwrap();
                 let existing = self
                     .builder
-                    .build_load(key_llvm, key_slot, "existing")
+                    .build_load(key_llvm, typed_key_slot, "existing")
                     .unwrap();
                 let eq = self.build_value_equality(existing, key, &key_ty, "eq")?;
                 self.builder
@@ -3227,12 +3494,20 @@ impl<'ctx> Codegen<'ctx> {
                         )
                         .unwrap()
                 };
+                let typed_val_slot = self
+                    .builder
+                    .build_pointer_cast(
+                        val_slot,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "typed_val_slot",
+                    )
+                    .unwrap();
                 if val_llvm.is_struct_type() || val_llvm.is_array_type() {
                     self.builder
-                        .build_store(val_slot, val_llvm.const_zero())
+                        .build_store(typed_val_slot, val_llvm.const_zero())
                         .unwrap();
                 }
-                self.builder.build_store(val_slot, value).unwrap();
+                self.builder.build_store(typed_val_slot, value).unwrap();
                 self.builder.build_unconditional_branch(done_bb).unwrap();
 
                 self.builder.position_at_end(cont_bb);
@@ -3359,12 +3634,20 @@ impl<'ctx> Codegen<'ctx> {
                         )
                         .unwrap()
                 };
+                let typed_key_slot = self
+                    .builder
+                    .build_pointer_cast(
+                        key_slot,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "typed_key_slot_new",
+                    )
+                    .unwrap();
                 if key_llvm.is_struct_type() || key_llvm.is_array_type() {
                     self.builder
-                        .build_store(key_slot, key_llvm.const_zero())
+                        .build_store(typed_key_slot, key_llvm.const_zero())
                         .unwrap();
                 }
-                self.builder.build_store(key_slot, key).unwrap();
+                self.builder.build_store(typed_key_slot, key).unwrap();
                 let value_offset = self
                     .builder
                     .build_int_mul(
@@ -3383,12 +3666,20 @@ impl<'ctx> Codegen<'ctx> {
                         )
                         .unwrap()
                 };
+                let typed_val_slot = self
+                    .builder
+                    .build_pointer_cast(
+                        val_slot,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "typed_val_slot_new",
+                    )
+                    .unwrap();
                 if val_llvm.is_struct_type() || val_llvm.is_array_type() {
                     self.builder
-                        .build_store(val_slot, val_llvm.const_zero())
+                        .build_store(typed_val_slot, val_llvm.const_zero())
                         .unwrap();
                 }
-                self.builder.build_store(val_slot, value).unwrap();
+                self.builder.build_store(typed_val_slot, value).unwrap();
                 let new_len = self
                     .builder
                     .build_int_add(length, i64_type.const_int(1, false), "new_len")
@@ -3400,7 +3691,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(self.context.i8_type().const_int(0, false).into())
             }
             "get" => {
-                let key = self.compile_expr(&args[0].node)?;
+                let key = self.compile_expr_with_expected_type(&args[0].node, &key_ty)?;
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "len")
@@ -3473,9 +3764,17 @@ impl<'ctx> Codegen<'ctx> {
                         .build_gep(self.context.i8_type(), keys_ptr, &[offset], "key_slot")
                         .unwrap()
                 };
+                let typed_key_slot = self
+                    .builder
+                    .build_pointer_cast(
+                        key_slot,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "typed_key_slot",
+                    )
+                    .unwrap();
                 let existing = self
                     .builder
-                    .build_load(key_llvm, key_slot, "existing")
+                    .build_load(key_llvm, typed_key_slot, "existing")
                     .unwrap();
                 let eq = self.build_value_equality(existing, key, &key_ty, "eq")?;
                 let next_bb = self.context.append_basic_block(current_fn, "map_get.next");
@@ -3499,9 +3798,17 @@ impl<'ctx> Codegen<'ctx> {
                         )
                         .unwrap()
                 };
+                let typed_val_slot = self
+                    .builder
+                    .build_pointer_cast(
+                        val_slot,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "typed_val_slot",
+                    )
+                    .unwrap();
                 let found = self
                     .builder
-                    .build_load(val_llvm, val_slot, "found")
+                    .build_load(val_llvm, typed_val_slot, "found")
                     .unwrap();
                 self.builder.build_store(res_ptr, found).unwrap();
                 self.builder
@@ -3537,7 +3844,7 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap())
             }
             "contains" => {
-                let key = self.compile_expr(&args[0].node)?;
+                let key = self.compile_expr_with_expected_type(&args[0].node, &key_ty)?;
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "len")
@@ -3601,9 +3908,17 @@ impl<'ctx> Codegen<'ctx> {
                         .build_gep(self.context.i8_type(), keys_ptr, &[offset], "key_slot")
                         .unwrap()
                 };
+                let typed_key_slot = self
+                    .builder
+                    .build_pointer_cast(
+                        key_slot,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "typed_key_slot",
+                    )
+                    .unwrap();
                 let existing = self
                     .builder
-                    .build_load(key_llvm, key_slot, "existing")
+                    .build_load(key_llvm, typed_key_slot, "existing")
                     .unwrap();
                 let eq = self.build_value_equality(existing, key, &key_ty, "eq")?;
                 let next_bb = self

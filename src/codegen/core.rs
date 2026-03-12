@@ -5077,7 +5077,7 @@ impl<'ctx> Codegen<'ctx> {
                 value,
                 mutable: _,
             } => {
-                let val = self.compile_expr(&value.node)?;
+                let val = self.compile_expr_with_expected_type(&value.node, ty)?;
                 let alloca = self.builder.build_alloca(self.llvm_type(ty), name).unwrap();
                 self.builder.build_store(alloca, val).unwrap();
                 self.variables.insert(
@@ -5117,7 +5117,11 @@ impl<'ctx> Codegen<'ctx> {
                                 self.builder.build_return(None).unwrap();
                             }
                         } else {
-                            let val = self.compile_expr(&expr.node)?;
+                            let val = if let Some(ret_ty) = self.current_return_type.clone() {
+                                self.compile_expr_with_expected_type(&expr.node, &ret_ty)?
+                            } else {
+                                self.compile_expr(&expr.node)?
+                            };
                             // Main function must return i32 for C compatibility
                             let ret_val = if is_main && val.is_int_value() {
                                 let int_val = val.into_int_value();
@@ -5628,7 +5632,7 @@ impl<'ctx> Codegen<'ctx> {
             .enums
             .get(enum_name)
             .ok_or_else(|| CodegenError::new(format!("Unknown enum '{}'", enum_name)))?;
-        let mut value = enum_info.struct_type.get_undef();
+        let mut value = enum_info.struct_type.const_zero();
 
         value = self
             .builder
@@ -6457,6 +6461,57 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(result)
             }
         }
+    }
+
+    pub(crate) fn compile_expr_with_expected_type(
+        &mut self,
+        expr: &Expr,
+        expected_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        if let Expr::Call { callee, args, .. } = expr {
+            if let Expr::Field { object, field } = &callee.node {
+                if let Expr::Ident(type_name) = &object.node {
+                    match (type_name.as_str(), field.as_str(), expected_ty) {
+                        ("Option", "some", Type::Option(inner_ty)) => {
+                            if args.len() != 1 {
+                                return Err(CodegenError::new(
+                                    "Option.some() requires exactly 1 argument",
+                                ));
+                            }
+                            let value =
+                                self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
+                            return self.create_option_some_typed(value, inner_ty);
+                        }
+                        ("Option", "none", Type::Option(inner_ty)) => {
+                            return self.create_option_none_typed(inner_ty);
+                        }
+                        ("Result", "ok", Type::Result(ok_ty, err_ty)) => {
+                            if args.len() != 1 {
+                                return Err(CodegenError::new(
+                                    "Result.ok() requires exactly 1 argument",
+                                ));
+                            }
+                            let value =
+                                self.compile_expr_with_expected_type(&args[0].node, ok_ty)?;
+                            return self.create_result_ok_typed(value, ok_ty, err_ty);
+                        }
+                        ("Result", "error", Type::Result(ok_ty, err_ty)) => {
+                            if args.len() != 1 {
+                                return Err(CodegenError::new(
+                                    "Result.error() requires exactly 1 argument",
+                                ));
+                            }
+                            let value =
+                                self.compile_expr_with_expected_type(&args[0].node, err_ty)?;
+                            return self.create_result_error_typed(value, ok_ty, err_ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        self.compile_expr(expr)
     }
 
     pub fn compile_if_expr(
@@ -7941,6 +7996,128 @@ impl<'ctx> Codegen<'ctx> {
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
         let obj_val = self.compile_expr(object)?;
         let idx = self.compile_expr(index)?.into_int_value();
+        let list_ty = self.infer_object_type(object);
+
+        if let Some(Type::List(_)) = &list_ty {
+            let i64_type = self.context.i64_type();
+            let non_negative = self
+                .builder
+                .build_int_compare(
+                    IntPredicate::SGE,
+                    idx,
+                    i64_type.const_zero(),
+                    "index_non_negative",
+                )
+                .unwrap();
+
+            let (length, data_ptr, elem_ty) =
+                if let BasicValueEnum::StructValue(list_struct) = obj_val {
+                    let length = self
+                        .builder
+                        .build_extract_value(list_struct, 1, "list_len")
+                        .map_err(|_| CodegenError::new("Invalid list value for index access"))?
+                        .into_int_value();
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(list_struct, 2, "list_data")
+                        .map_err(|_| CodegenError::new("Invalid list value for index access"))?
+                        .into_pointer_value();
+                    let elem_ty = match list_ty {
+                        Some(list_ty @ Type::List(_)) => {
+                            self.list_element_layout_from_list_type(&list_ty).0
+                        }
+                        _ => self.list_element_layout_default().0,
+                    };
+                    (length, data_ptr, elem_ty)
+                } else {
+                    let list_ptr = obj_val.into_pointer_value();
+                    let list_struct_ty = self.context.struct_type(
+                        &[
+                            i64_type.into(),
+                            i64_type.into(),
+                            self.context.ptr_type(AddressSpace::default()).into(),
+                        ],
+                        false,
+                    );
+                    let i32_type = self.context.i32_type();
+                    let zero = i32_type.const_zero();
+                    let len_ptr = unsafe {
+                        self.builder
+                            .build_gep(
+                                list_struct_ty.as_basic_type_enum(),
+                                list_ptr,
+                                &[zero, i32_type.const_int(1, false)],
+                                "list_len_ptr",
+                            )
+                            .unwrap()
+                    };
+                    let data_ptr_ptr = unsafe {
+                        self.builder
+                            .build_gep(
+                                list_struct_ty.as_basic_type_enum(),
+                                list_ptr,
+                                &[zero, i32_type.const_int(2, false)],
+                                "list_data_ptr_ptr",
+                            )
+                            .unwrap()
+                    };
+                    let length = self
+                        .builder
+                        .build_load(i64_type, len_ptr, "list_len")
+                        .unwrap()
+                        .into_int_value();
+                    let data_ptr = self
+                        .builder
+                        .build_load(
+                            self.context.ptr_type(AddressSpace::default()),
+                            data_ptr_ptr,
+                            "list_data_ptr",
+                        )
+                        .unwrap()
+                        .into_pointer_value();
+                    let elem_ty = match list_ty {
+                        Some(list_ty @ Type::List(_)) => {
+                            self.list_element_layout_from_list_type(&list_ty).0
+                        }
+                        _ => self.list_element_layout_default().0,
+                    };
+                    (length, data_ptr, elem_ty)
+                };
+
+            let in_bounds = self
+                .builder
+                .build_int_compare(IntPredicate::SLT, idx, length, "index_in_bounds")
+                .unwrap();
+            let valid = self
+                .builder
+                .build_and(non_negative, in_bounds, "index_valid")
+                .unwrap();
+            let current_fn = self.current_function.unwrap();
+            let ok_bb = self.context.append_basic_block(current_fn, "index_ok");
+            let fail_bb = self.context.append_basic_block(current_fn, "index_fail");
+            self.builder
+                .build_conditional_branch(valid, ok_bb, fail_bb)
+                .unwrap();
+
+            self.builder.position_at_end(fail_bb);
+            self.emit_runtime_error("List index out of bounds", "list_index_oob")?;
+
+            self.builder.position_at_end(ok_bb);
+            let typed_data_ptr = self
+                .builder
+                .build_pointer_cast(
+                    data_ptr,
+                    self.context.ptr_type(AddressSpace::default()),
+                    "list_typed_data",
+                )
+                .unwrap();
+            let elem_ptr = unsafe {
+                self.builder
+                    .build_gep(elem_ty, typed_data_ptr, &[idx], "elem")
+                    .unwrap()
+            };
+            return Ok(self.builder.build_load(elem_ty, elem_ptr, "load").unwrap());
+        }
 
         // List indexing may come either as:
         // 1) direct data pointer, or

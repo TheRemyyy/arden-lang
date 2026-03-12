@@ -7768,6 +7768,313 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_runs_map_option_growth_for_earlier_keys() {
+        let temp_root = make_temp_project_root("map-option-growth-earlier-runtime");
+        let source_path = temp_root.join("map_option_growth_earlier_runtime.apex");
+        let output_path = temp_root.join("map_option_growth_earlier_runtime");
+        let source = r#"
+            function main(): Integer {
+                m: Map<Option<Integer>, Integer> = Map<Option<Integer>, Integer>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    m.set(Option.some(i), i + 10);
+                    i = i + 1;
+                }
+                return if (m.contains(Option.some(0)) && m.get(Option.some(0)) == 10 && m.contains(Option.some(8)) && m.get(Option.some(8)) == 18) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("map option growth should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map-option growth binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_option_updates_after_growth() {
+        let temp_root = make_temp_project_root("map-option-update-runtime");
+        let source_path = temp_root.join("map_option_update_runtime.apex");
+        let output_path = temp_root.join("map_option_update_runtime");
+        let source = r#"
+            function main(): Integer {
+                m: Map<Option<Integer>, Integer> = Map<Option<Integer>, Integer>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    m.set(Option.some(i), i + 10);
+                    i = i + 1;
+                }
+                m.set(Option.some(4), 99);
+                return if (m.length() == 9 && m.get(Option.some(4)) == 99 && m.get(Option.some(8)) == 18) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("map option update should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map-option update binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_set_option_remove_after_growth() {
+        let temp_root = make_temp_project_root("set-option-remove-runtime");
+        let source_path = temp_root.join("set_option_remove_runtime.apex");
+        let output_path = temp_root.join("set_option_remove_runtime");
+        let source = r#"
+            function main(): Integer {
+                s: Set<Option<Integer>> = Set<Option<Integer>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    s.add(Option.some(i));
+                    i = i + 1;
+                }
+                removed: Boolean = s.remove(Option.some(4));
+                return if (removed && !s.contains(Option.some(4)) && s.contains(Option.some(8)) && s.length() == 8) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("set option remove should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled set-option remove binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_result_growth_with_integer_error_keys() {
+        let temp_root = make_temp_project_root("map-result-growth-runtime");
+        let source_path = temp_root.join("map_result_growth_runtime.apex");
+        let output_path = temp_root.join("map_result_growth_runtime");
+        let source = r#"
+            function main(): Integer {
+                m: Map<Result<Integer, Integer>, Integer> = Map<Result<Integer, Integer>, Integer>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    m.set(Result.error(i), i + 10);
+                    i = i + 1;
+                }
+                return if (m.contains(Result.error(0)) && m.get(Result.error(0)) == 10 && m.contains(Result.error(8)) && m.get(Result.error(8)) == 18) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("map result growth should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map-result growth binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_result_error_with_non_integer_ok_type() {
+        let temp_root = make_temp_project_root("result-error-layout-runtime");
+        let source_path = temp_root.join("result_error_layout_runtime.apex");
+        let output_path = temp_root.join("result_error_layout_runtime");
+        let source = r#"
+            function bad(): Result<Float, String> {
+                return Result.error("x");
+            }
+
+            function main(): Integer {
+                r: Result<Float, String> = bad();
+                return if (r.is_ok()) { 1; } else { 0; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("result error layout should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled result-error layout binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_with_class_pointer_keys() {
+        let temp_root = make_temp_project_root("map-class-key-runtime");
+        let source_path = temp_root.join("map_class_key_runtime.apex");
+        let output_path = temp_root.join("map_class_key_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                a: Boxed = Boxed(1);
+                b: Boxed = Boxed(2);
+                m: Map<Boxed, Integer> = Map<Boxed, Integer>();
+                m.set(a, 11);
+                m.set(b, 12);
+                return if (m.contains(a) && m.get(a) == 11 && m.get(b) == 12) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("map class key should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map-class-key binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_set_with_class_pointer_keys() {
+        let temp_root = make_temp_project_root("set-class-key-runtime");
+        let source_path = temp_root.join("set_class_key_runtime.apex");
+        let output_path = temp_root.join("set_class_key_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                a: Boxed = Boxed(1);
+                b: Boxed = Boxed(2);
+                s: Set<Boxed> = Set<Boxed>();
+                s.add(a);
+                s.add(b);
+                return if (s.contains(a) && s.contains(b)) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("set class key should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled set-class-key binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_with_nested_option_class_keys() {
+        let temp_root = make_temp_project_root("map-option-class-key-runtime");
+        let source_path = temp_root.join("map_option_class_key_runtime.apex");
+        let output_path = temp_root.join("map_option_class_key_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                a: Boxed = Boxed(1);
+                b: Boxed = Boxed(2);
+                m: Map<Option<Boxed>, Integer> = Map<Option<Boxed>, Integer>();
+                m.set(Option.some(a), 11);
+                m.set(Option.some(b), 12);
+                return if (m.contains(Option.some(a)) && m.get(Option.some(b)) == 12) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested option class key should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled nested option class key binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_with_multi_variant_enum_keys() {
+        let temp_root = make_temp_project_root("map-enum-key-runtime");
+        let source_path = temp_root.join("map_enum_key_runtime.apex");
+        let output_path = temp_root.join("map_enum_key_runtime");
+        let source = r#"
+            enum E {
+                A(Integer)
+                B(Integer)
+            }
+
+            function main(): Integer {
+                m: Map<E, Integer> = Map<E, Integer>();
+                m.set(E.A(1), 11);
+                m.set(E.B(2), 12);
+                return if (m.contains(E.A(1)) && m.get(E.A(1)) == 11 && m.get(E.B(2)) == 12) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("map enum key should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map-enum-key binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_set_with_multi_variant_enum_keys() {
+        let temp_root = make_temp_project_root("set-enum-key-runtime");
+        let source_path = temp_root.join("set_enum_key_runtime.apex");
+        let output_path = temp_root.join("set_enum_key_runtime");
+        let source = r#"
+            enum E {
+                A(Integer)
+                B(Integer)
+            }
+
+            function main(): Integer {
+                s: Set<E> = Set<E>();
+                s.add(E.A(1));
+                s.add(E.B(2));
+                return if (s.contains(E.A(1)) && s.contains(E.B(2))) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("set enum key should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled set-enum-key binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_option_is_some_in_condition() {
         let temp_root = make_temp_project_root("option-is-some-condition-runtime");
         let source_path = temp_root.join("option_is_some_condition_runtime.apex");
@@ -8057,6 +8364,60 @@ function main(): None {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled negative list.get binary");
+        assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_negative_list_index_operator() {
+        let temp_root = make_temp_project_root("list-index-negative-runtime");
+        let source_path = temp_root.join("list_index_negative_runtime.apex");
+        let output_path = temp_root.join("list_index_negative_runtime");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                return xs[-1];
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("negative list index operator should still codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled negative list index operator binary");
+        assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_empty_list_index_object_results() {
+        let temp_root = make_temp_project_root("list-index-empty-object-runtime");
+        let source_path = temp_root.join("list_index_empty_object_runtime.apex");
+        let output_path = temp_root.join("list_index_empty_object_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                xs: List<Boxed> = List<Boxed>();
+                return xs[0].value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("empty list index object result should still codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled empty list index object binary");
         assert_eq!(status.code(), Some(1));
 
         let _ = fs::remove_dir_all(temp_root);

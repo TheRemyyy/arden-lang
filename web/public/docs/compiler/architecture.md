@@ -23,8 +23,13 @@ That object-type inference now also treats string concatenation and interpolatio
 The same inference layer now also preserves value types returned from built-in container getters such as `List.get()` and `Map.get()`, which keeps object field/method chains on those returned values valid during lowering.
 Built-in `Set<T>` lowering now also performs real membership/mutation work instead of placeholder boolean stubs, keeping `add`/`contains`/`remove` behavior aligned with the typechecked container API.
 The same built-in method tables are now kept aligned between typechecking and codegen for `Set<T>` as well, preventing frontend/backend drift where a method existed in one layer but not the other.
-Container runtime equality/storage now also handles non-scalar generic values correctly: tagged payloads like `Option<T>` and `Result<T, E>` are compared semantically in `Set<T>`, and `Map<K, V>` / `Set<T>` backing allocations use typed element sizes instead of assuming 8-byte slots.
+Container runtime equality/storage now also handles non-scalar generic values correctly: tagged payloads like `Option<T>` and `Result<T, E>` are compared semantically in `Set<T>`, `Map<Option<T>, V>` / `Set<Option<T>>` preserve earlier inserted tagged keys across inserts and removals, `Map<Result<T, E>, V>` uses real ABI slot sizes for non-scalar keys, and `Map<K, V>` / `Set<T>` backing allocations use target-correct element sizes instead of assuming 8-byte slots.
+Typed lowering now also carries expected `Option<T>` / `Result<T, E>` layouts into static constructors in codegen-sensitive contexts, so `Result.error(...)` and similar tagged constructors no longer emit mismatched LLVM structs when the surrounding type is known.
+Collection equality now also handles pointer-backed user object values by identity, which keeps `Map<Class, V>`, `Set<Class>`, and nested tagged keys like `Map<Option<Class>, V>` consistent with the rest of the runtime object model.
+Enum construction now also zero-initializes inactive payload slots before inserting the active variant payload, preventing `undef` bytes from leaking into enum equality/storage paths such as `Map<Enum, V>` and `Set<Enum>`.
+The current enum payload runtime model still stores payload slots as `i64`, so nested enum-by-value payloads are now rejected explicitly during typechecking instead of reaching backend codegen and failing there.
 Built-in collection getters/mutators now also fail fast on invalid runtime access (`List.get/set/pop` bounds errors and missing `Map.get()` keys) instead of returning null/garbage values and crashing later during field or method lowering.
+The same fail-fast bounds checks now also apply to direct list indexing syntax (`xs[i]`), so bracket access no longer bypasses the guarded collection helper path.
 
 ## Build Caching
 

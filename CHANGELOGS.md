@@ -25,9 +25,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed generic container runtime storage/equality for non-scalar values:
   - `Set<Option<T>>` / `Set<Result<T, E>>` membership checks now compare tagged values semantically instead of relying on unstable raw-byte equality
   - `Map<K, V>` now grows past its initial capacity while preserving typed key/value storage sizes instead of overflowing small fixed buffers after 8 inserts
+- Fixed aggregate container layout/runtime handling for `Option<T>` / `Result<T, E>` keys and values:
+  - `Map<Option<T>, V>` and `Set<Option<T>>` now preserve earlier inserted keys across repeated inserts, updates, growth, and removals instead of effectively only matching the newest tagged entry
+  - `Map<Result<T, E>, V>` now handles non-string error payload layouts like `Result<Integer, Integer>` without heap corruption during insert/growth
+  - `Result.error(...)` now lowers with the expected `Result<T, E>` layout in typed contexts such as local bindings, returns, and container keys instead of emitting mismatched LLVM structs
+- Fixed collection key equality for user object types:
+  - `Map<Class, V>` and `Set<Class>` now compare non-string pointer-backed values by object identity instead of treating every class key lookup as unequal
+  - nested tagged keys like `Map<Option<Class>, V>` now also work end-to-end because `Option<T>` payload equality now composes correctly over pointer-backed class values
+- Fixed enum container keys with multiple variants:
+  - enum values now zero-initialize inactive payload slots during construction instead of leaving them `undef`, so `Map<Enum, V>` and `Set<Enum>` lookups no longer fail spuriously for multi-variant enums
+- Fixed nested enum payload handling:
+  - nested enum-by-value payloads are now rejected during typechecking with a direct diagnostic instead of slipping through and panicking later in backend enum payload encoding
 - Fixed collection runtime safety guards:
   - `List.get()`, `List.set()`, and `List.pop()` now fail fast on negative/out-of-bounds indices or empty-list access instead of reading invalid memory
   - `Map.get()` now fails fast on missing keys instead of returning a zero/null value that could later crash during field or method access
+  - direct list indexing via `xs[i]` now uses the same bounds checks instead of bypassing the safer method path and reading invalid memory
 - Fixed `apex test` handling for `@Ignore` without a reason:
   - tests marked with bare `@Ignore` are now skipped correctly instead of being executed
   - ignored tests are now counted in the final `Total` summary as well as `Ignored`

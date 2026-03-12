@@ -1722,7 +1722,7 @@ impl TypeChecker {
         }
     }
 
-    fn enum_payload_supported_for_codegen(ty: &ResolvedType) -> bool {
+    fn enum_payload_supported_for_codegen(&self, ty: &ResolvedType) -> bool {
         matches!(
             ty,
             ResolvedType::Integer
@@ -1730,11 +1730,10 @@ impl TypeChecker {
                 | ResolvedType::Char
                 | ResolvedType::Float
                 | ResolvedType::String
-                | ResolvedType::Class(_)
                 | ResolvedType::Ref(_)
                 | ResolvedType::MutRef(_)
                 | ResolvedType::Ptr(_)
-        )
+        ) || matches!(ty, ResolvedType::Class(name) if !self.enums.contains_key(name))
     }
 
     fn type_contains_borrowed_reference(ty: &ResolvedType) -> bool {
@@ -1914,10 +1913,10 @@ impl TypeChecker {
                 for variant in &en.variants {
                     for field in &variant.fields {
                         let ty = self.resolve_type(&field.ty);
-                        if !Self::enum_payload_supported_for_codegen(&ty) {
+                        if !self.enum_payload_supported_for_codegen(&ty) {
                             self.error(
                                 format!(
-                                    "Enum payload type '{}' is not supported yet; only primitive scalars, strings, class/enum references, refs, mut refs, and raw pointers are supported in enum variants",
+                                    "Enum payload type '{}' is not supported yet; only primitive scalars, strings, class references, refs, mut refs, and raw pointers are supported in enum variants",
                                     ty
                                 ),
                                 span.clone(),
@@ -6169,6 +6168,28 @@ mod tests {
         assert!(joined.contains("Enum payload type '(Integer) -> Integer' is not supported yet"));
         assert!(joined.contains("Enum payload type 'List<Integer>' is not supported yet"));
         assert!(joined.contains("Enum payload type 'Option<C>' is not supported yet"));
+    }
+
+    #[test]
+    fn rejects_nested_enum_payload_types_during_typecheck() {
+        let src = r#"
+            enum Inner {
+                X(Integer)
+            }
+
+            enum Outer {
+                A(Inner)
+            }
+
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src).expect_err("nested enum payload types should fail early");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Enum payload type 'Inner' is not supported yet"));
     }
 
     #[test]
