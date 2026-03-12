@@ -11,6 +11,9 @@ This document describes the internal architecture of the Apex compiler.
 5. **Code Generation** (`codegen/core.rs`, `codegen/types.rs`, `codegen/util.rs`): Lowers the AST into LLVM IR (Intermediate Representation).
 6. **Linking**: LLVM IR is compiled to object files and linked through Clang. Apex uses an explicit per-platform linker policy with no fallback: Linux requires `mold`, while macOS and Windows require LLVM `lld`. Build caches are fingerprinted with that enforced linker mode.
 
+Project rewrite and semantic passes now normalize namespace-alias constructor/type paths for module-scoped classes as well. That keeps expressions like `u.Box<Integer>(...)` and `u.M.Box<Integer>(...)` aligned with the same prefixed owner symbols used by dependency indexing, typechecking, and filtered codegen.
+Codegen now also keeps synthesized user-generic class specializations (`...__spec__...`) alive through filtered declaration passes and can infer object types from constructor results, function-returned objects, and `try`-unwrapped objects when lowering method/field chains.
+
 ## Build Caching
 
 - **Project fingerprint cache** (`.apexcache/build_fingerprint`):
@@ -20,6 +23,7 @@ This document describes the internal architecture of the Apex compiler.
   - Stores parsed AST + namespace/import metadata keyed by source fingerprint.
   - On incremental edits, unchanged files bypass tokenization/parsing and reuse cached AST.
   - Cached parse entries now also persist extracted symbol/reference metadata (`function_names`, dependency references, qualified symbol paths, import-check fingerprint), so warm builds do not rewalk unchanged ASTs just to rebuild compiler bookkeeping.
+  - Nested module declarations now contribute prefixed class/enum metadata alongside function metadata, so project rewrite and dependency/index data can resolve module-scoped types like `M__Box` consistently.
   - Uses a fast unchanged-file check from cached file metadata (`len + modified time`) before reading full file contents.
   - If metadata changed but file content hash is still identical, the cached parse result is still reused safely.
 - **Rewritten file cache** (`.apexcache/rewritten/*.json`):

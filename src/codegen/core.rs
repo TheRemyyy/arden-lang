@@ -16,6 +16,7 @@ use inkwell::{AddressSpace, AtomicOrdering, FloatPredicate, IntPredicate};
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
+use crate::parser::parse_type_source;
 use crate::stdlib::stdlib_registry;
 
 /// Codegen error
@@ -46,6 +47,7 @@ pub struct ClassInfo<'ctx> {
     pub struct_type: StructType<'ctx>,
     pub field_indices: HashMap<String, u32>,
     pub field_types: HashMap<String, Type>,
+    pub generic_params: Vec<String>,
     pub extends: Option<String>,
 }
 
@@ -82,6 +84,12 @@ struct GenericTemplate {
     func: FunctionDecl,
     span: Span,
     owner_class: Option<String>,
+}
+
+#[derive(Clone)]
+struct GenericClassTemplate {
+    class: ClassDecl,
+    span: Span,
 }
 
 /// Code generator
@@ -156,7 +164,7 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn substitute_type(ty: &Type, bindings: &HashMap<String, Type>) -> Type {
+    pub(crate) fn substitute_type(ty: &Type, bindings: &HashMap<String, Type>) -> Type {
         match ty {
             Type::Named(name) => bindings.get(name).cloned().unwrap_or_else(|| ty.clone()),
             Type::Generic(name, args) => Type::Generic(
@@ -257,6 +265,60 @@ impl<'ctx> Codegen<'ctx> {
             }
             _ => {}
         }
+    }
+
+    fn collect_generic_class_templates_from_decl(
+        decl: &Spanned<Decl>,
+        module_prefix: Option<&str>,
+        class_templates: &mut HashMap<String, GenericClassTemplate>,
+    ) {
+        match &decl.node {
+            Decl::Class(class) => {
+                if class.generic_params.is_empty() {
+                    return;
+                }
+                let key = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, class.name)
+                } else {
+                    class.name.clone()
+                };
+                let mut class = class.clone();
+                class.name = key.clone();
+                class_templates.insert(
+                    key,
+                    GenericClassTemplate {
+                        class,
+                        span: decl.span.clone(),
+                    },
+                );
+            }
+            Decl::Module(module) => {
+                let next_prefix = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, module.name)
+                } else {
+                    module.name.clone()
+                };
+                for inner in &module.declarations {
+                    Self::collect_generic_class_templates_from_decl(
+                        inner,
+                        Some(&next_prefix),
+                        class_templates,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn generic_class_spec_name(base: &str, args: &[Type]) -> String {
+        format!(
+            "{}__spec__{}",
+            base,
+            args.iter()
+                .map(Self::type_specialization_suffix)
+                .collect::<Vec<_>>()
+                .join("_")
+        )
     }
 
     fn template_key_for_callee(callee: &Expr) -> Option<String> {
@@ -861,6 +923,486 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn type_contains_generic_names(ty: &Type, generic_names: &HashSet<String>) -> bool {
+        match ty {
+            Type::Named(name) => generic_names.contains(name),
+            Type::Generic(name, args) => {
+                generic_names.contains(name)
+                    || args
+                        .iter()
+                        .any(|arg| Self::type_contains_generic_names(arg, generic_names))
+            }
+            Type::Function(params, ret) => {
+                params
+                    .iter()
+                    .any(|p| Self::type_contains_generic_names(p, generic_names))
+                    || Self::type_contains_generic_names(ret, generic_names)
+            }
+            Type::Option(inner)
+            | Type::List(inner)
+            | Type::Set(inner)
+            | Type::Ref(inner)
+            | Type::MutRef(inner)
+            | Type::Box(inner)
+            | Type::Rc(inner)
+            | Type::Arc(inner)
+            | Type::Ptr(inner)
+            | Type::Task(inner)
+            | Type::Range(inner) => Self::type_contains_generic_names(inner, generic_names),
+            Type::Result(ok, err) | Type::Map(ok, err) => {
+                Self::type_contains_generic_names(ok, generic_names)
+                    || Self::type_contains_generic_names(err, generic_names)
+            }
+            _ => false,
+        }
+    }
+
+    fn collect_generic_class_instantiation_from_type(
+        ty: &Type,
+        class_templates: &HashMap<String, GenericClassTemplate>,
+        in_scope_generics: &HashSet<String>,
+        instantiations: &mut HashMap<String, Vec<Type>>,
+    ) {
+        match ty {
+            Type::Generic(name, args) => {
+                for arg in args {
+                    Self::collect_generic_class_instantiation_from_type(
+                        arg,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+                if class_templates.contains_key(name)
+                    && !args
+                        .iter()
+                        .any(|arg| Self::type_contains_generic_names(arg, in_scope_generics))
+                {
+                    instantiations
+                        .entry(Self::generic_class_spec_name(name, args))
+                        .or_insert_with(|| args.clone());
+                }
+            }
+            Type::Function(params, ret) => {
+                for param in params {
+                    Self::collect_generic_class_instantiation_from_type(
+                        param,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+                Self::collect_generic_class_instantiation_from_type(
+                    ret,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+            }
+            Type::Option(inner)
+            | Type::List(inner)
+            | Type::Set(inner)
+            | Type::Ref(inner)
+            | Type::MutRef(inner)
+            | Type::Box(inner)
+            | Type::Rc(inner)
+            | Type::Arc(inner)
+            | Type::Ptr(inner)
+            | Type::Task(inner)
+            | Type::Range(inner) => Self::collect_generic_class_instantiation_from_type(
+                inner,
+                class_templates,
+                in_scope_generics,
+                instantiations,
+            ),
+            Type::Result(ok, err) | Type::Map(ok, err) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    ok,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                Self::collect_generic_class_instantiation_from_type(
+                    err,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_generic_class_instantiation_from_expr(
+        expr: &Expr,
+        class_templates: &HashMap<String, GenericClassTemplate>,
+        in_scope_generics: &HashSet<String>,
+        instantiations: &mut HashMap<String, Vec<Type>>,
+    ) {
+        match expr {
+            Expr::Call {
+                callee,
+                args,
+                type_args,
+            } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &callee.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                for arg in args {
+                    Self::collect_generic_class_instantiation_from_expr(
+                        &arg.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+                for ty in type_args {
+                    Self::collect_generic_class_instantiation_from_type(
+                        ty,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+            }
+            Expr::Construct { ty, args } => {
+                if let Ok(Type::Generic(name, type_args)) = parse_type_source(ty) {
+                    if class_templates.contains_key(&name)
+                        && !type_args
+                            .iter()
+                            .any(|arg| Self::type_contains_generic_names(arg, in_scope_generics))
+                    {
+                        instantiations
+                            .entry(Self::generic_class_spec_name(&name, &type_args))
+                            .or_insert(type_args);
+                    }
+                }
+                for arg in args {
+                    Self::collect_generic_class_instantiation_from_expr(
+                        &arg.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+            }
+            Expr::Binary { left, right, .. } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &left.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                Self::collect_generic_class_instantiation_from_expr(
+                    &right.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+            }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr)
+            | Expr::Field { object: expr, .. } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &expr.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+            }
+            Expr::Index { object, index } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &object.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                Self::collect_generic_class_instantiation_from_expr(
+                    &index.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+            }
+            Expr::Lambda { params, body } => {
+                for param in params {
+                    Self::collect_generic_class_instantiation_from_type(
+                        &param.ty,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+                Self::collect_generic_class_instantiation_from_expr(
+                    &body.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+            }
+            Expr::Match { expr, arms } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &expr.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                for arm in arms {
+                    for stmt in &arm.body {
+                        Self::collect_generic_class_instantiation_from_stmt(
+                            &stmt.node,
+                            class_templates,
+                            in_scope_generics,
+                            instantiations,
+                        );
+                    }
+                }
+            }
+            Expr::StringInterp(parts) => {
+                for part in parts {
+                    if let StringPart::Expr(expr) = part {
+                        Self::collect_generic_class_instantiation_from_expr(
+                            &expr.node,
+                            class_templates,
+                            in_scope_generics,
+                            instantiations,
+                        );
+                    }
+                }
+            }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &condition.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                for stmt in then_branch {
+                    Self::collect_generic_class_instantiation_from_stmt(
+                        &stmt.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+                if let Some(block) = else_branch {
+                    for stmt in block {
+                        Self::collect_generic_class_instantiation_from_stmt(
+                            &stmt.node,
+                            class_templates,
+                            in_scope_generics,
+                            instantiations,
+                        );
+                    }
+                }
+            }
+            Expr::Block(block) | Expr::AsyncBlock(block) => {
+                for stmt in block {
+                    Self::collect_generic_class_instantiation_from_stmt(
+                        &stmt.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+            }
+            Expr::Require { condition, message } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &condition.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                if let Some(message) = message {
+                    Self::collect_generic_class_instantiation_from_expr(
+                        &message.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                if let Some(start) = start {
+                    Self::collect_generic_class_instantiation_from_expr(
+                        &start.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+                if let Some(end) = end {
+                    Self::collect_generic_class_instantiation_from_expr(
+                        &end.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+            }
+            Expr::Literal(_) | Expr::Ident(_) | Expr::This => {}
+        }
+    }
+
+    fn collect_generic_class_instantiation_from_stmt(
+        stmt: &Stmt,
+        class_templates: &HashMap<String, GenericClassTemplate>,
+        in_scope_generics: &HashSet<String>,
+        instantiations: &mut HashMap<String, Vec<Type>>,
+    ) {
+        match stmt {
+            Stmt::Let { ty, value, .. } => {
+                Self::collect_generic_class_instantiation_from_type(
+                    ty,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                Self::collect_generic_class_instantiation_from_expr(
+                    &value.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+            }
+            Stmt::Assign { target, value } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &target.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                Self::collect_generic_class_instantiation_from_expr(
+                    &value.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+            }
+            Stmt::Expr(expr) => Self::collect_generic_class_instantiation_from_expr(
+                &expr.node,
+                class_templates,
+                in_scope_generics,
+                instantiations,
+            ),
+            Stmt::Return(expr) => {
+                if let Some(expr) = expr {
+                    Self::collect_generic_class_instantiation_from_expr(
+                        &expr.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+            }
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &condition.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                for stmt in then_block {
+                    Self::collect_generic_class_instantiation_from_stmt(
+                        &stmt.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+                if let Some(block) = else_block {
+                    for stmt in block {
+                        Self::collect_generic_class_instantiation_from_stmt(
+                            &stmt.node,
+                            class_templates,
+                            in_scope_generics,
+                            instantiations,
+                        );
+                    }
+                }
+            }
+            Stmt::While { condition, body } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &condition.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                for stmt in body {
+                    Self::collect_generic_class_instantiation_from_stmt(
+                        &stmt.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+            }
+            Stmt::For {
+                var_type,
+                iterable,
+                body,
+                ..
+            } => {
+                if let Some(var_type) = var_type {
+                    Self::collect_generic_class_instantiation_from_type(
+                        var_type,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+                Self::collect_generic_class_instantiation_from_expr(
+                    &iterable.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                for stmt in body {
+                    Self::collect_generic_class_instantiation_from_stmt(
+                        &stmt.node,
+                        class_templates,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+            }
+            Stmt::Match { expr, arms } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &expr.node,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                for arm in arms {
+                    for stmt in &arm.body {
+                        Self::collect_generic_class_instantiation_from_stmt(
+                            &stmt.node,
+                            class_templates,
+                            in_scope_generics,
+                            instantiations,
+                        );
+                    }
+                }
+            }
+            Stmt::Break | Stmt::Continue => {}
+        }
+    }
+
     fn rewrite_expr_generic_calls(
         expr: &Expr,
         function_templates: &HashMap<String, GenericTemplate>,
@@ -1457,6 +1999,819 @@ impl<'ctx> Codegen<'ctx> {
         })
     }
 
+    fn rewrite_specialized_class_type(ty: &Type, emitted_classes: &HashSet<String>) -> Type {
+        match ty {
+            Type::Generic(name, args) => {
+                let rewritten_args = args
+                    .iter()
+                    .map(|arg| Self::rewrite_specialized_class_type(arg, emitted_classes))
+                    .collect::<Vec<_>>();
+                let spec_name = Self::generic_class_spec_name(name, &rewritten_args);
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Generic(name.clone(), rewritten_args)
+                }
+            }
+            Type::Function(params, ret) => Type::Function(
+                params
+                    .iter()
+                    .map(|param| Self::rewrite_specialized_class_type(param, emitted_classes))
+                    .collect(),
+                Box::new(Self::rewrite_specialized_class_type(ret, emitted_classes)),
+            ),
+            Type::Option(inner) => Type::Option(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::Result(ok, err) => Type::Result(
+                Box::new(Self::rewrite_specialized_class_type(ok, emitted_classes)),
+                Box::new(Self::rewrite_specialized_class_type(err, emitted_classes)),
+            ),
+            Type::List(inner) => Type::List(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::Map(k, v) => Type::Map(
+                Box::new(Self::rewrite_specialized_class_type(k, emitted_classes)),
+                Box::new(Self::rewrite_specialized_class_type(v, emitted_classes)),
+            ),
+            Type::Set(inner) => Type::Set(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::Ref(inner) => Type::Ref(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::MutRef(inner) => Type::MutRef(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::Box(inner) => Type::Box(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::Rc(inner) => Type::Rc(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::Arc(inner) => Type::Arc(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::Ptr(inner) => Type::Ptr(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::Task(inner) => Type::Task(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            Type::Range(inner) => Type::Range(Box::new(Self::rewrite_specialized_class_type(
+                inner,
+                emitted_classes,
+            ))),
+            _ => ty.clone(),
+        }
+    }
+
+    fn rewrite_specialized_class_expr(expr: &Expr, emitted_classes: &HashSet<String>) -> Expr {
+        match expr {
+            Expr::Call {
+                callee,
+                args,
+                type_args,
+            } => Expr::Call {
+                callee: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&callee.node, emitted_classes),
+                    callee.span.clone(),
+                )),
+                args: args
+                    .iter()
+                    .map(|arg| {
+                        Spanned::new(
+                            Self::rewrite_specialized_class_expr(&arg.node, emitted_classes),
+                            arg.span.clone(),
+                        )
+                    })
+                    .collect(),
+                type_args: type_args
+                    .iter()
+                    .map(|ty| Self::rewrite_specialized_class_type(ty, emitted_classes))
+                    .collect(),
+            },
+            Expr::Construct { ty, args } => {
+                let rewritten_ty = parse_type_source(ty)
+                    .ok()
+                    .map(|parsed| Self::rewrite_specialized_class_type(&parsed, emitted_classes))
+                    .and_then(|rewritten| match rewritten {
+                        Type::Named(name) => Some(name),
+                        Type::Generic(name, args) => {
+                            let spec_name = Self::generic_class_spec_name(&name, &args);
+                            emitted_classes.contains(&spec_name).then_some(spec_name)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| ty.clone());
+                Expr::Construct {
+                    ty: rewritten_ty,
+                    args: args
+                        .iter()
+                        .map(|arg| {
+                            Spanned::new(
+                                Self::rewrite_specialized_class_expr(&arg.node, emitted_classes),
+                                arg.span.clone(),
+                            )
+                        })
+                        .collect(),
+                }
+            }
+            Expr::Binary { op, left, right } => Expr::Binary {
+                op: *op,
+                left: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&left.node, emitted_classes),
+                    left.span.clone(),
+                )),
+                right: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&right.node, emitted_classes),
+                    right.span.clone(),
+                )),
+            },
+            Expr::Unary { op, expr } => Expr::Unary {
+                op: *op,
+                expr: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&expr.node, emitted_classes),
+                    expr.span.clone(),
+                )),
+            },
+            Expr::Field { object, field } => Expr::Field {
+                object: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&object.node, emitted_classes),
+                    object.span.clone(),
+                )),
+                field: field.clone(),
+            },
+            Expr::Index { object, index } => Expr::Index {
+                object: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&object.node, emitted_classes),
+                    object.span.clone(),
+                )),
+                index: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&index.node, emitted_classes),
+                    index.span.clone(),
+                )),
+            },
+            Expr::Lambda { params, body } => Expr::Lambda {
+                params: params
+                    .iter()
+                    .map(|param| Parameter {
+                        name: param.name.clone(),
+                        ty: Self::rewrite_specialized_class_type(&param.ty, emitted_classes),
+                        mutable: param.mutable,
+                        mode: param.mode,
+                    })
+                    .collect(),
+                body: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&body.node, emitted_classes),
+                    body.span.clone(),
+                )),
+            },
+            Expr::StringInterp(parts) => Expr::StringInterp(
+                parts
+                    .iter()
+                    .map(|part| match part {
+                        StringPart::Literal(text) => StringPart::Literal(text.clone()),
+                        StringPart::Expr(expr) => StringPart::Expr(Spanned::new(
+                            Self::rewrite_specialized_class_expr(&expr.node, emitted_classes),
+                            expr.span.clone(),
+                        )),
+                    })
+                    .collect(),
+            ),
+            Expr::Try(inner) => Expr::Try(Box::new(Spanned::new(
+                Self::rewrite_specialized_class_expr(&inner.node, emitted_classes),
+                inner.span.clone(),
+            ))),
+            Expr::Borrow(inner) => Expr::Borrow(Box::new(Spanned::new(
+                Self::rewrite_specialized_class_expr(&inner.node, emitted_classes),
+                inner.span.clone(),
+            ))),
+            Expr::MutBorrow(inner) => Expr::MutBorrow(Box::new(Spanned::new(
+                Self::rewrite_specialized_class_expr(&inner.node, emitted_classes),
+                inner.span.clone(),
+            ))),
+            Expr::Deref(inner) => Expr::Deref(Box::new(Spanned::new(
+                Self::rewrite_specialized_class_expr(&inner.node, emitted_classes),
+                inner.span.clone(),
+            ))),
+            Expr::Await(inner) => Expr::Await(Box::new(Spanned::new(
+                Self::rewrite_specialized_class_expr(&inner.node, emitted_classes),
+                inner.span.clone(),
+            ))),
+            Expr::Require { condition, message } => Expr::Require {
+                condition: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&condition.node, emitted_classes),
+                    condition.span.clone(),
+                )),
+                message: message.as_ref().map(|msg| {
+                    Box::new(Spanned::new(
+                        Self::rewrite_specialized_class_expr(&msg.node, emitted_classes),
+                        msg.span.clone(),
+                    ))
+                }),
+            },
+            Expr::Range {
+                start,
+                end,
+                inclusive,
+            } => Expr::Range {
+                start: start.as_ref().map(|expr| {
+                    Box::new(Spanned::new(
+                        Self::rewrite_specialized_class_expr(&expr.node, emitted_classes),
+                        expr.span.clone(),
+                    ))
+                }),
+                end: end.as_ref().map(|expr| {
+                    Box::new(Spanned::new(
+                        Self::rewrite_specialized_class_expr(&expr.node, emitted_classes),
+                        expr.span.clone(),
+                    ))
+                }),
+                inclusive: *inclusive,
+            },
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => Expr::IfExpr {
+                condition: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&condition.node, emitted_classes),
+                    condition.span.clone(),
+                )),
+                then_branch: then_branch
+                    .iter()
+                    .map(|stmt| {
+                        Spanned::new(
+                            Self::rewrite_specialized_class_stmt(&stmt.node, emitted_classes),
+                            stmt.span.clone(),
+                        )
+                    })
+                    .collect(),
+                else_branch: else_branch.as_ref().map(|block| {
+                    block
+                        .iter()
+                        .map(|stmt| {
+                            Spanned::new(
+                                Self::rewrite_specialized_class_stmt(&stmt.node, emitted_classes),
+                                stmt.span.clone(),
+                            )
+                        })
+                        .collect()
+                }),
+            },
+            Expr::Block(block) => Expr::Block(
+                block
+                    .iter()
+                    .map(|stmt| {
+                        Spanned::new(
+                            Self::rewrite_specialized_class_stmt(&stmt.node, emitted_classes),
+                            stmt.span.clone(),
+                        )
+                    })
+                    .collect(),
+            ),
+            Expr::AsyncBlock(block) => Expr::AsyncBlock(
+                block
+                    .iter()
+                    .map(|stmt| {
+                        Spanned::new(
+                            Self::rewrite_specialized_class_stmt(&stmt.node, emitted_classes),
+                            stmt.span.clone(),
+                        )
+                    })
+                    .collect(),
+            ),
+            Expr::Match { expr, arms } => Expr::Match {
+                expr: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&expr.node, emitted_classes),
+                    expr.span.clone(),
+                )),
+                arms: arms
+                    .iter()
+                    .map(|arm| MatchArm {
+                        pattern: arm.pattern.clone(),
+                        body: arm
+                            .body
+                            .iter()
+                            .map(|stmt| {
+                                Spanned::new(
+                                    Self::rewrite_specialized_class_stmt(
+                                        &stmt.node,
+                                        emitted_classes,
+                                    ),
+                                    stmt.span.clone(),
+                                )
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            },
+            Expr::Literal(_) | Expr::Ident(_) | Expr::This => expr.clone(),
+        }
+    }
+
+    fn rewrite_specialized_class_stmt(stmt: &Stmt, emitted_classes: &HashSet<String>) -> Stmt {
+        match stmt {
+            Stmt::Let {
+                name,
+                ty,
+                value,
+                mutable,
+            } => Stmt::Let {
+                name: name.clone(),
+                ty: Self::rewrite_specialized_class_type(ty, emitted_classes),
+                value: Spanned::new(
+                    Self::rewrite_specialized_class_expr(&value.node, emitted_classes),
+                    value.span.clone(),
+                ),
+                mutable: *mutable,
+            },
+            Stmt::Assign { target, value } => Stmt::Assign {
+                target: Spanned::new(
+                    Self::rewrite_specialized_class_expr(&target.node, emitted_classes),
+                    target.span.clone(),
+                ),
+                value: Spanned::new(
+                    Self::rewrite_specialized_class_expr(&value.node, emitted_classes),
+                    value.span.clone(),
+                ),
+            },
+            Stmt::Expr(expr) => Stmt::Expr(Spanned::new(
+                Self::rewrite_specialized_class_expr(&expr.node, emitted_classes),
+                expr.span.clone(),
+            )),
+            Stmt::Return(expr) => Stmt::Return(expr.as_ref().map(|expr| {
+                Spanned::new(
+                    Self::rewrite_specialized_class_expr(&expr.node, emitted_classes),
+                    expr.span.clone(),
+                )
+            })),
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => Stmt::If {
+                condition: Spanned::new(
+                    Self::rewrite_specialized_class_expr(&condition.node, emitted_classes),
+                    condition.span.clone(),
+                ),
+                then_block: then_block
+                    .iter()
+                    .map(|stmt| {
+                        Spanned::new(
+                            Self::rewrite_specialized_class_stmt(&stmt.node, emitted_classes),
+                            stmt.span.clone(),
+                        )
+                    })
+                    .collect(),
+                else_block: else_block.as_ref().map(|block| {
+                    block
+                        .iter()
+                        .map(|stmt| {
+                            Spanned::new(
+                                Self::rewrite_specialized_class_stmt(&stmt.node, emitted_classes),
+                                stmt.span.clone(),
+                            )
+                        })
+                        .collect()
+                }),
+            },
+            Stmt::While { condition, body } => Stmt::While {
+                condition: Spanned::new(
+                    Self::rewrite_specialized_class_expr(&condition.node, emitted_classes),
+                    condition.span.clone(),
+                ),
+                body: body
+                    .iter()
+                    .map(|stmt| {
+                        Spanned::new(
+                            Self::rewrite_specialized_class_stmt(&stmt.node, emitted_classes),
+                            stmt.span.clone(),
+                        )
+                    })
+                    .collect(),
+            },
+            Stmt::For {
+                var,
+                var_type,
+                iterable,
+                body,
+            } => Stmt::For {
+                var: var.clone(),
+                var_type: var_type
+                    .as_ref()
+                    .map(|ty| Self::rewrite_specialized_class_type(ty, emitted_classes)),
+                iterable: Spanned::new(
+                    Self::rewrite_specialized_class_expr(&iterable.node, emitted_classes),
+                    iterable.span.clone(),
+                ),
+                body: body
+                    .iter()
+                    .map(|stmt| {
+                        Spanned::new(
+                            Self::rewrite_specialized_class_stmt(&stmt.node, emitted_classes),
+                            stmt.span.clone(),
+                        )
+                    })
+                    .collect(),
+            },
+            Stmt::Match { expr, arms } => Stmt::Match {
+                expr: Spanned::new(
+                    Self::rewrite_specialized_class_expr(&expr.node, emitted_classes),
+                    expr.span.clone(),
+                ),
+                arms: arms
+                    .iter()
+                    .map(|arm| MatchArm {
+                        pattern: arm.pattern.clone(),
+                        body: arm
+                            .body
+                            .iter()
+                            .map(|stmt| {
+                                Spanned::new(
+                                    Self::rewrite_specialized_class_stmt(
+                                        &stmt.node,
+                                        emitted_classes,
+                                    ),
+                                    stmt.span.clone(),
+                                )
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            },
+            Stmt::Break => Stmt::Break,
+            Stmt::Continue => Stmt::Continue,
+        }
+    }
+
+    fn specialize_generic_classes(program: &Program) -> Result<Program> {
+        let mut class_templates = HashMap::new();
+        for decl in &program.declarations {
+            Self::collect_generic_class_templates_from_decl(decl, None, &mut class_templates);
+        }
+        if class_templates.is_empty() {
+            return Ok(program.clone());
+        }
+
+        let mut emitted_classes: HashSet<String> = HashSet::new();
+        let mut generated_classes: Vec<Spanned<Decl>> = Vec::new();
+        let mut pending_decls = program.declarations.clone();
+
+        loop {
+            let mut discovered = HashMap::new();
+            for decl in &pending_decls {
+                match &decl.node {
+                    Decl::Function(func) => {
+                        let generic_names = func
+                            .generic_params
+                            .iter()
+                            .map(|param| param.name.clone())
+                            .collect::<HashSet<_>>();
+                        for param in &func.params {
+                            Self::collect_generic_class_instantiation_from_type(
+                                &param.ty,
+                                &class_templates,
+                                &generic_names,
+                                &mut discovered,
+                            );
+                        }
+                        Self::collect_generic_class_instantiation_from_type(
+                            &func.return_type,
+                            &class_templates,
+                            &generic_names,
+                            &mut discovered,
+                        );
+                        for stmt in &func.body {
+                            Self::collect_generic_class_instantiation_from_stmt(
+                                &stmt.node,
+                                &class_templates,
+                                &generic_names,
+                                &mut discovered,
+                            );
+                        }
+                    }
+                    Decl::Class(class) => {
+                        let generic_names = class
+                            .generic_params
+                            .iter()
+                            .map(|param| param.name.clone())
+                            .collect::<HashSet<_>>();
+                        for field in &class.fields {
+                            Self::collect_generic_class_instantiation_from_type(
+                                &field.ty,
+                                &class_templates,
+                                &generic_names,
+                                &mut discovered,
+                            );
+                        }
+                        if let Some(ctor) = &class.constructor {
+                            for param in &ctor.params {
+                                Self::collect_generic_class_instantiation_from_type(
+                                    &param.ty,
+                                    &class_templates,
+                                    &generic_names,
+                                    &mut discovered,
+                                );
+                            }
+                            for stmt in &ctor.body {
+                                Self::collect_generic_class_instantiation_from_stmt(
+                                    &stmt.node,
+                                    &class_templates,
+                                    &generic_names,
+                                    &mut discovered,
+                                );
+                            }
+                        }
+                        for method in &class.methods {
+                            let mut method_generics = generic_names.clone();
+                            method_generics.extend(
+                                method.generic_params.iter().map(|param| param.name.clone()),
+                            );
+                            for param in &method.params {
+                                Self::collect_generic_class_instantiation_from_type(
+                                    &param.ty,
+                                    &class_templates,
+                                    &method_generics,
+                                    &mut discovered,
+                                );
+                            }
+                            Self::collect_generic_class_instantiation_from_type(
+                                &method.return_type,
+                                &class_templates,
+                                &method_generics,
+                                &mut discovered,
+                            );
+                            for stmt in &method.body {
+                                Self::collect_generic_class_instantiation_from_stmt(
+                                    &stmt.node,
+                                    &class_templates,
+                                    &method_generics,
+                                    &mut discovered,
+                                );
+                            }
+                        }
+                    }
+                    Decl::Module(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
+                }
+            }
+
+            let mut added = false;
+            let mut new_generated = Vec::new();
+            for (spec_name, args) in discovered {
+                if emitted_classes.contains(&spec_name) {
+                    continue;
+                }
+                let Some((base_name, _)) = spec_name.split_once("__spec__") else {
+                    continue;
+                };
+                let Some(template) = class_templates.get(base_name) else {
+                    continue;
+                };
+                if template.class.generic_params.len() != args.len() {
+                    continue;
+                }
+
+                let bindings = template
+                    .class
+                    .generic_params
+                    .iter()
+                    .map(|param| param.name.clone())
+                    .zip(args.iter().cloned())
+                    .collect::<HashMap<_, _>>();
+
+                let mut spec_class = template.class.clone();
+                spec_class.name = spec_name.clone();
+                spec_class.generic_params.clear();
+                spec_class.fields = spec_class
+                    .fields
+                    .iter()
+                    .map(|field| Field {
+                        name: field.name.clone(),
+                        ty: Self::substitute_type(&field.ty, &bindings),
+                        mutable: field.mutable,
+                        visibility: field.visibility,
+                    })
+                    .collect();
+                if let Some(constructor) = &spec_class.constructor {
+                    let mut new_constructor = constructor.clone();
+                    new_constructor.params = new_constructor
+                        .params
+                        .iter()
+                        .map(|param| Parameter {
+                            name: param.name.clone(),
+                            ty: Self::substitute_type(&param.ty, &bindings),
+                            mutable: param.mutable,
+                            mode: param.mode,
+                        })
+                        .collect();
+                    new_constructor.body = new_constructor
+                        .body
+                        .iter()
+                        .map(|stmt| {
+                            Spanned::new(
+                                Self::substitute_stmt_types(&stmt.node, &bindings),
+                                stmt.span.clone(),
+                            )
+                        })
+                        .collect();
+                    spec_class.constructor = Some(new_constructor);
+                }
+                spec_class.methods = spec_class
+                    .methods
+                    .iter()
+                    .map(|method| {
+                        let mut method = method.clone();
+                        method.params = method
+                            .params
+                            .iter()
+                            .map(|param| Parameter {
+                                name: param.name.clone(),
+                                ty: Self::substitute_type(&param.ty, &bindings),
+                                mutable: param.mutable,
+                                mode: param.mode,
+                            })
+                            .collect();
+                        method.return_type = Self::substitute_type(&method.return_type, &bindings);
+                        method.body = method
+                            .body
+                            .iter()
+                            .map(|stmt| {
+                                Spanned::new(
+                                    Self::substitute_stmt_types(&stmt.node, &bindings),
+                                    stmt.span.clone(),
+                                )
+                            })
+                            .collect();
+                        method
+                    })
+                    .collect();
+
+                emitted_classes.insert(spec_name.clone());
+                let decl = Spanned::new(Decl::Class(spec_class), template.span.clone());
+                new_generated.push(decl.clone());
+                generated_classes.push(decl);
+                added = true;
+            }
+
+            if !added {
+                break;
+            }
+            pending_decls.extend(new_generated);
+        }
+
+        if emitted_classes.is_empty() {
+            return Ok(program.clone());
+        }
+
+        let mut all_decls = program.declarations.clone();
+        all_decls.extend(generated_classes);
+        let rewritten_decls = all_decls
+            .iter()
+            .map(|decl| {
+                let node = match &decl.node {
+                    Decl::Function(func) => {
+                        let mut func = func.clone();
+                        func.params = func
+                            .params
+                            .iter()
+                            .map(|param| Parameter {
+                                name: param.name.clone(),
+                                ty: Self::rewrite_specialized_class_type(
+                                    &param.ty,
+                                    &emitted_classes,
+                                ),
+                                mutable: param.mutable,
+                                mode: param.mode,
+                            })
+                            .collect();
+                        func.return_type = Self::rewrite_specialized_class_type(
+                            &func.return_type,
+                            &emitted_classes,
+                        );
+                        func.body = func
+                            .body
+                            .iter()
+                            .map(|stmt| {
+                                Spanned::new(
+                                    Self::rewrite_specialized_class_stmt(
+                                        &stmt.node,
+                                        &emitted_classes,
+                                    ),
+                                    stmt.span.clone(),
+                                )
+                            })
+                            .collect();
+                        Decl::Function(func)
+                    }
+                    Decl::Class(class) => {
+                        let mut class = class.clone();
+                        class.fields = class
+                            .fields
+                            .iter()
+                            .map(|field| Field {
+                                name: field.name.clone(),
+                                ty: Self::rewrite_specialized_class_type(
+                                    &field.ty,
+                                    &emitted_classes,
+                                ),
+                                mutable: field.mutable,
+                                visibility: field.visibility,
+                            })
+                            .collect();
+                        if let Some(constructor) = &class.constructor {
+                            let mut ctor = constructor.clone();
+                            ctor.params = ctor
+                                .params
+                                .iter()
+                                .map(|param| Parameter {
+                                    name: param.name.clone(),
+                                    ty: Self::rewrite_specialized_class_type(
+                                        &param.ty,
+                                        &emitted_classes,
+                                    ),
+                                    mutable: param.mutable,
+                                    mode: param.mode,
+                                })
+                                .collect();
+                            ctor.body = ctor
+                                .body
+                                .iter()
+                                .map(|stmt| {
+                                    Spanned::new(
+                                        Self::rewrite_specialized_class_stmt(
+                                            &stmt.node,
+                                            &emitted_classes,
+                                        ),
+                                        stmt.span.clone(),
+                                    )
+                                })
+                                .collect();
+                            class.constructor = Some(ctor);
+                        }
+                        class.methods = class
+                            .methods
+                            .iter()
+                            .map(|method| {
+                                let mut method = method.clone();
+                                method.params = method
+                                    .params
+                                    .iter()
+                                    .map(|param| Parameter {
+                                        name: param.name.clone(),
+                                        ty: Self::rewrite_specialized_class_type(
+                                            &param.ty,
+                                            &emitted_classes,
+                                        ),
+                                        mutable: param.mutable,
+                                        mode: param.mode,
+                                    })
+                                    .collect();
+                                method.return_type = Self::rewrite_specialized_class_type(
+                                    &method.return_type,
+                                    &emitted_classes,
+                                );
+                                method.body = method
+                                    .body
+                                    .iter()
+                                    .map(|stmt| {
+                                        Spanned::new(
+                                            Self::rewrite_specialized_class_stmt(
+                                                &stmt.node,
+                                                &emitted_classes,
+                                            ),
+                                            stmt.span.clone(),
+                                        )
+                                    })
+                                    .collect();
+                                method
+                            })
+                            .collect();
+                        Decl::Class(class)
+                    }
+                    _ => decl.node.clone(),
+                };
+                Spanned::new(node, decl.span.clone())
+            })
+            .collect();
+
+        Ok(Program {
+            package: program.package.clone(),
+            declarations: rewritten_decls,
+        })
+    }
+
     fn rewrite_decl_generic_calls(
         decl: &Spanned<Decl>,
         function_templates: &HashMap<String, GenericTemplate>,
@@ -1922,12 +3277,14 @@ impl<'ctx> Codegen<'ctx> {
         active_symbols: Option<&HashSet<String>>,
         declaration_symbols: Option<&HashSet<String>>,
     ) -> Result<()> {
-        let specialized_program;
-        let program = if Self::program_has_explicit_generic_calls(program) {
-            specialized_program = Self::specialize_explicit_generic_calls(program)?;
-            &specialized_program
+        let class_specialized_program = Self::specialize_generic_classes(program)?;
+        let explicit_specialized_program;
+        let program = if Self::program_has_explicit_generic_calls(&class_specialized_program) {
+            explicit_specialized_program =
+                Self::specialize_explicit_generic_calls(&class_specialized_program)?;
+            &explicit_specialized_program
         } else {
-            program
+            &class_specialized_program
         };
 
         self.import_aliases.clear();
@@ -2042,7 +3399,9 @@ impl<'ctx> Codegen<'ctx> {
             Decl::Function(func) => {
                 active_symbols.contains(&func.name) || func.name.contains("__spec__")
             }
-            Decl::Class(class) => active_symbols.contains(&class.name),
+            Decl::Class(class) => {
+                active_symbols.contains(&class.name) || class.name.contains("__spec__")
+            }
             Decl::Module(module) => module_has_active_symbol(module, &module.name, active_symbols),
             Decl::Enum(en) => active_symbols.contains(&en.name),
             Decl::Interface(_) | Decl::Import(_) => false,
@@ -2447,6 +3806,11 @@ impl<'ctx> Codegen<'ctx> {
                 struct_type,
                 field_indices,
                 field_types: field_types_map,
+                generic_params: class
+                    .generic_params
+                    .iter()
+                    .map(|param| param.name.clone())
+                    .collect(),
                 extends: class.extends.clone(),
             },
         );

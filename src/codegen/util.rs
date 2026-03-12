@@ -4,6 +4,7 @@
 use crate::ast::{
     BinOp, Expr, Literal, MatchArm, Parameter, Pattern, Spanned, Stmt, StringPart, Type, UnaryOp,
 };
+use crate::parser::parse_type_source;
 use crate::project::OutputKind;
 
 use inkwell::basic_block::BasicBlock;
@@ -1278,15 +1279,55 @@ impl<'ctx> Codegen<'ctx> {
         match expr {
             Expr::Ident(name) => self.variables.get(name).map(|v| v.ty.clone()),
             Expr::This => self.variables.get("this").map(|v| v.ty.clone()),
+            Expr::Construct { ty, .. } => parse_type_source(ty).ok(),
+            Expr::Call { callee, .. } => {
+                let callee_ty = match &callee.node {
+                    Expr::Ident(name) => self
+                        .variables
+                        .get(name)
+                        .map(|v| v.ty.clone())
+                        .or_else(|| self.functions.get(name).map(|(_, ty)| ty.clone())),
+                    _ => self.infer_object_type(&callee.node),
+                }?;
+                match callee_ty {
+                    Type::Function(_, ret) => Some((*ret).clone()),
+                    _ => None,
+                }
+            }
+            Expr::Try(inner) => match self.infer_object_type(&inner.node)? {
+                Type::Result(ok, _) => Some((*ok).clone()),
+                Type::Option(inner) => Some((*inner).clone()),
+                _ => None,
+            },
+            Expr::Await(inner) => match self.infer_object_type(&inner.node)? {
+                Type::Task(inner) => Some((*inner).clone()),
+                _ => None,
+            },
+            Expr::Deref(inner) => match self.infer_object_type(&inner.node)? {
+                Type::Ref(inner) | Type::MutRef(inner) | Type::Ptr(inner) => Some((*inner).clone()),
+                _ => None,
+            },
             Expr::Field { object, field } => {
                 let obj_ty = self.infer_object_type(&object.node)?;
-                let class_name = match &obj_ty {
-                    Type::Named(n) => n.clone(),
-                    Type::Generic(n, _) => n.clone(),
+                let (class_name, generic_args) = match &obj_ty {
+                    Type::Named(n) => (n.clone(), None),
+                    Type::Generic(n, args) => (n.clone(), Some(args)),
                     _ => return None,
                 };
                 let class_info = self.classes.get(&class_name)?;
-                class_info.field_types.get(field).cloned()
+                let field_ty = class_info.field_types.get(field)?.clone();
+                if let Some(args) = generic_args {
+                    if class_info.generic_params.len() == args.len() {
+                        let bindings = class_info
+                            .generic_params
+                            .iter()
+                            .cloned()
+                            .zip(args.iter().cloned())
+                            .collect::<HashMap<_, _>>();
+                        return Some(Self::substitute_type(&field_ty, &bindings));
+                    }
+                }
+                Some(field_ty)
             }
             _ => None,
         }
@@ -1709,6 +1750,17 @@ impl<'ctx> Codegen<'ctx> {
                 if let Some(class_name) = self.type_to_class_name(&obj_ty) {
                     if let Some(class_info) = self.classes.get(&class_name) {
                         if let Some(field_ty) = class_info.field_types.get(field) {
+                            if let Type::Generic(_, args) = &obj_ty {
+                                if class_info.generic_params.len() == args.len() {
+                                    let bindings = class_info
+                                        .generic_params
+                                        .iter()
+                                        .cloned()
+                                        .zip(args.iter().cloned())
+                                        .collect::<HashMap<_, _>>();
+                                    return Self::substitute_type(field_ty, &bindings);
+                                }
+                            }
                             return field_ty.clone();
                         }
                     }

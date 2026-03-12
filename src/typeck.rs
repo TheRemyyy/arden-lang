@@ -1443,168 +1443,206 @@ impl TypeChecker {
                     self.insert_function_signature(func, &func.name, decl.span.clone(), None);
                 }
                 Decl::Class(class) => {
-                    let class_generic_bindings =
-                        self.make_generic_type_bindings(&class.generic_params);
-                    let class_generic_type_vars: Vec<usize> = class
-                        .generic_params
-                        .iter()
-                        .filter_map(|p| match class_generic_bindings.get(&p.name) {
-                            Some(ResolvedType::TypeVar(id)) => Some(*id),
-                            _ => None,
-                        })
-                        .collect();
-                    let mut fields = HashMap::new();
-                    for field in &class.fields {
-                        fields.insert(
-                            field.name.clone(),
-                            (
-                                self.resolve_type_with_bindings(&field.ty, &class_generic_bindings),
-                                field.mutable,
-                                field.visibility,
-                            ),
-                        );
-                    }
-
-                    let mut methods = HashMap::new();
-                    let mut method_visibilities = HashMap::new();
-                    for method in &class.methods {
-                        self.validate_effect_attributes(
-                            &method.attributes,
-                            decl.span.clone(),
-                            &format!("Method '{}.{}'", class.name, method.name),
-                        );
-                        let mut generic_bindings = class_generic_bindings.clone();
-                        let method_generic_bindings =
-                            self.make_generic_type_bindings(&method.generic_params);
-                        let generic_type_vars: Vec<usize> = method
-                            .generic_params
-                            .iter()
-                            .filter_map(|p| match method_generic_bindings.get(&p.name) {
-                                Some(ResolvedType::TypeVar(id)) => Some(*id),
-                                _ => None,
-                            })
-                            .collect();
-                        generic_bindings.extend(method_generic_bindings);
-                        let params: Vec<(String, ResolvedType)> = method
-                            .params
-                            .iter()
-                            .map(|p| {
-                                (
-                                    p.name.clone(),
-                                    self.resolve_type_with_bindings(&p.ty, &generic_bindings),
-                                )
-                            })
-                            .collect();
-
-                        let mut return_type =
-                            self.resolve_type_with_bindings(&method.return_type, &generic_bindings);
-                        if method.is_async && !matches!(return_type, ResolvedType::Task(_)) {
-                            return_type = ResolvedType::Task(Box::new(return_type));
-                        }
-                        let (effects, is_pure, allow_any, has_explicit_effects) =
-                            self.parse_effects_from_attributes(&method.attributes);
-
-                        methods.insert(
-                            method.name.clone(),
-                            FuncSig {
-                                params,
-                                return_type,
-                                generic_type_vars,
-                                is_variadic: method.is_variadic,
-                                is_extern: method.is_extern,
-                                effects,
-                                is_pure,
-                                allow_any,
-                                has_explicit_effects,
-                                span: decl.span.clone(),
-                            },
-                        );
-                        method_visibilities.insert(method.name.clone(), method.visibility);
-                    }
-
-                    let constructor = class.constructor.as_ref().map(|c| {
-                        c.params
-                            .iter()
-                            .map(|p| {
-                                (
-                                    p.name.clone(),
-                                    self.resolve_type_with_bindings(&p.ty, &class_generic_bindings),
-                                )
-                            })
-                            .collect()
-                    });
-
-                    self.classes.insert(
-                        class.name.clone(),
-                        ClassInfo {
-                            fields,
-                            methods,
-                            method_visibilities,
-                            constructor,
-                            generic_type_vars: class_generic_type_vars,
-                            visibility: class.visibility,
-                            extends: class.extends.clone(),
-                            implements: class.implements.clone(),
-                            span: decl.span.clone(),
-                        },
-                    );
+                    self.insert_class_info(class, &class.name, decl.span.clone());
                 }
                 Decl::Interface(interface) => {
-                    let mut methods = HashMap::new();
-                    for method in &interface.methods {
-                        let params: Vec<(String, ResolvedType)> = method
-                            .params
-                            .iter()
-                            .map(|p| (p.name.clone(), self.resolve_type(&p.ty)))
-                            .collect();
-                        methods.insert(
-                            method.name.clone(),
-                            FuncSig {
-                                params,
-                                return_type: self.resolve_type(&method.return_type),
-                                generic_type_vars: Vec::new(),
-                                is_variadic: false,
-                                is_extern: false,
-                                effects: Vec::new(),
-                                is_pure: false,
-                                allow_any: false,
-                                has_explicit_effects: false,
-                                span: decl.span.clone(),
-                            },
-                        );
-                    }
-                    self.interfaces.insert(
-                        interface.name.clone(),
-                        InterfaceInfo {
-                            methods,
-                            extends: interface.extends.clone(),
-                            span: decl.span.clone(),
-                        },
-                    );
+                    self.insert_interface_info(interface, &interface.name, decl.span.clone());
                 }
                 Decl::Enum(en) => {
-                    let mut variants = HashMap::new();
-                    for variant in &en.variants {
-                        let fields = variant
-                            .fields
-                            .iter()
-                            .map(|f| self.resolve_type(&f.ty))
-                            .collect::<Vec<_>>();
-                        variants.insert(variant.name.clone(), fields);
-                        self.enum_variant_to_enum
-                            .insert(variant.name.clone(), en.name.clone());
-                    }
-                    self.enums.insert(
-                        en.name.clone(),
-                        EnumInfo {
-                            variants,
-                            span: decl.span.clone(),
-                        },
-                    );
+                    self.insert_enum_info(en, &en.name, decl.span.clone());
                 }
                 Decl::Module(module) => {
-                    self.collect_module_function_signatures(module, &module.name);
+                    self.collect_module_declarations(module, &module.name, decl.span.clone());
                 }
+            }
+        }
+    }
+
+    fn insert_class_info(&mut self, class: &ClassDecl, key: &str, span: Span) {
+        let class_generic_bindings = self.make_generic_type_bindings(&class.generic_params);
+        let class_generic_type_vars: Vec<usize> = class
+            .generic_params
+            .iter()
+            .filter_map(|p| match class_generic_bindings.get(&p.name) {
+                Some(ResolvedType::TypeVar(id)) => Some(*id),
+                _ => None,
+            })
+            .collect();
+        let mut fields = HashMap::new();
+        for field in &class.fields {
+            fields.insert(
+                field.name.clone(),
+                (
+                    self.resolve_type_with_bindings(&field.ty, &class_generic_bindings),
+                    field.mutable,
+                    field.visibility,
+                ),
+            );
+        }
+
+        let mut methods = HashMap::new();
+        let mut method_visibilities = HashMap::new();
+        for method in &class.methods {
+            self.validate_effect_attributes(
+                &method.attributes,
+                span.clone(),
+                &format!("Method '{}.{}'", key, method.name),
+            );
+            let mut generic_bindings = class_generic_bindings.clone();
+            let method_generic_bindings = self.make_generic_type_bindings(&method.generic_params);
+            let generic_type_vars: Vec<usize> = method
+                .generic_params
+                .iter()
+                .filter_map(|p| match method_generic_bindings.get(&p.name) {
+                    Some(ResolvedType::TypeVar(id)) => Some(*id),
+                    _ => None,
+                })
+                .collect();
+            generic_bindings.extend(method_generic_bindings);
+            let params: Vec<(String, ResolvedType)> = method
+                .params
+                .iter()
+                .map(|p| {
+                    (
+                        p.name.clone(),
+                        self.resolve_type_with_bindings(&p.ty, &generic_bindings),
+                    )
+                })
+                .collect();
+
+            let mut return_type =
+                self.resolve_type_with_bindings(&method.return_type, &generic_bindings);
+            if method.is_async && !matches!(return_type, ResolvedType::Task(_)) {
+                return_type = ResolvedType::Task(Box::new(return_type));
+            }
+            let (effects, is_pure, allow_any, has_explicit_effects) =
+                self.parse_effects_from_attributes(&method.attributes);
+
+            methods.insert(
+                method.name.clone(),
+                FuncSig {
+                    params,
+                    return_type,
+                    generic_type_vars,
+                    is_variadic: method.is_variadic,
+                    is_extern: method.is_extern,
+                    effects,
+                    is_pure,
+                    allow_any,
+                    has_explicit_effects,
+                    span: span.clone(),
+                },
+            );
+            method_visibilities.insert(method.name.clone(), method.visibility);
+        }
+
+        let constructor = class.constructor.as_ref().map(|c| {
+            c.params
+                .iter()
+                .map(|p| {
+                    (
+                        p.name.clone(),
+                        self.resolve_type_with_bindings(&p.ty, &class_generic_bindings),
+                    )
+                })
+                .collect()
+        });
+
+        self.classes.insert(
+            key.to_string(),
+            ClassInfo {
+                fields,
+                methods,
+                method_visibilities,
+                constructor,
+                generic_type_vars: class_generic_type_vars,
+                visibility: class.visibility,
+                extends: class.extends.clone(),
+                implements: class.implements.clone(),
+                span,
+            },
+        );
+    }
+
+    fn insert_interface_info(&mut self, interface: &InterfaceDecl, key: &str, span: Span) {
+        let mut methods = HashMap::new();
+        for method in &interface.methods {
+            let params: Vec<(String, ResolvedType)> = method
+                .params
+                .iter()
+                .map(|p| (p.name.clone(), self.resolve_type(&p.ty)))
+                .collect();
+            methods.insert(
+                method.name.clone(),
+                FuncSig {
+                    params,
+                    return_type: self.resolve_type(&method.return_type),
+                    generic_type_vars: Vec::new(),
+                    is_variadic: false,
+                    is_extern: false,
+                    effects: Vec::new(),
+                    is_pure: false,
+                    allow_any: false,
+                    has_explicit_effects: false,
+                    span: span.clone(),
+                },
+            );
+        }
+        self.interfaces.insert(
+            key.to_string(),
+            InterfaceInfo {
+                methods,
+                extends: interface.extends.clone(),
+                span,
+            },
+        );
+    }
+
+    fn insert_enum_info(&mut self, en: &EnumDecl, key: &str, span: Span) {
+        let mut variants = HashMap::new();
+        for variant in &en.variants {
+            let fields = variant
+                .fields
+                .iter()
+                .map(|f| self.resolve_type(&f.ty))
+                .collect::<Vec<_>>();
+            variants.insert(variant.name.clone(), fields);
+            self.enum_variant_to_enum
+                .insert(variant.name.clone(), key.to_string());
+        }
+        self.enums
+            .insert(key.to_string(), EnumInfo { variants, span });
+    }
+
+    fn collect_module_declarations(&mut self, module: &ModuleDecl, prefix: &str, span: Span) {
+        for inner_decl in &module.declarations {
+            match &inner_decl.node {
+                Decl::Function(func) => {
+                    let prefixed_name = format!("{}__{}", prefix, func.name);
+                    self.insert_function_signature(
+                        func,
+                        &prefixed_name,
+                        inner_decl.span.clone(),
+                        Some(format!("Function '{}'", prefixed_name)),
+                    );
+                }
+                Decl::Class(class) => {
+                    let prefixed_name = format!("{}__{}", prefix, class.name);
+                    self.insert_class_info(class, &prefixed_name, inner_decl.span.clone());
+                }
+                Decl::Interface(interface) => {
+                    let prefixed_name = format!("{}__{}", prefix, interface.name);
+                    self.insert_interface_info(interface, &prefixed_name, inner_decl.span.clone());
+                }
+                Decl::Enum(en) => {
+                    let prefixed_name = format!("{}__{}", prefix, en.name);
+                    self.insert_enum_info(en, &prefixed_name, inner_decl.span.clone());
+                }
+                Decl::Module(nested) => {
+                    let nested_prefix = format!("{}__{}", prefix, nested.name);
+                    self.collect_module_declarations(nested, &nested_prefix, span.clone());
+                }
+                Decl::Import(_) => {}
             }
         }
     }
@@ -1868,7 +1906,10 @@ impl TypeChecker {
                 let key = module_prefix.map(|p| format!("{}__{}", p, func.name));
                 self.check_function(func, span, key.as_deref());
             }
-            Decl::Class(class) => self.check_class(class, span),
+            Decl::Class(class) => {
+                let key = module_prefix.map(|p| format!("{}__{}", p, class.name));
+                self.check_class_named(class, span, key.as_deref().unwrap_or(&class.name));
+            }
             Decl::Enum(en) => {
                 for variant in &en.variants {
                     for field in &variant.fields {
@@ -2013,29 +2054,30 @@ impl TypeChecker {
 
     /// Check a class
     fn check_class(&mut self, class: &ClassDecl, span: Span) {
+        self.check_class_named(class, span, &class.name);
+    }
+
+    fn check_class_named(&mut self, class: &ClassDecl, span: Span, class_key: &str) {
         let saved_class = self.current_class.clone();
         let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
         self.current_generic_type_bindings = self.make_generic_type_bindings(&class.generic_params);
-        self.current_class = Some(class.name.clone());
+        self.current_class = Some(class_key.to_string());
         if let Some(parent) = &class.extends {
             if self.interfaces.contains_key(parent) {
                 self.error(
-                    format!(
-                        "Class '{}' cannot extend interface '{}'",
-                        class.name, parent
-                    ),
+                    format!("Class '{}' cannot extend interface '{}'", class_key, parent),
                     span.clone(),
                 );
             } else if !self.classes.contains_key(parent) {
                 self.error(
-                    format!("Class '{}' extends unknown class '{}'", class.name, parent),
+                    format!("Class '{}' extends unknown class '{}'", class_key, parent),
                     span.clone(),
                 );
-            } else if self.is_same_or_subclass_of(parent, &class.name) {
+            } else if self.is_same_or_subclass_of(parent, class_key) {
                 self.error(
                     format!(
                         "Inheritance cycle detected: '{}' cannot extend '{}'",
-                        class.name, parent
+                        class_key, parent
                     ),
                     span.clone(),
                 );
@@ -2054,7 +2096,7 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Class '{}' implements unknown interface '{}'",
-                        class.name, interface_name
+                        class_key, interface_name
                     ),
                     span.clone(),
                 );
@@ -2067,12 +2109,12 @@ impl TypeChecker {
             self.collect_interface_methods(interface_name, &mut required_methods, &mut visited);
         }
         for (method_name, required_sig) in required_methods {
-            let Some((owner, actual_sig, _)) = self.lookup_class_method(&class.name, &method_name)
+            let Some((owner, actual_sig, _)) = self.lookup_class_method(class_key, &method_name)
             else {
                 self.error(
                     format!(
                         "Class '{}' must implement interface method '{}'",
-                        class.name, method_name
+                        class_key, method_name
                     ),
                     span.clone(),
                 );
@@ -2096,9 +2138,9 @@ impl TypeChecker {
             let saved_pure = self.current_is_pure;
             let saved_any = self.current_allow_any;
             let saved_class = self.current_class.clone();
-            self.current_class = Some(class.name.clone());
+            self.current_class = Some(class_key.to_string());
             self.current_effects = self
-                .infer_effects_in_block(&ctor.body, Some(&class.name))
+                .infer_effects_in_block(&ctor.body, Some(class_key))
                 .into_iter()
                 .collect();
             self.current_is_pure = false;
@@ -2107,7 +2149,7 @@ impl TypeChecker {
             // Add 'this' binding
             self.declare_variable(
                 "this",
-                ResolvedType::Class(class.name.clone()),
+                ResolvedType::Class(class_key.to_string()),
                 true,
                 span.clone(),
             );
@@ -2134,16 +2176,16 @@ impl TypeChecker {
             let saved_pure = self.current_is_pure;
             let saved_any = self.current_allow_any;
             let saved_class = self.current_class.clone();
-            self.current_class = Some(class.name.clone());
+            self.current_class = Some(class_key.to_string());
             self.current_effects = self
-                .infer_effects_in_block(&dtor.body, Some(&class.name))
+                .infer_effects_in_block(&dtor.body, Some(class_key))
                 .into_iter()
                 .collect();
             self.current_is_pure = false;
             self.current_allow_any = false;
             self.declare_variable(
                 "this",
-                ResolvedType::Class(class.name.clone()),
+                ResolvedType::Class(class_key.to_string()),
                 true,
                 span.clone(),
             );
@@ -2166,8 +2208,8 @@ impl TypeChecker {
             let saved_pure = self.current_is_pure;
             let saved_any = self.current_allow_any;
             let saved_class = self.current_class.clone();
-            self.current_class = Some(class.name.clone());
-            if let Some(class_info) = self.classes.get(&class.name) {
+            self.current_class = Some(class_key.to_string());
+            if let Some(class_info) = self.classes.get(class_key) {
                 if let Some(sig) = class_info.methods.get(&method.name) {
                     self.current_effects = sig.effects.clone();
                     self.current_is_pure = sig.is_pure;
@@ -2186,7 +2228,7 @@ impl TypeChecker {
             // Add 'this' binding
             self.declare_variable(
                 "this",
-                ResolvedType::Class(class.name.clone()),
+                ResolvedType::Class(class_key.to_string()),
                 false,
                 span.clone(),
             );

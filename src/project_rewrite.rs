@@ -59,6 +59,19 @@ fn format_type_string(ty: &ast::Type) -> String {
     }
 }
 
+fn format_construct_type_name(base: &str, type_args: &[ast::Type]) -> String {
+    if type_args.is_empty() {
+        base.to_string()
+    } else {
+        let args = type_args
+            .iter()
+            .map(format_type_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{}<{}>", base, args)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn rewrite_construct_type_name_for_project(
     ty: &str,
@@ -69,6 +82,7 @@ fn rewrite_construct_type_name_for_project(
     local_enums: &HashSet<String>,
     imported_enums: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
+    imported_modules: &ImportedMap,
     entry_namespace: &str,
 ) -> String {
     match parse_type_source(ty) {
@@ -81,6 +95,7 @@ fn rewrite_construct_type_name_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         )),
         Err(_) => ty.to_string(),
@@ -224,6 +239,7 @@ pub fn rewrite_program_for_project(
                                     &local_enums,
                                     &imported_enums,
                                     global_enum_map,
+                                    &imported_modules,
                                     entry_namespace,
                                 ),
                                 mutable: p.mutable,
@@ -239,6 +255,7 @@ pub fn rewrite_program_for_project(
                             &local_enums,
                             &imported_enums,
                             global_enum_map,
+                            &imported_modules,
                             entry_namespace,
                         );
                         f.body = rewrite_block_calls_for_project(
@@ -278,6 +295,7 @@ pub fn rewrite_program_for_project(
                                     &local_enums,
                                     &imported_enums,
                                     global_enum_map,
+                                    &imported_modules,
                                     entry_namespace,
                                 ),
                                 mutable: field.mutable,
@@ -305,6 +323,7 @@ pub fn rewrite_program_for_project(
                                         &local_enums,
                                         &imported_enums,
                                         global_enum_map,
+                                        &imported_modules,
                                         entry_namespace,
                                     ),
                                     mutable: p.mutable,
@@ -354,6 +373,7 @@ pub fn rewrite_program_for_project(
                                             &local_enums,
                                             &imported_enums,
                                             global_enum_map,
+                                            &imported_modules,
                                             entry_namespace,
                                         ),
                                         mutable: p.mutable,
@@ -369,6 +389,7 @@ pub fn rewrite_program_for_project(
                                     &local_enums,
                                     &imported_enums,
                                     global_enum_map,
+                                    &imported_modules,
                                     entry_namespace,
                                 );
                                 nm.body = rewrite_block_calls_for_project(
@@ -420,6 +441,7 @@ pub fn rewrite_program_for_project(
                                             &local_enums,
                                             &imported_enums,
                                             global_enum_map,
+                                            &imported_modules,
                                             entry_namespace,
                                         ),
                                     })
@@ -453,50 +475,97 @@ fn rewrite_type_for_project(
     local_enums: &HashSet<String>,
     imported_enums: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
+    imported_modules: &ImportedMap,
     entry_namespace: &str,
 ) -> ast::Type {
-    match ty {
-        ast::Type::Named(name) => {
-            if local_classes.contains(name) {
-                ast::Type::Named(mangle_project_symbol(
-                    current_namespace,
-                    entry_namespace,
-                    name,
-                ))
-            } else if let Some((ns, symbol_name)) = imported_classes.get(name) {
-                ast::Type::Named(mangle_project_symbol(ns, entry_namespace, symbol_name))
-            } else if let Some(ns) = global_class_map.get(name) {
-                ast::Type::Named(mangle_project_symbol(ns, entry_namespace, name))
-            } else if local_enums.contains(name) {
-                ast::Type::Named(mangle_project_symbol(
-                    current_namespace,
-                    entry_namespace,
-                    name,
-                ))
-            } else if let Some((ns, symbol_name)) = imported_enums.get(name) {
-                ast::Type::Named(mangle_project_symbol(ns, entry_namespace, symbol_name))
-            } else if let Some(ns) = global_enum_map.get(name) {
-                ast::Type::Named(mangle_project_symbol(ns, entry_namespace, name))
-            } else {
-                ast::Type::Named(name.clone())
+    fn rewrite_named_type_name_for_project(
+        name: &str,
+        current_namespace: &str,
+        local_classes: &HashSet<String>,
+        imported_classes: &ImportedMap,
+        global_class_map: &HashMap<String, String>,
+        local_enums: &HashSet<String>,
+        imported_enums: &ImportedMap,
+        global_enum_map: &HashMap<String, String>,
+        imported_modules: &ImportedMap,
+        entry_namespace: &str,
+    ) -> String {
+        if local_classes.contains(name) {
+            return mangle_project_symbol(current_namespace, entry_namespace, name);
+        }
+        if let Some((ns, symbol_name)) = imported_classes.get(name) {
+            return mangle_project_symbol(ns, entry_namespace, symbol_name);
+        }
+        if let Some(ns) = global_class_map.get(name) {
+            return mangle_project_symbol(ns, entry_namespace, name);
+        }
+        if local_enums.contains(name) {
+            return mangle_project_symbol(current_namespace, entry_namespace, name);
+        }
+        if let Some((ns, symbol_name)) = imported_enums.get(name) {
+            return mangle_project_symbol(ns, entry_namespace, symbol_name);
+        }
+        if let Some(ns) = global_enum_map.get(name) {
+            return mangle_project_symbol(ns, entry_namespace, name);
+        }
+
+        let Some((alias, rest)) = name.split_once('.') else {
+            return name.to_string();
+        };
+        let Some((ns, symbol_name)) = imported_modules.get(alias) else {
+            return name.to_string();
+        };
+        let member_parts = rest
+            .split('.')
+            .map(|part| part.to_string())
+            .collect::<Vec<_>>();
+
+        if let Some((owner_ns, class_name)) =
+            resolve_module_alias_class_candidate(ns, symbol_name, &member_parts, global_class_map)
+        {
+            return mangle_project_symbol(&owner_ns, entry_namespace, &class_name);
+        }
+
+        let enum_name = if symbol_name.is_empty() {
+            member_parts.join("__")
+        } else {
+            format!("{}__{}", symbol_name, member_parts.join("__"))
+        };
+        if let Some(owner_ns) = global_enum_map.get(&enum_name) {
+            if owner_ns == ns {
+                return mangle_project_symbol(owner_ns, entry_namespace, &enum_name);
             }
         }
+
+        name.to_string()
+    }
+
+    match ty {
+        ast::Type::Named(name) => ast::Type::Named(rewrite_named_type_name_for_project(
+            name,
+            current_namespace,
+            local_classes,
+            imported_classes,
+            global_class_map,
+            local_enums,
+            imported_enums,
+            global_enum_map,
+            imported_modules,
+            entry_namespace,
+        )),
         ast::Type::Generic(name, args) => ast::Type::Generic(
-            if local_classes.contains(name) {
-                mangle_project_symbol(current_namespace, entry_namespace, name)
-            } else if let Some((ns, symbol_name)) = imported_classes.get(name) {
-                mangle_project_symbol(ns, entry_namespace, symbol_name)
-            } else if let Some(ns) = global_class_map.get(name) {
-                mangle_project_symbol(ns, entry_namespace, name)
-            } else if local_enums.contains(name) {
-                mangle_project_symbol(current_namespace, entry_namespace, name)
-            } else if let Some((ns, symbol_name)) = imported_enums.get(name) {
-                mangle_project_symbol(ns, entry_namespace, symbol_name)
-            } else if let Some(ns) = global_enum_map.get(name) {
-                mangle_project_symbol(ns, entry_namespace, name)
-            } else {
-                name.clone()
-            },
+            rewrite_named_type_name_for_project(
+                name,
+                current_namespace,
+                local_classes,
+                imported_classes,
+                global_class_map,
+                local_enums,
+                imported_enums,
+                global_enum_map,
+                imported_modules,
+                entry_namespace,
+            ),
             args.iter()
                 .map(|a| {
                     rewrite_type_for_project(
@@ -508,6 +577,7 @@ fn rewrite_type_for_project(
                         local_enums,
                         imported_enums,
                         global_enum_map,
+                        imported_modules,
                         entry_namespace,
                     )
                 })
@@ -526,6 +596,7 @@ fn rewrite_type_for_project(
                         local_enums,
                         imported_enums,
                         global_enum_map,
+                        imported_modules,
                         entry_namespace,
                     )
                 })
@@ -539,6 +610,7 @@ fn rewrite_type_for_project(
                 local_enums,
                 imported_enums,
                 global_enum_map,
+                imported_modules,
                 entry_namespace,
             )),
         ),
@@ -551,6 +623,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::Result(ok, err) => ast::Type::Result(
@@ -563,6 +636,7 @@ fn rewrite_type_for_project(
                 local_enums,
                 imported_enums,
                 global_enum_map,
+                imported_modules,
                 entry_namespace,
             )),
             Box::new(rewrite_type_for_project(
@@ -574,6 +648,7 @@ fn rewrite_type_for_project(
                 local_enums,
                 imported_enums,
                 global_enum_map,
+                imported_modules,
                 entry_namespace,
             )),
         ),
@@ -586,6 +661,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::Map(k, v) => ast::Type::Map(
@@ -598,6 +674,7 @@ fn rewrite_type_for_project(
                 local_enums,
                 imported_enums,
                 global_enum_map,
+                imported_modules,
                 entry_namespace,
             )),
             Box::new(rewrite_type_for_project(
@@ -609,6 +686,7 @@ fn rewrite_type_for_project(
                 local_enums,
                 imported_enums,
                 global_enum_map,
+                imported_modules,
                 entry_namespace,
             )),
         ),
@@ -621,6 +699,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::Ref(inner) => ast::Type::Ref(Box::new(rewrite_type_for_project(
@@ -632,6 +711,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::MutRef(inner) => ast::Type::MutRef(Box::new(rewrite_type_for_project(
@@ -643,6 +723,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::Box(inner) => ast::Type::Box(Box::new(rewrite_type_for_project(
@@ -654,6 +735,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::Rc(inner) => ast::Type::Rc(Box::new(rewrite_type_for_project(
@@ -665,6 +747,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::Arc(inner) => ast::Type::Arc(Box::new(rewrite_type_for_project(
@@ -676,6 +759,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::Ptr(inner) => ast::Type::Ptr(Box::new(rewrite_type_for_project(
@@ -687,6 +771,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::Task(inner) => ast::Type::Task(Box::new(rewrite_type_for_project(
@@ -698,6 +783,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         ast::Type::Range(inner) => ast::Type::Range(Box::new(rewrite_type_for_project(
@@ -709,6 +795,7 @@ fn rewrite_type_for_project(
             local_enums,
             imported_enums,
             global_enum_map,
+            imported_modules,
             entry_namespace,
         ))),
         _ => ty.clone(),
@@ -943,6 +1030,7 @@ fn rewrite_stmt_calls_for_project(
                     &collect_local_enum_names(global_enum_map, current_namespace),
                     imported_enums,
                     global_enum_map,
+                    imported_modules,
                     entry_namespace,
                 ),
                 value: ast::Spanned::new(
@@ -1228,6 +1316,7 @@ fn rewrite_stmt_calls_for_project(
                         &collect_local_enum_names(global_enum_map, current_namespace),
                         imported_enums,
                         global_enum_map,
+                        imported_modules,
                         entry_namespace,
                     )
                 }),
@@ -1316,11 +1405,97 @@ fn rewrite_expr_calls_for_project(
             args,
             type_args,
         } => {
+            if let Some(path_parts) = flatten_field_chain(&callee.node) {
+                let module_alias = &path_parts[0];
+                let member_parts = &path_parts[1..];
+                if !member_parts.is_empty() && !is_shadowed(module_alias, scopes) {
+                    if let Some((ns, symbol_name)) = imported_modules.get(module_alias) {
+                        if let Some((owner_ns, class_name)) = resolve_module_alias_class_candidate(
+                            ns,
+                            symbol_name,
+                            member_parts,
+                            global_class_map,
+                        ) {
+                            let rewritten_type_args = type_args
+                                .iter()
+                                .map(|ty| {
+                                    rewrite_type_for_project(
+                                        ty,
+                                        current_namespace,
+                                        local_classes,
+                                        imported_classes,
+                                        global_class_map,
+                                        &collect_local_enum_names(
+                                            global_enum_map,
+                                            current_namespace,
+                                        ),
+                                        imported_enums,
+                                        global_enum_map,
+                                        imported_modules,
+                                        entry_namespace,
+                                    )
+                                })
+                                .collect::<Vec<_>>();
+                            return Expr::Construct {
+                                ty: format_construct_type_name(
+                                    &mangle_project_symbol(&owner_ns, entry_namespace, &class_name),
+                                    &rewritten_type_args,
+                                ),
+                                args: args
+                                    .iter()
+                                    .map(|arg| {
+                                        ast::Spanned::new(
+                                            rewrite_expr_calls_for_project(
+                                                &arg.node,
+                                                current_namespace,
+                                                entry_namespace,
+                                                local_functions,
+                                                imported_map,
+                                                global_function_map,
+                                                local_classes,
+                                                imported_classes,
+                                                global_class_map,
+                                                imported_enums,
+                                                global_enum_map,
+                                                local_modules,
+                                                imported_modules,
+                                                global_module_map,
+                                                scopes,
+                                            ),
+                                            arg.span.clone(),
+                                        )
+                                    })
+                                    .collect(),
+                            };
+                        }
+                    }
+                }
+            }
             if let Expr::Ident(name) = &callee.node {
                 if !is_shadowed(name, scopes) {
                     if let Some((ns, symbol_name)) = imported_classes.get(name) {
+                        let rewritten_type_args = type_args
+                            .iter()
+                            .map(|ty| {
+                                rewrite_type_for_project(
+                                    ty,
+                                    current_namespace,
+                                    local_classes,
+                                    imported_classes,
+                                    global_class_map,
+                                    &collect_local_enum_names(global_enum_map, current_namespace),
+                                    imported_enums,
+                                    global_enum_map,
+                                    imported_modules,
+                                    entry_namespace,
+                                )
+                            })
+                            .collect::<Vec<_>>();
                         return Expr::Construct {
-                            ty: mangle_project_symbol(ns, entry_namespace, symbol_name),
+                            ty: format_construct_type_name(
+                                &mangle_project_symbol(ns, entry_namespace, symbol_name),
+                                &rewritten_type_args,
+                            ),
                             args: args
                                 .iter()
                                 .map(|arg| {
@@ -1384,7 +1559,70 @@ fn rewrite_expr_calls_for_project(
                         if symbol_name.is_empty() {
                             let mut member_parts = chain_parts[1..].to_vec();
                             member_parts.push(field.to_string());
-                            if let Some((owner_ns, enum_name, variant_name)) =
+                            if let Some((owner_ns, class_name)) =
+                                resolve_module_alias_class_candidate(
+                                    ns,
+                                    symbol_name,
+                                    &member_parts,
+                                    global_class_map,
+                                )
+                            {
+                                let rewritten_type_args = type_args
+                                    .iter()
+                                    .map(|ty| {
+                                        rewrite_type_for_project(
+                                            ty,
+                                            current_namespace,
+                                            local_classes,
+                                            imported_classes,
+                                            global_class_map,
+                                            &collect_local_enum_names(
+                                                global_enum_map,
+                                                current_namespace,
+                                            ),
+                                            imported_enums,
+                                            global_enum_map,
+                                            imported_modules,
+                                            entry_namespace,
+                                        )
+                                    })
+                                    .collect::<Vec<_>>();
+                                Expr::Construct {
+                                    ty: format_construct_type_name(
+                                        &mangle_project_symbol(
+                                            &owner_ns,
+                                            entry_namespace,
+                                            &class_name,
+                                        ),
+                                        &rewritten_type_args,
+                                    ),
+                                    args: args
+                                        .iter()
+                                        .map(|arg| {
+                                            ast::Spanned::new(
+                                                rewrite_expr_calls_for_project(
+                                                    &arg.node,
+                                                    current_namespace,
+                                                    entry_namespace,
+                                                    local_functions,
+                                                    imported_map,
+                                                    global_function_map,
+                                                    local_classes,
+                                                    imported_classes,
+                                                    global_class_map,
+                                                    imported_enums,
+                                                    global_enum_map,
+                                                    local_modules,
+                                                    imported_modules,
+                                                    global_module_map,
+                                                    scopes,
+                                                ),
+                                                arg.span.clone(),
+                                            )
+                                        })
+                                        .collect(),
+                                }
+                            } else if let Some((owner_ns, enum_name, variant_name)) =
                                 resolve_module_alias_enum_candidate(
                                     ns,
                                     symbol_name,
@@ -1542,11 +1780,34 @@ fn rewrite_expr_calls_for_project(
                                         global_class_map,
                                     )
                                 {
+                                    let rewritten_type_args = type_args
+                                        .iter()
+                                        .map(|ty| {
+                                            rewrite_type_for_project(
+                                                ty,
+                                                current_namespace,
+                                                local_classes,
+                                                imported_classes,
+                                                global_class_map,
+                                                &collect_local_enum_names(
+                                                    global_enum_map,
+                                                    current_namespace,
+                                                ),
+                                                imported_enums,
+                                                global_enum_map,
+                                                imported_modules,
+                                                entry_namespace,
+                                            )
+                                        })
+                                        .collect::<Vec<_>>();
                                     return Expr::Construct {
-                                        ty: mangle_project_symbol(
-                                            &owner_ns,
-                                            entry_namespace,
-                                            &class_name,
+                                        ty: format_construct_type_name(
+                                            &mangle_project_symbol(
+                                                &owner_ns,
+                                                entry_namespace,
+                                                &class_name,
+                                            ),
+                                            &rewritten_type_args,
                                         ),
                                         args: args
                                             .iter()
@@ -1740,11 +2001,34 @@ fn rewrite_expr_calls_for_project(
                                     global_class_map,
                                 )
                             {
+                                let rewritten_type_args = type_args
+                                    .iter()
+                                    .map(|ty| {
+                                        rewrite_type_for_project(
+                                            ty,
+                                            current_namespace,
+                                            local_classes,
+                                            imported_classes,
+                                            global_class_map,
+                                            &collect_local_enum_names(
+                                                global_enum_map,
+                                                current_namespace,
+                                            ),
+                                            imported_enums,
+                                            global_enum_map,
+                                            imported_modules,
+                                            entry_namespace,
+                                        )
+                                    })
+                                    .collect::<Vec<_>>();
                                 return Expr::Construct {
-                                    ty: mangle_project_symbol(
-                                        &owner_ns,
-                                        entry_namespace,
-                                        &class_name,
+                                    ty: format_construct_type_name(
+                                        &mangle_project_symbol(
+                                            &owner_ns,
+                                            entry_namespace,
+                                            &class_name,
+                                        ),
+                                        &rewritten_type_args,
                                     ),
                                     args: args
                                         .iter()
@@ -1971,6 +2255,62 @@ fn rewrite_expr_calls_for_project(
                     scopes,
                 ),
             };
+            if let Expr::Ident(name) = &rewritten_callee {
+                let is_class_symbol = local_classes.iter().any(|class_name| {
+                    mangle_project_symbol(current_namespace, entry_namespace, class_name) == *name
+                }) || global_class_map.iter().any(
+                    |(class_name, owner_ns)| {
+                        mangle_project_symbol(owner_ns, entry_namespace, class_name) == *name
+                    },
+                );
+                if is_class_symbol {
+                    let rewritten_type_args = type_args
+                        .iter()
+                        .map(|ty| {
+                            rewrite_type_for_project(
+                                ty,
+                                current_namespace,
+                                local_classes,
+                                imported_classes,
+                                global_class_map,
+                                &collect_local_enum_names(global_enum_map, current_namespace),
+                                imported_enums,
+                                global_enum_map,
+                                imported_modules,
+                                entry_namespace,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    return Expr::Construct {
+                        ty: format_construct_type_name(name, &rewritten_type_args),
+                        args: args
+                            .iter()
+                            .map(|a| {
+                                ast::Spanned::new(
+                                    rewrite_expr_calls_for_project(
+                                        &a.node,
+                                        current_namespace,
+                                        entry_namespace,
+                                        local_functions,
+                                        imported_map,
+                                        global_function_map,
+                                        local_classes,
+                                        imported_classes,
+                                        global_class_map,
+                                        imported_enums,
+                                        global_enum_map,
+                                        local_modules,
+                                        imported_modules,
+                                        global_module_map,
+                                        scopes,
+                                    ),
+                                    a.span.clone(),
+                                )
+                            })
+                            .collect(),
+                    };
+                }
+            }
             Expr::Call {
                 callee: Box::new(ast::Spanned::new(rewritten_callee, callee.span.clone())),
                 args: args
@@ -2010,6 +2350,7 @@ fn rewrite_expr_calls_for_project(
                             &collect_local_enum_names(global_enum_map, current_namespace),
                             imported_enums,
                             global_enum_map,
+                            imported_modules,
                             entry_namespace,
                         )
                     })
@@ -2348,6 +2689,7 @@ fn rewrite_expr_calls_for_project(
                 &collect_local_enum_names(global_enum_map, current_namespace),
                 imported_enums,
                 global_enum_map,
+                imported_modules,
                 entry_namespace,
             ),
             args: args
@@ -2415,6 +2757,7 @@ fn rewrite_expr_calls_for_project(
                             &collect_local_enum_names(global_enum_map, current_namespace),
                             imported_enums,
                             global_enum_map,
+                            imported_modules,
                             entry_namespace,
                         ),
                         mutable: p.mutable,
@@ -4846,5 +5189,86 @@ mod tests {
             panic!("expected rewritten nested module alias function reference ident");
         };
         assert_eq!(name, "util__M__add1");
+    }
+
+    #[test]
+    fn rewrites_namespace_alias_nested_module_generic_class_types_and_constructors() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Function(ast::FunctionDecl {
+                    name: "main".to_string(),
+                    generic_params: vec![],
+                    params: vec![],
+                    is_variadic: false,
+                    extern_abi: None,
+                    extern_link_name: None,
+                    return_type: ast::Type::None,
+                    body: vec![sp(Stmt::Let {
+                        name: "b".to_string(),
+                        ty: ast::Type::Generic("u.M.Box".to_string(), vec![ast::Type::Integer]),
+                        value: sp(Expr::Call {
+                            callee: Box::new(sp(Expr::Field {
+                                object: Box::new(sp(Expr::Field {
+                                    object: Box::new(sp(Expr::Ident("u".to_string()))),
+                                    field: "M".to_string(),
+                                })),
+                                field: "Box".to_string(),
+                            })),
+                            args: vec![sp(Expr::Literal(ast::Literal::Integer(1)))],
+                            type_args: vec![ast::Type::Integer],
+                        }),
+                        mutable: false,
+                    })],
+                    is_async: false,
+                    is_extern: false,
+                    visibility: ast::Visibility::Private,
+                    attributes: vec![],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::from([("app".to_string(), HashSet::from(["main".to_string()]))]),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["M__Box".to_string()]))]),
+            &HashMap::from([("M__Box".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let func = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Function(func) if func.name == "main" => Some(func),
+                _ => None,
+            })
+            .expect("expected main function declaration");
+        let Stmt::Let { ty, value, .. } = &func.body[0].node else {
+            panic!("expected let statement");
+        };
+        assert_eq!(
+            ty,
+            &ast::Type::Generic("util__M__Box".to_string(), vec![ast::Type::Integer])
+        );
+        let Expr::Construct { ty, args } = &value.node else {
+            panic!("expected rewritten constructor expression");
+        };
+        assert_eq!(ty, "util__M__Box<Integer>");
+        assert_eq!(args.len(), 1);
     }
 }

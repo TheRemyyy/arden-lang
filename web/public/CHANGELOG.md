@@ -38,6 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed explicit generic method calls so `obj.id<Integer>(...)` now specializes into class-local method implementations during codegen instead of failing at runtime compilation.
 - Fixed generic class instance dispatch in codegen helpers so `Boxed<Integer>.get()` and generic field access resolve their base class correctly.
 - Fixed closure-valued callee codegen so lambda / other expression-valued call sites can be invoked directly instead of failing with `Invalid callee`.
+- Fixed project-mode handling for namespace-alias generic class constructors and nested module classes, so forms like `u.Box<Integer>(...)` and `u.M.Box<Integer>(...)` now rewrite/typecheck correctly instead of leaking raw alias calls or missing nested type metadata.
+- Fixed nested module class/enum metadata collection and prefixed typechecking, so project graphs, rewrite resolution, and `this.field` checks inside module-scoped classes now use the correct prefixed owner symbols.
 - Fixed function-valued class field calls so `obj.f(...)` is typechecked and lowered as a closure call instead of being misclassified as a method call.
 - Fixed higher-order generic methods returning closures so `obj.mk<Integer>(...)` can return and later invoke function values without method/field dispatch confusion.
 - Fixed nested function types inside generic wrappers so `List<(Integer) -> Integer>` and `Option<(Integer) -> Integer>` no longer fail as false type mismatches.
@@ -76,6 +78,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - unchanged dependency-graph components now skip type checking and borrow checking even when other components changed
   - semantic summary cache now records component membership alongside per-file summary metadata
 - Tightened import/rewrite invalidation to prefer symbol-owner files over whole-namespace fingerprints when imports can be resolved precisely.
+- Fixed filtered project codegen for user-defined generic classes, so synthesized `__spec__` class declarations are no longer dropped from declaration/method/constructor emission and imported generic-class builds no longer fail as `Unknown type: ...__spec__...`.
+- Fixed object-type inference for method/field chains on non-variable object expressions, so constructor results, function-returned objects, and `try`-unwrapped objects now support calls like `Boxed<Integer>(7).get()`, `make_box().get()`, and `choose_box()?.get()` during codegen.
 - Tightened dependency graph resolution for wildcard imports and namespace aliases so used imported symbols point at concrete owner files instead of invalidating every file in a busy namespace whenever possible.
 - Tightened filtered object codegen so per-file rebuilds assemble programs from the declaration-closure file set instead of the full transitive dependency file closure.
 - Added `apex build --timings` / project-mode `apex run --timings` / `apex check --timings` phase timing output for parse, dependency graph, import check, rewrite, semantic, object cache probe, object codegen, and final link stages.

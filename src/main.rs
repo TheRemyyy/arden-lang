@@ -455,7 +455,7 @@ fn save_semantic_cached_fingerprint(project_root: &Path, fingerprint: &str) -> R
     })
 }
 
-const PARSE_CACHE_SCHEMA: &str = "v7";
+const PARSE_CACHE_SCHEMA: &str = "v8";
 const DEPENDENCY_GRAPH_CACHE_SCHEMA: &str = "v2";
 const SEMANTIC_SUMMARY_CACHE_SCHEMA: &str = "v2";
 const TYPECHECK_SUMMARY_CACHE_SCHEMA: &str = "v4";
@@ -862,7 +862,7 @@ fn codegen_program_for_unit(
             unit.program.clone()
         } else {
             declaration_symbols
-                .map(|symbols| filter_codegen_program_by_symbols(&unit.api_program, symbols))
+                .map(|symbols| filter_codegen_program_by_symbols(&unit.program, symbols))
                 .unwrap_or_else(|| unit.api_program.clone())
         };
         program.declarations.extend(source_program.declarations);
@@ -3224,6 +3224,52 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         }
     }
 
+    fn collect_class_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
+        match decl {
+            Decl::Class(class) => {
+                if let Some(module_name) = module_prefix {
+                    out.push(format!("{}__{}", module_name, class.name));
+                } else {
+                    out.push(class.name.clone());
+                }
+            }
+            Decl::Module(module) => {
+                let next_prefix = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, module.name)
+                } else {
+                    module.name.clone()
+                };
+                for inner in &module.declarations {
+                    collect_class_names(&inner.node, Some(next_prefix.clone()), out);
+                }
+            }
+            Decl::Function(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
+        }
+    }
+
+    fn collect_enum_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
+        match decl {
+            Decl::Enum(en) => {
+                if let Some(module_name) = module_prefix {
+                    out.push(format!("{}__{}", module_name, en.name));
+                } else {
+                    out.push(en.name.clone());
+                }
+            }
+            Decl::Module(module) => {
+                let next_prefix = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, module.name)
+                } else {
+                    module.name.clone()
+                };
+                for inner in &module.declarations {
+                    collect_enum_names(&inner.node, Some(next_prefix.clone()), out);
+                }
+            }
+            Decl::Function(_) | Decl::Class(_) | Decl::Interface(_) | Decl::Import(_) => {}
+        }
+    }
+
     fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
         match expr {
             Expr::Ident(name) => Some(vec![name.clone()]),
@@ -3559,6 +3605,8 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 Decl::Module(module) => {
                     module_names.push(module.name.clone());
                     collect_function_names(&decl.node, None, &mut function_names);
+                    collect_class_names(&decl.node, None, &mut class_names);
+                    collect_enum_names(&decl.node, None, &mut enum_names);
                 }
                 Decl::Class(class) => class_names.push(class.name.clone()),
                 Decl::Enum(en) => enum_names.push(en.name.clone()),
@@ -6919,6 +6967,113 @@ function main(): None {
     }
 
     #[test]
+    fn project_build_supports_imported_explicit_generic_free_calls() {
+        let temp_root = make_temp_project_root("imported-explicit-generic-free-call-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nfunction id<T>(x: T): T { return x; }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.id;\nfunction main(): None { value: Integer = id<Integer>(1); require(value == 1); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support imported explicit generic free calls");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_imported_generic_class_instance_methods() {
+        let temp_root = make_temp_project_root("imported-generic-class-method-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nclass Boxed<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function get(): T { return this.value; }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.Boxed;\nfunction main(): None { value: Integer = Boxed<Integer>(7).get(); require(value == 7); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support imported generic class instance methods");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_method_calls_on_function_returned_objects() {
+        let temp_root = make_temp_project_root("function-return-method-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nclass Boxed<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function get(): T { return this.value; }\n}\nfunction make_box(): Boxed<Integer> { return Boxed<Integer>(9); }\nfunction main(): None { value: Integer = make_box().get(); require(value == 9); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support method calls on function-returned objects");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_check_supports_namespace_alias_nested_module_generic_class_constructors() {
+        let temp_root = make_temp_project_root("namespace-alias-nested-generic-class-check");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n    }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nfunction main(): None { b: u.M.Box<Integer> = u.M.Box<Integer>(1); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect(
+                "project check should support namespace alias nested-module generic class constructors",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_supports_dereferenced_function_value_callees() {
         let temp_root = make_temp_project_root("deref-function-callee-project");
         let src_dir = temp_root.join("src");
@@ -7089,6 +7244,107 @@ function main(): None {
         compile_source(source, &source_path, &output_path, true, true, None, None)
             .expect("generic class instance method codegen should succeed");
         assert!(output_path.with_extension("ll").exists());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_generic_class_instance_methods() {
+        let temp_root = make_temp_project_root("generic-class-method-runtime");
+        let source_path = temp_root.join("generic_class_runtime.apex");
+        let output_path = temp_root.join("generic_class_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function main(): Integer {
+                b: Boxed<Integer> = Boxed<Integer>(7);
+                return b.get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("generic class runtime codegen should succeed");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled generic class binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_method_calls_on_function_returned_objects() {
+        let temp_root = make_temp_project_root("function-return-method-runtime");
+        let source_path = temp_root.join("function_return_method_runtime.apex");
+        let output_path = temp_root.join("function_return_method_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function make_box(): Boxed<Integer> {
+                return Boxed<Integer>(9);
+            }
+
+            function main(): Integer {
+                return make_box().get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("method call on function return value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled function-return method binary");
+        assert_eq!(status.code(), Some(9));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_method_calls_on_try_unwrapped_objects() {
+        let temp_root = make_temp_project_root("try-object-method-runtime");
+        let source_path = temp_root.join("try_object_method_runtime.apex");
+        let output_path = temp_root.join("try_object_method_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function choose_box(): Result<Boxed<Integer>, String> {
+                return Result.ok(Boxed<Integer>(21));
+            }
+
+            function use_box(): Result<Integer, String> {
+                return Result.ok(choose_box()?.get());
+            }
+
+            function main(): Integer {
+                result: Result<Integer, String> = use_box();
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("method call on try-unwrapped object should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled try-object method binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -8698,7 +8954,7 @@ function main(): None {
     }
 
     #[test]
-    fn codegen_program_for_unit_uses_indexed_relevant_files_only() {
+    fn codegen_program_for_unit_uses_full_program_for_relevant_dependency_files() {
         let make_function = |name: &str| {
             Spanned::new(
                 Decl::Function(FunctionDecl {
@@ -8745,7 +9001,7 @@ function main(): None {
             (PathBuf::from("c.apex"), 2usize),
         ]);
         let closure = HashSet::from([PathBuf::from("b.apex")]);
-        let declaration_symbols = HashSet::from(["fb_api".to_string()]);
+        let declaration_symbols = HashSet::from(["fb".to_string()]);
 
         let program = codegen_program_for_unit(
             &rewritten_files,
@@ -8763,6 +9019,6 @@ function main(): None {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["fa".to_string(), "fb_api".to_string()]);
+        assert_eq!(names, vec!["fa".to_string(), "fb".to_string()]);
     }
 }
