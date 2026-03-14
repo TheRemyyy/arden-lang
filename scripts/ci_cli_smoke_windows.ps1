@@ -56,7 +56,9 @@ cd '$repoRootUnix'
 chmod +x '$bashScriptUnix' '$compilerUnix'
 export APEX_COMPILER_PATH='$compilerUnix'
 export CI_SKIP_COMPILER_BUILD='$ciSkip'
-'$bashScriptUnix'
+echo "=== Running smoke script ==="
+bash -x '$bashScriptUnix' 2>&1
+echo "=== Smoke script done ==="
 "@
 
 $bashOutput = & $bashCommand.Source --noprofile --norc -lc $bashRun 2>&1

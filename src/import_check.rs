@@ -160,6 +160,7 @@ impl<'a> ImportChecker<'a> {
                         .get(symbol)
                         .is_some_and(|ns| ns == &symbol_ns)
                         || known_namespaces.contains(&symbol_ns)
+                        || Self::path_has_known_namespace_prefix(&known_namespace_paths, &path)
                         || stdlib
                             .get_namespace(symbol)
                             .is_some_and(|ns| ns == &symbol_ns)
@@ -329,6 +330,20 @@ impl<'a> ImportChecker<'a> {
             }) {
                 return true;
             }
+        }
+        false
+    }
+
+    fn path_has_known_namespace_prefix(
+        known_namespace_paths: &HashSet<String>,
+        path: &str,
+    ) -> bool {
+        let mut current = path;
+        while let Some((prefix, _)) = current.rsplit_once('.') {
+            if known_namespace_paths.contains(prefix) {
+                return true;
+            }
+            current = prefix;
         }
         false
     }

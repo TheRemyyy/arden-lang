@@ -37,6 +37,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed exact imported enum variant aliases in project mode:
   - forms like `import app.E.B as Variant; e: E = Variant(2);` now resolve as real enum variant constructors instead of leaking `Unknown type: Variant`
   - dependency graph/import closure resolution now treats exact variant imports as owning the parent enum file, so semantic components no longer split away the enum metadata needed for constructor checking and match exhaustiveness
+  - exact imported variant aliases now also rewrite in `match` patterns, so `match (e) { Variant(v) => ... }` works in project mode instead of failing as `Unknown variant 'Variant'`
+- Fixed nested-module enum alias handling in project mode:
+  - exact imported nested enum aliases like `import app.M.E as Enum; Enum.B(2)` now pass import-check, rewrite, and semantic phases instead of being rejected as unknown namespace alias usage
+  - exact imported nested enum variant aliases like `import app.M.E.B as Variant; e: M.E = Variant(2)` now rewrite both constructor and pattern paths correctly
+  - namespace aliases over packages now resolve nested enum paths like `u.M.E.B(2)` and `u.M.E.B(v)` instead of falling through as undefined variables
+- Fixed nested-module class and function rewrite handling in project mode:
+  - exact imported nested class aliases like `import app.M.Box as Boxed; Boxed(2)` now resolve their constructor/type paths consistently
+  - exact imported nested function aliases like `import app.M.mk as mk; mk(2).get()` now keep nested class return and constructor references coherent inside rewritten module bodies
+  - local qualified nested class paths like `M.Box(2)` / `b: M.Box` now lower correctly instead of leaking `app__M` or `app__Box` pseudo-symbols
+  - nested module functions returning local classes now rewrite local constructor/type references inside module bodies, so paths like `import app.M.mk as mk; mk(2).get()` no longer compile into invalid runtime code
+- Fixed nested generic module-function specialization in backend codegen:
+  - local and exact-imported nested generic functions returning module-local generic classes now remap shadowed class constructors/types during specialization instead of accidentally lowering `Box<T>(...)` through the built-in `Box` runtime path
+  - runtime paths like `M.mk<Integer>(2).get()`, `M.mk<Integer>(2).value`, and `import app.M.mk as mk; mk<Integer>(2).get()` no longer segfault or silently return zero after codegen
 - Fixed nested enum payload handling:
   - nested enum-by-value payloads are now rejected during typechecking with a direct diagnostic instead of slipping through and panicking later in backend enum payload encoding
 - Fixed collection runtime safety guards:

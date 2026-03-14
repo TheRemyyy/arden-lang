@@ -955,6 +955,83 @@ fn extend_declaration_symbols_for_reference(
     }
 }
 
+fn resolve_exact_imported_symbol_file<'a>(
+    namespace_path: &str,
+    symbol_name: &str,
+    global_symbol_map: &HashMap<String, String>,
+    global_symbol_file_map: &'a HashMap<String, PathBuf>,
+) -> Option<(String, String, &'a PathBuf)> {
+    if global_symbol_map
+        .get(symbol_name)
+        .is_some_and(|owner_ns| owner_ns == namespace_path)
+    {
+        return global_symbol_file_map
+            .get(symbol_name)
+            .map(|file| (namespace_path.to_string(), symbol_name.to_string(), file));
+    }
+
+    let full_path = format!("{}.{}", namespace_path, symbol_name);
+    let mut matches = global_symbol_map
+        .iter()
+        .filter_map(|(candidate, owner_ns)| {
+            let candidate_path = format!("{}.{}", owner_ns, candidate.replace("__", "."));
+            (candidate_path == full_path).then(|| {
+                global_symbol_file_map
+                    .get(candidate)
+                    .map(|file| (owner_ns.clone(), candidate.clone(), file))
+            })?
+        })
+        .collect::<Vec<_>>();
+    matches.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+    matches.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
+    (matches.len() == 1).then(|| matches.swap_remove(0))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_exact_imported_symbol_owner<'a>(
+    namespace_path: &str,
+    symbol_name: &str,
+    global_function_map: &HashMap<String, String>,
+    global_function_file_map: &'a HashMap<String, PathBuf>,
+    global_class_map: &HashMap<String, String>,
+    global_class_file_map: &'a HashMap<String, PathBuf>,
+    global_enum_map: &HashMap<String, String>,
+    global_enum_file_map: &'a HashMap<String, PathBuf>,
+    global_module_map: &HashMap<String, String>,
+    global_module_file_map: &'a HashMap<String, PathBuf>,
+) -> Option<(String, String, &'a PathBuf)> {
+    resolve_exact_imported_symbol_file(
+        namespace_path,
+        symbol_name,
+        global_function_map,
+        global_function_file_map,
+    )
+    .or_else(|| {
+        resolve_exact_imported_symbol_file(
+            namespace_path,
+            symbol_name,
+            global_class_map,
+            global_class_file_map,
+        )
+    })
+    .or_else(|| {
+        resolve_exact_imported_symbol_file(
+            namespace_path,
+            symbol_name,
+            global_enum_map,
+            global_enum_file_map,
+        )
+    })
+    .or_else(|| {
+        resolve_exact_imported_symbol_file(
+            namespace_path,
+            symbol_name,
+            global_module_map,
+            global_module_file_map,
+        )
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn extend_declaration_symbols_for_exact_import(
     import: &ImportDecl,
@@ -975,20 +1052,43 @@ fn extend_declaration_symbols_for_exact_import(
         return;
     };
 
+    if let Some((owner_ns, symbol_name, owner_file)) = resolve_exact_imported_symbol_owner(
+        namespace,
+        symbol,
+        global_function_map,
+        global_function_file_map,
+        global_class_map,
+        global_class_file_map,
+        global_enum_map,
+        global_enum_file_map,
+        global_module_map,
+        global_module_file_map,
+    ) {
+        if closure_files.contains(owner_file) {
+            declaration_symbols.insert(mangle_project_symbol_for_codegen(
+                &owner_ns,
+                entry_namespace,
+                &symbol_name,
+            ));
+            stack.push(owner_file.clone());
+        }
+        return;
+    }
+
     if let Some((enum_namespace, enum_name)) = namespace.rsplit_once('.') {
-        if global_enum_map
-            .get(enum_name)
-            .is_some_and(|owner_ns| owner_ns == enum_namespace)
-        {
-            if let Some(owner_file) = global_enum_file_map.get(enum_name) {
-                if closure_files.contains(owner_file) {
-                    declaration_symbols.insert(mangle_project_symbol_for_codegen(
-                        enum_namespace,
-                        entry_namespace,
-                        enum_name,
-                    ));
-                    stack.push(owner_file.clone());
-                }
+        if let Some((owner_ns, resolved_enum_name, owner_file)) = resolve_exact_imported_symbol_file(
+            enum_namespace,
+            enum_name,
+            global_enum_map,
+            global_enum_file_map,
+        ) {
+            if closure_files.contains(owner_file) {
+                declaration_symbols.insert(mangle_project_symbol_for_codegen(
+                    &owner_ns,
+                    entry_namespace,
+                    &resolved_enum_name,
+                ));
+                stack.push(owner_file.clone());
             }
             return;
         }
@@ -1598,12 +1698,29 @@ fn import_path_owner_file<'a>(
 ) -> Option<&'a PathBuf> {
     let (namespace, symbol) = path.rsplit_once('.')?;
 
+    if let Some((_, _, owner_file)) = resolve_exact_imported_symbol_owner(
+        namespace,
+        symbol,
+        global_function_map,
+        global_function_file_map,
+        global_class_map,
+        global_class_file_map,
+        global_enum_map,
+        global_enum_file_map,
+        global_module_map,
+        global_module_file_map,
+    ) {
+        return Some(owner_file);
+    }
+
     if let Some((enum_namespace, enum_name)) = namespace.rsplit_once('.') {
-        if global_enum_map
-            .get(enum_name)
-            .is_some_and(|owner_ns| owner_ns == enum_namespace)
-        {
-            return global_enum_file_map.get(enum_name);
+        if let Some((_, _, owner_file)) = resolve_exact_imported_symbol_file(
+            enum_namespace,
+            enum_name,
+            global_enum_map,
+            global_enum_file_map,
+        ) {
+            return Some(owner_file);
         }
     }
 
@@ -6948,6 +7065,338 @@ function main(): None {
             build_project(false, false, true, false, false)
                 .expect("project build should support exact imported enum variant aliases");
         });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_exact_imported_enum_variant_alias_patterns() {
+        let temp_root = make_temp_project_root("exact-enum-variant-alias-pattern-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nenum E { A(Integer) B(Integer) }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.E.B as Variant;\nfunction main(): None { e: E = Variant(2); match (e) { Variant(v) => { require(v == 2); } E.A(v) => { require(false); } } return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support exact imported enum variant alias patterns");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_exact_imported_nested_enum_aliases() {
+        let temp_root = make_temp_project_root("exact-nested-enum-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.E as Enum;\nfunction main(): None { e: Enum = Enum.B(2); match (e) { Enum.B(v) => { require(v == 2); } Enum.A(v) => { require(false); } } return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support exact imported nested enum aliases");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_exact_imported_nested_enum_variant_aliases() {
+        let temp_root = make_temp_project_root("exact-nested-enum-variant-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.E.B as Variant;\nfunction main(): None { e: M.E = Variant(2); match (e) { Variant(v) => { require(v == 2); } M.E.A(v) => { require(false); } } return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support exact imported nested enum variant aliases");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_namespace_alias_nested_enums() {
+        let temp_root = make_temp_project_root("namespace-alias-nested-enum-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as u;\nfunction main(): None { e: u.M.E = u.M.E.B(2); match (e) { u.M.E.B(v) => { require(v == 2); } u.M.E.A(v) => { require(false); } } return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support namespace alias nested enums");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_exact_imported_nested_function_aliases_returning_classes() {
+        let temp_root = make_temp_project_root("exact-nested-function-alias-class-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n    function mk(value: Integer): Box { return Box(value); }\n}\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.mk as mk;\nfunction main(): None { value: Integer = mk(2).get(); require(value == 2); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support exact imported nested function aliases returning classes",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_exact_imported_nested_class_aliases() {
+        let temp_root = make_temp_project_root("exact-nested-class-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n}\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.Box as Boxed;\nfunction main(): None { value: Integer = Boxed(2).get(); require(value == 2); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support exact imported nested class aliases");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_local_qualified_nested_class_paths() {
+        let temp_root = make_temp_project_root("local-qualified-nested-class-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n}\nfunction main(): None { b: M.Box = M.Box(2); require(b.get() == 2); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support local qualified nested class paths");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_local_qualified_nested_generic_class_paths() {
+        let temp_root = make_temp_project_root("local-qualified-nested-generic-class-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n}\nfunction main(): None { b: M.Box<Integer> = M.Box<Integer>(2); require(b.get() == 2); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support local qualified nested generic class paths");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_exact_imported_nested_generic_class_aliases() {
+        let temp_root = make_temp_project_root("exact-nested-generic-class-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n}\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.Box as Boxed;\nfunction main(): None { b: Boxed<Integer> = Boxed<Integer>(2); require(b.get() == 2); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support exact imported nested generic class aliases");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_exact_imported_nested_generic_function_aliases_returning_classes() {
+        let temp_root = make_temp_project_root("exact-nested-generic-function-alias-class-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n    function mk<T>(value: T): Box<T> { return Box<T>(value); }\n}\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.mk as mk;\nfunction main(): None { value: Integer = mk<Integer>(2).get(); require(value == 2); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support exact imported nested generic function aliases returning classes",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_local_nested_generic_functions_returning_classes() {
+        let temp_root = make_temp_project_root("local-nested-generic-function-runtime-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n    function mk<T>(value: T): Box<T> { return Box<T>(value); }\n}\nfunction main(): Integer { return M.mk<Integer>(2).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support local nested generic function returns");
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled local nested generic function binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_exact_imported_nested_generic_function_aliases_returning_classes() {
+        let temp_root =
+            make_temp_project_root("exact-nested-generic-function-alias-class-runtime-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n    function mk<T>(value: T): Box<T> { return Box<T>(value); }\n}\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.mk as mk;\nfunction main(): Integer { return mk<Integer>(2).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support exact imported nested generic function aliases at runtime",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled imported nested generic function binary");
+        assert_eq!(status.code(), Some(2));
 
         let _ = fs::remove_dir_all(temp_root);
     }

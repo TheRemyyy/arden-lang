@@ -42,6 +42,20 @@ thread_local! {
 }
 
 impl<'ctx> Codegen<'ctx> {
+    fn normalize_inferred_object_type(&self, ty: Type) -> Type {
+        match ty {
+            Type::Generic(name, args) => {
+                let spec_name = Self::generic_class_spec_name(&name, &args);
+                if self.classes.contains_key(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Generic(name, args)
+                }
+            }
+            other => other,
+        }
+    }
+
     fn infer_block_tail_type(&self, block: &[Spanned<Stmt>]) -> Option<Type> {
         let last = block.last()?;
         match &last.node {
@@ -1293,7 +1307,7 @@ impl<'ctx> Codegen<'ctx> {
 
     /// Infer the Apex Type of an expression
     pub fn infer_object_type(&self, expr: &Expr) -> Option<Type> {
-        match expr {
+        let inferred = match expr {
             Expr::Ident(name) => self.variables.get(name).map(|v| v.ty.clone()),
             Expr::This => self.variables.get("this").map(|v| v.ty.clone()),
             Expr::Literal(Literal::String(_)) => Some(Type::String),
@@ -1451,7 +1465,8 @@ impl<'ctx> Codegen<'ctx> {
                 Some(field_ty)
             }
             _ => None,
-        }
+        }?;
+        Some(self.normalize_inferred_object_type(inferred))
     }
 
     /// Extract class name from a Type (handles Named, Ref, MutRef, etc.)
