@@ -30,6 +30,11 @@ Enum construction now also zero-initializes inactive payload slots before insert
 The current enum payload runtime model still stores payload slots as `i64`, so nested enum-by-value payloads are now rejected explicitly during typechecking instead of reaching backend codegen and failing there.
 Built-in collection getters/mutators now also fail fast on invalid runtime access (`List.get/set/pop` bounds errors and missing `Map.get()` keys) instead of returning null/garbage values and crashing later during field or method lowering.
 The same fail-fast bounds checks now also apply to direct list indexing syntax (`xs[i]`), so bracket access no longer bypasses the guarded collection helper path.
+Binary equality lowering now also routes pointer-backed runtime values such as `List`, `Map`, and user class instances through the same shared value-equality helper used by collection internals, keeping identity-equality codegen aligned with container lookup semantics instead of failing late in backend binary-op lowering.
+Codegen-side expression inference now also preserves object-valued built-in method results like `Option.unwrap()`, `Map.get()`, and `Task.await_timeout(...).unwrap()`, which keeps downstream equality and field/method chains aligned with the actual returned object types instead of degrading them to generic integer placeholders.
+The same inference layer now also recognizes direct built-in constructor/function call receivers such as `Option.some(...)`, `Result.ok(...)`, and `range(...)`, so immediate method chains on those expressions survive lowering instead of failing as receiver-type inference gaps.
+Direct static `Result.ok/error` constructor lowering now also uses the inferred expression type when no explicit expected type is available, which keeps untyped `Result.error(...)` expressions ABI-consistent with later equality/method use instead of falling back to placeholder payload layouts.
+Task timeout handling now also validates that `await_timeout(ms)` receives a non-negative timeout before entering the polling loop, preventing negative integers from turning into effectively unbounded waits through unsigned loop arithmetic.
 
 ## Build Caching
 
@@ -224,6 +229,7 @@ The same fail-fast bounds checks now also apply to direct list indexing syntax (
 - Direct string indexing now also goes through an explicit bounds check before loading a `Char`, so `"abc"[i]` no longer relies on unchecked pointer arithmetic when `i` is out of range.
 - Map index assignment now desugars cleanly at codegen time into the same typed update path as `Map.set(...)`, so `m[key] = value` no longer falls through a list-only lvalue implementation.
 - List index assignment now shares the same bounds checks as list reads, so `xs[i] = value` no longer bypasses runtime safety guards on negative or out-of-range indices.
+- Backend binary equality now has a dedicated `String` path using `strcmp`, so string comparisons no longer depend on integer/float-only binary lowering.
 - Exact imported enum aliases now also rewrite in type positions, so declarations like `e: Enum` stay consistent with `Enum.A(...)` constructor paths during project-mode typechecking.
 - Local enum type annotations and local enum variant constructor expressions inside function bodies now rewrite too, so body-local declarations like `e: E = E.A(1)` and lambda params typed as `E` stay consistent with the mangled project enum name.
 - Parser type syntax now accepts qualified names like `u.Box` and `u.Box<Integer>` in type positions, which lets alias-qualified project types flow through the same rewrite/typecheck path as expression-level alias calls.

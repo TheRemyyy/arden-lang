@@ -36,7 +36,7 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
-    fn build_value_equality(
+    pub(crate) fn build_value_equality(
         &mut self,
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,

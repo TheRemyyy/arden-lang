@@ -56,6 +56,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - filtered project codegen now emits only the explicitly requested class methods for class declarations activated via method symbols, which fixes imported expression-receiver paths like `import app.M.make as make; make<Integer>(2).map<Integer>(inc).get()` without re-emitting duplicate base class symbols in the caller object
 - Fixed `await` postfix precedence in the parser:
   - chains like `await(make_box()).get()` now parse as method calls on the awaited result instead of incorrectly swallowing the `.get()` inside the awaited operand
+- Fixed negative task timeouts:
+  - `Task.await_timeout(-1)` now fails fast with a direct runtime error instead of effectively turning into an unbounded wait through unsigned loop arithmetic
 - Fixed nested enum payload handling:
   - nested enum-by-value payloads are now rejected during typechecking with a direct diagnostic instead of slipping through and panicking later in backend enum payload encoding
 - Fixed collection runtime safety guards:
@@ -67,6 +69,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - direct string indexing via `"abc"[i]` now performs a real bounds check and returns a `Char` from the underlying string buffer instead of reading through an unchecked raw pointer offset
   - assignments through map index syntax like `m[key] = value` now lower through the real typed `Map.set(key, value)` path instead of crashing in list-style lvalue code when `key` is not an integer offset
   - list index assignments like `xs[i] = value` now perform the same negative/out-of-bounds checks as list reads instead of silently writing past the logical list length
+- Fixed backend string equality lowering:
+  - `==` and `!=` now work on `String` literals and string-producing expressions via `strcmp` instead of falling through to a generic binary-op type mismatch in codegen
+  - identity equality for pointer-backed runtime values such as `List`, `Map`, and user class instances now lowers through the shared value-equality helper instead of failing in codegen with a generic binary-op type mismatch
+  - object-valued built-in method results such as `Option.unwrap()` and `Map.get()` now preserve their real return types through codegen-side expression inference, so equality checks against class/object values no longer fail late with a backend binary-op type mismatch
+  - direct built-in constructor/function call receivers such as `Option.some(12).unwrap()`, `Result.ok(12).unwrap()`, and `range(0, 10).has_next()` now keep their real object types through codegen-side inference instead of failing as unknown method receivers
+  - direct `Result.ok/error` constructors now lower using the inferred expression type instead of hardcoded placeholder layouts, so equality and method chains on untyped `Result.error(...)` expressions preserve the real error payload ABI instead of relying on accidental defaults
 - Fixed `apex test` handling for `@Ignore` without a reason:
   - tests marked with bare `@Ignore` are now skipped correctly instead of being executed
   - ignored tests are now counted in the final `Total` summary as well as `Ignored`

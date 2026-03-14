@@ -64,6 +64,55 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn builtin_method_return_type(&self, obj_ty: &Type, field: &str) -> Option<Type> {
+        match obj_ty {
+            Type::List(inner) => match field {
+                "get" | "pop" => Some((**inner).clone()),
+                "length" => Some(Type::Integer),
+                "push" | "set" => Some(Type::None),
+                _ => None,
+            },
+            Type::Map(_, value) => match field {
+                "get" => Some((**value).clone()),
+                "contains" => Some(Type::Boolean),
+                "length" => Some(Type::Integer),
+                "insert" | "set" => Some(Type::None),
+                _ => None,
+            },
+            Type::Set(_) => match field {
+                "add" | "contains" | "remove" => Some(Type::Boolean),
+                "length" => Some(Type::Integer),
+                _ => None,
+            },
+            Type::Option(inner) => match field {
+                "unwrap" => Some((**inner).clone()),
+                "is_some" | "is_none" => Some(Type::Boolean),
+                _ => None,
+            },
+            Type::Result(ok, _) => match field {
+                "unwrap" => Some((**ok).clone()),
+                "is_ok" | "is_error" => Some(Type::Boolean),
+                _ => None,
+            },
+            Type::Task(inner) => match field {
+                "await_timeout" => Some(Type::Option(inner.clone())),
+                "is_done" => Some(Type::Boolean),
+                "cancel" => Some(Type::None),
+                _ => None,
+            },
+            Type::Range(inner) => match field {
+                "next" => Some((**inner).clone()),
+                "has_next" => Some(Type::Boolean),
+                _ => None,
+            },
+            Type::String => match field {
+                "length" => Some(Type::Integer),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     // === C Library Definitions ===
 
     pub fn get_or_declare_fopen(&self) -> FunctionValue<'ctx> {
@@ -1382,55 +1431,62 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Call { callee, .. } => match &callee.node {
+                Expr::Ident(name) if name == "range" => match expr {
+                    Expr::Call { args, .. } => args
+                        .first()
+                        .map(|arg| Type::Range(Box::new(self.infer_expr_type(&arg.node, &[]))))
+                        .or_else(|| Some(Type::Range(Box::new(Type::Integer)))),
+                    _ => Some(Type::Range(Box::new(Type::Integer))),
+                },
                 Expr::Field { object, field } => {
-                    let obj_ty = self.infer_object_type(&object.node)?;
-                    match &obj_ty {
-                        Type::List(inner) => match field.as_str() {
-                            "get" | "pop" => Some((**inner).clone()),
-                            "length" => Some(Type::Integer),
-                            "push" | "set" => Some(Type::None),
-                            _ => None,
-                        },
-                        Type::Map(_, value) => match field.as_str() {
-                            "get" => Some((**value).clone()),
-                            "contains" => Some(Type::Boolean),
-                            "length" => Some(Type::Integer),
-                            "insert" | "set" => Some(Type::None),
-                            _ => None,
-                        },
-                        Type::Option(inner) => match field.as_str() {
-                            "unwrap" => Some((**inner).clone()),
-                            "is_some" | "is_none" => Some(Type::Boolean),
-                            _ => None,
-                        },
-                        Type::Result(ok, _) => match field.as_str() {
-                            "unwrap" => Some((**ok).clone()),
-                            "is_ok" | "is_error" => Some(Type::Boolean),
-                            _ => None,
-                        },
-                        Type::Task(inner) => match field.as_str() {
-                            "await_timeout" => Some(Type::Option(inner.clone())),
-                            "is_done" | "cancel" => Some(Type::Boolean),
-                            _ => None,
-                        },
-                        Type::Range(inner) => match field.as_str() {
-                            "next" => Some((**inner).clone()),
-                            "has_next" => Some(Type::Boolean),
-                            _ => None,
-                        },
-                        Type::String => match field.as_str() {
-                            "length" => Some(Type::Integer),
-                            _ => None,
-                        },
-                        _ => {
-                            let class_name = self.type_to_class_name(&obj_ty)?;
-                            let method_name =
-                                self.resolve_method_function_name(&class_name, field)?;
-                            let (_, ty) = self.functions.get(&method_name)?;
-                            match ty {
-                                Type::Function(_, ret) => Some((**ret).clone()),
-                                _ => None,
+                    if let Expr::Ident(owner_name) = &object.node {
+                        let resolved_owner = self.resolve_module_alias(owner_name);
+                        match (resolved_owner.as_str(), field.as_str()) {
+                            ("Option", "some") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Some(Type::Option(Box::new(
+                                            self.infer_expr_type(&first_arg.node, &[]),
+                                        )));
+                                    }
+                                }
                             }
+                            ("Option", "none") => {
+                                return Some(Type::Option(Box::new(Type::Integer)))
+                            }
+                            ("Result", "ok") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Some(Type::Result(
+                                            Box::new(self.infer_expr_type(&first_arg.node, &[])),
+                                            Box::new(Type::String),
+                                        ));
+                                    }
+                                }
+                            }
+                            ("Result", "error") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Some(Type::Result(
+                                            Box::new(Type::Integer),
+                                            Box::new(self.infer_expr_type(&first_arg.node, &[])),
+                                        ));
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    let obj_ty = self.infer_object_type(&object.node)?;
+                    if let Some(ret_ty) = self.builtin_method_return_type(&obj_ty, field) {
+                        Some(ret_ty)
+                    } else {
+                        let class_name = self.type_to_class_name(&obj_ty)?;
+                        let method_name = self.resolve_method_function_name(&class_name, field)?;
+                        let (_, ty) = self.functions.get(&method_name)?;
+                        match ty {
+                            Type::Function(_, ret) => Some((**ret).clone()),
+                            _ => None,
                         }
                     }
                 }
@@ -1910,6 +1966,18 @@ impl<'ctx> Codegen<'ctx> {
             },
             Expr::Call { callee, .. } => match &callee.node {
                 Expr::Ident(name) if name == "println" => Type::None,
+                Expr::Ident(name) if name == "to_string" => Type::String,
+                Expr::Ident(name) if name == "range" => {
+                    if let Expr::Call { args, .. } = expr {
+                        if let Some(first_arg) = args.first() {
+                            Type::Range(Box::new(self.infer_expr_type(&first_arg.node, params)))
+                        } else {
+                            Type::Range(Box::new(Type::Integer))
+                        }
+                    } else {
+                        Type::Range(Box::new(Type::Integer))
+                    }
+                }
                 Expr::Field { object, field } => {
                     if let Expr::Ident(owner_name) = &object.node {
                         let resolved_owner = self.resolve_module_alias(owner_name);
@@ -1921,6 +1989,51 @@ impl<'ctx> Codegen<'ctx> {
                         {
                             return Type::Named(resolved_owner);
                         }
+                        if resolved_owner == "Str" {
+                            return match field.as_str() {
+                                "len" | "compare" => Type::Integer,
+                                "concat" | "upper" | "lower" | "trim" => Type::String,
+                                "contains" | "startsWith" | "endsWith" => Type::Boolean,
+                                _ => Type::Integer,
+                            };
+                        }
+                        match (resolved_owner.as_str(), field.as_str()) {
+                            ("Option", "some") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Type::Option(Box::new(
+                                            self.infer_expr_type(&first_arg.node, params),
+                                        ));
+                                    }
+                                }
+                            }
+                            ("Option", "none") => return Type::Option(Box::new(Type::Integer)),
+                            ("Result", "ok") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Type::Result(
+                                            Box::new(self.infer_expr_type(&first_arg.node, params)),
+                                            Box::new(Type::String),
+                                        );
+                                    }
+                                }
+                            }
+                            ("Result", "error") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Type::Result(
+                                            Box::new(Type::Integer),
+                                            Box::new(self.infer_expr_type(&first_arg.node, params)),
+                                        );
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    let obj_ty = self.infer_expr_type(&object.node, params);
+                    if let Some(ret_ty) = self.builtin_method_return_type(&obj_ty, field) {
+                        return ret_ty;
                     }
                     let callee_ty = self.infer_expr_type(&callee.node, params);
                     if let Type::Function(_, ret_ty) = callee_ty {

@@ -7934,6 +7934,18 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>> {
         let lhs = self.compile_expr(left)?;
         let rhs = self.compile_expr(right)?;
+        let left_ty = self.infer_expr_type(left, &[]);
+        let right_ty = self.infer_expr_type(right, &[]);
+
+        if matches!(op, BinOp::Eq | BinOp::NotEq) && left_ty == right_ty {
+            let eq = self.build_value_equality(lhs, rhs, &left_ty, "eq")?;
+            let result = match op {
+                BinOp::Eq => eq,
+                BinOp::NotEq => self.builder.build_not(eq, "ne").unwrap(),
+                _ => unreachable!(),
+            };
+            return Ok(result.into());
+        }
 
         // Integer operations
         if lhs.is_int_value() && rhs.is_int_value() {
@@ -8034,6 +8046,47 @@ impl<'ctx> Codegen<'ctx> {
                 .map(|v| v.unwrap());
         }
 
+        let left_is_string = matches!(self.infer_object_type(left), Some(Type::String))
+            || matches!(left_ty, Type::String);
+        let right_is_string = matches!(self.infer_object_type(right), Some(Type::String))
+            || matches!(right_ty, Type::String);
+        if left_is_string && right_is_string && matches!(op, BinOp::Eq | BinOp::NotEq) {
+            let lhs = self
+                .compile_expr_with_expected_type(left, &Type::String)?
+                .into_pointer_value();
+            let rhs = self
+                .compile_expr_with_expected_type(right, &Type::String)?
+                .into_pointer_value();
+            let strcmp = self.get_or_declare_strcmp();
+            let cmp = self
+                .builder
+                .build_call(strcmp, &[lhs.into(), rhs.into()], "strcmp")
+                .map_err(|e| CodegenError::new(format!("strcmp call failed: {}", e)))?;
+            let cmp = self.extract_call_value(cmp).into_int_value();
+            let result = match op {
+                BinOp::Eq => self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        cmp,
+                        self.context.i32_type().const_zero(),
+                        "str_eq",
+                    )
+                    .unwrap(),
+                BinOp::NotEq => self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        cmp,
+                        self.context.i32_type().const_zero(),
+                        "str_ne",
+                    )
+                    .unwrap(),
+                _ => unreachable!(),
+            };
+            return Ok(result.into());
+        }
+
         Err(CodegenError::new("Type mismatch in binary operation"))
     }
 
@@ -8106,6 +8159,12 @@ impl<'ctx> Codegen<'ctx> {
         // Check for Option/Result static methods
         if let Expr::Field { object, field } = callee {
             if let Expr::Ident(type_name) = &object.node {
+                let call_expr = Expr::Call {
+                    callee: Box::new(Spanned::new(callee.clone(), Span::default())),
+                    args: args.to_vec(),
+                    type_args: Vec::new(),
+                };
+                let inferred_expr_ty = self.infer_expr_type(&call_expr, &[]);
                 match (type_name.as_str(), field.as_str()) {
                     ("Option", "some") => {
                         if args.len() != 1 {
@@ -8113,10 +8172,18 @@ impl<'ctx> Codegen<'ctx> {
                                 "Option.some() requires exactly 1 argument",
                             ));
                         }
+                        if let Type::Option(inner_ty) = &inferred_expr_ty {
+                            let val =
+                                self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
+                            return self.create_option_some_typed(val, inner_ty);
+                        }
                         let val = self.compile_expr(&args[0].node)?;
                         return self.create_option_some(val);
                     }
                     ("Option", "none") => {
+                        if let Type::Option(inner_ty) = &inferred_expr_ty {
+                            return self.create_option_none_typed(inner_ty);
+                        }
                         return self.create_option_none();
                     }
                     ("Result", "ok") => {
@@ -8124,6 +8191,10 @@ impl<'ctx> Codegen<'ctx> {
                             return Err(CodegenError::new(
                                 "Result.ok() requires exactly 1 argument",
                             ));
+                        }
+                        if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
+                            let val = self.compile_expr_with_expected_type(&args[0].node, ok_ty)?;
+                            return self.create_result_ok_typed(val, ok_ty, err_ty);
                         }
                         let val = self.compile_expr(&args[0].node)?;
                         return self.create_result_ok(val);
@@ -8133,6 +8204,11 @@ impl<'ctx> Codegen<'ctx> {
                             return Err(CodegenError::new(
                                 "Result.error() requires exactly 1 argument",
                             ));
+                        }
+                        if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
+                            let val =
+                                self.compile_expr_with_expected_type(&args[0].node, err_ty)?;
+                            return self.create_result_error_typed(val, ok_ty, err_ty);
                         }
                         let val = self.compile_expr(&args[0].node)?;
                         return self.create_result_error(val);
@@ -8901,6 +8977,36 @@ impl<'ctx> Codegen<'ctx> {
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("Task.await_timeout used outside function"))?;
+                let timeout_valid_bb = self
+                    .context
+                    .append_basic_block(current_fn, "task_timeout_valid");
+                let timeout_invalid_bb = self
+                    .context
+                    .append_basic_block(current_fn, "task_timeout_invalid");
+                let timeout_negative = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::SLT,
+                        ms_i64,
+                        self.context.i64_type().const_zero(),
+                        "task_timeout_negative",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(
+                        timeout_negative,
+                        timeout_invalid_bb,
+                        timeout_valid_bb,
+                    )
+                    .unwrap();
+
+                self.builder.position_at_end(timeout_invalid_bb);
+                self.emit_runtime_error(
+                    "Task.await_timeout() timeout must be non-negative",
+                    "task_timeout_negative_runtime_error",
+                )?;
+
+                self.builder.position_at_end(timeout_valid_bb);
 
                 let done_field = unsafe {
                     self.builder

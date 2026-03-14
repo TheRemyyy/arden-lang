@@ -8024,6 +8024,35 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_fails_fast_on_negative_await_timeout() {
+        let temp_root = make_temp_project_root("await-timeout-negative-runtime");
+        let source_path = temp_root.join("await_timeout_negative_runtime.apex");
+        let output_path = temp_root.join("await_timeout_negative_runtime");
+        let source = r#"
+            async function work(): Integer {
+                return 7;
+            }
+
+            function main(): Integer {
+                maybe: Option<Integer> = work().await_timeout(-1);
+                if (maybe.is_some()) { return 99; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("negative await_timeout should still codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled negative await_timeout binary");
+        assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_if_expression_generic_constructor_branches() {
         let temp_root = make_temp_project_root("ifexpr-generic-ctor-runtime");
         let source_path = temp_root.join("ifexpr_generic_ctor_runtime.apex");
@@ -9247,6 +9276,366 @@ function main(): None {
             .status()
             .expect("run compiled string index oob binary");
         assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_equality_on_literals() {
+        let temp_root = make_temp_project_root("string-eq-literal-runtime");
+        let source_path = temp_root.join("string_eq_literal_runtime.apex");
+        let output_path = temp_root.join("string_eq_literal_runtime");
+        let source = r#"
+            function main(): Integer {
+                if ("b" == "b") { return 32; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string literal equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string equality literal binary");
+        assert_eq!(status.code(), Some(32));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_equality_on_expression_results() {
+        let temp_root = make_temp_project_root("string-eq-expr-runtime");
+        let source_path = temp_root.join("string_eq_expr_runtime.apex");
+        let output_path = temp_root.join("string_eq_expr_runtime");
+        let source = r#"
+            import std.string.*;
+            function main(): Integer {
+                if (Str.concat("a", "b") == "ab") { return 33; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string expression equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string equality expression binary");
+        assert_eq!(status.code(), Some(33));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_list_identity_equality() {
+        let temp_root = make_temp_project_root("list-eq-runtime");
+        let source_path = temp_root.join("list_eq_runtime.apex");
+        let output_path = temp_root.join("list_eq_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                if (xs == xs) { return 34; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("list identity equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled list equality binary");
+        assert_eq!(status.code(), Some(34));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_identity_equality() {
+        let temp_root = make_temp_project_root("map-eq-runtime");
+        let source_path = temp_root.join("map_eq_runtime.apex");
+        let output_path = temp_root.join("map_eq_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                mut m: Map<Integer, Boxed> = Map<Integer, Boxed>();
+                m.set(1, Boxed(2));
+                if (m == m) { return 35; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("map identity equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map equality binary");
+        assert_eq!(status.code(), Some(35));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_class_identity_equality() {
+        let temp_root = make_temp_project_root("class-eq-runtime");
+        let source_path = temp_root.join("class_eq_runtime.apex");
+        let output_path = temp_root.join("class_eq_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                b: Boxed = Boxed(2);
+                if (b == b) { return 36; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("class identity equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled class equality binary");
+        assert_eq!(status.code(), Some(36));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_option_unwrap_object_identity_equality() {
+        let temp_root = make_temp_project_root("option-unwrap-object-eq-runtime");
+        let source_path = temp_root.join("option_unwrap_object_eq_runtime.apex");
+        let output_path = temp_root.join("option_unwrap_object_eq_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                b: Boxed = Boxed(3);
+                x: Option<Boxed> = Option.some(b);
+                if (x.unwrap() == b) { return 37; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Option.unwrap object identity equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Option.unwrap object equality binary");
+        assert_eq!(status.code(), Some(37));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_get_object_identity_equality() {
+        let temp_root = make_temp_project_root("map-get-object-eq-runtime");
+        let source_path = temp_root.join("map_get_object_eq_runtime.apex");
+        let output_path = temp_root.join("map_get_object_eq_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                b: Boxed = Boxed(4);
+                mut m: Map<Integer, Boxed> = Map<Integer, Boxed>();
+                m.set(1, b);
+                if (m.get(1) == b) { return 38; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Map.get object identity equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Map.get object equality binary");
+        assert_eq!(status.code(), Some(38));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_await_timeout_unwrap_object_identity_equality() {
+        let temp_root = make_temp_project_root("await-timeout-unwrap-object-eq-runtime");
+        let source_path = temp_root.join("await_timeout_unwrap_object_eq_runtime.apex");
+        let output_path = temp_root.join("await_timeout_unwrap_object_eq_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            async function work(): Boxed {
+                return Boxed(5);
+            }
+
+            function main(): Integer {
+                b: Boxed = work().await_timeout(10).unwrap();
+                if (b == b) { return 39; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("await_timeout unwrap object identity equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled await_timeout unwrap object equality binary");
+        assert_eq!(status.code(), Some(39));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_range_method_calls() {
+        let temp_root = make_temp_project_root("direct-range-method-runtime");
+        let source_path = temp_root.join("direct_range_method_runtime.apex");
+        let output_path = temp_root.join("direct_range_method_runtime");
+        let source = r#"
+            function main(): Integer {
+                if (range(0, 10).has_next()) { return 40; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct range method call should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct range method binary");
+        assert_eq!(status.code(), Some(40));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_option_some_method_chains() {
+        let temp_root = make_temp_project_root("direct-option-some-method-runtime");
+        let source_path = temp_root.join("direct_option_some_method_runtime.apex");
+        let output_path = temp_root.join("direct_option_some_method_runtime");
+        let source = r#"
+            function main(): Integer {
+                if (Option.some(12).unwrap() == 12) { return 41; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Option.some method chain should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Option.some method binary");
+        assert_eq!(status.code(), Some(41));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_result_ok_method_chains() {
+        let temp_root = make_temp_project_root("direct-result-ok-method-runtime");
+        let source_path = temp_root.join("direct_result_ok_method_runtime.apex");
+        let output_path = temp_root.join("direct_result_ok_method_runtime");
+        let source = r#"
+            function main(): Integer {
+                if (Result.ok(12).unwrap() == 12) { return 42; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Result.ok method chain should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Result.ok method binary");
+        assert_eq!(status.code(), Some(42));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_result_error_integer_equality() {
+        let temp_root = make_temp_project_root("direct-result-error-int-eq-runtime");
+        let source_path = temp_root.join("direct_result_error_int_eq_runtime.apex");
+        let output_path = temp_root.join("direct_result_error_int_eq_runtime");
+        let source = r#"
+            function main(): Integer {
+                e: Integer = 7;
+                if (Result.error(e) == Result.error(e)) { return 43; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Result.error integer equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Result.error integer equality binary");
+        assert_eq!(status.code(), Some(43));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_result_error_object_identity_equality() {
+        let temp_root = make_temp_project_root("direct-result-error-object-eq-runtime");
+        let source_path = temp_root.join("direct_result_error_object_eq_runtime.apex");
+        let output_path = temp_root.join("direct_result_error_object_eq_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                e: Boxed = Boxed(9);
+                if (Result.error(e) == Result.error(e)) { return 44; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Result.error object equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Result.error object equality binary");
+        assert_eq!(status.code(), Some(44));
 
         let _ = fs::remove_dir_all(temp_root);
     }
