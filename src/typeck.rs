@@ -2938,17 +2938,37 @@ impl TypeChecker {
                 let obj_type = self.check_expr(&object.node, object.span.clone());
                 let idx_type = self.check_expr(&index.node, index.span.clone());
 
-                if !matches!(idx_type, ResolvedType::Integer) {
-                    self.error(
-                        format!("Index must be Integer, found {}", idx_type),
-                        index.span.clone(),
-                    );
-                }
-
                 match &obj_type {
-                    ResolvedType::List(inner) => (**inner).clone(),
-                    ResolvedType::String => ResolvedType::Char,
-                    ResolvedType::Map(_, v) => (**v).clone(),
+                    ResolvedType::List(inner) => {
+                        if !matches!(idx_type, ResolvedType::Integer) {
+                            self.error(
+                                format!("Index must be Integer, found {}", idx_type),
+                                index.span.clone(),
+                            );
+                        }
+                        (**inner).clone()
+                    }
+                    ResolvedType::String => {
+                        if !matches!(idx_type, ResolvedType::Integer) {
+                            self.error(
+                                format!("Index must be Integer, found {}", idx_type),
+                                index.span.clone(),
+                            );
+                        }
+                        ResolvedType::Char
+                    }
+                    ResolvedType::Map(k, v) => {
+                        if !self.types_compatible(k, &idx_type) {
+                            self.error(
+                                format!(
+                                    "Map index type mismatch: expected {}, got {}",
+                                    k, idx_type
+                                ),
+                                index.span.clone(),
+                            );
+                        }
+                        (**v).clone()
+                    }
                     _ => {
                         self.error(format!("Cannot index type {}", obj_type), span);
                         ResolvedType::Unknown
@@ -5924,6 +5944,40 @@ mod tests {
             }
         "#;
         check_source(src).expect("valid built-in generic constructors should typecheck");
+    }
+
+    #[test]
+    fn accepts_map_indexing_with_non_integer_key_types() {
+        let src = r#"
+            function main(): None {
+                m: Map<String, Integer> = Map<String, Integer>();
+                m.set("x", 7);
+                value: Integer = m["x"];
+                return None;
+            }
+        "#;
+        check_source(src).expect("Map indexing should accept key-typed indices");
+    }
+
+    #[test]
+    fn rejects_map_indexing_with_wrong_key_type() {
+        let src = r#"
+            function main(): None {
+                m: Map<String, Integer> = Map<String, Integer>();
+                value: Integer = m[1];
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("wrong map key index type should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Map index type mismatch: expected String, got Integer"),
+            "{joined}"
+        );
     }
 
     #[test]

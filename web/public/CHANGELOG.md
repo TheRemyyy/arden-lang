@@ -50,12 +50,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed nested generic module-function specialization in backend codegen:
   - local and exact-imported nested generic functions returning module-local generic classes now remap shadowed class constructors/types during specialization instead of accidentally lowering `Box<T>(...)` through the built-in `Box` runtime path
   - runtime paths like `M.mk<Integer>(2).get()`, `M.mk<Integer>(2).value`, and `import app.M.mk as mk; mk<Integer>(2).get()` no longer segfault or silently return zero after codegen
+- Fixed nested generic method specialization on nested generic classes:
+  - explicit generic method calls like `b.map<Integer>(inc).get()` now specialize across all matching owner-class instantiations instead of being dropped when both base and `__spec__` class templates exist
+  - nested generic method bodies now remap module-local shadowed class constructors/types during specialization, so `module M { class Box<T> { function map<U>(...): Box<U> { return Box<U>(...); } } }` no longer returns zeroed objects at runtime
+  - filtered project codegen now emits only the explicitly requested class methods for class declarations activated via method symbols, which fixes imported expression-receiver paths like `import app.M.make as make; make<Integer>(2).map<Integer>(inc).get()` without re-emitting duplicate base class symbols in the caller object
+- Fixed `await` postfix precedence in the parser:
+  - chains like `await(make_box()).get()` now parse as method calls on the awaited result instead of incorrectly swallowing the `.get()` inside the awaited operand
 - Fixed nested enum payload handling:
   - nested enum-by-value payloads are now rejected during typechecking with a direct diagnostic instead of slipping through and panicking later in backend enum payload encoding
 - Fixed collection runtime safety guards:
   - `List.get()`, `List.set()`, and `List.pop()` now fail fast on negative/out-of-bounds indices or empty-list access instead of reading invalid memory
   - `Map.get()` now fails fast on missing keys instead of returning a zero/null value that could later crash during field or method access
   - direct list indexing via `xs[i]` now uses the same bounds checks instead of bypassing the safer method path and reading invalid memory
+  - direct map indexing via `m[key]` now lowers through the same typed/fail-fast lookup path as `Map.get(key)` instead of panicking in codegen or treating the map storage as a raw pointer array
+  - `Map<K, V>` indexing now typechecks against the real key type `K` instead of incorrectly requiring every bracket index to be `Integer`
 - Fixed `apex test` handling for `@Ignore` without a reason:
   - tests marked with bare `@Ignore` are now skipped correctly instead of being executed
   - ignored tests are now counted in the final `Total` summary as well as `Ignored`

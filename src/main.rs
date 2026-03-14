@@ -773,13 +773,21 @@ fn filter_codegen_decl_by_symbols(
     decl: &Spanned<Decl>,
     declaration_symbols: &HashSet<String>,
 ) -> Option<Spanned<Decl>> {
+    fn class_has_requested_method(class_name: &str, declaration_symbols: &HashSet<String>) -> bool {
+        let method_prefix = format!("{}__", class_name);
+        declaration_symbols
+            .iter()
+            .any(|symbol| symbol.starts_with(&method_prefix))
+    }
+
     match &decl.node {
-        Decl::Function(func) => declaration_symbols
-            .contains(&func.name)
-            .then(|| decl.clone()),
-        Decl::Class(class) => declaration_symbols
-            .contains(&class.name)
-            .then(|| decl.clone()),
+        Decl::Function(func) => (declaration_symbols.contains(&func.name)
+            || func.name.contains("__spec__"))
+        .then(|| decl.clone()),
+        Decl::Class(class) => (declaration_symbols.contains(&class.name)
+            || class.name.contains("__spec__")
+            || class_has_requested_method(&class.name, declaration_symbols))
+        .then(|| decl.clone()),
         Decl::Enum(en) => declaration_symbols.contains(&en.name).then(|| decl.clone()),
         Decl::Module(module) => {
             if declaration_symbols.contains(&module.name) {
@@ -7402,6 +7410,126 @@ function main(): None {
     }
 
     #[test]
+    fn project_run_supports_nested_generic_methods_on_nested_generic_classes() {
+        let temp_root = make_temp_project_root("nested-generic-method-runtime-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { b: M.Box<Integer> = M.Box<Integer>(2); return b.map<Integer>(inc).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support nested generic methods on nested generic classes",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled nested generic method binary");
+        assert_eq!(status.code(), Some(3));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_nested_generic_method_alias_paths() {
+        let temp_root = make_temp_project_root("nested-generic-method-alias-runtime-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.Box as Boxed;\nimport app.inc as inc;\nfunction main(): Integer { b: Boxed<Integer> = Boxed<Integer>(2); return b.map<Integer>(inc).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support nested generic method alias paths");
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled nested generic alias method binary");
+        assert_eq!(status.code(), Some(3));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_nested_generic_methods_on_expression_receivers() {
+        let temp_root = make_temp_project_root("nested-generic-method-expr-runtime-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n    function make<T>(value: T): Box<T> { return Box<T>(value); }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { return M.make<Integer>(2).map<Integer>(inc).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support nested generic methods on expression receivers",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled nested generic expression receiver binary");
+        assert_eq!(status.code(), Some(3));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_nested_generic_method_imported_expression_receivers() {
+        let temp_root =
+            make_temp_project_root("nested-generic-method-imported-expr-runtime-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n    function make<T>(value: T): Box<T> { return Box<T>(value); }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.make as make;\nimport app.inc as inc;\nfunction main(): Integer { return make<Integer>(2).map<Integer>(inc).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support imported expression receivers for nested generic methods",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled imported nested generic expression receiver binary");
+        assert_eq!(status.code(), Some(3));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_supports_async_block_import_alias_calls() {
         let temp_root = make_temp_project_root("async-block-import-alias-project");
         let src_dir = temp_root.join("src");
@@ -7853,6 +7981,44 @@ function main(): None {
             .status()
             .expect("run compiled try-object method binary");
         assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_method_calls_on_awaited_objects_without_extra_parentheses() {
+        let temp_root = make_temp_project_root("await-object-method-runtime");
+        let source_path = temp_root.join("await_object_method_runtime.apex");
+        let output_path = temp_root.join("await_object_method_runtime");
+        let source = r#"
+            class Boxed<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            async function make_box(): Boxed<Integer> {
+                return Boxed<Integer>(3);
+            }
+
+            async function run(): Integer {
+                return await(make_box()).get();
+            }
+
+            function main(): Integer {
+                t: Task<Integer> = run();
+                return await(t);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("awaited object method chain should parse and codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled awaited-object method binary");
+        assert_eq!(status.code(), Some(3));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -8787,6 +8953,65 @@ function main(): None {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled missing map.get object binary");
+        assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_field_access_on_map_index_object_results() {
+        let temp_root = make_temp_project_root("map-index-object-field-runtime");
+        let source_path = temp_root.join("map_index_object_field_runtime.apex");
+        let output_path = temp_root.join("map_index_object_field_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                m: Map<Integer, Boxed> = Map<Integer, Boxed>();
+                m.set(1, Boxed(8));
+                return m[1].value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("field access on map index object result should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map index object field binary");
+        assert_eq!(status.code(), Some(8));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_missing_map_index_object_results() {
+        let temp_root = make_temp_project_root("map-index-missing-object-runtime");
+        let source_path = temp_root.join("map_index_missing_object_runtime.apex");
+        let output_path = temp_root.join("map_index_missing_object_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                m: Map<Integer, Boxed> = Map<Integer, Boxed>();
+                return m[1].value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("missing map index object result should still codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled missing map index object binary");
         assert_eq!(status.code(), Some(1));
 
         let _ = fs::remove_dir_all(temp_root);

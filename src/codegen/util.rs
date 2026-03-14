@@ -1440,6 +1440,8 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Block(block) | Expr::AsyncBlock(block) => self.infer_block_tail_type(block),
             Expr::Index { object, .. } => match self.infer_object_type(&object.node)? {
                 Type::List(inner) => Some((*inner).clone()),
+                Type::Map(_, value) => Some((*value).clone()),
+                Type::String => Some(Type::Char),
                 _ => None,
             },
             Expr::Field { object, field } => {

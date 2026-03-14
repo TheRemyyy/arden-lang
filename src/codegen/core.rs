@@ -569,6 +569,13 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn module_prefix_for_owner_class(owner_class: &str) -> Option<&str> {
+        let base = owner_class
+            .split_once("__spec__")
+            .map_or(owner_class, |(base, _)| base);
+        base.rsplit_once("__").map(|(prefix, _)| prefix)
+    }
+
     fn collect_generic_templates_from_decl(
         decl: &Spanned<Decl>,
         module_prefix: Option<&str>,
@@ -2428,92 +2435,128 @@ impl<'ctx> Codegen<'ctx> {
                 if !type_args.is_empty() {
                     if let Expr::Field { field, .. } = &callee.node {
                         if let Some(candidates) = method_templates.get(field) {
-                            if candidates.len() == 1 {
-                                let template = &candidates[0];
-                                if template.func.generic_params.len() == type_args.len() {
-                                    let suffix = type_args
-                                        .iter()
-                                        .map(Self::type_specialization_suffix)
-                                        .collect::<Vec<_>>()
-                                        .join("_");
-                                    let spec_name = format!("{}__spec__{}", field, suffix);
+                            let eligible_templates: Vec<_> = candidates
+                                .iter()
+                                .filter(|template| {
+                                    template.func.generic_params.len() == type_args.len()
+                                })
+                                .collect();
+                            if !eligible_templates.is_empty() {
+                                let suffix = type_args
+                                    .iter()
+                                    .map(Self::type_specialization_suffix)
+                                    .collect::<Vec<_>>()
+                                    .join("_");
+                                let spec_name = format!("{}__spec__{}", field, suffix);
+                                for template in eligible_templates {
                                     let emitted_key = format!(
                                         "{}::{}",
                                         template.owner_class.as_deref().unwrap_or(field),
                                         spec_name
                                     );
-                                    if emitted.insert(emitted_key) {
-                                        let mut bindings: HashMap<String, Type> = HashMap::new();
-                                        for (param, ty) in template
-                                            .func
-                                            .generic_params
-                                            .iter()
-                                            .zip(type_args.iter())
+                                    if !emitted.insert(emitted_key) {
+                                        continue;
+                                    }
+
+                                    let mut bindings: HashMap<String, Type> = HashMap::new();
+                                    for (param, ty) in
+                                        template.func.generic_params.iter().zip(type_args.iter())
+                                    {
+                                        bindings.insert(param.name.clone(), ty.clone());
+                                    }
+
+                                    let mut spec_func = template.func.clone();
+                                    spec_func.name = spec_name.clone();
+                                    spec_func.generic_params.clear();
+                                    for param in &mut spec_func.params {
+                                        param.ty = Self::substitute_type(&param.ty, &bindings);
+                                    }
+                                    spec_func.return_type =
+                                        Self::substitute_type(&spec_func.return_type, &bindings);
+                                    spec_func.body = spec_func
+                                        .body
+                                        .iter()
+                                        .map(|s| {
+                                            Spanned::new(
+                                                Self::substitute_stmt_types(&s.node, &bindings),
+                                                s.span.clone(),
+                                            )
+                                        })
+                                        .collect();
+                                    if let Some(owner_class) = &template.owner_class {
+                                        if let Some(module_prefix) =
+                                            Self::module_prefix_for_owner_class(owner_class)
                                         {
-                                            bindings.insert(param.name.clone(), ty.clone());
-                                        }
-
-                                        let mut spec_func = template.func.clone();
-                                        spec_func.name = spec_name.clone();
-                                        spec_func.generic_params.clear();
-                                        for param in &mut spec_func.params {
-                                            param.ty = Self::substitute_type(&param.ty, &bindings);
-                                        }
-                                        spec_func.return_type = Self::substitute_type(
-                                            &spec_func.return_type,
-                                            &bindings,
-                                        );
-                                        spec_func.body = spec_func
-                                            .body
-                                            .iter()
-                                            .map(|s| {
-                                                Spanned::new(
-                                                    Self::substitute_stmt_types(&s.node, &bindings),
-                                                    s.span.clone(),
-                                                )
-                                            })
-                                            .collect();
-
-                                        let rewritten_body = spec_func
-                                            .body
-                                            .iter()
-                                            .map(|s| {
-                                                Ok(Spanned::new(
-                                                    Self::rewrite_stmt_generic_calls(
-                                                        &s.node,
-                                                        function_templates,
-                                                        method_templates,
+                                            for param in &mut spec_func.params {
+                                                param.ty =
+                                                    Self::rewrite_type_for_local_module_classes(
+                                                        &param.ty,
+                                                        module_prefix,
                                                         class_templates,
-                                                        emitted,
-                                                        generated_functions,
-                                                        generated_methods,
-                                                    )?,
-                                                    s.span.clone(),
-                                                ))
-                                            })
-                                            .collect::<Result<Vec<_>>>()?;
-                                        spec_func.body = rewritten_body;
-                                        if let Some(owner_class) = &template.owner_class {
-                                            generated_methods
-                                                .entry(owner_class.clone())
-                                                .or_default()
-                                                .push(spec_func);
+                                                    );
+                                            }
+                                            spec_func.return_type =
+                                                Self::rewrite_type_for_local_module_classes(
+                                                    &spec_func.return_type,
+                                                    module_prefix,
+                                                    class_templates,
+                                                );
+                                            spec_func.body = spec_func
+                                                .body
+                                                .iter()
+                                                .map(|stmt| {
+                                                    Spanned::new(
+                                                        Self::rewrite_stmt_for_local_module_classes(
+                                                            &stmt.node,
+                                                            module_prefix,
+                                                            class_templates,
+                                                        ),
+                                                        stmt.span.clone(),
+                                                    )
+                                                })
+                                                .collect();
                                         }
                                     }
 
-                                    if let Expr::Field { object, .. } = &rewritten_callee.node {
-                                        return Ok(Expr::Call {
-                                            callee: Box::new(Spanned::new(
-                                                Expr::Field {
-                                                    object: object.clone(),
-                                                    field: spec_name,
-                                                },
-                                                rewritten_callee.span,
-                                            )),
-                                            args: rewritten_args,
-                                            type_args: Vec::new(),
-                                        });
+                                    let rewritten_body = spec_func
+                                        .body
+                                        .iter()
+                                        .map(|s| {
+                                            Ok(Spanned::new(
+                                                Self::rewrite_stmt_generic_calls(
+                                                    &s.node,
+                                                    function_templates,
+                                                    method_templates,
+                                                    class_templates,
+                                                    emitted,
+                                                    generated_functions,
+                                                    generated_methods,
+                                                )?,
+                                                s.span.clone(),
+                                            ))
+                                        })
+                                        .collect::<Result<Vec<_>>>()?;
+                                    spec_func.body = rewritten_body;
+                                    if let Some(owner_class) = &template.owner_class {
+                                        generated_methods
+                                            .entry(owner_class.clone())
+                                            .or_default()
+                                            .push(spec_func);
                                     }
+                                }
+
+                                if let Expr::Field { object, .. } = &rewritten_callee.node {
+                                    return Ok(Expr::Call {
+                                        callee: Box::new(Spanned::new(
+                                            Expr::Field {
+                                                object: object.clone(),
+                                                field: spec_name,
+                                            },
+                                            rewritten_callee.span,
+                                        )),
+                                        args: rewritten_args,
+                                        type_args: Vec::new(),
+                                    });
                                 }
                             }
                         }
@@ -4362,6 +4405,70 @@ impl<'ctx> Codegen<'ctx> {
         active_symbols: Option<&HashSet<String>>,
         declaration_symbols: Option<&HashSet<String>>,
     ) -> Result<()> {
+        fn collect_generated_spec_symbols(program: &Program) -> HashSet<String> {
+            fn collect_decl_symbols(
+                decl: &Spanned<Decl>,
+                module_prefix: Option<&str>,
+                symbols: &mut HashSet<String>,
+            ) {
+                match &decl.node {
+                    Decl::Function(func) => {
+                        let name = if let Some(prefix) = module_prefix {
+                            format!("{}__{}", prefix, func.name)
+                        } else {
+                            func.name.clone()
+                        };
+                        if name.contains("__spec__") {
+                            symbols.insert(name);
+                        }
+                    }
+                    Decl::Class(class) => {
+                        let class_name = if let Some(prefix) = module_prefix {
+                            format!("{}__{}", prefix, class.name)
+                        } else {
+                            class.name.clone()
+                        };
+                        if class_name.contains("__spec__") {
+                            symbols.insert(class_name.clone());
+                        }
+                        for method in &class.methods {
+                            let method_name = format!("{}__{}", class_name, method.name);
+                            if method_name.contains("__spec__") {
+                                symbols.insert(method_name);
+                            }
+                        }
+                    }
+                    Decl::Enum(en) => {
+                        let name = if let Some(prefix) = module_prefix {
+                            format!("{}__{}", prefix, en.name)
+                        } else {
+                            en.name.clone()
+                        };
+                        if name.contains("__spec__") {
+                            symbols.insert(name);
+                        }
+                    }
+                    Decl::Module(module) => {
+                        let module_name = if let Some(prefix) = module_prefix {
+                            format!("{}__{}", prefix, module.name)
+                        } else {
+                            module.name.clone()
+                        };
+                        for inner in &module.declarations {
+                            collect_decl_symbols(inner, Some(&module_name), symbols);
+                        }
+                    }
+                    Decl::Interface(_) | Decl::Import(_) => {}
+                }
+            }
+
+            let mut symbols = HashSet::new();
+            for decl in &program.declarations {
+                collect_decl_symbols(decl, None, &mut symbols);
+            }
+            symbols
+        }
+
         let class_specialized_program = Self::specialize_generic_classes(program)?;
         let explicit_specialized_program;
         let program = if Self::program_has_explicit_generic_calls(&class_specialized_program) {
@@ -4371,6 +4478,11 @@ impl<'ctx> Codegen<'ctx> {
         } else {
             &class_specialized_program
         };
+        let specialized_active_symbols = active_symbols.map(|symbols| {
+            let mut combined = symbols.clone();
+            combined.extend(collect_generated_spec_symbols(program));
+            combined
+        });
 
         self.import_aliases.clear();
         for decl in &program.declarations {
@@ -4417,7 +4529,8 @@ impl<'ctx> Codegen<'ctx> {
 
         // Second pass: compile function bodies
         for decl in &program.declarations {
-            let should_compile = active_symbols
+            let should_compile = specialized_active_symbols
+                .as_ref()
                 .map(|symbols| self.should_compile_decl(&decl.node, symbols))
                 .unwrap_or(true);
             if !should_compile {
@@ -4425,11 +4538,17 @@ impl<'ctx> Codegen<'ctx> {
             }
             match &decl.node {
                 Decl::Function(func) => self.compile_function(func)?,
-                Decl::Class(class) => self.compile_class(class)?,
+                Decl::Class(class) => {
+                    if let Some(symbols) = specialized_active_symbols.as_ref() {
+                        self.compile_class_filtered(class, symbols)?;
+                    } else {
+                        self.compile_class(class)?;
+                    }
+                }
                 Decl::Enum(_) => {}
                 Decl::Interface(_) => {} // Interfaces don't generate code
                 Decl::Module(module) => {
-                    if let Some(symbols) = active_symbols {
+                    if let Some(symbols) = specialized_active_symbols.as_ref() {
                         self.compile_module_filtered(module, symbols)?;
                     } else {
                         self.compile_module(module)?;
@@ -4443,6 +4562,16 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn should_compile_decl(&self, decl: &Decl, active_symbols: &HashSet<String>) -> bool {
+        fn class_has_active_method_symbol(
+            class_name: &str,
+            active_symbols: &HashSet<String>,
+        ) -> bool {
+            let method_prefix = format!("{}__", class_name);
+            active_symbols
+                .iter()
+                .any(|symbol| symbol.starts_with(&method_prefix))
+        }
+
         fn module_has_active_symbol(
             module: &ModuleDecl,
             prefix: &str,
@@ -4459,7 +4588,10 @@ impl<'ctx> Codegen<'ctx> {
                         }
                     }
                     Decl::Class(class) => {
-                        if active_symbols.contains(&format!("{}__{}", prefix, class.name)) {
+                        let class_name = format!("{}__{}", prefix, class.name);
+                        if active_symbols.contains(&class_name)
+                            || class_has_active_method_symbol(&class_name, active_symbols)
+                        {
                             return true;
                         }
                     }
@@ -4485,7 +4617,9 @@ impl<'ctx> Codegen<'ctx> {
                 active_symbols.contains(&func.name) || func.name.contains("__spec__")
             }
             Decl::Class(class) => {
-                active_symbols.contains(&class.name) || class.name.contains("__spec__")
+                active_symbols.contains(&class.name)
+                    || class.name.contains("__spec__")
+                    || class_has_active_method_symbol(&class.name, active_symbols)
             }
             Decl::Module(module) => module_has_active_symbol(module, &module.name, active_symbols),
             Decl::Enum(en) => active_symbols.contains(&en.name),
@@ -4690,6 +4824,16 @@ impl<'ctx> Codegen<'ctx> {
         prefix: &str,
         active_symbols: &HashSet<String>,
     ) -> Result<()> {
+        fn class_has_active_method_symbol(
+            class_name: &str,
+            active_symbols: &HashSet<String>,
+        ) -> bool {
+            let method_prefix = format!("{}__", class_name);
+            active_symbols
+                .iter()
+                .any(|symbol| symbol.starts_with(&method_prefix))
+        }
+
         if active_symbols.contains(prefix) {
             return self.compile_module_with_prefix(module, prefix);
         }
@@ -4706,10 +4850,12 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Decl::Class(class) => {
                     let prefixed = format!("{}__{}", prefix, class.name);
-                    if active_symbols.contains(&prefixed) {
+                    if active_symbols.contains(&prefixed)
+                        || class_has_active_method_symbol(&prefixed, active_symbols)
+                    {
                         let mut prefixed_class = class.clone();
                         prefixed_class.name = prefixed;
-                        self.compile_class(&prefixed_class)?;
+                        self.compile_class_filtered(&prefixed_class, active_symbols)?;
                     }
                 }
                 Decl::Enum(_) => {}
@@ -5034,6 +5180,33 @@ impl<'ctx> Codegen<'ctx> {
 
         for method in &class.methods {
             self.compile_method(class, method)?;
+        }
+
+        Ok(())
+    }
+
+    fn compile_class_filtered(
+        &mut self,
+        class: &ClassDecl,
+        active_symbols: &HashSet<String>,
+    ) -> Result<()> {
+        let ctor_name = format!("{}__new", class.name);
+        if active_symbols.contains(&class.name) || active_symbols.contains(&ctor_name) {
+            let implicit_constructor = Constructor {
+                params: vec![],
+                body: vec![],
+            };
+            self.compile_constructor(
+                class,
+                class.constructor.as_ref().unwrap_or(&implicit_constructor),
+            )?;
+        }
+
+        for method in &class.methods {
+            let method_name = format!("{}__{}", class.name, method.name);
+            if active_symbols.contains(&method_name) {
+                self.compile_method(class, method)?;
+            }
         }
 
         Ok(())
@@ -9131,8 +9304,15 @@ impl<'ctx> Codegen<'ctx> {
 
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
         let obj_val = self.compile_expr(object)?;
+        let object_ty = self.infer_object_type(object);
+
+        if let Some(map_ty @ Type::Map(_, _)) = &object_ty {
+            let index_arg = [Spanned::new(index.clone(), 0..0)];
+            return self.compile_map_method_on_value(obj_val, map_ty, "get", &index_arg);
+        }
+
         let idx = self.compile_expr(index)?.into_int_value();
-        let list_ty = self.infer_object_type(object);
+        let list_ty = object_ty;
 
         if let Some(Type::List(_)) = &list_ty {
             let i64_type = self.context.i64_type();

@@ -1940,9 +1940,16 @@ impl<'src> Parser<'src> {
             }
             Some(Token::Await) => {
                 self.advance();
-                let expr = self.parse_unary()?;
+                let expr = if self.check(&Token::LParen) {
+                    self.advance();
+                    let expr = self.parse_expr()?;
+                    self.eat(&Token::RParen)?;
+                    expr
+                } else {
+                    self.parse_unary()?
+                };
                 let span = start..expr.span.end;
-                Ok(Spanned::new(Expr::Await(Box::new(expr)), span))
+                self.parse_expr_rest(Spanned::new(Expr::Await(Box::new(expr)), span))
             }
             _ => self.parse_postfix(),
         }
@@ -3419,6 +3426,43 @@ mod tests {
             panic!("Expected call");
         };
         assert_eq!(type_args.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_await_expression_then_method_call() {
+        let source = r#"
+            async function run(): Integer {
+                return await(make()).get();
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse await expression method chain");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Return(Some(value)) = &func.body[0].node else {
+            panic!("Expected return statement");
+        };
+        let Expr::Call { callee, .. } = &value.node else {
+            panic!("Expected outer method call");
+        };
+        let Expr::Field { object, field } = &callee.node else {
+            panic!("Expected field callee");
+        };
+        assert_eq!(field, "get");
+        let Expr::Await(inner) = &object.node else {
+            panic!("Expected await receiver");
+        };
+        let Expr::Call {
+            callee: inner_callee,
+            ..
+        } = &inner.node
+        else {
+            panic!("Expected awaited call");
+        };
+        let Expr::Ident(name) = &inner_callee.node else {
+            panic!("Expected make identifier");
+        };
+        assert_eq!(name, "make");
     }
 
     #[test]
