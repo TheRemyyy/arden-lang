@@ -727,6 +727,37 @@ pub fn rewrite_program_for_project(
                                             .collect();
                                         Decl::Class(c)
                                     }
+                                    Decl::Module(module) => {
+                                        let nested_prefix =
+                                            module_prefixed_symbol(&module_prefix, &module.name);
+                                        let (
+                                            nested_local_functions,
+                                            nested_local_classes,
+                                            nested_local_enums,
+                                            nested_local_modules,
+                                        ) = collect_direct_module_symbol_names(
+                                            &module.declarations,
+                                        );
+                                        rewrite_nested_module_decl_for_project(
+                                            inner,
+                                            &nested_prefix,
+                                            current_namespace,
+                                            entry_namespace,
+                                            &nested_local_functions,
+                                            &nested_local_classes,
+                                            &nested_local_enums,
+                                            &nested_local_modules,
+                                            &imported_map,
+                                            global_function_map,
+                                            &imported_classes,
+                                            global_class_map,
+                                            &imported_enums,
+                                            global_enum_map,
+                                            &imported_modules,
+                                            global_module_map,
+                                        )
+                                        .node
+                                    }
                                     _ => inner.node.clone(),
                                 };
                                 ast::Spanned::new(node, inner.span.clone())
@@ -1205,6 +1236,321 @@ fn collect_direct_module_symbol_names(
 
 fn module_prefixed_symbol(module_prefix: &str, name: &str) -> String {
     format!("{}__{}", module_prefix, name)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rewrite_nested_module_decl_for_project(
+    decl: &ast::Spanned<Decl>,
+    module_prefix: &str,
+    current_namespace: &str,
+    entry_namespace: &str,
+    module_local_functions: &HashSet<String>,
+    module_local_classes: &HashSet<String>,
+    module_local_enums: &HashSet<String>,
+    module_local_modules: &HashSet<String>,
+    imported_map: &ImportedMap,
+    global_function_map: &HashMap<String, String>,
+    imported_classes: &ImportedMap,
+    global_class_map: &HashMap<String, String>,
+    imported_enums: &ImportedMap,
+    global_enum_map: &HashMap<String, String>,
+    imported_modules: &ImportedMap,
+    global_module_map: &HashMap<String, String>,
+) -> ast::Spanned<Decl> {
+    let node = match &decl.node {
+        Decl::Function(func) => {
+            let mut f = func.clone();
+            let mut scopes = vec![f.params.iter().map(|p| p.name.clone()).collect()];
+            f.params = f
+                .params
+                .iter()
+                .map(|p| ast::Parameter {
+                    name: p.name.clone(),
+                    ty: rewrite_module_local_type(
+                        &p.ty,
+                        module_prefix,
+                        current_namespace,
+                        entry_namespace,
+                        module_local_classes,
+                        module_local_enums,
+                        module_local_modules,
+                        imported_classes,
+                        global_class_map,
+                        imported_enums,
+                        global_enum_map,
+                        imported_modules,
+                    ),
+                    mutable: p.mutable,
+                    mode: p.mode,
+                })
+                .collect();
+            f.return_type = rewrite_module_local_type(
+                &f.return_type,
+                module_prefix,
+                current_namespace,
+                entry_namespace,
+                module_local_classes,
+                module_local_enums,
+                module_local_modules,
+                imported_classes,
+                global_class_map,
+                imported_enums,
+                global_enum_map,
+                imported_modules,
+            );
+            f.body = fix_module_local_block(
+                &rewrite_block_calls_for_project(
+                    &f.body,
+                    current_namespace,
+                    entry_namespace,
+                    module_local_functions,
+                    imported_map,
+                    global_function_map,
+                    module_local_classes,
+                    imported_classes,
+                    global_class_map,
+                    imported_enums,
+                    global_enum_map,
+                    module_local_modules,
+                    imported_modules,
+                    global_module_map,
+                    &mut scopes,
+                ),
+                current_namespace,
+                entry_namespace,
+                module_prefix,
+                module_local_functions,
+                module_local_classes,
+            );
+            Decl::Function(f)
+        }
+        Decl::Class(class) => {
+            let mut c = class.clone();
+            c.fields = c
+                .fields
+                .iter()
+                .map(|field| ast::Field {
+                    name: field.name.clone(),
+                    ty: rewrite_module_local_type(
+                        &field.ty,
+                        module_prefix,
+                        current_namespace,
+                        entry_namespace,
+                        module_local_classes,
+                        module_local_enums,
+                        module_local_modules,
+                        imported_classes,
+                        global_class_map,
+                        imported_enums,
+                        global_enum_map,
+                        imported_modules,
+                    ),
+                    mutable: field.mutable,
+                    visibility: field.visibility,
+                })
+                .collect();
+            if let Some(ctor) = &class.constructor {
+                let mut new_ctor = ctor.clone();
+                let mut scopes: Vec<HashSet<String>> =
+                    vec![new_ctor.params.iter().map(|p| p.name.clone()).collect()];
+                if let Some(scope) = scopes.last_mut() {
+                    scope.insert("this".to_string());
+                }
+                new_ctor.params = new_ctor
+                    .params
+                    .iter()
+                    .map(|p| ast::Parameter {
+                        name: p.name.clone(),
+                        ty: rewrite_module_local_type(
+                            &p.ty,
+                            module_prefix,
+                            current_namespace,
+                            entry_namespace,
+                            module_local_classes,
+                            module_local_enums,
+                            module_local_modules,
+                            imported_classes,
+                            global_class_map,
+                            imported_enums,
+                            global_enum_map,
+                            imported_modules,
+                        ),
+                        mutable: p.mutable,
+                        mode: p.mode,
+                    })
+                    .collect();
+                new_ctor.body = fix_module_local_block(
+                    &rewrite_block_calls_for_project(
+                        &new_ctor.body,
+                        current_namespace,
+                        entry_namespace,
+                        module_local_functions,
+                        imported_map,
+                        global_function_map,
+                        module_local_classes,
+                        imported_classes,
+                        global_class_map,
+                        imported_enums,
+                        global_enum_map,
+                        module_local_modules,
+                        imported_modules,
+                        global_module_map,
+                        &mut scopes,
+                    ),
+                    current_namespace,
+                    entry_namespace,
+                    module_prefix,
+                    module_local_functions,
+                    module_local_classes,
+                );
+                c.constructor = Some(new_ctor);
+            }
+            c.methods = class
+                .methods
+                .iter()
+                .map(|method| {
+                    let mut nm = method.clone();
+                    let mut scopes: Vec<HashSet<String>> =
+                        vec![nm.params.iter().map(|p| p.name.clone()).collect()];
+                    if let Some(scope) = scopes.last_mut() {
+                        scope.insert("this".to_string());
+                    }
+                    nm.params = nm
+                        .params
+                        .iter()
+                        .map(|p| ast::Parameter {
+                            name: p.name.clone(),
+                            ty: rewrite_module_local_type(
+                                &p.ty,
+                                module_prefix,
+                                current_namespace,
+                                entry_namespace,
+                                module_local_classes,
+                                module_local_enums,
+                                module_local_modules,
+                                imported_classes,
+                                global_class_map,
+                                imported_enums,
+                                global_enum_map,
+                                imported_modules,
+                            ),
+                            mutable: p.mutable,
+                            mode: p.mode,
+                        })
+                        .collect();
+                    nm.return_type = rewrite_module_local_type(
+                        &nm.return_type,
+                        module_prefix,
+                        current_namespace,
+                        entry_namespace,
+                        module_local_classes,
+                        module_local_enums,
+                        module_local_modules,
+                        imported_classes,
+                        global_class_map,
+                        imported_enums,
+                        global_enum_map,
+                        imported_modules,
+                    );
+                    nm.body = fix_module_local_block(
+                        &rewrite_block_calls_for_project(
+                            &nm.body,
+                            current_namespace,
+                            entry_namespace,
+                            module_local_functions,
+                            imported_map,
+                            global_function_map,
+                            module_local_classes,
+                            imported_classes,
+                            global_class_map,
+                            imported_enums,
+                            global_enum_map,
+                            module_local_modules,
+                            imported_modules,
+                            global_module_map,
+                            &mut scopes,
+                        ),
+                        current_namespace,
+                        entry_namespace,
+                        module_prefix,
+                        module_local_functions,
+                        module_local_classes,
+                    );
+                    nm
+                })
+                .collect();
+            Decl::Class(c)
+        }
+        Decl::Enum(en) => {
+            let mut e = en.clone();
+            e.variants = e
+                .variants
+                .iter()
+                .map(|v| ast::EnumVariant {
+                    name: v.name.clone(),
+                    fields: v
+                        .fields
+                        .iter()
+                        .map(|f| ast::EnumField {
+                            name: f.name.clone(),
+                            ty: rewrite_module_local_type(
+                                &f.ty,
+                                module_prefix,
+                                current_namespace,
+                                entry_namespace,
+                                module_local_classes,
+                                module_local_enums,
+                                module_local_modules,
+                                imported_classes,
+                                global_class_map,
+                                imported_enums,
+                                global_enum_map,
+                                imported_modules,
+                            ),
+                        })
+                        .collect(),
+                })
+                .collect();
+            Decl::Enum(e)
+        }
+        Decl::Module(module) => {
+            let (
+                nested_local_functions,
+                nested_local_classes,
+                nested_local_enums,
+                nested_local_modules,
+            ) = collect_direct_module_symbol_names(&module.declarations);
+            let mut nested = module.clone();
+            nested.declarations = module
+                .declarations
+                .iter()
+                .map(|inner| {
+                    rewrite_nested_module_decl_for_project(
+                        inner,
+                        module_prefix,
+                        current_namespace,
+                        entry_namespace,
+                        &nested_local_functions,
+                        &nested_local_classes,
+                        &nested_local_enums,
+                        &nested_local_modules,
+                        imported_map,
+                        global_function_map,
+                        imported_classes,
+                        global_class_map,
+                        imported_enums,
+                        global_enum_map,
+                        imported_modules,
+                        global_module_map,
+                    )
+                })
+                .collect();
+            Decl::Module(nested)
+        }
+        Decl::Interface(_) | Decl::Import(_) => decl.node.clone(),
+    };
+
+    ast::Spanned::new(node, decl.span.clone())
 }
 
 fn remap_module_local_mangled_name(

@@ -9845,6 +9845,56 @@ function main(): None {
     }
 
     #[test]
+    fn project_run_supports_deeper_local_nested_module_function_paths() {
+        let temp_root = make_temp_project_root("deeper-local-nested-module-function-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M { module N { class Box { value: Integer; constructor(value: Integer) { this.value = value; } function get(): Integer { return this.value; } } function mk(): Box { return Box(51); } } }\nfunction main(): Integer { return M.N.mk().get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, false, false, false)
+                .expect("project build should support deeper local nested module function paths");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run deeper local nested module function project binary");
+        assert_eq!(status.code(), Some(51));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_deeper_local_nested_module_async_paths() {
+        let temp_root = make_temp_project_root("deeper-local-nested-module-async-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M { module N { class Box { value: Integer; constructor(value: Integer) { this.value = value; } } async function mk(): Box { return Box(53); } } }\nfunction main(): Integer { return await(M.N.mk()).value; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, false, false, false)
+                .expect("project build should support deeper local nested module async paths");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run deeper local nested module async project binary");
+        assert_eq!(status.code(), Some(53));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_direct_constructor_method_calls() {
         let temp_root = make_temp_project_root("direct-ctor-method-runtime");
         let source_path = temp_root.join("direct_ctor_method_runtime.apex");
