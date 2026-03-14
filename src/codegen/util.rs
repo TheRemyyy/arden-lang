@@ -2079,6 +2079,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Type::Integer
             }
+            Expr::Construct { ty, .. } => parse_type_source(ty).unwrap_or(Type::Integer),
             Expr::Index { object, .. } => match self.infer_expr_type(&object.node, params) {
                 Type::List(inner) => *inner,
                 Type::Map(_, value) => *value,

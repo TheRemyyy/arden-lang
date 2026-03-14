@@ -937,6 +937,15 @@ fn extend_declaration_symbols_for_reference(
         }
     };
 
+    if let Some((owner_symbol, _member)) = symbol.rsplit_once("__") {
+        if let (Some(owner_ns), Some(owner_file)) = (
+            global_class_map.get(owner_symbol),
+            global_class_file_map.get(owner_symbol),
+        ) {
+            push_owner(owner_ns, owner_file);
+        }
+    }
+
     if let (Some(owner_ns), Some(owner_file)) = (
         global_function_map.get(symbol),
         global_function_file_map.get(symbol),
@@ -1254,6 +1263,53 @@ fn declaration_symbols_for_unit(
         symbols: declaration_symbols,
         files: visited_files,
     }
+}
+
+fn closure_body_symbols_for_unit(
+    root_file: &Path,
+    root_namespace: &str,
+    declaration_symbols: &HashSet<String>,
+    global_function_file_map: &HashMap<String, PathBuf>,
+    global_class_file_map: &HashMap<String, PathBuf>,
+) -> HashSet<String> {
+    let namespace_prefix = format!("{}__", root_namespace.replace('.', "__"));
+    declaration_symbols
+        .iter()
+        .filter(|symbol| {
+            let raw_symbol = symbol
+                .strip_prefix(&namespace_prefix)
+                .unwrap_or(symbol.as_str());
+
+            if global_function_file_map
+                .get(raw_symbol)
+                .is_some_and(|owner_file| owner_file == root_file)
+            {
+                return true;
+            }
+
+            if global_class_file_map
+                .get(raw_symbol)
+                .is_some_and(|owner_file| owner_file == root_file)
+            {
+                return true;
+            }
+
+            if let Some(owner) = raw_symbol.strip_suffix("__new") {
+                return global_class_file_map
+                    .get(owner)
+                    .is_some_and(|owner_file| owner_file == root_file);
+            }
+
+            if let Some((owner, _)) = raw_symbol.rsplit_once("__") {
+                return global_class_file_map
+                    .get(owner)
+                    .is_some_and(|owner_file| owner_file == root_file);
+            }
+
+            false
+        })
+        .cloned()
+        .collect()
 }
 
 fn current_file_metadata_stamp(file: &Path) -> Result<FileMetadataStamp, String> {
@@ -3510,6 +3566,11 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                         out.insert(root.clone());
                     }
                     qualified_out.insert(parts);
+                } else if let Expr::Field { object, field } = &callee.node {
+                    if let Expr::Construct { ty, .. } = &object.node {
+                        out.insert(ty.clone());
+                        out.insert(format!("{}__{}", ty, field));
+                    }
                 }
                 collect_expr_refs(&callee.node, out, qualified_out);
                 for arg in args {
@@ -4873,6 +4934,10 @@ fn build_project(
                 )
             })
             .collect();
+        let file_namespaces: HashMap<PathBuf, String> = parsed_files
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.namespace.clone()))
+            .collect();
         let mut object_paths: Vec<Option<PathBuf>> = vec![None; rewritten_files.len()];
         let object_candidate_count = rewritten_files
             .iter()
@@ -4954,12 +5019,22 @@ fn build_project(
                             Some(&declaration_closure.files),
                             Some(&declaration_closure.symbols),
                         );
+                        let mut codegen_active_symbols = unit.active_symbols.clone();
+                        codegen_active_symbols.extend(closure_body_symbols_for_unit(
+                            &unit.file,
+                            file_namespaces
+                                .get(&unit.file)
+                                .expect("namespace should exist for rewritten unit"),
+                            &declaration_closure.symbols,
+                            &global_function_file_map,
+                            &global_class_file_map,
+                        ));
                         compile_program_ast_to_object_filtered(
                             &codegen_program,
                             &unit.file,
                             &obj_path,
                             &link,
-                            &unit.active_symbols,
+                            &codegen_active_symbols,
                             &declaration_closure.symbols,
                         )?;
                         save_object_cache_meta(
@@ -8053,6 +8128,58 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_prints_clean_option_unwrap_panic_message() {
+        let temp_root = make_temp_project_root("option-unwrap-panic-message-runtime");
+        let source_path = temp_root.join("option_unwrap_panic_message_runtime.apex");
+        let output_path = temp_root.join("option_unwrap_panic_message_runtime");
+        let source = r#"
+            function main(): Integer {
+                return Option.none().unwrap();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Option.none unwrap panic path should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled Option.none unwrap binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Option.unwrap() called on None\n"));
+        assert!(!stdout.contains("\\n"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_prints_clean_result_unwrap_panic_message() {
+        let temp_root = make_temp_project_root("result-unwrap-panic-message-runtime");
+        let source_path = temp_root.join("result_unwrap_panic_message_runtime.apex");
+        let output_path = temp_root.join("result_unwrap_panic_message_runtime");
+        let source = r#"
+            function main(): Integer {
+                return Result.error("boom").unwrap();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Result.error unwrap panic path should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled Result.error unwrap binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Result.unwrap() called on Error\n"));
+        assert!(!stdout.contains("\\n"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_if_expression_generic_constructor_branches() {
         let temp_root = make_temp_project_root("ifexpr-generic-ctor-runtime");
         let source_path = temp_root.join("ifexpr_generic_ctor_runtime.apex");
@@ -9562,6 +9689,34 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_runs_direct_option_some_object_method_chains() {
+        let temp_root = make_temp_project_root("direct-option-some-object-method-runtime");
+        let source_path = temp_root.join("direct_option_some_object_method_runtime.apex");
+        let output_path = temp_root.join("direct_option_some_object_method_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                return Option.some(Boxed(14)).unwrap().value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Option.some object method chain should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Option.some object method binary");
+        assert_eq!(status.code(), Some(14));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_direct_result_ok_method_chains() {
         let temp_root = make_temp_project_root("direct-result-ok-method-runtime");
         let source_path = temp_root.join("direct_result_ok_method_runtime.apex");
@@ -9581,6 +9736,88 @@ function main(): None {
             .status()
             .expect("run compiled direct Result.ok method binary");
         assert_eq!(status.code(), Some(42));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_result_ok_object_method_chains() {
+        let temp_root = make_temp_project_root("direct-result-ok-object-method-runtime");
+        let source_path = temp_root.join("direct_result_ok_object_method_runtime.apex");
+        let output_path = temp_root.join("direct_result_ok_object_method_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                return Result.ok(Boxed(15)).unwrap().value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Result.ok object method chain should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Result.ok object method binary");
+        assert_eq!(status.code(), Some(15));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_direct_constructor_method_calls() {
+        let temp_root = make_temp_project_root("direct-ctor-method-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nclass Boxed { value: Integer; constructor(value: Integer) { this.value = value; } function get(): Integer { return this.value; } }\nfunction main(): Integer { return Boxed(23).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, false, false, false)
+                .expect("project build should support direct constructor method calls");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run direct constructor method project binary");
+        assert_eq!(status.code(), Some(23));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_constructor_method_calls() {
+        let temp_root = make_temp_project_root("direct-ctor-method-runtime");
+        let source_path = temp_root.join("direct_ctor_method_runtime.apex");
+        let output_path = temp_root.join("direct_ctor_method_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function get(): Integer { return this.value; }
+            }
+
+            function main(): Integer {
+                return Boxed(23).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct constructor method call should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct constructor method binary");
+        assert_eq!(status.code(), Some(23));
 
         let _ = fs::remove_dir_all(temp_root);
     }

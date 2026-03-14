@@ -1216,10 +1216,7 @@ impl<'ctx> Codegen<'ctx> {
                 let exit_fn = self.get_or_declare_exit();
                 let panic_msg = self
                     .builder
-                    .build_global_string_ptr(
-                        "Option.unwrap() called on None\\n",
-                        "opt_unwrap_panic",
-                    )
+                    .build_global_string_ptr("Option.unwrap() called on None\n", "opt_unwrap_panic")
                     .unwrap();
                 self.builder
                     .build_call(printf, &[panic_msg.as_pointer_value().into()], "")
@@ -1395,7 +1392,7 @@ impl<'ctx> Codegen<'ctx> {
                 let panic_msg = self
                     .builder
                     .build_global_string_ptr(
-                        "Result.unwrap() called on Error\\n",
+                        "Result.unwrap() called on Error\n",
                         "res_unwrap_panic",
                     )
                     .unwrap();

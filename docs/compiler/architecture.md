@@ -34,7 +34,10 @@ Binary equality lowering now also routes pointer-backed runtime values such as `
 Codegen-side expression inference now also preserves object-valued built-in method results like `Option.unwrap()`, `Map.get()`, and `Task.await_timeout(...).unwrap()`, which keeps downstream equality and field/method chains aligned with the actual returned object types instead of degrading them to generic integer placeholders.
 The same inference layer now also recognizes direct built-in constructor/function call receivers such as `Option.some(...)`, `Result.ok(...)`, and `range(...)`, so immediate method chains on those expressions survive lowering instead of failing as receiver-type inference gaps.
 Direct static `Result.ok/error` constructor lowering now also uses the inferred expression type when no explicit expected type is available, which keeps untyped `Result.error(...)` expressions ABI-consistent with later equality/method use instead of falling back to placeholder payload layouts.
+That same codegen-side inference now also recognizes plain constructor expressions as real class values instead of defaulting them to integers, which keeps direct object payload chains like `Option.some(Boxed(...)).unwrap().value` and `Result.ok(Boxed(...)).unwrap().value` type-stable through lowering.
+Dependency/reference scanning now also records method symbols used on direct constructor receivers, so filtered project codegen can emit the required method bodies for expressions like `Boxed(23).get()` instead of linking against missing class-method symbols.
 Task timeout handling now also validates that `await_timeout(ms)` receives a non-negative timeout before entering the polling loop, preventing negative integers from turning into effectively unbounded waits through unsigned loop arithmetic.
+Runtime unwrap failure diagnostics now emit real newline-terminated panic messages for `Option.unwrap()` and `Result.unwrap()` instead of embedding escaped `\\n` text in stdout.
 
 ## Build Caching
 
@@ -101,6 +104,7 @@ Task timeout handling now also validates that `await_timeout(ms)` receives a non
   - Dependency API projection inputs are trimmed to that same closure, so object-miss codegen also stops carrying unrelated stub declarations through the front of the pipeline.
   - Qualified import paths used through namespace aliases (for example `import util as u; f = u.add1`) now seed that closure too, so imported function values and alias-qualified calls pull in the right owner declarations during filtered object rebuilds.
   - Alias-qualified class/module references (for example `u.Box(...)`) now seed dependency edges and declaration closure entries too, so constructor/object codegen sees the owning type declarations instead of treating alias-rooted constructors as isolated files.
+  - Filtered object emission now also activates closure-discovered body symbols that belong to the rebuilt source file itself, so direct-constructor receiver calls such as `Boxed(...).get()` emit the required methods without duplicating imported dependency bodies in the caller object.
 - **Impacted semantic view**:
   - Type checking and borrow checking now run with full bodies only for changed files and real API dependents.
   - Unchanged unaffected files participate through API projections plus cached semantic summaries.

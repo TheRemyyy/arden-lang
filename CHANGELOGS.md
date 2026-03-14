@@ -54,10 +54,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - explicit generic method calls like `b.map<Integer>(inc).get()` now specialize across all matching owner-class instantiations instead of being dropped when both base and `__spec__` class templates exist
   - nested generic method bodies now remap module-local shadowed class constructors/types during specialization, so `module M { class Box<T> { function map<U>(...): Box<U> { return Box<U>(...); } } }` no longer returns zeroed objects at runtime
   - filtered project codegen now emits only the explicitly requested class methods for class declarations activated via method symbols, which fixes imported expression-receiver paths like `import app.M.make as make; make<Integer>(2).map<Integer>(inc).get()` without re-emitting duplicate base class symbols in the caller object
+- Fixed filtered project codegen for direct constructor method receivers:
+  - calls like `Boxed(23).get()` now seed the owning method symbol into the declaration closure instead of linking against a missing `Boxed__get` symbol
+  - filtered object emission now also activates closure-discovered body symbols that belong to the rebuilt source file itself, so direct-constructor receiver methods are compiled into the correct per-file object without duplicating imported dependency bodies
 - Fixed `await` postfix precedence in the parser:
   - chains like `await(make_box()).get()` now parse as method calls on the awaited result instead of incorrectly swallowing the `.get()` inside the awaited operand
 - Fixed negative task timeouts:
   - `Task.await_timeout(-1)` now fails fast with a direct runtime error instead of effectively turning into an unbounded wait through unsigned loop arithmetic
+- Fixed unwrap panic message rendering:
+  - `Option.unwrap()` and `Result.unwrap()` runtime panic messages now emit real newlines instead of printing the literal characters `\\n`
 - Fixed nested enum payload handling:
   - nested enum-by-value payloads are now rejected during typechecking with a direct diagnostic instead of slipping through and panicking later in backend enum payload encoding
 - Fixed collection runtime safety guards:
@@ -75,6 +80,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - object-valued built-in method results such as `Option.unwrap()` and `Map.get()` now preserve their real return types through codegen-side expression inference, so equality checks against class/object values no longer fail late with a backend binary-op type mismatch
   - direct built-in constructor/function call receivers such as `Option.some(12).unwrap()`, `Result.ok(12).unwrap()`, and `range(0, 10).has_next()` now keep their real object types through codegen-side inference instead of failing as unknown method receivers
   - direct `Result.ok/error` constructors now lower using the inferred expression type instead of hardcoded placeholder layouts, so equality and method chains on untyped `Result.error(...)` expressions preserve the real error payload ABI instead of relying on accidental defaults
+  - codegen-side expression inference now treats plain constructor expressions like `Boxed(14)` as their declared class type instead of degrading them to `Integer`, which fixes direct `Option.some(Boxed(...)).unwrap().value` and `Result.ok(Boxed(...)).unwrap().value` chains
 - Fixed `apex test` handling for `@Ignore` without a reason:
   - tests marked with bare `@Ignore` are now skipped correctly instead of being executed
   - ignored tests are now counted in the final `Total` summary as well as `Ignored`
