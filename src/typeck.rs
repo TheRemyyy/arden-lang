@@ -439,6 +439,62 @@ impl TypeChecker {
         )))
     }
 
+    fn known_type_exists(&self, name: &str) -> bool {
+        self.classes.contains_key(name) || self.enums.contains_key(name) || self.interfaces.contains_key(name)
+    }
+
+    fn resolve_known_type_name(&self, name: &str) -> Option<String> {
+        if self.known_type_exists(name) {
+            return Some(name.to_string());
+        }
+
+        if let Some(module_scoped) = self.module_scoped_type_name(name) {
+            let scoped_name = module_scoped
+                .split_once('<')
+                .map_or(module_scoped.as_str(), |(base, _)| base);
+            if self.known_type_exists(scoped_name) {
+                return Some(scoped_name.to_string());
+            }
+        }
+
+        if name.contains('.') {
+            let mangled = name.replace('.', "__");
+            if self.known_type_exists(&mangled) {
+                return Some(mangled);
+            }
+        }
+
+        let suffix = format!("__{}", name.replace('.', "__"));
+        let mut matches = self
+            .classes
+            .keys()
+            .chain(self.enums.keys())
+            .chain(self.interfaces.keys())
+            .filter(|candidate| *candidate == name || candidate.ends_with(&suffix))
+            .cloned()
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        (matches.len() == 1).then(|| matches[0].clone())
+    }
+
+    fn resolve_user_defined_generic_type(
+        &self,
+        name: &str,
+        args: &[ResolvedType],
+    ) -> Option<ResolvedType> {
+        let resolved_name = self.resolve_known_type_name(name)?;
+        let rendered_args = args
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(ResolvedType::Class(format!(
+            "{}<{}>",
+            resolved_name, rendered_args
+        )))
+    }
+
     fn apply_effect_seeds(
         &mut self,
         function_effects: &HashMap<String, Vec<String>>,
@@ -545,8 +601,8 @@ impl TypeChecker {
                 if let Some(bound) = bindings.get(name) {
                     return bound.clone();
                 }
-                if let Some(module_scoped) = self.module_scoped_type_name(name) {
-                    return ResolvedType::Class(module_scoped);
+                if let Some(resolved_name) = self.resolve_known_type_name(name) {
+                    return ResolvedType::Class(resolved_name);
                 }
                 match name.as_str() {
                     "Range" => ResolvedType::Class("Range".to_string()),
@@ -555,29 +611,34 @@ impl TypeChecker {
             }
             Type::Option(inner) => {
                 let inner = self.resolve_type_with_bindings(inner, bindings);
-                self.module_scoped_generic_type("Option", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Option", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Option", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Option(Box::new(inner)))
             }
             Type::Result(ok, err) => {
                 let ok = self.resolve_type_with_bindings(ok, bindings);
                 let err = self.resolve_type_with_bindings(err, bindings);
-                self.module_scoped_generic_type("Result", &[ok.clone(), err.clone()])
+                self.resolve_user_defined_generic_type("Result", &[ok.clone(), err.clone()])
+                    .or_else(|| self.module_scoped_generic_type("Result", &[ok.clone(), err.clone()]))
                     .unwrap_or_else(|| ResolvedType::Result(Box::new(ok), Box::new(err)))
             }
             Type::List(inner) => {
                 let inner = self.resolve_type_with_bindings(inner, bindings);
-                self.module_scoped_generic_type("List", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("List", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("List", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::List(Box::new(inner)))
             }
             Type::Map(k, v) => {
                 let key = self.resolve_type_with_bindings(k, bindings);
                 let value = self.resolve_type_with_bindings(v, bindings);
-                self.module_scoped_generic_type("Map", &[key.clone(), value.clone()])
+                self.resolve_user_defined_generic_type("Map", &[key.clone(), value.clone()])
+                    .or_else(|| self.module_scoped_generic_type("Map", &[key.clone(), value.clone()]))
                     .unwrap_or_else(|| ResolvedType::Map(Box::new(key), Box::new(value)))
             }
             Type::Set(inner) => {
                 let inner = self.resolve_type_with_bindings(inner, bindings);
-                self.module_scoped_generic_type("Set", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Set", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Set", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Set(Box::new(inner)))
             }
             Type::Ref(inner) => {
@@ -588,32 +649,38 @@ impl TypeChecker {
             }
             Type::Box(inner) => {
                 let inner = self.resolve_type_with_bindings(inner, bindings);
-                self.module_scoped_generic_type("Box", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Box", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Box", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Box(Box::new(inner)))
             }
             Type::Rc(inner) => {
                 let inner = self.resolve_type_with_bindings(inner, bindings);
-                self.module_scoped_generic_type("Rc", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Rc", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Rc", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Rc(Box::new(inner)))
             }
             Type::Arc(inner) => {
                 let inner = self.resolve_type_with_bindings(inner, bindings);
-                self.module_scoped_generic_type("Arc", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Arc", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Arc", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Arc(Box::new(inner)))
             }
             Type::Ptr(inner) => {
                 let inner = self.resolve_type_with_bindings(inner, bindings);
-                self.module_scoped_generic_type("Ptr", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Ptr", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Ptr", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Ptr(Box::new(inner)))
             }
             Type::Task(inner) => {
                 let inner = self.resolve_type_with_bindings(inner, bindings);
-                self.module_scoped_generic_type("Task", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Task", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Task", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Task(Box::new(inner)))
             }
             Type::Range(inner) => {
                 let inner = self.resolve_type_with_bindings(inner, bindings);
-                self.module_scoped_generic_type("Range", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Range", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Range", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Range(Box::new(inner)))
             }
             Type::Function(params, ret) => ResolvedType::Function(
@@ -623,62 +690,61 @@ impl TypeChecker {
                     .collect(),
                 Box::new(self.resolve_type_with_bindings(ret, bindings)),
             ),
-            Type::Generic(name, args) => match name.as_str() {
-                _ if self.module_scoped_type_name(name).is_some() => {
-                    let resolved_name = self
-                        .module_scoped_type_name(name)
-                        .unwrap_or_else(|| name.clone());
-                    let args = args
-                        .iter()
-                        .map(|arg| self.resolve_type_with_bindings(arg, bindings).to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    ResolvedType::Class(format!("{}<{}>", resolved_name, args))
+            Type::Generic(name, args) => {
+                let resolved_args = args
+                    .iter()
+                    .map(|arg| self.resolve_type_with_bindings(arg, bindings))
+                    .collect::<Vec<_>>();
+                if let Some(resolved) = self.resolve_user_defined_generic_type(name, &resolved_args)
+                {
+                    return resolved;
                 }
-                "Option" if args.len() == 1 => ResolvedType::Option(Box::new(
-                    self.resolve_type_with_bindings(&args[0], bindings),
-                )),
-                "Result" if args.len() == 2 => ResolvedType::Result(
-                    Box::new(self.resolve_type_with_bindings(&args[0], bindings)),
-                    Box::new(self.resolve_type_with_bindings(&args[1], bindings)),
-                ),
-                "List" if args.len() == 1 => ResolvedType::List(Box::new(
-                    self.resolve_type_with_bindings(&args[0], bindings),
-                )),
-                "Map" if args.len() == 2 => ResolvedType::Map(
-                    Box::new(self.resolve_type_with_bindings(&args[0], bindings)),
-                    Box::new(self.resolve_type_with_bindings(&args[1], bindings)),
-                ),
-                "Set" if args.len() == 1 => ResolvedType::Set(Box::new(
-                    self.resolve_type_with_bindings(&args[0], bindings),
-                )),
-                "Box" if args.len() == 1 => ResolvedType::Box(Box::new(
-                    self.resolve_type_with_bindings(&args[0], bindings),
-                )),
-                "Rc" if args.len() == 1 => ResolvedType::Rc(Box::new(
-                    self.resolve_type_with_bindings(&args[0], bindings),
-                )),
-                "Arc" if args.len() == 1 => ResolvedType::Arc(Box::new(
-                    self.resolve_type_with_bindings(&args[0], bindings),
-                )),
-                "Ptr" if args.len() == 1 => ResolvedType::Ptr(Box::new(
-                    self.resolve_type_with_bindings(&args[0], bindings),
-                )),
-                "Task" if args.len() == 1 => ResolvedType::Task(Box::new(
-                    self.resolve_type_with_bindings(&args[0], bindings),
-                )),
-                "Range" if args.len() == 1 => ResolvedType::Range(Box::new(
-                    self.resolve_type_with_bindings(&args[0], bindings),
-                )),
-                _ => {
-                    let args = args
-                        .iter()
-                        .map(|arg| self.resolve_type_with_bindings(arg, bindings).to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    ResolvedType::Class(format!("{}<{}>", name, args))
+                match name.as_str() {
+                    "Option" if resolved_args.len() == 1 => {
+                        ResolvedType::Option(Box::new(resolved_args[0].clone()))
+                    }
+                    "Result" if resolved_args.len() == 2 => ResolvedType::Result(
+                        Box::new(resolved_args[0].clone()),
+                        Box::new(resolved_args[1].clone()),
+                    ),
+                    "List" if resolved_args.len() == 1 => {
+                        ResolvedType::List(Box::new(resolved_args[0].clone()))
+                    }
+                    "Map" if resolved_args.len() == 2 => ResolvedType::Map(
+                        Box::new(resolved_args[0].clone()),
+                        Box::new(resolved_args[1].clone()),
+                    ),
+                    "Set" if resolved_args.len() == 1 => {
+                        ResolvedType::Set(Box::new(resolved_args[0].clone()))
+                    }
+                    "Box" if resolved_args.len() == 1 => {
+                        ResolvedType::Box(Box::new(resolved_args[0].clone()))
+                    }
+                    "Rc" if resolved_args.len() == 1 => {
+                        ResolvedType::Rc(Box::new(resolved_args[0].clone()))
+                    }
+                    "Arc" if resolved_args.len() == 1 => {
+                        ResolvedType::Arc(Box::new(resolved_args[0].clone()))
+                    }
+                    "Ptr" if resolved_args.len() == 1 => {
+                        ResolvedType::Ptr(Box::new(resolved_args[0].clone()))
+                    }
+                    "Task" if resolved_args.len() == 1 => {
+                        ResolvedType::Task(Box::new(resolved_args[0].clone()))
+                    }
+                    "Range" if resolved_args.len() == 1 => {
+                        ResolvedType::Range(Box::new(resolved_args[0].clone()))
+                    }
+                    _ => {
+                        let args = resolved_args
+                            .iter()
+                            .map(std::string::ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        ResolvedType::Class(format!("{}<{}>", name, args))
+                    }
                 }
-            },
+            }
         }
     }
 
@@ -5193,8 +5259,8 @@ impl TypeChecker {
                 if let Some(bound) = self.current_generic_type_bindings.get(name) {
                     return bound.clone();
                 }
-                if let Some(module_scoped) = self.module_scoped_type_name(name) {
-                    return ResolvedType::Class(module_scoped);
+                if let Some(resolved_name) = self.resolve_known_type_name(name) {
+                    return ResolvedType::Class(resolved_name);
                 }
                 // Check for built-in types that might be parsed as Named
                 match name.as_str() {
@@ -5204,61 +5270,72 @@ impl TypeChecker {
             }
             Type::Option(inner) => {
                 let inner = self.resolve_type(inner);
-                self.module_scoped_generic_type("Option", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Option", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Option", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Option(Box::new(inner)))
             }
             Type::Result(ok, err) => {
                 let ok = self.resolve_type(ok);
                 let err = self.resolve_type(err);
-                self.module_scoped_generic_type("Result", &[ok.clone(), err.clone()])
+                self.resolve_user_defined_generic_type("Result", &[ok.clone(), err.clone()])
+                    .or_else(|| self.module_scoped_generic_type("Result", &[ok.clone(), err.clone()]))
                     .unwrap_or_else(|| ResolvedType::Result(Box::new(ok), Box::new(err)))
             }
             Type::List(inner) => {
                 let inner = self.resolve_type(inner);
-                self.module_scoped_generic_type("List", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("List", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("List", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::List(Box::new(inner)))
             }
             Type::Map(k, v) => {
                 let key = self.resolve_type(k);
                 let value = self.resolve_type(v);
-                self.module_scoped_generic_type("Map", &[key.clone(), value.clone()])
+                self.resolve_user_defined_generic_type("Map", &[key.clone(), value.clone()])
+                    .or_else(|| self.module_scoped_generic_type("Map", &[key.clone(), value.clone()]))
                     .unwrap_or_else(|| ResolvedType::Map(Box::new(key), Box::new(value)))
             }
             Type::Set(inner) => {
                 let inner = self.resolve_type(inner);
-                self.module_scoped_generic_type("Set", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Set", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Set", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Set(Box::new(inner)))
             }
             Type::Ref(inner) => ResolvedType::Ref(Box::new(self.resolve_type(inner))),
             Type::MutRef(inner) => ResolvedType::MutRef(Box::new(self.resolve_type(inner))),
             Type::Box(inner) => {
                 let inner = self.resolve_type(inner);
-                self.module_scoped_generic_type("Box", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Box", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Box", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Box(Box::new(inner)))
             }
             Type::Rc(inner) => {
                 let inner = self.resolve_type(inner);
-                self.module_scoped_generic_type("Rc", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Rc", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Rc", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Rc(Box::new(inner)))
             }
             Type::Arc(inner) => {
                 let inner = self.resolve_type(inner);
-                self.module_scoped_generic_type("Arc", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Arc", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Arc", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Arc(Box::new(inner)))
             }
             Type::Ptr(inner) => {
                 let inner = self.resolve_type(inner);
-                self.module_scoped_generic_type("Ptr", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Ptr", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Ptr", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Ptr(Box::new(inner)))
             }
             Type::Task(inner) => {
                 let inner = self.resolve_type(inner);
-                self.module_scoped_generic_type("Task", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Task", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Task", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Task(Box::new(inner)))
             }
             Type::Range(inner) => {
                 let inner = self.resolve_type(inner);
-                self.module_scoped_generic_type("Range", std::slice::from_ref(&inner))
+                self.resolve_user_defined_generic_type("Range", std::slice::from_ref(&inner))
+                    .or_else(|| self.module_scoped_generic_type("Range", std::slice::from_ref(&inner)))
                     .unwrap_or_else(|| ResolvedType::Range(Box::new(inner)))
             }
             Type::Function(params, ret) => ResolvedType::Function(
@@ -5266,58 +5343,54 @@ impl TypeChecker {
                 Box::new(self.resolve_type(ret)),
             ),
             Type::Generic(name, args) => {
+                if let Some(bound) = self.current_generic_type_bindings.get(name) {
+                    return bound.clone();
+                }
+                let resolved_args = args.iter().map(|arg| self.resolve_type(arg)).collect::<Vec<_>>();
+                if let Some(resolved) = self.resolve_user_defined_generic_type(name, &resolved_args) {
+                    return resolved;
+                }
                 // Handle generic types
                 match name.as_str() {
-                    _ if self.module_scoped_type_name(name).is_some() => {
-                        let resolved_name = self
-                            .module_scoped_type_name(name)
-                            .unwrap_or_else(|| name.clone());
-                        let args = args
-                            .iter()
-                            .map(|arg| self.resolve_type(arg).to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        ResolvedType::Class(format!("{}<{}>", resolved_name, args))
+                    "Option" if resolved_args.len() == 1 => {
+                        ResolvedType::Option(Box::new(resolved_args[0].clone()))
                     }
-                    "Option" if args.len() == 1 => {
-                        ResolvedType::Option(Box::new(self.resolve_type(&args[0])))
-                    }
-                    "Result" if args.len() == 2 => ResolvedType::Result(
-                        Box::new(self.resolve_type(&args[0])),
-                        Box::new(self.resolve_type(&args[1])),
+                    "Result" if resolved_args.len() == 2 => ResolvedType::Result(
+                        Box::new(resolved_args[0].clone()),
+                        Box::new(resolved_args[1].clone()),
                     ),
-                    "List" if args.len() == 1 => {
-                        ResolvedType::List(Box::new(self.resolve_type(&args[0])))
+                    "List" if resolved_args.len() == 1 => {
+                        ResolvedType::List(Box::new(resolved_args[0].clone()))
                     }
-                    "Map" if args.len() == 2 => ResolvedType::Map(
-                        Box::new(self.resolve_type(&args[0])),
-                        Box::new(self.resolve_type(&args[1])),
+                    "Map" if resolved_args.len() == 2 => ResolvedType::Map(
+                        Box::new(resolved_args[0].clone()),
+                        Box::new(resolved_args[1].clone()),
                     ),
-                    "Set" if args.len() == 1 => {
-                        ResolvedType::Set(Box::new(self.resolve_type(&args[0])))
+                    "Set" if resolved_args.len() == 1 => {
+                        ResolvedType::Set(Box::new(resolved_args[0].clone()))
                     }
-                    "Box" if args.len() == 1 => {
-                        ResolvedType::Box(Box::new(self.resolve_type(&args[0])))
+                    "Box" if resolved_args.len() == 1 => {
+                        ResolvedType::Box(Box::new(resolved_args[0].clone()))
                     }
-                    "Rc" if args.len() == 1 => {
-                        ResolvedType::Rc(Box::new(self.resolve_type(&args[0])))
+                    "Rc" if resolved_args.len() == 1 => {
+                        ResolvedType::Rc(Box::new(resolved_args[0].clone()))
                     }
-                    "Arc" if args.len() == 1 => {
-                        ResolvedType::Arc(Box::new(self.resolve_type(&args[0])))
+                    "Arc" if resolved_args.len() == 1 => {
+                        ResolvedType::Arc(Box::new(resolved_args[0].clone()))
                     }
-                    "Ptr" if args.len() == 1 => {
-                        ResolvedType::Ptr(Box::new(self.resolve_type(&args[0])))
+                    "Ptr" if resolved_args.len() == 1 => {
+                        ResolvedType::Ptr(Box::new(resolved_args[0].clone()))
                     }
-                    "Task" if args.len() == 1 => {
-                        ResolvedType::Task(Box::new(self.resolve_type(&args[0])))
+                    "Task" if resolved_args.len() == 1 => {
+                        ResolvedType::Task(Box::new(resolved_args[0].clone()))
                     }
-                    "Range" if args.len() == 1 => {
-                        ResolvedType::Range(Box::new(self.resolve_type(&args[0])))
+                    "Range" if resolved_args.len() == 1 => {
+                        ResolvedType::Range(Box::new(resolved_args[0].clone()))
                     }
                     _ => {
-                        let args = args
+                        let args = resolved_args
                             .iter()
-                            .map(|arg| self.resolve_type(arg).to_string())
+                            .map(std::string::ToString::to_string)
                             .collect::<Vec<_>>()
                             .join(", ");
                         ResolvedType::Class(format!("{}<{}>", name, args))
@@ -5492,40 +5565,58 @@ impl TypeChecker {
                     if s.ends_with('>') {
                         let base = &s[..open_bracket];
                         let inner_str = &s[open_bracket + 1..s.len() - 1];
+                        let generic_args = self
+                            .split_generic_args(inner_str)
+                            .into_iter()
+                            .map(|part| self.parse_type_string(&part))
+                            .collect::<Vec<_>>();
+
+                        if let Some(resolved) =
+                            self.resolve_user_defined_generic_type(base, &generic_args)
+                        {
+                            return resolved;
+                        }
 
                         match base {
-                            "List" => {
-                                ResolvedType::List(Box::new(self.parse_type_string(inner_str)))
+                            "List" if generic_args.len() == 1 => {
+                                ResolvedType::List(Box::new(generic_args[0].clone()))
                             }
-                            "Set" => ResolvedType::Set(Box::new(self.parse_type_string(inner_str))),
-                            "Option" => {
-                                ResolvedType::Option(Box::new(self.parse_type_string(inner_str)))
+                            "Set" if generic_args.len() == 1 => {
+                                ResolvedType::Set(Box::new(generic_args[0].clone()))
                             }
-                            "Task" => {
-                                ResolvedType::Task(Box::new(self.parse_type_string(inner_str)))
+                            "Option" if generic_args.len() == 1 => {
+                                ResolvedType::Option(Box::new(generic_args[0].clone()))
                             }
-                            "Box" => ResolvedType::Box(Box::new(self.parse_type_string(inner_str))),
-                            "Rc" => ResolvedType::Rc(Box::new(self.parse_type_string(inner_str))),
-                            "Arc" => ResolvedType::Arc(Box::new(self.parse_type_string(inner_str))),
-                            "Ptr" => ResolvedType::Ptr(Box::new(self.parse_type_string(inner_str))),
+                            "Task" if generic_args.len() == 1 => {
+                                ResolvedType::Task(Box::new(generic_args[0].clone()))
+                            }
+                            "Box" if generic_args.len() == 1 => {
+                                ResolvedType::Box(Box::new(generic_args[0].clone()))
+                            }
+                            "Rc" if generic_args.len() == 1 => {
+                                ResolvedType::Rc(Box::new(generic_args[0].clone()))
+                            }
+                            "Arc" if generic_args.len() == 1 => {
+                                ResolvedType::Arc(Box::new(generic_args[0].clone()))
+                            }
+                            "Ptr" if generic_args.len() == 1 => {
+                                ResolvedType::Ptr(Box::new(generic_args[0].clone()))
+                            }
                             "Map" => {
-                                // Split by comma, respecting nested brackets
-                                let parts = self.split_generic_args(inner_str);
-                                if parts.len() == 2 {
+                                if generic_args.len() == 2 {
                                     ResolvedType::Map(
-                                        Box::new(self.parse_type_string(&parts[0])),
-                                        Box::new(self.parse_type_string(&parts[1])),
+                                        Box::new(generic_args[0].clone()),
+                                        Box::new(generic_args[1].clone()),
                                     )
                                 } else {
                                     ResolvedType::Unknown
                                 }
                             }
                             "Result" => {
-                                let parts = self.split_generic_args(inner_str);
-                                if parts.len() == 2 {
+                                if generic_args.len() == 2 {
                                     ResolvedType::Result(
-                                        Box::new(self.parse_type_string(&parts[0])),
-                                        Box::new(self.parse_type_string(&parts[1])),
+                                        Box::new(generic_args[0].clone()),
+                                        Box::new(generic_args[1].clone()),
                                     )
                                 } else {
                                     ResolvedType::Unknown
@@ -5534,10 +5625,14 @@ impl TypeChecker {
                             _ => ResolvedType::Class(s.to_string()),
                         }
                     } else {
-                        ResolvedType::Class(s.to_string())
+                        self.resolve_known_type_name(s)
+                            .map(ResolvedType::Class)
+                            .unwrap_or_else(|| ResolvedType::Class(s.to_string()))
                     }
                 } else {
-                    ResolvedType::Class(s.to_string())
+                    self.resolve_known_type_name(s)
+                        .map(ResolvedType::Class)
+                        .unwrap_or_else(|| ResolvedType::Class(s.to_string()))
                 }
             }
         }
@@ -6527,6 +6622,49 @@ mod tests {
             }
         "#;
         check_source(src).expect("qualified enum patterns should typecheck");
+    }
+
+    #[test]
+    fn qualified_module_type_paths_typecheck_against_mangled_symbols() {
+        let src = r#"
+            module util {
+                class Item {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                    function get(): Integer { return this.value; }
+                }
+                function mk(): Item { return Item(7); }
+            }
+
+            function main(): Integer {
+                item: util.Item = util.mk();
+                return item.get();
+            }
+        "#;
+
+        check_source(src).expect("qualified module type paths should resolve to mangled symbols");
+    }
+
+    #[test]
+    fn user_defined_generic_classes_named_like_builtins_typecheck() {
+        let src = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function mk(value: Integer): Box<Integer> {
+                return Box<Integer>(value);
+            }
+
+            function main(): Integer {
+                return mk(42).get();
+            }
+        "#;
+
+        check_source(src)
+            .expect("user-defined generic classes named like built-ins should typecheck");
     }
 
     #[test]

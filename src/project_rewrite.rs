@@ -1525,9 +1525,15 @@ fn rewrite_nested_module_decl_for_project(
                 .declarations
                 .iter()
                 .map(|inner| {
+                    let inner_prefix = match &inner.node {
+                        Decl::Module(nested_module) => {
+                            module_prefixed_symbol(module_prefix, &nested_module.name)
+                        }
+                        _ => module_prefix.to_string(),
+                    };
                     rewrite_nested_module_decl_for_project(
                         inner,
-                        module_prefix,
+                        &inner_prefix,
                         current_namespace,
                         entry_namespace,
                         &nested_local_functions,

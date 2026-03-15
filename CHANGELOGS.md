@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed nested generic module-function specialization in backend codegen:
   - local and exact-imported nested generic functions returning module-local generic classes now remap shadowed class constructors/types during specialization instead of accidentally lowering `Box<T>(...)` through the built-in `Box` runtime path
   - runtime paths like `M.mk<Integer>(2).get()`, `M.mk<Integer>(2).value`, and `import app.M.mk as mk; mk<Integer>(2).get()` no longer segfault or silently return zero after codegen
+  - the same module-local class remap now also runs for non-generic cross-package helper bodies during class-specialization rewrite, so project-mode paths like `import util as u; u.M.N.mk(42).get()` and `await(u.M.N.mk_async(43)).get()` no longer compile into zero-initialized objects
 - Fixed nested generic method specialization on nested generic classes:
   - explicit generic method calls like `b.map<Integer>(inc).get()` now specialize across all matching owner-class instantiations instead of being dropped when both base and `__spec__` class templates exist
   - nested generic method bodies now remap module-local shadowed class constructors/types during specialization, so `module M { class Box<T> { function map<U>(...): Box<U> { return Box<U>(...); } } }` no longer returns zeroed objects at runtime
@@ -58,6 +59,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - nested namespace-alias and exact-import paths like `u.M.N.Box<Integer>(...)`, `await(u.M.N.mk_async(...)).get()`, and `import util.M.N.Box as B; B<Integer>(...)` no longer duplicate-link the same dependency class specialization into both caller and owner objects
   - the filtered object pipeline now recursively marks deep nested-module declarations as active in the owning unit, so dependency generic class specializations are emitted exactly once instead of disappearing after the duplicate-symbol fix
   - explicit generic method specializations on imported specialized classes, such as `u.M.N.mk(46).map<Integer>(inc).get()`, continue to emit from the call-site object without regressing back to missing-symbol links
+- Fixed nested-module recursive rewrite prefixes for cross-package generic returns:
+  - nested module functions and async functions returning local generic classes now keep the full nested owner prefix during recursive rewrite, so cross-package calls like `u.M.N.mk(42).get()` and `await(u.M.N.mk_async(43)).get()` no longer silently return zeroed objects at runtime
+- Fixed canonical type-name handling for qualified and builtin-shadowing user types:
+  - qualified module type annotations like `item: util.Item = util.mk()` now canonicalize to the mangled owner symbol through typecheck and backend lowering instead of failing with mixed `util.Item` / `util__Item` identities or late `Unknown type: Item`
+  - user-defined generic classes named like built-in containers, such as `class Box<T>`, now win consistently over the built-in `Box<T>` runtime path during parsing, type resolution, specialization discovery, and codegen, so `Box<Integer>(42).get()` no longer miscompile as a smart-pointer constructor or pointer-returning method call
 - Fixed filtered project codegen for direct constructor method receivers:
   - calls like `Boxed(23).get()` now seed the owning method symbol into the declaration closure instead of linking against a missing `Boxed__get` symbol
   - filtered object emission now also activates closure-discovered body symbols that belong to the rebuilt source file itself, so direct-constructor receiver methods are compiled into the correct per-file object without duplicating imported dependency bodies

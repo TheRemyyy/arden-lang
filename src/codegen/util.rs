@@ -43,17 +43,7 @@ thread_local! {
 
 impl<'ctx> Codegen<'ctx> {
     fn normalize_inferred_object_type(&self, ty: Type) -> Type {
-        match ty {
-            Type::Generic(name, args) => {
-                let spec_name = Self::generic_class_spec_name(&name, &args);
-                if self.classes.contains_key(&spec_name) {
-                    Type::Named(spec_name)
-                } else {
-                    Type::Generic(name, args)
-                }
-            }
-            other => other,
-        }
+        self.normalize_codegen_type(&ty)
     }
 
     fn infer_block_tail_type(&self, block: &[Spanned<Stmt>]) -> Option<Type> {
@@ -1585,7 +1575,8 @@ impl<'ctx> Codegen<'ctx> {
     /// Extract class name from a Type (handles Named, Ref, MutRef, etc.)
     #[allow(clippy::only_used_in_recursion)]
     pub fn type_to_class_name(&self, ty: &Type) -> Option<String> {
-        match ty {
+        let normalized = self.normalize_codegen_type(ty);
+        match &normalized {
             Type::Named(name) => Some(name.clone()),
             Type::Generic(name, _) => Some(name.clone()),
             Type::Ref(inner)

@@ -114,6 +114,45 @@ pub struct Codegen<'ctx> {
 }
 
 impl<'ctx> Codegen<'ctx> {
+    fn has_known_codegen_type(&self, name: &str) -> bool {
+        self.classes.contains_key(name) || self.enums.contains_key(name)
+    }
+
+    fn canonical_codegen_type_name(&self, name: &str) -> Option<String> {
+        if self.has_known_codegen_type(name) {
+            return Some(name.to_string());
+        }
+
+        if name.contains('.') {
+            let mangled = name.replace('.', "__");
+            if self.has_known_codegen_type(&mangled) {
+                return Some(mangled);
+            }
+        }
+
+        let suffix = format!("__{}", name.replace('.', "__"));
+        let mut matches = self
+            .classes
+            .keys()
+            .chain(self.enums.keys())
+            .filter(|candidate| *candidate == name || candidate.ends_with(&suffix))
+            .cloned()
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        (matches.len() == 1).then(|| matches[0].clone())
+    }
+
+    fn normalize_user_defined_generic_type(&self, name: &str, args: &[Type]) -> Option<Type> {
+        let canonical_name = self.canonical_codegen_type_name(name)?;
+        let spec_name = Self::generic_class_spec_name(&canonical_name, args);
+        if self.classes.contains_key(&spec_name) {
+            Some(Type::Named(spec_name))
+        } else {
+            Some(Type::Generic(canonical_name, args.to_vec()))
+        }
+    }
+
     pub(crate) fn type_specialization_suffix(ty: &Type) -> String {
         match ty {
             Type::Integer => "I64".to_string(),
@@ -1947,6 +1986,18 @@ impl<'ctx> Codegen<'ctx> {
         in_scope_generics: &HashSet<String>,
         instantiations: &mut HashMap<String, Vec<Type>>,
     ) {
+        let maybe_record_builtin_like =
+            |name: &str, args: &[Type], instantiations: &mut HashMap<String, Vec<Type>>| {
+                if class_templates.contains_key(name)
+                    && !args
+                        .iter()
+                        .any(|arg| Self::type_contains_generic_names(arg, in_scope_generics))
+                {
+                    instantiations
+                        .entry(Self::generic_class_spec_name(name, args))
+                        .or_insert_with(|| args.to_vec());
+                }
+            };
         match ty {
             Type::Generic(name, args) => {
                 for arg in args {
@@ -1967,6 +2018,123 @@ impl<'ctx> Codegen<'ctx> {
                         .or_insert_with(|| args.clone());
                 }
             }
+            Type::Option(inner) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    inner,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Option",
+                    std::slice::from_ref(inner.as_ref()),
+                    instantiations,
+                );
+            }
+            Type::List(inner) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    inner,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "List",
+                    std::slice::from_ref(inner.as_ref()),
+                    instantiations,
+                );
+            }
+            Type::Set(inner) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    inner,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Set",
+                    std::slice::from_ref(inner.as_ref()),
+                    instantiations,
+                );
+            }
+            Type::Box(inner) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    inner,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Box",
+                    std::slice::from_ref(inner.as_ref()),
+                    instantiations,
+                );
+            }
+            Type::Rc(inner) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    inner,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Rc",
+                    std::slice::from_ref(inner.as_ref()),
+                    instantiations,
+                );
+            }
+            Type::Arc(inner) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    inner,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Arc",
+                    std::slice::from_ref(inner.as_ref()),
+                    instantiations,
+                );
+            }
+            Type::Ptr(inner) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    inner,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Ptr",
+                    std::slice::from_ref(inner.as_ref()),
+                    instantiations,
+                );
+            }
+            Type::Task(inner) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    inner,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Task",
+                    std::slice::from_ref(inner.as_ref()),
+                    instantiations,
+                );
+            }
+            Type::Range(inner) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    inner,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Range",
+                    std::slice::from_ref(inner.as_ref()),
+                    instantiations,
+                );
+            }
             Type::Function(params, ret) => {
                 for param in params {
                     Self::collect_generic_class_instantiation_from_type(
@@ -1983,23 +2151,13 @@ impl<'ctx> Codegen<'ctx> {
                     instantiations,
                 );
             }
-            Type::Option(inner)
-            | Type::List(inner)
-            | Type::Set(inner)
-            | Type::Ref(inner)
-            | Type::MutRef(inner)
-            | Type::Box(inner)
-            | Type::Rc(inner)
-            | Type::Arc(inner)
-            | Type::Ptr(inner)
-            | Type::Task(inner)
-            | Type::Range(inner) => Self::collect_generic_class_instantiation_from_type(
+            Type::Ref(inner) | Type::MutRef(inner) => Self::collect_generic_class_instantiation_from_type(
                 inner,
                 class_templates,
                 in_scope_generics,
                 instantiations,
             ),
-            Type::Result(ok, err) | Type::Map(ok, err) => {
+            Type::Result(ok, err) => {
                 Self::collect_generic_class_instantiation_from_type(
                     ok,
                     class_templates,
@@ -2010,6 +2168,30 @@ impl<'ctx> Codegen<'ctx> {
                     err,
                     class_templates,
                     in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Result",
+                    &[ok.as_ref().clone(), err.as_ref().clone()],
+                    instantiations,
+                );
+            }
+            Type::Map(ok, err) => {
+                Self::collect_generic_class_instantiation_from_type(
+                    ok,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                Self::collect_generic_class_instantiation_from_type(
+                    err,
+                    class_templates,
+                    in_scope_generics,
+                    instantiations,
+                );
+                maybe_record_builtin_like(
+                    "Map",
+                    &[ok.as_ref().clone(), err.as_ref().clone()],
                     instantiations,
                 );
             }
@@ -3098,26 +3280,56 @@ impl<'ctx> Codegen<'ctx> {
                     .collect(),
                 Box::new(Self::rewrite_specialized_class_type(ret, emitted_classes)),
             ),
-            Type::Option(inner) => Type::Option(Box::new(Self::rewrite_specialized_class_type(
-                inner,
-                emitted_classes,
-            ))),
-            Type::Result(ok, err) => Type::Result(
-                Box::new(Self::rewrite_specialized_class_type(ok, emitted_classes)),
-                Box::new(Self::rewrite_specialized_class_type(err, emitted_classes)),
-            ),
-            Type::List(inner) => Type::List(Box::new(Self::rewrite_specialized_class_type(
-                inner,
-                emitted_classes,
-            ))),
-            Type::Map(k, v) => Type::Map(
-                Box::new(Self::rewrite_specialized_class_type(k, emitted_classes)),
-                Box::new(Self::rewrite_specialized_class_type(v, emitted_classes)),
-            ),
-            Type::Set(inner) => Type::Set(Box::new(Self::rewrite_specialized_class_type(
-                inner,
-                emitted_classes,
-            ))),
+            Type::Option(inner) => {
+                let rewritten = Self::rewrite_specialized_class_type(inner, emitted_classes);
+                let spec_name =
+                    Self::generic_class_spec_name("Option", std::slice::from_ref(&rewritten));
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Option(Box::new(rewritten))
+                }
+            }
+            Type::Result(ok, err) => {
+                let ok = Self::rewrite_specialized_class_type(ok, emitted_classes);
+                let err = Self::rewrite_specialized_class_type(err, emitted_classes);
+                let spec_name = Self::generic_class_spec_name("Result", &[ok.clone(), err.clone()]);
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Result(Box::new(ok), Box::new(err))
+                }
+            }
+            Type::List(inner) => {
+                let rewritten = Self::rewrite_specialized_class_type(inner, emitted_classes);
+                let spec_name =
+                    Self::generic_class_spec_name("List", std::slice::from_ref(&rewritten));
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::List(Box::new(rewritten))
+                }
+            }
+            Type::Map(k, v) => {
+                let k = Self::rewrite_specialized_class_type(k, emitted_classes);
+                let v = Self::rewrite_specialized_class_type(v, emitted_classes);
+                let spec_name = Self::generic_class_spec_name("Map", &[k.clone(), v.clone()]);
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Map(Box::new(k), Box::new(v))
+                }
+            }
+            Type::Set(inner) => {
+                let rewritten = Self::rewrite_specialized_class_type(inner, emitted_classes);
+                let spec_name =
+                    Self::generic_class_spec_name("Set", std::slice::from_ref(&rewritten));
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Set(Box::new(rewritten))
+                }
+            }
             Type::Ref(inner) => Type::Ref(Box::new(Self::rewrite_specialized_class_type(
                 inner,
                 emitted_classes,
@@ -3126,30 +3338,64 @@ impl<'ctx> Codegen<'ctx> {
                 inner,
                 emitted_classes,
             ))),
-            Type::Box(inner) => Type::Box(Box::new(Self::rewrite_specialized_class_type(
-                inner,
-                emitted_classes,
-            ))),
-            Type::Rc(inner) => Type::Rc(Box::new(Self::rewrite_specialized_class_type(
-                inner,
-                emitted_classes,
-            ))),
-            Type::Arc(inner) => Type::Arc(Box::new(Self::rewrite_specialized_class_type(
-                inner,
-                emitted_classes,
-            ))),
-            Type::Ptr(inner) => Type::Ptr(Box::new(Self::rewrite_specialized_class_type(
-                inner,
-                emitted_classes,
-            ))),
-            Type::Task(inner) => Type::Task(Box::new(Self::rewrite_specialized_class_type(
-                inner,
-                emitted_classes,
-            ))),
-            Type::Range(inner) => Type::Range(Box::new(Self::rewrite_specialized_class_type(
-                inner,
-                emitted_classes,
-            ))),
+            Type::Box(inner) => {
+                let rewritten = Self::rewrite_specialized_class_type(inner, emitted_classes);
+                let spec_name = Self::generic_class_spec_name("Box", std::slice::from_ref(&rewritten));
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Box(Box::new(rewritten))
+                }
+            }
+            Type::Rc(inner) => {
+                let rewritten = Self::rewrite_specialized_class_type(inner, emitted_classes);
+                let spec_name = Self::generic_class_spec_name("Rc", std::slice::from_ref(&rewritten));
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Rc(Box::new(rewritten))
+                }
+            }
+            Type::Arc(inner) => {
+                let rewritten = Self::rewrite_specialized_class_type(inner, emitted_classes);
+                let spec_name =
+                    Self::generic_class_spec_name("Arc", std::slice::from_ref(&rewritten));
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Arc(Box::new(rewritten))
+                }
+            }
+            Type::Ptr(inner) => {
+                let rewritten = Self::rewrite_specialized_class_type(inner, emitted_classes);
+                let spec_name =
+                    Self::generic_class_spec_name("Ptr", std::slice::from_ref(&rewritten));
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Ptr(Box::new(rewritten))
+                }
+            }
+            Type::Task(inner) => {
+                let rewritten = Self::rewrite_specialized_class_type(inner, emitted_classes);
+                let spec_name =
+                    Self::generic_class_spec_name("Task", std::slice::from_ref(&rewritten));
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Task(Box::new(rewritten))
+                }
+            }
+            Type::Range(inner) => {
+                let rewritten = Self::rewrite_specialized_class_type(inner, emitted_classes);
+                let spec_name =
+                    Self::generic_class_spec_name("Range", std::slice::from_ref(&rewritten));
+                if emitted_classes.contains(&spec_name) {
+                    Type::Named(spec_name)
+                } else {
+                    Type::Range(Box::new(rewritten))
+                }
+            }
             _ => ty.clone(),
         }
     }
@@ -3644,11 +3890,48 @@ impl<'ctx> Codegen<'ctx> {
 
     fn rewrite_specialized_class_decl(
         decl: &Spanned<Decl>,
+        module_prefix: Option<&str>,
+        class_templates: &HashMap<String, GenericClassTemplate>,
         emitted_classes: &HashSet<String>,
     ) -> Spanned<Decl> {
         let node = match &decl.node {
             Decl::Function(func) => {
                 let mut func = func.clone();
+                if let Some(module_prefix) = module_prefix {
+                    func.params = func
+                        .params
+                        .iter()
+                        .map(|param| Parameter {
+                            name: param.name.clone(),
+                            ty: Self::rewrite_type_for_local_module_classes(
+                                &param.ty,
+                                module_prefix,
+                                class_templates,
+                            ),
+                            mutable: param.mutable,
+                            mode: param.mode,
+                        })
+                        .collect();
+                    func.return_type = Self::rewrite_type_for_local_module_classes(
+                        &func.return_type,
+                        module_prefix,
+                        class_templates,
+                    );
+                    func.body = func
+                        .body
+                        .iter()
+                        .map(|stmt| {
+                            Spanned::new(
+                                Self::rewrite_stmt_for_local_module_classes(
+                                    &stmt.node,
+                                    module_prefix,
+                                    class_templates,
+                                ),
+                                stmt.span.clone(),
+                            )
+                        })
+                        .collect();
+                }
                 func.params = func
                     .params
                     .iter()
@@ -3675,6 +3958,95 @@ impl<'ctx> Codegen<'ctx> {
             }
             Decl::Class(class) => {
                 let mut class = class.clone();
+                if let Some(module_prefix) = module_prefix {
+                    class.fields = class
+                        .fields
+                        .iter()
+                        .map(|field| Field {
+                            name: field.name.clone(),
+                            ty: Self::rewrite_type_for_local_module_classes(
+                                &field.ty,
+                                module_prefix,
+                                class_templates,
+                            ),
+                            mutable: field.mutable,
+                            visibility: field.visibility,
+                        })
+                        .collect();
+                    if let Some(constructor) = &class.constructor {
+                        let mut ctor = constructor.clone();
+                        ctor.params = ctor
+                            .params
+                            .iter()
+                            .map(|param| Parameter {
+                                name: param.name.clone(),
+                                ty: Self::rewrite_type_for_local_module_classes(
+                                    &param.ty,
+                                    module_prefix,
+                                    class_templates,
+                                ),
+                                mutable: param.mutable,
+                                mode: param.mode,
+                            })
+                            .collect();
+                        ctor.body = ctor
+                            .body
+                            .iter()
+                            .map(|stmt| {
+                                Spanned::new(
+                                    Self::rewrite_stmt_for_local_module_classes(
+                                        &stmt.node,
+                                        module_prefix,
+                                        class_templates,
+                                    ),
+                                    stmt.span.clone(),
+                                )
+                            })
+                            .collect();
+                        class.constructor = Some(ctor);
+                    }
+                    class.methods = class
+                        .methods
+                        .iter()
+                        .map(|method| {
+                            let mut method = method.clone();
+                            method.params = method
+                                .params
+                                .iter()
+                                .map(|param| Parameter {
+                                    name: param.name.clone(),
+                                    ty: Self::rewrite_type_for_local_module_classes(
+                                        &param.ty,
+                                        module_prefix,
+                                        class_templates,
+                                    ),
+                                    mutable: param.mutable,
+                                    mode: param.mode,
+                                })
+                                .collect();
+                            method.return_type = Self::rewrite_type_for_local_module_classes(
+                                &method.return_type,
+                                module_prefix,
+                                class_templates,
+                            );
+                            method.body = method
+                                .body
+                                .iter()
+                                .map(|stmt| {
+                                    Spanned::new(
+                                        Self::rewrite_stmt_for_local_module_classes(
+                                            &stmt.node,
+                                            module_prefix,
+                                            class_templates,
+                                        ),
+                                        stmt.span.clone(),
+                                    )
+                                })
+                                .collect();
+                            method
+                        })
+                        .collect();
+                }
                 class.fields = class
                     .fields
                     .iter()
@@ -3751,10 +4123,20 @@ impl<'ctx> Codegen<'ctx> {
             }
             Decl::Module(module) => {
                 let mut module = module.clone();
+                let next_prefix = module_prefix
+                    .map(|prefix| format!("{}__{}", prefix, module.name))
+                    .unwrap_or_else(|| module.name.clone());
                 module.declarations = module
                     .declarations
                     .iter()
-                    .map(|inner| Self::rewrite_specialized_class_decl(inner, emitted_classes))
+                    .map(|inner| {
+                        Self::rewrite_specialized_class_decl(
+                            inner,
+                            Some(&next_prefix),
+                            class_templates,
+                            emitted_classes,
+                        )
+                    })
                     .collect();
                 Decl::Module(module)
             }
@@ -3898,7 +4280,9 @@ impl<'ctx> Codegen<'ctx> {
         all_decls.extend(generated_classes);
         let rewritten_decls = all_decls
             .iter()
-            .map(|decl| Self::rewrite_specialized_class_decl(decl, &emitted_classes))
+            .map(|decl| {
+                Self::rewrite_specialized_class_decl(decl, None, &class_templates, &emitted_classes)
+            })
             .collect();
 
         Ok(Program {
@@ -4310,7 +4694,14 @@ impl<'ctx> Codegen<'ctx> {
         all_decls.extend(generated_functions);
         let rewritten_all = all_decls
             .iter()
-            .map(|decl| Self::rewrite_specialized_class_decl(decl, &emitted_class_specs))
+            .map(|decl| {
+                Self::rewrite_specialized_class_decl(
+                    decl,
+                    None,
+                    &class_templates,
+                    &emitted_class_specs,
+                )
+            })
             .collect();
         Ok(Program {
             package: program.package.clone(),
@@ -4983,19 +5374,19 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn normalize_codegen_type(&self, ty: &Type) -> Type {
+    pub(crate) fn normalize_codegen_type(&self, ty: &Type) -> Type {
         match ty {
+            Type::Named(name) => self
+                .canonical_codegen_type_name(name)
+                .map(Type::Named)
+                .unwrap_or_else(|| ty.clone()),
             Type::Generic(name, args) => {
                 let normalized_args = args
                     .iter()
                     .map(|arg| self.normalize_codegen_type(arg))
                     .collect::<Vec<_>>();
-                let spec_name = Self::generic_class_spec_name(name, &normalized_args);
-                if self.classes.contains_key(&spec_name) {
-                    Type::Named(spec_name)
-                } else {
-                    Type::Generic(name.clone(), normalized_args)
-                }
+                self.normalize_user_defined_generic_type(name, &normalized_args)
+                    .unwrap_or_else(|| Type::Generic(name.clone(), normalized_args))
             }
             Type::Function(params, ret) => Type::Function(
                 params
@@ -5004,25 +5395,65 @@ impl<'ctx> Codegen<'ctx> {
                     .collect(),
                 Box::new(self.normalize_codegen_type(ret)),
             ),
-            Type::Option(inner) => Type::Option(Box::new(self.normalize_codegen_type(inner))),
-            Type::Result(ok, err) => Type::Result(
-                Box::new(self.normalize_codegen_type(ok)),
-                Box::new(self.normalize_codegen_type(err)),
-            ),
-            Type::List(inner) => Type::List(Box::new(self.normalize_codegen_type(inner))),
-            Type::Map(k, v) => Type::Map(
-                Box::new(self.normalize_codegen_type(k)),
-                Box::new(self.normalize_codegen_type(v)),
-            ),
-            Type::Set(inner) => Type::Set(Box::new(self.normalize_codegen_type(inner))),
+            Type::Option(inner) => {
+                let inner = self.normalize_codegen_type(inner);
+                self.normalize_user_defined_generic_type("Option", std::slice::from_ref(&inner))
+                    .unwrap_or_else(|| Type::Option(Box::new(inner)))
+            }
+            Type::Result(ok, err) => {
+                let ok = self.normalize_codegen_type(ok);
+                let err = self.normalize_codegen_type(err);
+                self.normalize_user_defined_generic_type("Result", &[ok.clone(), err.clone()])
+                    .unwrap_or_else(|| Type::Result(Box::new(ok), Box::new(err)))
+            }
+            Type::List(inner) => {
+                let inner = self.normalize_codegen_type(inner);
+                self.normalize_user_defined_generic_type("List", std::slice::from_ref(&inner))
+                    .unwrap_or_else(|| Type::List(Box::new(inner)))
+            }
+            Type::Map(k, v) => {
+                let k = self.normalize_codegen_type(k);
+                let v = self.normalize_codegen_type(v);
+                self.normalize_user_defined_generic_type("Map", &[k.clone(), v.clone()])
+                    .unwrap_or_else(|| Type::Map(Box::new(k), Box::new(v)))
+            }
+            Type::Set(inner) => {
+                let inner = self.normalize_codegen_type(inner);
+                self.normalize_user_defined_generic_type("Set", std::slice::from_ref(&inner))
+                    .unwrap_or_else(|| Type::Set(Box::new(inner)))
+            }
             Type::Ref(inner) => Type::Ref(Box::new(self.normalize_codegen_type(inner))),
             Type::MutRef(inner) => Type::MutRef(Box::new(self.normalize_codegen_type(inner))),
-            Type::Box(inner) => Type::Box(Box::new(self.normalize_codegen_type(inner))),
-            Type::Rc(inner) => Type::Rc(Box::new(self.normalize_codegen_type(inner))),
-            Type::Arc(inner) => Type::Arc(Box::new(self.normalize_codegen_type(inner))),
-            Type::Ptr(inner) => Type::Ptr(Box::new(self.normalize_codegen_type(inner))),
-            Type::Task(inner) => Type::Task(Box::new(self.normalize_codegen_type(inner))),
-            Type::Range(inner) => Type::Range(Box::new(self.normalize_codegen_type(inner))),
+            Type::Box(inner) => {
+                let inner = self.normalize_codegen_type(inner);
+                self.normalize_user_defined_generic_type("Box", std::slice::from_ref(&inner))
+                    .unwrap_or_else(|| Type::Box(Box::new(inner)))
+            }
+            Type::Rc(inner) => {
+                let inner = self.normalize_codegen_type(inner);
+                self.normalize_user_defined_generic_type("Rc", std::slice::from_ref(&inner))
+                    .unwrap_or_else(|| Type::Rc(Box::new(inner)))
+            }
+            Type::Arc(inner) => {
+                let inner = self.normalize_codegen_type(inner);
+                self.normalize_user_defined_generic_type("Arc", std::slice::from_ref(&inner))
+                    .unwrap_or_else(|| Type::Arc(Box::new(inner)))
+            }
+            Type::Ptr(inner) => {
+                let inner = self.normalize_codegen_type(inner);
+                self.normalize_user_defined_generic_type("Ptr", std::slice::from_ref(&inner))
+                    .unwrap_or_else(|| Type::Ptr(Box::new(inner)))
+            }
+            Type::Task(inner) => {
+                let inner = self.normalize_codegen_type(inner);
+                self.normalize_user_defined_generic_type("Task", std::slice::from_ref(&inner))
+                    .unwrap_or_else(|| Type::Task(Box::new(inner)))
+            }
+            Type::Range(inner) => {
+                let inner = self.normalize_codegen_type(inner);
+                self.normalize_user_defined_generic_type("Range", std::slice::from_ref(&inner))
+                    .unwrap_or_else(|| Type::Range(Box::new(inner)))
+            }
             _ => ty.clone(),
         }
     }
@@ -5068,9 +5499,10 @@ impl<'ctx> Codegen<'ctx> {
                 )));
             }
             let i = next_index;
-            field_llvm_types.push(self.llvm_type(&field.ty));
+            let normalized_field_ty = self.normalize_codegen_type(&field.ty);
+            field_llvm_types.push(self.llvm_type(&normalized_field_ty));
             field_indices.insert(field.name.clone(), i);
-            field_types_map.insert(field.name.clone(), field.ty.clone());
+            field_types_map.insert(field.name.clone(), normalized_field_ty);
             next_index += 1;
         }
 
@@ -5107,9 +5539,13 @@ impl<'ctx> Codegen<'ctx> {
             .as_ref()
             .map(|c| c.params.as_slice())
             .unwrap_or(&[]);
-        let param_types: Vec<BasicMetadataTypeEnum> = ctor_params
+        let normalized_ctor_params = ctor_params
             .iter()
-            .map(|p| self.llvm_type(&p.ty).into())
+            .map(|p| self.normalize_codegen_type(&p.ty))
+            .collect::<Vec<_>>();
+        let param_types: Vec<BasicMetadataTypeEnum> = normalized_ctor_params
+            .iter()
+            .map(|ty| self.llvm_type(ty).into())
             .collect();
 
         let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![
@@ -5130,8 +5566,8 @@ impl<'ctx> Codegen<'ctx> {
             (
                 func,
                 Type::Function(
-                    ctor_params.iter().map(|p| p.ty.clone()).collect(),
-                    Box::new(Type::Named(class.name.clone())),
+                    normalized_ctor_params,
+                    Box::new(self.normalize_codegen_type(&Type::Named(class.name.clone()))),
                 ),
             ),
         );
@@ -5146,11 +5582,17 @@ impl<'ctx> Codegen<'ctx> {
             self.context.ptr_type(AddressSpace::default()).into(), // env_ptr
             self_type.into(),                                      // this
         ];
-        for param in &method.params {
-            llvm_params.push(self.llvm_type(&param.ty).into());
+        let normalized_params = method
+            .params
+            .iter()
+            .map(|p| self.normalize_codegen_type(&p.ty))
+            .collect::<Vec<_>>();
+        for param_ty in &normalized_params {
+            llvm_params.push(self.llvm_type(param_ty).into());
         }
 
-        let fn_type = match &method.return_type {
+        let normalized_return = self.normalize_codegen_type(&method.return_type);
+        let fn_type = match &normalized_return {
             Type::None => self.context.void_type().fn_type(&llvm_params, false),
             ty => self.llvm_type(ty).fn_type(&llvm_params, false),
         };
@@ -5165,8 +5607,8 @@ impl<'ctx> Codegen<'ctx> {
             (
                 func,
                 Type::Function(
-                    method.params.iter().map(|p| p.ty.clone()).collect(),
-                    Box::new(method.return_type.clone()),
+                    normalized_params,
+                    Box::new(normalized_return),
                 ),
             ),
         );
@@ -5230,6 +5672,7 @@ impl<'ctx> Codegen<'ctx> {
             })?;
 
         self.current_function = Some(func);
+        self.current_return_type = Some(self.normalize_codegen_type(&Type::Named(class.name.clone())));
         let entry = self.context.append_basic_block(func, "entry");
         self.builder.position_at_end(entry);
         self.variables.clear();
@@ -5237,6 +5680,7 @@ impl<'ctx> Codegen<'ctx> {
         // Allocate parameters
         // Param 0 is env_ptr, constructor params start at 1
         for (i, param) in constructor.params.iter().enumerate() {
+            let normalized_param_ty = self.normalize_codegen_type(&param.ty);
             let llvm_param = func.get_nth_param((i + 1) as u32).ok_or_else(|| {
                 CodegenError::new(format!(
                     "Missing constructor parameter {} for {}",
@@ -5246,7 +5690,7 @@ impl<'ctx> Codegen<'ctx> {
             })?;
             let alloca = self
                 .builder
-                .build_alloca(self.llvm_type(&param.ty), &param.name)
+                .build_alloca(self.llvm_type(&normalized_param_ty), &param.name)
                 .map_err(|e| {
                     CodegenError::new(format!("alloca failed for '{}': {}", param.name, e))
                 })?;
@@ -5257,7 +5701,7 @@ impl<'ctx> Codegen<'ctx> {
                 param.name.clone(),
                 Variable {
                     ptr: alloca,
-                    ty: param.ty.clone(),
+                    ty: normalized_param_ty,
                 },
             );
         }
@@ -5320,6 +5764,7 @@ impl<'ctx> Codegen<'ctx> {
             .map_err(|e| CodegenError::new(format!("return failed in constructor: {}", e)))?;
 
         self.current_function = None;
+        self.current_return_type = None;
         Ok(())
     }
 
@@ -5332,6 +5777,7 @@ impl<'ctx> Codegen<'ctx> {
             .ok_or_else(|| CodegenError::new(format!("Missing declared method: {}", name)))?;
 
         self.current_function = Some(func);
+        self.current_return_type = Some(self.normalize_codegen_type(&method.return_type));
         let entry = self.context.append_basic_block(func, "entry");
         self.builder.position_at_end(entry);
         self.variables.clear();
@@ -5364,12 +5810,13 @@ impl<'ctx> Codegen<'ctx> {
         // Store parameters
         // Start from index 2 because 0=env_ptr, 1=this
         for (i, param) in method.params.iter().enumerate() {
+            let normalized_param_ty = self.normalize_codegen_type(&param.ty);
             let llvm_param = func.get_nth_param((i + 2) as u32).ok_or_else(|| {
                 CodegenError::new(format!("Missing method parameter {} for {}", i + 2, name))
             })?;
             let alloca = self
                 .builder
-                .build_alloca(self.llvm_type(&param.ty), &param.name)
+                .build_alloca(self.llvm_type(&normalized_param_ty), &param.name)
                 .map_err(|e| {
                     CodegenError::new(format!("alloca failed for '{}': {}", param.name, e))
                 })?;
@@ -5380,7 +5827,7 @@ impl<'ctx> Codegen<'ctx> {
                 param.name.clone(),
                 Variable {
                     ptr: alloca,
-                    ty: param.ty.clone(),
+                    ty: normalized_param_ty,
                 },
             );
         }
@@ -5410,6 +5857,7 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         self.current_function = None;
+        self.current_return_type = None;
         Ok(())
     }
 
@@ -6291,7 +6739,7 @@ impl<'ctx> Codegen<'ctx> {
         let (function, _) = self.functions.get(&func.name).unwrap().clone();
 
         self.current_function = Some(function);
-        self.current_return_type = Some(func.return_type.clone());
+        self.current_return_type = Some(self.normalize_codegen_type(&func.return_type));
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
         self.variables.clear();
@@ -6339,17 +6787,18 @@ impl<'ctx> Codegen<'ctx> {
         // because main() in Apex is usually main(): None
         let start_idx = if func.name == "main" { 2 } else { 1 };
         for (i, param) in func.params.iter().enumerate() {
+            let normalized_param_ty = self.normalize_codegen_type(&param.ty);
             let llvm_param = function.get_nth_param((i + start_idx) as u32).unwrap();
             let alloca = self
                 .builder
-                .build_alloca(self.llvm_type(&param.ty), &param.name)
+                .build_alloca(self.llvm_type(&normalized_param_ty), &param.name)
                 .unwrap();
             self.builder.build_store(alloca, llvm_param).unwrap();
             self.variables.insert(
                 param.name.clone(),
                 Variable {
                     ptr: alloca,
-                    ty: param.ty.clone(),
+                    ty: normalized_param_ty,
                 },
             );
         }
@@ -9676,64 +10125,51 @@ impl<'ctx> Codegen<'ctx> {
         ty: &str,
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
-        // Handle List<T> construction
-        if ty == "List" || ty.starts_with("List<") {
-            let list_ty = if ty == "List<Boolean>" {
-                Some(Type::List(Box::new(Type::Boolean)))
-            } else {
-                None
-            };
-            if args.len() == 1 {
-                if let Expr::Literal(Literal::Integer(size)) = &args[0].node {
-                    if *size > 0 {
-                        return self.create_fixed_list(*size as u64, list_ty.as_ref());
+        let normalized_ty = parse_type_source(ty)
+            .map(|parsed| self.normalize_codegen_type(&parsed))
+            .unwrap_or_else(|_| Type::Named(ty.to_string()));
+
+        match &normalized_ty {
+            Type::List(inner) => {
+                let list_ty = matches!(inner.as_ref(), Type::Boolean)
+                    .then(|| Type::List(Box::new(Type::Boolean)));
+                if args.len() == 1 {
+                    if let Expr::Literal(Literal::Integer(size)) = &args[0].node {
+                        if *size > 0 {
+                            return self.create_fixed_list(*size as u64, list_ty.as_ref());
+                        }
                     }
                 }
+                return self.create_empty_list(list_ty.as_ref());
             }
-            return self.create_empty_list(list_ty.as_ref());
+            Type::Map(_, _) => {
+                return self.create_empty_map_for_type(&normalized_ty);
+            }
+            Type::Option(_) => return self.create_option_none(),
+            Type::Result(_, _) => return self.create_default_result(),
+            Type::Set(_) => return self.create_empty_set_for_type(&normalized_ty),
+            Type::Box(_) => return self.create_empty_box(),
+            Type::Rc(_) => return self.create_empty_rc(),
+            Type::Arc(_) => return self.create_empty_arc(),
+            _ => {}
         }
 
-        // Handle Map<K,V> construction
-        if ty == "Map" || ty.starts_with("Map<") {
-            let map_ty = parse_type_source(ty)
-                .unwrap_or(Type::Map(Box::new(Type::Integer), Box::new(Type::Integer)));
-            return self.create_empty_map_for_type(&map_ty);
-        }
-
-        // Handle Option<T> construction (default to None)
-        if ty == "Option" || ty.starts_with("Option<") {
-            return self.create_option_none();
-        }
-
-        // Handle Result<T,E> construction (default to Error with zeroed memory)
-        if ty == "Result" || ty.starts_with("Result<") {
-            return self.create_default_result();
-        }
-
-        // Handle Set<T> construction
-        if ty == "Set" || ty.starts_with("Set<") {
-            let set_ty = parse_type_source(ty).unwrap_or(Type::Set(Box::new(Type::Integer)));
-            return self.create_empty_set_for_type(&set_ty);
-        }
-
-        // Handle Smart Pointer construction
-        if ty == "Box" || ty.starts_with("Box<") {
-            return self.create_empty_box();
-        }
-        if ty == "Rc" || ty.starts_with("Rc<") {
-            return self.create_empty_rc();
-        }
-        if ty == "Arc" || ty.starts_with("Arc<") {
-            return self.create_empty_arc();
-        }
-
-        let ctor_ty = ty.split('<').next().unwrap_or(ty);
+        let ctor_ty = match &normalized_ty {
+            Type::Named(name) => name.clone(),
+            Type::Generic(name, _) => name.clone(),
+            _ => ty.split('<').next().unwrap_or(ty).to_string(),
+        };
         let func_name = format!("{}__new", ctor_ty);
 
         let (func, _) = self
             .functions
             .get(&func_name)
-            .ok_or_else(|| CodegenError::new(format!("Unknown type: {}", ty)))?
+            .ok_or_else(|| {
+                CodegenError::new(format!(
+                    "Unknown type: {}",
+                    Self::format_type_string(&normalized_ty)
+                ))
+            })?
             .clone();
 
         let mut compiled_args: Vec<BasicValueEnum> = vec![

@@ -3519,18 +3519,50 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 }
                 collect_type_refs(ret, out);
             }
-            ast::Type::Option(inner)
-            | ast::Type::List(inner)
-            | ast::Type::Set(inner)
-            | ast::Type::Ref(inner)
-            | ast::Type::MutRef(inner)
-            | ast::Type::Box(inner)
-            | ast::Type::Rc(inner)
-            | ast::Type::Arc(inner)
-            | ast::Type::Ptr(inner)
-            | ast::Type::Task(inner)
-            | ast::Type::Range(inner) => collect_type_refs(inner, out),
-            ast::Type::Result(ok, err) | ast::Type::Map(ok, err) => {
+            ast::Type::Option(inner) => {
+                out.insert("Option".to_string());
+                collect_type_refs(inner, out);
+            }
+            ast::Type::List(inner) => {
+                out.insert("List".to_string());
+                collect_type_refs(inner, out);
+            }
+            ast::Type::Set(inner) => {
+                out.insert("Set".to_string());
+                collect_type_refs(inner, out);
+            }
+            ast::Type::Box(inner) => {
+                out.insert("Box".to_string());
+                collect_type_refs(inner, out);
+            }
+            ast::Type::Rc(inner) => {
+                out.insert("Rc".to_string());
+                collect_type_refs(inner, out);
+            }
+            ast::Type::Arc(inner) => {
+                out.insert("Arc".to_string());
+                collect_type_refs(inner, out);
+            }
+            ast::Type::Ptr(inner) => {
+                out.insert("Ptr".to_string());
+                collect_type_refs(inner, out);
+            }
+            ast::Type::Task(inner) => {
+                out.insert("Task".to_string());
+                collect_type_refs(inner, out);
+            }
+            ast::Type::Range(inner) => {
+                out.insert("Range".to_string());
+                collect_type_refs(inner, out);
+            }
+            ast::Type::Ref(inner) | ast::Type::MutRef(inner) => collect_type_refs(inner, out),
+            ast::Type::Result(ok, err) => {
+                out.insert("Result".to_string());
+                collect_type_refs(ok, out);
+                collect_type_refs(err, out);
+            }
+            ast::Type::Map(ok, err) => {
+                out.insert("Map".to_string());
                 collect_type_refs(ok, out);
                 collect_type_refs(err, out);
             }
@@ -7608,6 +7640,130 @@ function main(): None {
                 "project build should support namespace alias nested generic method specializations",
             );
         });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_cross_package_nested_generic_function_returns_via_namespace_alias() {
+        let temp_root =
+            make_temp_project_root("cross-package-nested-generic-return-namespace-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n    }\n}\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nfunction main(): Integer { return u.M.N.mk(42).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support cross-package nested generic returns via namespace alias",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run cross-package nested generic return project binary");
+        assert_eq!(status.code(), Some(42));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_cross_package_nested_generic_async_returns_via_namespace_alias() {
+        let temp_root = make_temp_project_root(
+            "cross-package-nested-generic-async-return-namespace-alias-project",
+        );
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function get(): T { return this.value; }\n        }\n        async function mk_async(value: Integer): Task<Box<Integer>> { return Box<Integer>(value); }\n    }\n}\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nfunction main(): Integer { return await(u.M.N.mk_async(43)).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support cross-package nested generic async returns via namespace alias",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run cross-package nested generic async return project binary");
+        assert_eq!(status.code(), Some(43));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_qualified_module_type_paths() {
+        let temp_root = make_temp_project_root("qualified-module-type-path-runtime-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule util {\n    class Item {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n    function mk(): Item { return Item(7); }\n}\nfunction main(): Integer {\n    item: util.Item = util.mk();\n    return item.get();\n}\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support qualified module type paths end-to-end",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled qualified module type path binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_user_defined_generic_classes_named_like_builtins() {
+        let temp_root =
+            make_temp_project_root("user-defined-generic-class-named-like-builtin-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function get(): T { return this.value; }\n}\nfunction mk(value: Integer): Box<Integer> {\n    return Box<Integer>(value);\n}\nfunction main(): Integer {\n    return mk(42).get();\n}\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should prefer user-defined generic classes over built-in container names",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled user-defined builtin-named generic class binary");
+        assert_eq!(status.code(), Some(42));
 
         let _ = fs::remove_dir_all(temp_root);
     }
