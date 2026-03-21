@@ -72,6 +72,51 @@ fn default_opt_level() -> String {
     "3".to_string()
 }
 
+fn validate_project_path(
+    project_root: &Path,
+    relative_path: &str,
+    label: &str,
+) -> Result<(), String> {
+    let canonical_root = project_root.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve project root '{}': {}",
+            project_root.display(),
+            e
+        )
+    })?;
+    let resolved_path = project_root.join(relative_path);
+
+    if !resolved_path.exists() {
+        return Err(format!(
+            "{} '{}' not found at '{}'",
+            label,
+            relative_path,
+            resolved_path.display()
+        ));
+    }
+
+    let canonical_path = resolved_path.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve {} '{}' at '{}': {}",
+            label,
+            relative_path,
+            resolved_path.display(),
+            e
+        )
+    })?;
+
+    if !canonical_path.starts_with(&canonical_root) {
+        return Err(format!(
+            "{} '{}' resolves outside the project root '{}'",
+            label,
+            relative_path,
+            canonical_root.display()
+        ));
+    }
+
+    Ok(())
+}
+
 impl Default for ProjectConfig {
     fn default() -> Self {
         Self {
@@ -150,26 +195,11 @@ impl ProjectConfig {
 
     /// Validate project configuration
     pub fn validate(&self, project_root: &Path) -> Result<(), String> {
-        // Check entry point exists
-        let entry_path = self.get_entry_path(project_root);
-        if !entry_path.exists() {
-            return Err(format!(
-                "Entry point '{}' not found at '{}'",
-                self.entry,
-                entry_path.display()
-            ));
-        }
+        validate_project_path(project_root, &self.entry, "Entry point")?;
 
         // Check all source files exist
         for file in &self.files {
-            let file_path = project_root.join(file);
-            if !file_path.exists() {
-                return Err(format!(
-                    "Source file '{}' not found at '{}'",
-                    file,
-                    file_path.display()
-                ));
-            }
+            validate_project_path(project_root, file, "Source file")?;
         }
 
         // Check entry is in files list
@@ -209,6 +239,15 @@ pub fn is_in_project(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{OutputKind, ProjectConfig};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}_{unique}"))
+    }
 
     #[test]
     fn defaults_include_linker_configuration_fields() {
@@ -259,5 +298,68 @@ output = "demo"
         let _ = std::fs::remove_file(&path);
         assert_eq!(config.name, "demo");
         assert_eq!(config.entry, "src/main.apex");
+    }
+
+    #[test]
+    fn validate_rejects_entry_outside_project_root() {
+        let project_root = unique_temp_dir("apex_project_validate_entry_escape");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("entry file should be written");
+
+        let escaped_file = project_root
+            .parent()
+            .expect("temp dir should have parent")
+            .join("escaped_entry.apex");
+        std::fs::write(&escaped_file, "function main(): None { return None; }\n")
+            .expect("escaped file should be written");
+
+        let mut config = ProjectConfig::new("demo");
+        config.entry = "../escaped_entry.apex".to_string();
+        config.files = vec!["../escaped_entry.apex".to_string()];
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("entry outside project root should be rejected");
+
+        let _ = std::fs::remove_file(&escaped_file);
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("outside the project root"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_source_file_outside_project_root() {
+        let project_root = unique_temp_dir("apex_project_validate_file_escape");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("entry file should be written");
+
+        let escaped_file = project_root
+            .parent()
+            .expect("temp dir should have parent")
+            .join("escaped_module.apex");
+        std::fs::write(&escaped_file, "function helper(): None { return None; }\n")
+            .expect("escaped module should be written");
+
+        let mut config = ProjectConfig::new("demo");
+        config.files.push("../escaped_module.apex".to_string());
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("source file outside project root should be rejected");
+
+        let _ = std::fs::remove_file(&escaped_file);
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("outside the project root"), "{error}");
     }
 }

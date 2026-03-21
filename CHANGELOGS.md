@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed `apex bindgen` C-type normalization for real-world headers:
+  - inline `/* ... */` and `// ...` comments now preserve token boundaries instead of merging declarations like `unsigned/*x*/int` into an unparseable pseudo-type
+  - `unsigned` integer prototypes now stay typed as integers instead of being corrupted by substring-based qualifier stripping
+- Fixed project file boundary validation in `apex.toml`:
+  - `entry` and `files` paths that resolve through `..` or symlinks outside the project root are now rejected during config validation instead of silently escaping the workspace
+
 - Fixed remaining built-in expression-receiver backend gaps:
   - `Map<K, V>` methods like `length`, `contains`, `get`, and `set` now lower correctly on non-local receivers such as `build().contains(1)` instead of failing to infer the object type
   - `Option.is_some()` and `Result.is_ok()` now return real LLVM booleans in conditional positions instead of raw `i8` tags that could break branching IR

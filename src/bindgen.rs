@@ -10,6 +10,9 @@ fn strip_comments(input: &str) -> String {
             while i < bytes.len() && bytes[i] != b'\n' {
                 i += 1;
             }
+            if !out.ends_with([' ', '\n', '\t']) {
+                out.push(' ');
+            }
             continue;
         }
         if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
@@ -18,6 +21,9 @@ fn strip_comments(input: &str) -> String {
                 i += 1;
             }
             i = (i + 2).min(bytes.len());
+            if !out.ends_with([' ', '\n', '\t']) {
+                out.push(' ');
+            }
             continue;
         }
         out.push(bytes[i] as char);
@@ -27,13 +33,17 @@ fn strip_comments(input: &str) -> String {
 }
 
 fn normalize_c_type(raw: &str) -> String {
-    let mut s = raw.trim().replace('\t', " ");
-    for q in [
-        "const", "volatile", "register", "signed", "extern", "static",
-    ] {
-        s = s.replace(q, "");
-    }
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
+    raw.trim()
+        .replace('\t', " ")
+        .split_whitespace()
+        .filter(|token| {
+            !matches!(
+                *token,
+                "const" | "volatile" | "register" | "signed" | "extern" | "static"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn map_c_type_to_apex(c_type: &str) -> Option<String> {
@@ -194,7 +204,8 @@ pub fn generate_bindings(header: &Path, output: Option<&Path>) -> Result<usize, 
 
 #[cfg(test)]
 mod tests {
-    use super::generate_from_prototype;
+    use super::{generate_bindings, generate_from_prototype, strip_comments};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn parses_pointer_return_prototypes() {
@@ -209,5 +220,44 @@ mod tests {
             "void qsort(void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*))",
         );
         assert!(generated.is_none());
+    }
+
+    #[test]
+    fn keeps_tokens_separated_when_stripping_inline_block_comments() {
+        let stripped = strip_comments("unsigned/*comment*/int count(void);");
+        assert_eq!(stripped, "unsigned int count(void);");
+    }
+
+    #[test]
+    fn preserves_unsigned_type_normalization() {
+        let generated = generate_from_prototype("unsigned short checksum(unsigned int value)")
+            .expect("unsigned integer types should normalize correctly");
+        assert_eq!(
+            generated,
+            "extern(c) function checksum(value: Integer): Integer;"
+        );
+    }
+
+    #[test]
+    fn bindgen_handles_comment_only_token_boundaries_in_real_header_flow() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let header_path = std::env::temp_dir().join(format!("apex_bindgen_{unique}.h"));
+        let output_path = std::env::temp_dir().join(format!("apex_bindgen_{unique}.apex"));
+        let header = "unsigned/*keep-space*/int count(void);\n";
+        std::fs::write(&header_path, header).expect("temporary header should be written");
+
+        let count =
+            generate_bindings(&header_path, Some(&output_path)).expect("bindgen should succeed");
+        let generated =
+            std::fs::read_to_string(&output_path).expect("generated bindings should be readable");
+
+        let _ = std::fs::remove_file(&header_path);
+        let _ = std::fs::remove_file(&output_path);
+
+        assert_eq!(count, 1);
+        assert!(generated.contains("extern(c) function count(): Integer;"));
     }
 }

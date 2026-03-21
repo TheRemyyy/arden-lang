@@ -236,3 +236,4 @@ apex bindgen include/lib.h --output src/bindings.apex
 Notes:
 - Generated signatures are a starting point. Review and adjust ABI/types before production use.
 - Current generator targets C function prototypes and variadic `...` declarations.
+- Inline C comments in prototypes are normalized safely, so headers like `unsigned/*abi*/int fn(void);` no longer collapse into invalid pseudo-types.

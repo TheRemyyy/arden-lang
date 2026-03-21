@@ -63,6 +63,10 @@ link_args = ["-Wl,--as-needed"]
 | `link_search` | No | Extra library search paths passed as `-L<path>` |
 | `link_args` | No | Extra raw linker arguments forwarded to Clang |
 
+Path safety:
+- `entry` and every path in `files` must resolve inside the project root.
+- Paths that escape through `..` segments or symlinks are rejected during validation.
+
 ## Project Commands
 
 ### Build Project
