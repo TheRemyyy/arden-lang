@@ -196,6 +196,7 @@ Notes:
 - `System.cwd()` now returns the full working directory for deep paths instead of collapsing to an empty string once the current path exceeds the old fixed 1024-byte buffer.
 - `File.read()` now fails fast on embedded NUL bytes instead of silently truncating binary-looking content at the first `0x00`.
 - `File.read()` now also validates UTF-8 at load time, so invalid text bytes fail immediately instead of slipping through and only crashing later in string operations.
+- `File.read()` now also fails fast when the target path cannot be opened instead of silently returning an empty string for missing or inaccessible files.
 - `File.write()` now returns `false` when the write or final flush/close fails instead of reporting success just because the file handle opened.
 - `File.exists()` now returns `false` for directories instead of treating any readable path as a file hit.
 - `File.delete()` now returns `false` for directories instead of deleting them as if they were regular files.
@@ -207,6 +208,8 @@ Notes:
 
 Lint/fix note:
 - `apex lint <path>` and `apex fix <path>` now validate explicit paths up front and reject directories or non-`.apex` files with a direct CLI error.
+- `apex lex`, `apex parse`, and `apex compile` also validate explicit source paths up front and reject directories or non-`.apex` files with a direct CLI error.
+- `apex check <path>` also validates explicit source paths up front and rejects directories or non-`.apex` files with a direct CLI error.
 
 ### Linting and Safe Fixes
 

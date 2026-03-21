@@ -49,7 +49,7 @@ The `File` object provides static methods for interacting with the file system.
 
 ### `File.read(path: String): String`
 
-Reads the entire content of a text file. Returns an empty string if the file cannot be read.
+Reads the entire content of a text file. Missing or inaccessible files fail immediately instead of silently producing an empty string.
 Files containing embedded `0x00` bytes are rejected at runtime instead of being silently truncated.
 Invalid UTF-8 byte sequences are also rejected at load time instead of leaking into later string operations.
 Non-seekable paths such as FIFOs are rejected with a direct runtime error instead of being treated like normal files.

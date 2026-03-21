@@ -12787,7 +12787,6 @@ impl<'ctx> Codegen<'ctx> {
                 let current_fn = self.current_function.unwrap();
                 let success_block = self.context.append_basic_block(current_fn, "read.success");
                 let fail_block = self.context.append_basic_block(current_fn, "read.fail");
-                let merge_block = self.context.append_basic_block(current_fn, "read.merge");
                 let seek_ok_block = self.context.append_basic_block(current_fn, "read.seek_ok");
                 let seek_fail_block = self
                     .context
@@ -12801,18 +12800,11 @@ impl<'ctx> Codegen<'ctx> {
                     .build_conditional_branch(is_null, fail_block, success_block)
                     .unwrap();
 
-                // Fail - return empty string
                 self.builder.position_at_end(fail_block);
-                let empty_str = self.context.const_string(b"", true);
-                let empty_global = self
-                    .module
-                    .add_global(empty_str.get_type(), None, "empty_s");
-                empty_global.set_linkage(Linkage::Private);
-                empty_global.set_initializer(&empty_str);
-                let fail_res = empty_global.as_pointer_value();
-                self.builder
-                    .build_unconditional_branch(merge_block)
-                    .unwrap();
+                self.emit_runtime_error(
+                    "File.read() failed to open file",
+                    "file_read_open_failed",
+                )?;
 
                 // Success
                 self.builder.position_at_end(success_block);
@@ -13018,23 +13010,7 @@ impl<'ctx> Codegen<'ctx> {
                     .build_call(fclose, &[file_ptr.into()], "")
                     .unwrap();
 
-                let success_merge_block = self
-                    .builder
-                    .get_insert_block()
-                    .ok_or_else(|| CodegenError::new("File.read merge predecessor missing"))?;
-                self.builder
-                    .build_unconditional_branch(merge_block)
-                    .unwrap();
-
-                // Merge
-                self.builder.position_at_end(merge_block);
-                let phi = self
-                    .builder
-                    .build_phi(self.context.ptr_type(AddressSpace::default()), "result")
-                    .unwrap();
-                phi.add_incoming(&[(&fail_res, fail_block), (&buffer, success_merge_block)]);
-
-                Ok(Some(phi.as_basic_value()))
+                Ok(Some(buffer.into()))
             }
 
             "File__exists" => {

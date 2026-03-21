@@ -74,6 +74,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `System.getenv()` now validates environment values immediately instead of letting invalid UTF-8 bytes slip into a `String` and only crash later in unrelated string operations
 - Fixed POSIX `System.shell()` exit-code decoding:
   - `System.shell("sh -c 'exit N'")` now returns the real exit code `N` instead of the raw `system()` wait-status word such as `1792`
+- Fixed `File.read()` open-failure silent fallback:
+  - `File.read()` now fails fast when the target path cannot be opened instead of silently returning an empty string for missing or inaccessible files
+- Fixed CLI source-path boundary validation for single-file commands:
+  - `apex lex`, `apex parse`, and `apex compile` now reject directory paths or non-`.apex` inputs up front with direct validation errors instead of falling through to generic late file-read failures
+- Fixed `apex check <path>` single-file boundary validation:
+  - `apex check <path>` now rejects directory paths or non-`.apex` inputs up front instead of falling through to generic late file-read or lexer failures
 - Fixed entrypoint `main()` signature validation:
   - `apex check` now rejects invalid entrypoint signatures such as `main(x: Integer)`, `async main()`, generic `main<T>()`, or `main()` returning unsupported types like `String`
   - this prevents backend crashes and invalid LLVM/Clang failures that previously happened when malformed `main()` signatures reached code generation

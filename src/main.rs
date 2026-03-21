@@ -5335,6 +5335,8 @@ fn compile_file(
     opt_level: Option<&str>,
     target: Option<&str>,
 ) -> Result<(), String> {
+    validate_source_file_path(file)?;
+
     // Check if we're in a project
     if let Some(project_root) = find_project_root(&current_dir_checked()?) {
         if file.starts_with(&project_root) {
@@ -5847,6 +5849,7 @@ fn link_objects(
 /// Check a single file
 fn check_file(file: Option<&Path>) -> Result<(), String> {
     let file_path = if let Some(f) = file {
+        validate_source_file_path(f)?;
         f.to_path_buf()
     } else {
         // Use project entry point
@@ -6227,6 +6230,8 @@ fn profile_target(file: Option<&Path>) -> Result<(), String> {
 
 /// Show tokens (debug)
 fn lex_file(file: &Path) -> Result<(), String> {
+    validate_source_file_path(file)?;
+
     let source = fs::read_to_string(file)
         .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
 
@@ -6243,6 +6248,8 @@ fn lex_file(file: &Path) -> Result<(), String> {
 
 /// Show AST (debug)
 fn parse_file(file: &Path) -> Result<(), String> {
+    validate_source_file_path(file)?;
+
     let source = fs::read_to_string(file)
         .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
 
@@ -6551,16 +6558,17 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
 mod tests {
     use super::{
         api_program_fingerprint, build_file_dependency_graph_incremental, build_project,
-        build_reverse_dependency_graph, check_command, codegen_program_for_unit, compile_source,
-        component_fingerprint, compute_link_fingerprint, compute_namespace_api_fingerprints,
-        compute_rewrite_context_fingerprint_for_unit, dedupe_link_inputs, escape_response_file_arg,
-        fix_target, format_targets, lint_target, parse_project_unit,
-        precompute_all_transitive_dependencies, reusable_component_fingerprints, run_tests,
-        semantic_program_fingerprint, should_skip_final_link, transitive_dependents,
-        typecheck_summary_cache_from_state, typecheck_summary_cache_matches, DependencyGraphCache,
-        DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig, LinkManifestCache,
-        OutputKind, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
-        DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
+        build_reverse_dependency_graph, check_command, check_file, codegen_program_for_unit,
+        compile_file, compile_source, component_fingerprint, compute_link_fingerprint,
+        compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
+        dedupe_link_inputs, escape_response_file_arg, fix_target, format_targets, lex_file,
+        lint_target, parse_file, parse_project_unit, precompute_all_transitive_dependencies,
+        reusable_component_fingerprints, run_tests, semantic_program_fingerprint,
+        should_skip_final_link, transitive_dependents, typecheck_summary_cache_from_state,
+        typecheck_summary_cache_matches, DependencyGraphCache, DependencyGraphFileEntry,
+        DependencyResolutionContext, LinkConfig, LinkManifestCache, OutputKind, ParsedProjectUnit,
+        RewriteFingerprintContext, RewrittenProjectUnit, DEPENDENCY_GRAPH_CACHE_SCHEMA,
+        LINK_MANIFEST_CACHE_SCHEMA,
     };
     use crate::ast::{Decl, FunctionDecl, ImportDecl, Program, Spanned, Type, Visibility};
     use crate::borrowck::BorrowChecker;
@@ -10492,6 +10500,38 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_fails_fast_on_file_read_missing_path() {
+        let temp_root = make_temp_project_root("file-read-missing-path-runtime");
+        let source_path = temp_root.join("file_read_missing_path_runtime.apex");
+        let output_path = temp_root.join("file_read_missing_path_runtime");
+        let source = r#"
+            import std.fs.*;
+
+            function main(): Integer {
+                data: String = File.read("missing.txt");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("File.read missing-path failure path should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .current_dir(&temp_root)
+            .output()
+            .expect("run compiled File.read missing-path binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("File.read() failed to open file\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_time_now_with_long_format() {
         let temp_root = make_temp_project_root("time-now-long-format-runtime");
         let source_path = temp_root.join("time_now_long_format_runtime.apex");
@@ -11674,6 +11714,76 @@ function main(): None {
         fs::write(&text_file, "not apex\n").expect("write text file");
 
         let err = fix_target(Some(&text_file)).expect_err("fix should reject non-apex files");
+        assert!(
+            err.contains("is not an .apex file"),
+            "expected non-apex validation error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_lex_file_rejects_directory_paths() {
+        let temp_root = make_temp_project_root("cli-lex-dir-path");
+
+        let err = lex_file(&temp_root).expect_err("lex should reject directory paths");
+        assert!(
+            err.contains("is not a file"),
+            "expected directory path validation error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_parse_file_rejects_directory_paths() {
+        let temp_root = make_temp_project_root("cli-parse-dir-path");
+
+        let err = parse_file(&temp_root).expect_err("parse should reject directory paths");
+        assert!(
+            err.contains("is not a file"),
+            "expected directory path validation error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_compile_file_rejects_non_apex_paths() {
+        let temp_root = make_temp_project_root("cli-compile-non-apex");
+        let text_file = temp_root.join("notes.txt");
+        fs::write(&text_file, "not apex\n").expect("write text file");
+
+        let err = compile_file(&text_file, None, false, true, None, None)
+            .expect_err("compile should reject non-apex files");
+        assert!(
+            err.contains("is not an .apex file"),
+            "expected non-apex validation error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_check_file_rejects_directory_paths() {
+        let temp_root = make_temp_project_root("cli-check-dir-path");
+
+        let err = check_file(Some(&temp_root)).expect_err("check should reject directory paths");
+        assert!(
+            err.contains("is not a file"),
+            "expected directory path validation error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_check_file_rejects_non_apex_paths() {
+        let temp_root = make_temp_project_root("cli-check-non-apex");
+        let text_file = temp_root.join("notes.txt");
+        fs::write(&text_file, "not apex\n").expect("write text file");
+
+        let err = check_file(Some(&text_file)).expect_err("check should reject non-apex files");
         assert!(
             err.contains("is not an .apex file"),
             "expected non-apex validation error, got: {err}"
