@@ -11,8 +11,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `apex bindgen` C-type normalization for real-world headers:
   - inline `/* ... */` and `// ...` comments now preserve token boundaries instead of merging declarations like `unsigned/*x*/int` into an unparseable pseudo-type
   - `unsigned` integer prototypes now stay typed as integers instead of being corrupted by substring-based qualifier stripping
+  - array parameters now decay into valid Apex bindings, so headers like `void fill(char name[16], int values[4]);` no longer emit invalid identifiers such as `name[16]`
+  - `inline` / `static inline` prototypes are now recognized instead of being dropped from generated bindings
 - Fixed project file boundary validation in `apex.toml`:
   - `entry` and `files` paths that resolve through `..` or symlinks outside the project root are now rejected during config validation instead of silently escaping the workspace
+  - directory paths in `entry` / `files` are now rejected as invalid source entries instead of surviving until later file reads
+  - project-root discovery now works for concrete source-file paths, including not-yet-created `.apex` files used by editor workflows
+- Fixed LSP cursor/symbol resolution edge cases:
+  - UTF-16 position conversion now stays aligned after non-BMP characters, so hover/definition/reference requests no longer drift after emoji or similar code points
+  - symbol lookup no longer leaks across whitespace/EOF and same-named function parameters now resolve to the parameter binding instead of the declaration name
+- Fixed namespace/import utility validation:
+  - invalid wildcard-alias forms and malformed dotted paths are now rejected instead of being normalized into bogus imports
+  - numeric-leading alias/path segments no longer pass validation as if they were legal identifiers
 
 - Fixed remaining built-in expression-receiver backend gaps:
   - `Map<K, V>` methods like `length`, `contains`, `get`, and `set` now lower correctly on non-local receivers such as `build().contains(1)` instead of failing to infer the object type
@@ -77,6 +87,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - import-check now rejects invalid namespace alias direct calls like `alias()` during import analysis instead of deferring them into later undefined-variable failures
 - Fixed tooling coverage in `apex test`, bindgen, and LSP:
   - test discovery now includes module-nested `@Test` and lifecycle hooks, preserving their mangled names in generated runners instead of silently skipping them
+  - directory-based `apex test --path <dir>` discovery now walks nested folders like `tests/unit/*.apex` instead of only scanning the top-level directory
+  - missing test directories now return a direct CLI error instead of being silently reported as `No test files found`
   - bindgen now accepts pointer-return C prototypes like `char *strdup(...)` and skips whole function-pointer-param prototypes instead of emitting ABI-wrong partial signatures
   - LSP rename/references/go-to-definition now tracks pattern-bound names and recurses through nested module declarations instead of missing `match` bindings and module-local class/enum definitions
 - Fixed filtered project codegen for direct constructor method receivers:

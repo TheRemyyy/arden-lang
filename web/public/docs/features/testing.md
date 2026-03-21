@@ -153,6 +153,8 @@ Notes:
 - Existing user `main(...)` entrypoints are removed from runner input before generation (including `public function main(...)`) so the generated test entrypoint remains unique.
 - Main stripping is signature-aware and avoids stripping comment text that only mentions `function main(...)`.
 - `async main(...)` forms are also stripped from test-runner input before generated entrypoint insertion.
+- Directory-based discovery now walks nested folders, so `apex test --path tests/` picks up files like `tests/unit/math_spec.apex`.
+- Missing test directories now fail fast with a CLI error instead of being treated as an empty test set.
 - Bare `@Ignore` and `@Ignore("reason")` are both skipped correctly by `apex test`.
 - Final summary `Total` counts all discovered tests, including ignored ones.
 - String escapes inside tests follow normal Apex string semantics, so `\n`, `\t`, `\"`, `\\`, `\{`, and `\}` are decoded before execution.

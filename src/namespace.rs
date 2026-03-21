@@ -213,19 +213,25 @@ pub fn parse_import(line: &str) -> Option<Import> {
     let rest = &line[7..]; // Skip "import "
     let rest = rest.trim_end_matches(';').trim();
 
-    // Check for alias: import utils.math as um
-    if let Some(pos) = rest.find(" as ") {
-        let path = QualifiedName::from_string(&rest[..pos]);
-        let alias = Some(rest[pos + 4..].to_string());
-        return Some(Import {
-            path,
-            wildcard: false,
-            alias,
-        });
-    }
+    let is_valid_import_path = |path: &str| {
+        !path.is_empty()
+            && !path.starts_with('.')
+            && !path.ends_with('.')
+            && path.split('.').all(|segment| {
+                !segment.is_empty()
+                    && {
+                        let mut chars = segment.chars();
+                        matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+                            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    }
+            })
+    };
 
     // Check for wildcard
     if let Some(path_str) = rest.strip_suffix(".*") {
+        if !is_valid_import_path(path_str) {
+            return None;
+        }
         let path = QualifiedName::from_string(path_str);
         return Some(Import {
             path,
@@ -234,7 +240,30 @@ pub fn parse_import(line: &str) -> Option<Import> {
         });
     }
 
+    // Check for alias: import utils.math as um
+    if let Some(pos) = rest.find(" as ") {
+        let path_str = &rest[..pos];
+        let alias_str = &rest[pos + 4..];
+        if !is_valid_import_path(path_str) || alias_str.is_empty() || {
+            let mut chars = alias_str.chars();
+            !matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+                || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        } {
+            return None;
+        }
+        let path = QualifiedName::from_string(path_str);
+        let alias = Some(alias_str.to_string());
+        return Some(Import {
+            path,
+            wildcard: false,
+            alias,
+        });
+    }
+
     // Regular import
+    if !is_valid_import_path(rest) {
+        return None;
+    }
     let path = QualifiedName::from_string(rest);
     Some(Import {
         path,
@@ -265,5 +294,20 @@ mod tests {
         let import = parse_import("import utils.math.factorial;").unwrap();
         assert!(!import.wildcard);
         assert_eq!(import.path.to_string(), "utils.math.factorial");
+    }
+
+    #[test]
+    fn test_rejects_wildcard_alias_import() {
+        assert!(parse_import("import utils.math.* as math;").is_none());
+    }
+
+    #[test]
+    fn test_rejects_invalid_import_paths() {
+        assert!(parse_import("import .utils.math;").is_none());
+        assert!(parse_import("import utils..math;").is_none());
+        assert!(parse_import("import utils.math.;").is_none());
+        assert!(parse_import("import 9utils.math;").is_none());
+        assert!(parse_import("import utils.9math;").is_none());
+        assert!(parse_import("import utils.math as 9alias;").is_none());
     }
 }

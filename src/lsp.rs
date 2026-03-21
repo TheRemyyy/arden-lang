@@ -97,7 +97,7 @@ impl<'a> ScopedSymbolResolver<'a> {
         }
         if let Some(name_span) = self
             .backend
-            .find_name_occurrence_in_span(self.text, name, span)
+            .find_name_occurrence_in_span(self.text, name, span, 0)
         {
             let id = self.next_binding_id;
             self.next_binding_id += 1;
@@ -124,6 +124,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                             self.text,
                             &param.name,
                             &decl.span,
+                            1,
                         ) {
                             self.declare_binding(&param.name, span);
                         }
@@ -139,6 +140,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                             self.text,
                             &field.name,
                             &decl.span,
+                            0,
                         ) {
                             let id = self.next_binding_id;
                             self.next_binding_id += 1;
@@ -154,6 +156,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                                 self.text,
                                 &param.name,
                                 &decl.span,
+                                1,
                             ) {
                                 self.declare_binding(&param.name, span);
                             }
@@ -175,6 +178,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                                 self.text,
                                 &param.name,
                                 &decl.span,
+                                1,
                             ) {
                                 self.declare_binding(&param.name, span);
                             }
@@ -196,6 +200,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                             self.text,
                             &method.name,
                             &decl.span,
+                            0,
                         ) {
                             let id = self.next_binding_id;
                             self.next_binding_id += 1;
@@ -208,6 +213,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                                 self.text,
                                 &param.name,
                                 &decl.span,
+                                1,
                             ) {
                                 let id = self.next_binding_id;
                                 self.next_binding_id += 1;
@@ -234,7 +240,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                 if name == self.symbol {
                     if let Some(span) = self
                         .backend
-                        .find_name_occurrence_in_span(self.text, name, &stmt.span)
+                        .find_name_occurrence_in_span(self.text, name, &stmt.span, 0)
                     {
                         self.declare_binding(name, span);
                     }
@@ -282,7 +288,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                 if var == self.symbol {
                     if let Some(span) = self
                         .backend
-                        .find_name_occurrence_in_span(self.text, var, &stmt.span)
+                        .find_name_occurrence_in_span(self.text, var, &stmt.span, 0)
                     {
                         self.declare_binding(var, span);
                     }
@@ -346,6 +352,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                             self.text,
                             &param.name,
                             &expr.span,
+                            0,
                         ) {
                             self.declare_binding(&param.name, span);
                         }
@@ -414,7 +421,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                 if name == self.symbol {
                     if let Some(span) =
                         self.backend
-                            .find_name_occurrence_in_span(self.text, name, search_span)
+                            .find_name_occurrence_in_span(self.text, name, search_span, 0)
                     {
                         self.declare_binding(name, span);
                     }
@@ -427,6 +434,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                             self.text,
                             binding,
                             search_span,
+                            0,
                         ) {
                             self.declare_binding(binding, span);
                         }
@@ -469,6 +477,116 @@ impl<'a> ScopedSymbolResolver<'a> {
     fn exit_scope(&mut self) {
         self.scopes.pop();
     }
+}
+
+fn offset_to_position_impl(text: &str, target: usize) -> Position {
+    let bounded_target = target.min(text.len());
+    let mut line = 0u32;
+    let mut col = 0u32;
+
+    for (idx, ch) in text.char_indices() {
+        if idx >= bounded_target {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += ch.len_utf16() as u32;
+        }
+    }
+
+    Position::new(line, col)
+}
+
+fn position_to_offset_impl(text: &str, pos: Position) -> usize {
+    let mut line = 0u32;
+    let mut col = 0u32;
+
+    for (idx, ch) in text.char_indices() {
+        if line == pos.line && col >= pos.character {
+            return idx;
+        }
+
+        if ch == '\n' {
+            if line == pos.line {
+                return idx;
+            }
+            line += 1;
+            col = 0;
+        } else if line == pos.line {
+            col += ch.len_utf16() as u32;
+        }
+    }
+
+    text.len()
+}
+
+fn is_ident_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn word_at_position_impl(text: &str, pos: Position) -> Option<String> {
+    let offset = position_to_offset_impl(text, pos).min(text.len());
+    let bytes = text.as_bytes();
+    if bytes.is_empty() || offset >= bytes.len() {
+        return None;
+    }
+
+    let mut idx = offset;
+    if !is_ident_byte(bytes[idx]) && idx > 0 {
+        if bytes[idx].is_ascii_whitespace() || !is_ident_byte(bytes[idx - 1]) {
+            return None;
+        }
+        idx -= 1;
+    }
+    if !is_ident_byte(bytes[idx]) {
+        return None;
+    }
+
+    let mut start = idx;
+    while start > 0 && is_ident_byte(bytes[start - 1]) {
+        start -= 1;
+    }
+    let mut end = idx;
+    while end + 1 < bytes.len() && is_ident_byte(bytes[end + 1]) {
+        end += 1;
+    }
+
+    std::str::from_utf8(&bytes[start..=end])
+        .ok()
+        .map(ToString::to_string)
+}
+
+fn find_nth_name_occurrence_in_span(
+    text: &str,
+    name: &str,
+    span: &std::ops::Range<usize>,
+    nth: usize,
+) -> Option<std::ops::Range<usize>> {
+    if name.is_empty() || span.start >= span.end || span.end > text.len() {
+        return None;
+    }
+    let bytes = text.as_bytes();
+    let sym = name.as_bytes();
+    let mut i = span.start;
+    let mut seen = 0usize;
+    while i + sym.len() <= span.end {
+        if &bytes[i..i + sym.len()] == sym {
+            let left_ok = i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
+            let right_idx = i + sym.len();
+            let right_ok = right_idx == bytes.len()
+                || !(bytes[right_idx].is_ascii_alphanumeric() || bytes[right_idx] == b'_');
+            if left_ok && right_ok {
+                if seen == nth {
+                    return Some(i..right_idx);
+                }
+                seen += 1;
+            }
+        }
+        i += 1;
+    }
+    None
 }
 
 impl Backend {
@@ -569,70 +687,15 @@ impl Backend {
     }
 
     fn offset_to_position(&self, text: &str, target: usize) -> Position {
-        let mut line = 0u32;
-        let mut col = 0u32;
-        let mut last_idx = 0usize;
-
-        for (idx, ch) in text.char_indices() {
-            if idx >= target {
-                break;
-            }
-            last_idx = idx;
-            if ch == '\n' {
-                line += 1;
-                col = 0;
-            } else {
-                col += 1;
-            }
-        }
-
-        if target > last_idx && target <= text.len() {
-            // No-op: col is already best-effort for UTF-8 char boundaries.
-        }
-
-        Position::new(line, col)
+        offset_to_position_impl(text, target)
     }
 
     fn position_to_offset(&self, text: &str, pos: Position) -> usize {
-        let mut line = 0u32;
-        let mut col = 0u32;
-        for (idx, ch) in text.char_indices() {
-            if line == pos.line && col == pos.character {
-                return idx;
-            }
-            if ch == '\n' {
-                line += 1;
-                col = 0;
-            } else {
-                col += 1;
-            }
-        }
-        text.len()
+        position_to_offset_impl(text, pos)
     }
 
     fn word_at_position(&self, text: &str, pos: Position) -> Option<String> {
-        let line = text.lines().nth(pos.line as usize)?;
-        let chars: Vec<char> = line.chars().collect();
-        if chars.is_empty() {
-            return None;
-        }
-        let mut idx = (pos.character as usize).min(chars.len().saturating_sub(1));
-        if !chars[idx].is_alphanumeric() && chars[idx] != '_' && idx > 0 {
-            idx -= 1;
-        }
-        if !chars[idx].is_alphanumeric() && chars[idx] != '_' {
-            return None;
-        }
-
-        let mut start = idx;
-        while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
-            start -= 1;
-        }
-        let mut end = idx;
-        while end + 1 < chars.len() && (chars[end + 1].is_alphanumeric() || chars[end + 1] == '_') {
-            end += 1;
-        }
-        Some(chars[start..=end].iter().collect())
+        word_at_position_impl(text, pos)
     }
 
     fn definition_locations(
@@ -766,7 +829,7 @@ impl Backend {
             Decl::Function(func) => {
                 if func.name == symbol {
                     if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &func.name, &decl.span)
+                        self.find_name_occurrence_in_span(text, &func.name, &decl.span, 0)
                     {
                         out.push(span);
                     }
@@ -776,7 +839,7 @@ impl Backend {
             Decl::Class(class) => {
                 if class.name == symbol {
                     if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &class.name, &decl.span)
+                        self.find_name_occurrence_in_span(text, &class.name, &decl.span, 0)
                     {
                         out.push(span);
                     }
@@ -784,7 +847,7 @@ impl Backend {
                 for field in &class.fields {
                     if field.name == symbol {
                         if let Some(span) =
-                            self.find_name_occurrence_in_span(text, &field.name, &decl.span)
+                            self.find_name_occurrence_in_span(text, &field.name, &decl.span, 0)
                         {
                             out.push(span);
                         }
@@ -794,7 +857,7 @@ impl Backend {
                     for param in &constructor.params {
                         if param.name == symbol {
                             if let Some(span) =
-                                self.find_name_occurrence_in_span(text, &param.name, &decl.span)
+                                self.find_name_occurrence_in_span(text, &param.name, &decl.span, 1)
                             {
                                 out.push(span);
                             }
@@ -812,7 +875,7 @@ impl Backend {
             Decl::Module(module) => {
                 if module.name == symbol {
                     if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &module.name, &decl.span)
+                        self.find_name_occurrence_in_span(text, &module.name, &decl.span, 0)
                     {
                         out.push(span);
                     }
@@ -824,7 +887,7 @@ impl Backend {
             Decl::Enum(en) => {
                 if en.name == symbol {
                     if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &en.name, &decl.span)
+                        self.find_name_occurrence_in_span(text, &en.name, &decl.span, 0)
                     {
                         out.push(span);
                     }
@@ -833,7 +896,7 @@ impl Backend {
             Decl::Interface(interface) => {
                 if interface.name == symbol {
                     if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &interface.name, &decl.span)
+                        self.find_name_occurrence_in_span(text, &interface.name, &decl.span, 0)
                     {
                         out.push(span);
                     }
@@ -841,7 +904,7 @@ impl Backend {
                 for method in &interface.methods {
                     if method.name == symbol {
                         if let Some(span) =
-                            self.find_name_occurrence_in_span(text, &method.name, &decl.span)
+                            self.find_name_occurrence_in_span(text, &method.name, &decl.span, 0)
                         {
                             out.push(span);
                         }
@@ -849,7 +912,7 @@ impl Backend {
                     for param in &method.params {
                         if param.name == symbol {
                             if let Some(span) =
-                                self.find_name_occurrence_in_span(text, &param.name, &decl.span)
+                                self.find_name_occurrence_in_span(text, &param.name, &decl.span, 1)
                             {
                                 out.push(span);
                             }
@@ -870,14 +933,16 @@ impl Backend {
         out: &mut Vec<std::ops::Range<usize>>,
     ) {
         if func.name == symbol {
-            if let Some(span) = self.find_name_occurrence_in_span(text, &func.name, fallback_span) {
+            if let Some(span) =
+                self.find_name_occurrence_in_span(text, &func.name, fallback_span, 0)
+            {
                 out.push(span);
             }
         }
         for param in &func.params {
             if param.name == symbol {
                 if let Some(span) =
-                    self.find_name_occurrence_in_span(text, &param.name, fallback_span)
+                    self.find_name_occurrence_in_span(text, &param.name, fallback_span, 1)
                 {
                     out.push(span);
                 }
@@ -908,7 +973,8 @@ impl Backend {
         match &stmt.node {
             Stmt::Let { name, value, .. } => {
                 if name == symbol {
-                    if let Some(span) = self.find_name_occurrence_in_span(text, name, &stmt.span) {
+                    if let Some(span) = self.find_name_occurrence_in_span(text, name, &stmt.span, 0)
+                    {
                         out.push(span);
                     }
                 }
@@ -946,7 +1012,8 @@ impl Backend {
                 ..
             } => {
                 if var == symbol {
-                    if let Some(span) = self.find_name_occurrence_in_span(text, var, &stmt.span) {
+                    if let Some(span) = self.find_name_occurrence_in_span(text, var, &stmt.span, 0)
+                    {
                         out.push(span);
                     }
                 }
@@ -1006,7 +1073,7 @@ impl Backend {
                 for param in params {
                     if param.name == symbol {
                         if let Some(span) =
-                            self.find_name_occurrence_in_span(text, &param.name, &expr.span)
+                            self.find_name_occurrence_in_span(text, &param.name, &expr.span, 0)
                         {
                             out.push(span);
                         }
@@ -1064,27 +1131,9 @@ impl Backend {
         text: &str,
         name: &str,
         span: &std::ops::Range<usize>,
+        nth: usize,
     ) -> Option<std::ops::Range<usize>> {
-        if name.is_empty() || span.start >= span.end || span.end > text.len() {
-            return None;
-        }
-        let bytes = text.as_bytes();
-        let sym = name.as_bytes();
-        let mut i = span.start;
-        while i + sym.len() <= span.end {
-            if &bytes[i..i + sym.len()] == sym {
-                let left_ok =
-                    i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
-                let right_idx = i + sym.len();
-                let right_ok = right_idx == bytes.len()
-                    || !(bytes[right_idx].is_ascii_alphanumeric() || bytes[right_idx] == b'_');
-                if left_ok && right_ok {
-                    return Some(i..right_idx);
-                }
-            }
-            i += 1;
-        }
-        None
+        find_nth_name_occurrence_in_span(text, name, span, nth)
     }
 
     /// Get completion items for a position
@@ -1195,6 +1244,58 @@ impl Backend {
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod tests {
+    use super::{
+        find_nth_name_occurrence_in_span, offset_to_position_impl, position_to_offset_impl,
+        word_at_position_impl,
+    };
+    use tower_lsp::lsp_types::Position;
+
+    #[test]
+    fn lsp_offsets_roundtrip_through_utf16_positions() {
+        let text = "🙂value = 1;\n";
+        let offset = text.find("value").expect("identifier should exist");
+
+        let position = offset_to_position_impl(text, offset);
+        assert_eq!(position, Position::new(0, 2));
+        assert_eq!(position_to_offset_impl(text, position), offset);
+    }
+
+    #[test]
+    fn lsp_word_lookup_handles_non_bmp_prefixes() {
+        let text = "🙂value = 1;\n";
+        let position = Position::new(0, 3);
+        assert_eq!(
+            word_at_position_impl(text, position).as_deref(),
+            Some("value")
+        );
+    }
+
+    #[test]
+    fn lsp_name_lookup_can_reach_parameter_after_function_name() {
+        let text = "function value(value: Integer): Integer { return value; }\n";
+        let span = 0..text.len();
+
+        let function_name =
+            find_nth_name_occurrence_in_span(text, "value", &span, 0).expect("function name");
+        let parameter_name =
+            find_nth_name_occurrence_in_span(text, "value", &span, 1).expect("parameter name");
+
+        assert!(function_name.start < parameter_name.start);
+        assert_eq!(&text[function_name], "value");
+        assert_eq!(&text[parameter_name], "value");
+    }
+
+    #[test]
+    fn lsp_word_lookup_does_not_cross_whitespace_or_eof() {
+        let text = "value\n";
+        assert_eq!(word_at_position_impl(text, Position::new(0, 5)), None);
+        assert_eq!(word_at_position_impl(text, Position::new(1, 0)), None);
     }
 }
 

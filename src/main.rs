@@ -6385,22 +6385,52 @@ fn run_tests(
 
 /// Find test files in a directory
 fn find_test_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut test_files = Vec::new();
+    if !dir.exists() {
+        return Err(format!("Path '{}' does not exist", dir.display()));
+    }
+    if !dir.is_dir() {
+        return Err(format!("Path '{}' is not a directory", dir.display()));
+    }
 
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() && path.extension().map(|e| e == "apex").unwrap_or(false) {
-                // Check if file name suggests it's a test file
-                let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-                if file_name.contains("test") || file_name.contains("spec") {
-                    test_files.push(path);
-                }
+    let mut test_files = Vec::new();
+    find_test_files_recursive(dir, &mut test_files)?;
+    test_files.sort();
+    Ok(test_files)
+}
+
+fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Result<(), String> {
+    for entry in fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?
+    {
+        let entry = entry.map_err(|e| {
+            format!(
+                "Failed to read directory entry in '{}': {}",
+                dir.display(),
+                e
+            )
+        })?;
+        let file_type = entry.file_type().map_err(|e| {
+            format!(
+                "Failed to inspect directory entry '{}' : {}",
+                entry.path().display(),
+                e
+            )
+        })?;
+        let path = entry.path();
+
+        if file_type.is_dir() {
+            find_test_files_recursive(&path, test_files)?;
+            continue;
+        }
+
+        if file_type.is_file() && path.extension().map(|e| e == "apex").unwrap_or(false) {
+            let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            if file_name.contains("test") || file_name.contains("spec") {
+                test_files.push(path);
             }
         }
     }
-
-    Ok(test_files)
+    Ok(())
 }
 
 /// Compile and run a test file
@@ -10398,6 +10428,42 @@ function main(): None {
         .expect("write test file");
 
         run_tests(Some(&temp_root), true, Some("smoke")).expect("test listing should succeed");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_run_tests_recurses_into_nested_test_directories() {
+        let temp_root = make_temp_project_root("cli-test-nested");
+        let nested_dir = temp_root.join("tests").join("unit");
+        fs::create_dir_all(&nested_dir).expect("create nested test dir");
+        let nested_test = nested_dir.join("math_spec.apex");
+        fs::write(
+            &nested_test,
+            r#"
+                @Test
+                function nestedSpec(): None { return None; }
+            "#,
+        )
+        .expect("write nested test file");
+
+        run_tests(Some(&temp_root.join("tests")), true, Some("nested"))
+            .expect("nested directory test listing should succeed");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_run_tests_errors_for_missing_directory() {
+        let temp_root = make_temp_project_root("cli-test-missing-dir");
+        let missing_dir = temp_root.join("missing-tests");
+
+        let err = run_tests(Some(&missing_dir), true, None)
+            .expect_err("missing test directory should error");
+        assert!(
+            err.contains("does not exist"),
+            "expected missing directory error, got: {err}"
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }

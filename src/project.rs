@@ -105,6 +105,15 @@ fn validate_project_path(
         )
     })?;
 
+    if !canonical_path.is_file() {
+        return Err(format!(
+            "{} '{}' must resolve to a file, found '{}'",
+            label,
+            relative_path,
+            canonical_path.display()
+        ));
+    }
+
     if !canonical_path.starts_with(&canonical_root) {
         return Err(format!(
             "{} '{}' resolves outside the project root '{}'",
@@ -216,7 +225,11 @@ impl ProjectConfig {
 
 /// Find project root by looking for apex.toml
 pub fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
-    let mut current = Some(start_dir);
+    let mut current = if start_dir.is_file() || start_dir.extension().is_some() {
+        start_dir.parent()
+    } else {
+        Some(start_dir)
+    };
 
     while let Some(dir) = current {
         let config_path = dir.join("apex.toml");
@@ -361,5 +374,100 @@ output = "demo"
         let _ = std::fs::remove_dir_all(&project_root);
 
         assert!(error.contains("outside the project root"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_directory_entry_path() {
+        let project_root = unique_temp_dir("apex_project_validate_entry_dir");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+
+        let mut config = ProjectConfig::new("demo");
+        config.entry = "src".to_string();
+        config.files = vec!["src".to_string()];
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("directory entry path should be rejected");
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("must resolve to a file"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_directory_source_path() {
+        let project_root = unique_temp_dir("apex_project_validate_file_dir");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("entry file should be written");
+        std::fs::create_dir_all(src_dir.join("nested")).expect("nested source dir should exist");
+
+        let mut config = ProjectConfig::new("demo");
+        config.files.push("src/nested".to_string());
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("directory source path should be rejected");
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("must resolve to a file"), "{error}");
+    }
+
+    #[test]
+    fn find_project_root_accepts_source_file_path() {
+        let project_root = unique_temp_dir("apex_project_find_root_file");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(project_root.join("apex.toml"), "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n")
+            .expect("project config should be written");
+        let source_file = src_dir.join("main.apex");
+        std::fs::write(&source_file, "function main(): None { return None; }\n")
+            .expect("source file should be written");
+
+        let discovered = super::find_project_root(&source_file);
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert_eq!(discovered.as_deref(), Some(project_root.as_path()));
+    }
+
+    #[test]
+    fn is_in_project_accepts_source_file_path() {
+        let project_root = unique_temp_dir("apex_project_is_in_project_file");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(project_root.join("apex.toml"), "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n")
+            .expect("project config should be written");
+        let source_file = src_dir.join("main.apex");
+        std::fs::write(&source_file, "function main(): None { return None; }\n")
+            .expect("source file should be written");
+
+        let result = super::is_in_project(&source_file);
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(result);
+    }
+
+    #[test]
+    fn find_project_root_accepts_nonexistent_source_file_path() {
+        let project_root = unique_temp_dir("apex_project_find_root_missing_file");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(project_root.join("apex.toml"), "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n")
+            .expect("project config should be written");
+        let future_source_file = src_dir.join("new_file.apex");
+
+        let discovered = super::find_project_root(&future_source_file);
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert_eq!(discovered.as_deref(), Some(project_root.as_path()));
     }
 }

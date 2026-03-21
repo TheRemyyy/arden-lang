@@ -39,7 +39,14 @@ fn normalize_c_type(raw: &str) -> String {
         .filter(|token| {
             !matches!(
                 *token,
-                "const" | "volatile" | "register" | "signed" | "extern" | "static"
+                "const"
+                    | "volatile"
+                    | "register"
+                    | "extern"
+                    | "static"
+                    | "inline"
+                    | "__inline"
+                    | "__inline__"
             )
         })
         .collect::<Vec<_>>()
@@ -64,12 +71,41 @@ fn map_c_type_to_apex(c_type: &str) -> Option<String> {
     match compact.as_str() {
         "void" => Some("None".to_string()),
         "char" => Some("Char".to_string()),
-        "float" | "double" => Some("Float".to_string()),
+        "float" | "double" | "longdouble" => Some("Float".to_string()),
         "bool" | "_Bool" => Some("Boolean".to_string()),
-        "int" | "short" | "long" | "longlong" | "size_t" | "ssize_t" | "intptr_t" | "uintptr_t"
-        | "uint8_t" | "uint16_t" | "uint32_t" | "uint64_t" | "int8_t" | "int16_t" | "int32_t"
-        | "int64_t" | "unsigned" | "unsignedint" | "unsignedshort" | "unsignedlong"
-        | "unsignedlonglong" => Some("Integer".to_string()),
+        "int"
+        | "short"
+        | "long"
+        | "longint"
+        | "longlong"
+        | "longlongint"
+        | "size_t"
+        | "ssize_t"
+        | "intptr_t"
+        | "uintptr_t"
+        | "uint8_t"
+        | "uint16_t"
+        | "uint32_t"
+        | "uint64_t"
+        | "int8_t"
+        | "int16_t"
+        | "int32_t"
+        | "int64_t"
+        | "unsigned"
+        | "unsignedchar"
+        | "unsignedint"
+        | "unsignedshort"
+        | "unsignedlong"
+        | "unsignedlongint"
+        | "unsignedlonglong"
+        | "unsignedlonglongint"
+        | "signedchar"
+        | "signedint"
+        | "signedshort"
+        | "signedlong"
+        | "signedlongint"
+        | "signedlonglong"
+        | "signedlonglongint" => Some("Integer".to_string()),
         _ => None,
     }
 }
@@ -89,8 +125,21 @@ fn parse_param(param: &str, index: usize) -> Option<(String, String)> {
         return None;
     }
 
-    let mut name = tokens[tokens.len() - 1].to_string();
-    let mut type_part = tokens[..tokens.len() - 1].join(" ");
+    let mut array_depth = 0usize;
+    let mut name_index = tokens.len() - 1;
+    while name_index > 0 && tokens[name_index].starts_with('[') && tokens[name_index].ends_with(']')
+    {
+        array_depth += 1;
+        name_index -= 1;
+    }
+
+    let mut name = tokens[name_index].to_string();
+    let mut type_part = tokens[..name_index].join(" ");
+    while let Some(open) = name.find('[') {
+        let close = name[open..].find(']')?;
+        name.replace_range(open..open + close + 1, "");
+        array_depth += 1;
+    }
     if name.chars().all(|c| c == '*') {
         type_part = p.to_string();
         name = format!("arg{}", index);
@@ -98,10 +147,16 @@ fn parse_param(param: &str, index: usize) -> Option<(String, String)> {
         let stars = name.chars().take_while(|c| *c == '*').count();
         name = name[stars..].to_string();
         type_part.push_str(&"*".repeat(stars));
-    } else if tokens.len() == 1 {
+    } else if name_index == 0 && tokens.len() == 1 {
         // No explicit parameter name in prototype.
         type_part = p.to_string();
         name = format!("arg{}", index);
+    }
+    if array_depth > 0 {
+        type_part.push_str(&"*".repeat(array_depth));
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
     }
 
     let apex_ty = map_c_type_to_apex(&type_part)?;
@@ -259,5 +314,63 @@ mod tests {
 
         assert_eq!(count, 1);
         assert!(generated.contains("extern(c) function count(): Integer;"));
+    }
+
+    #[test]
+    fn array_parameters_decay_to_valid_apex_parameters() {
+        let generated = generate_from_prototype("void fill(char name[16], int values[4])")
+            .expect("array parameters should parse");
+        assert_eq!(
+            generated,
+            "extern(c) function fill(name: String, values: Ptr<None>): None;"
+        );
+    }
+
+    #[test]
+    fn bindgen_cli_emits_valid_identifiers_for_array_parameters() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let header_path = std::env::temp_dir().join(format!("apex_bindgen_arrays_{unique}.h"));
+        let output_path = std::env::temp_dir().join(format!("apex_bindgen_arrays_{unique}.apex"));
+        let header = "void fill(char name[16], int values[4]);\n";
+        std::fs::write(&header_path, header).expect("temporary header should be written");
+
+        let count =
+            generate_bindings(&header_path, Some(&output_path)).expect("bindgen should succeed");
+        let generated =
+            std::fs::read_to_string(&output_path).expect("generated bindings should be readable");
+
+        let _ = std::fs::remove_file(&header_path);
+        let _ = std::fs::remove_file(&output_path);
+
+        assert_eq!(count, 1);
+        assert!(
+            generated.contains("extern(c) function fill(name: String, values: Ptr<None>): None;")
+        );
+        assert!(!generated.contains("name[16]"));
+        assert!(!generated.contains("values[4]"));
+    }
+
+    #[test]
+    fn inline_prototypes_are_not_dropped() {
+        let generated =
+            generate_from_prototype("static inline unsigned short checksum(unsigned int value)")
+                .expect("inline prototype should parse");
+        assert_eq!(
+            generated,
+            "extern(c) function checksum(value: Integer): Integer;"
+        );
+    }
+
+    #[test]
+    fn spaced_array_parameters_preserve_real_parameter_names() {
+        let generated = generate_from_prototype("void fill(char name [16], const char label [])")
+            .expect("spaced array parameters should parse");
+        assert_eq!(
+            generated,
+            "extern(c) function fill(name: String, label: String): None;"
+        );
     }
 }

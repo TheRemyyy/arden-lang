@@ -103,6 +103,8 @@ apex test --filter "math"
 
 Filter note:
 - When `--filter` is used, reported totals/ignored counts reflect only the filtered test set.
+- When `--path` points to a directory, discovery now walks nested subdirectories as well.
+- Missing test directories now fail with a direct CLI error instead of reporting an empty test set.
 
 ## Examples
 
@@ -237,3 +239,4 @@ Notes:
 - Generated signatures are a starting point. Review and adjust ABI/types before production use.
 - Current generator targets C function prototypes and variadic `...` declarations.
 - Inline C comments in prototypes are normalized safely, so headers like `unsigned/*abi*/int fn(void);` no longer collapse into invalid pseudo-types.
+- Array parameters are normalized into valid Apex names and pointer-decay types, and `inline` prototypes are no longer skipped.

@@ -64,10 +64,14 @@ pub struct TestSummary {
 
 /// Discover all tests in a program
 pub fn discover_tests(program: &Program) -> TestDiscovery {
+    let mut suites = Vec::new();
+    let mut total_tests = 0;
+    let mut ignored_tests = 0;
+
     #[allow(clippy::too_many_arguments)]
-    fn collect_suite_functions(
-        declarations: &[crate::ast::Spanned<Decl>],
-        module_prefix: Option<&str>,
+    fn collect_function_into_suite(
+        func: &FunctionDecl,
+        qualified_name: String,
         suite_tests: &mut Vec<Test>,
         before_all: &mut Option<FunctionDecl>,
         before_each: &mut Option<FunctionDecl>,
@@ -76,104 +80,145 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
         total_tests: &mut usize,
         ignored_tests: &mut usize,
     ) {
+        let mut qualified_func = func.clone();
+        qualified_func.name = qualified_name.clone();
+
+        if has_attribute(&func.attributes, Attribute::BeforeAll) {
+            *before_all = Some(qualified_func);
+            return;
+        }
+        if has_attribute(&func.attributes, Attribute::Before) {
+            *before_each = Some(qualified_func);
+            return;
+        }
+        if has_attribute(&func.attributes, Attribute::After) {
+            *after_each = Some(qualified_func);
+            return;
+        }
+        if has_attribute(&func.attributes, Attribute::AfterAll) {
+            *after_all = Some(qualified_func);
+            return;
+        }
+
+        if has_attribute(&func.attributes, Attribute::Test) {
+            let ignored = has_ignore_attribute(&func.attributes);
+            let ignore_reason = get_ignore_reason(&func.attributes);
+
+            suite_tests.push(Test {
+                name: qualified_name,
+                function: qualified_func,
+                ignored,
+                ignore_reason,
+            });
+
+            *total_tests += 1;
+            if ignored {
+                *ignored_tests += 1;
+            }
+        }
+    }
+
+    fn collect_module_suite(
+        declarations: &[crate::ast::Spanned<Decl>],
+        suite_name: String,
+        total_tests: &mut usize,
+        ignored_tests: &mut usize,
+        suites: &mut Vec<TestSuite>,
+    ) {
+        let mut suite_tests = Vec::new();
+        let mut before_all = None;
+        let mut before_each = None;
+        let mut after_each = None;
+        let mut after_all = None;
+
         for decl in declarations {
             match &decl.node {
                 Decl::Function(func) => {
-                    let qualified_name = module_prefix
-                        .map(|prefix| format!("{}__{}", prefix, func.name))
-                        .unwrap_or_else(|| func.name.clone());
-                    let mut qualified_func = func.clone();
-                    qualified_func.name = qualified_name.clone();
-
-                    if has_attribute(&func.attributes, Attribute::BeforeAll) {
-                        *before_all = Some(qualified_func);
-                        continue;
-                    }
-                    if has_attribute(&func.attributes, Attribute::Before) {
-                        *before_each = Some(qualified_func);
-                        continue;
-                    }
-                    if has_attribute(&func.attributes, Attribute::After) {
-                        *after_each = Some(qualified_func);
-                        continue;
-                    }
-                    if has_attribute(&func.attributes, Attribute::AfterAll) {
-                        *after_all = Some(qualified_func);
-                        continue;
-                    }
-
-                    if has_attribute(&func.attributes, Attribute::Test) {
-                        let ignored = has_ignore_attribute(&func.attributes);
-                        let ignore_reason = get_ignore_reason(&func.attributes);
-
-                        suite_tests.push(Test {
-                            name: qualified_name,
-                            function: qualified_func,
-                            ignored,
-                            ignore_reason,
-                        });
-
-                        *total_tests += 1;
-                        if ignored {
-                            *ignored_tests += 1;
-                        }
-                    }
-                }
-                Decl::Module(module) => {
-                    let next_prefix = module_prefix
-                        .map(|prefix| format!("{}__{}", prefix, module.name))
-                        .unwrap_or_else(|| module.name.clone());
-                    collect_suite_functions(
-                        &module.declarations,
-                        Some(&next_prefix),
-                        suite_tests,
-                        before_all,
-                        before_each,
-                        after_each,
-                        after_all,
+                    let qualified_name = format!("{}__{}", suite_name, func.name);
+                    collect_function_into_suite(
+                        func,
+                        qualified_name,
+                        &mut suite_tests,
+                        &mut before_all,
+                        &mut before_each,
+                        &mut after_each,
+                        &mut after_all,
                         total_tests,
                         ignored_tests,
+                    );
+                }
+                Decl::Module(module) => {
+                    let nested_suite = format!("{}__{}", suite_name, module.name);
+                    collect_module_suite(
+                        &module.declarations,
+                        nested_suite,
+                        total_tests,
+                        ignored_tests,
+                        suites,
                     );
                 }
                 Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
             }
         }
+
+        if !suite_tests.is_empty() {
+            suites.push(TestSuite {
+                name: suite_name,
+                tests: suite_tests,
+                before_all,
+                before_each,
+                after_each,
+                after_all,
+            });
+        }
     }
 
-    let mut suites = Vec::new();
-    let mut total_tests = 0;
-    let mut ignored_tests = 0;
-
-    // For now, we create a single "default" suite for all top-level test functions
-    // In the future, we can support test classes/modules
-    let mut suite_tests = Vec::new();
+    let mut default_tests = Vec::new();
     let mut before_all = None;
     let mut before_each = None;
     let mut after_each = None;
     let mut after_all = None;
 
-    collect_suite_functions(
-        &program.declarations,
-        None,
-        &mut suite_tests,
-        &mut before_all,
-        &mut before_each,
-        &mut after_each,
-        &mut after_all,
-        &mut total_tests,
-        &mut ignored_tests,
-    );
+    for decl in &program.declarations {
+        match &decl.node {
+            Decl::Function(func) => {
+                collect_function_into_suite(
+                    func,
+                    func.name.clone(),
+                    &mut default_tests,
+                    &mut before_all,
+                    &mut before_each,
+                    &mut after_each,
+                    &mut after_all,
+                    &mut total_tests,
+                    &mut ignored_tests,
+                );
+            }
+            Decl::Module(module) => {
+                collect_module_suite(
+                    &module.declarations,
+                    module.name.clone(),
+                    &mut total_tests,
+                    &mut ignored_tests,
+                    &mut suites,
+                );
+            }
+            Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
+        }
+    }
 
-    // Create default suite if we found any tests
-    if !suite_tests.is_empty() {
-        suites.push(TestSuite {
-            name: "default".to_string(),
-            tests: suite_tests,
-            before_all,
-            before_each,
-            after_each,
-            after_all,
-        });
+    if !default_tests.is_empty() {
+        suites.insert(
+            0,
+            TestSuite {
+                name: "default".to_string(),
+                tests: default_tests,
+                before_all,
+                before_each,
+                after_each,
+                after_all,
+            },
+        );
     }
 
     TestDiscovery {
@@ -672,6 +717,94 @@ module Tests {
                 .name,
             "Tests__setup"
         );
+    }
+
+    #[test]
+    fn discover_tests_keeps_module_hooks_isolated_per_suite() {
+        let source = r#"
+module Alpha {
+    @Before
+    function setup(): None { return None; }
+
+    @Test
+    function works(): None { return None; }
+}
+
+module Beta {
+    @Before
+    function setup(): None { return None; }
+
+    @Test
+    function works(): None { return None; }
+}
+"#;
+        let tokens = tokenize(source).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().expect("parse");
+        let discovery = discover_tests(&program);
+
+        assert_eq!(discovery.suites.len(), 2, "{discovery:#?}");
+        assert_eq!(discovery.suites[0].name, "Alpha");
+        assert_eq!(
+            discovery.suites[0]
+                .before_each
+                .as_ref()
+                .expect("alpha before hook")
+                .name,
+            "Alpha__setup"
+        );
+        assert_eq!(discovery.suites[1].name, "Beta");
+        assert_eq!(
+            discovery.suites[1]
+                .before_each
+                .as_ref()
+                .expect("beta before hook")
+                .name,
+            "Beta__setup"
+        );
+    }
+
+    #[test]
+    fn strips_main_without_eating_following_code_when_string_contains_braces() {
+        let discovery = TestDiscovery {
+            suites: vec![],
+            total_tests: 0,
+            ignored_tests: 0,
+        };
+        let source = r#"
+function main(): Integer {
+    println("}");
+    return 0;
+}
+
+function helper(): None { return None; }
+"#;
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(generated.contains("function helper(): None"), "{generated}");
+    }
+
+    #[test]
+    fn strips_multiline_main_signature_without_removing_following_functions() {
+        let discovery = TestDiscovery {
+            suites: vec![],
+            total_tests: 0,
+            ignored_tests: 0,
+        };
+        let source = r#"
+function main()
+: Integer
+{
+    return 0;
+}
+
+function helper(): None { return None; }
+"#;
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(
+            !generated.contains("function main()\n: Integer\n{"),
+            "{generated}"
+        );
+        assert!(generated.contains("function helper(): None"), "{generated}");
     }
 }
 
