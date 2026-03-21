@@ -4,6 +4,9 @@ use libfuzzer_sys::fuzz_target;
 
 #[path = "../../src/ast.rs"]
 mod ast;
+#[cfg(test)]
+#[path = "../../src/formatter.rs"]
+mod formatter;
 #[path = "../../src/lexer.rs"]
 mod lexer;
 #[path = "../../src/parser.rs"]
@@ -13,7 +16,12 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(source) = std::str::from_utf8(data) {
         if let Ok(tokens) = lexer::tokenize(source) {
             let mut parser = parser::Parser::new(tokens);
-            let _ = parser.parse_program();
+            if let Err(error) = parser.parse_program() {
+                let _ = error.message.len();
+                let _ = error.span.start;
+            }
         }
+
+        let _ = parser::parse_type_source(source);
     }
 });
