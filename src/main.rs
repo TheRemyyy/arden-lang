@@ -769,66 +769,6 @@ fn api_projection_program(program: &Program) -> Program {
     }
 }
 
-fn filter_codegen_decl_by_symbols(
-    decl: &Spanned<Decl>,
-    declaration_symbols: &HashSet<String>,
-) -> Option<Spanned<Decl>> {
-    fn class_has_requested_method(class_name: &str, declaration_symbols: &HashSet<String>) -> bool {
-        let method_prefix = format!("{}__", class_name);
-        declaration_symbols
-            .iter()
-            .any(|symbol| symbol.starts_with(&method_prefix))
-    }
-
-    match &decl.node {
-        Decl::Function(func) => (declaration_symbols.contains(&func.name)
-            || func.name.contains("__spec__"))
-        .then(|| decl.clone()),
-        Decl::Class(class) => (declaration_symbols.contains(&class.name)
-            || class.name.contains("__spec__")
-            || class_has_requested_method(&class.name, declaration_symbols))
-        .then(|| decl.clone()),
-        Decl::Enum(en) => declaration_symbols.contains(&en.name).then(|| decl.clone()),
-        Decl::Module(module) => {
-            if declaration_symbols.contains(&module.name) {
-                return Some(decl.clone());
-            }
-
-            let filtered_declarations = module
-                .declarations
-                .iter()
-                .filter_map(|inner| filter_codegen_decl_by_symbols(inner, declaration_symbols))
-                .collect::<Vec<_>>();
-
-            if filtered_declarations.is_empty() {
-                None
-            } else {
-                let mut filtered_module = module.clone();
-                filtered_module.declarations = filtered_declarations;
-                Some(Spanned::new(
-                    Decl::Module(filtered_module),
-                    decl.span.clone(),
-                ))
-            }
-        }
-        Decl::Interface(_) | Decl::Import(_) => None,
-    }
-}
-
-fn filter_codegen_program_by_symbols(
-    program: &Program,
-    declaration_symbols: &HashSet<String>,
-) -> Program {
-    Program {
-        package: program.package.clone(),
-        declarations: program
-            .declarations
-            .iter()
-            .filter_map(|decl| filter_codegen_decl_by_symbols(decl, declaration_symbols))
-            .collect(),
-    }
-}
-
 fn api_program_fingerprint(program: &Program) -> String {
     let projected = api_projection_program(program);
     let canonical = formatter::format_program_canonical(&projected);
@@ -839,8 +779,8 @@ fn codegen_program_for_unit(
     rewritten_files: &[RewrittenProjectUnit],
     rewritten_file_indices: &HashMap<PathBuf, usize>,
     active_file: &Path,
-    dependency_closure: Option<&HashSet<PathBuf>>,
-    declaration_symbols: Option<&HashSet<String>>,
+    _dependency_closure: Option<&HashSet<PathBuf>>,
+    _declaration_symbols: Option<&HashSet<String>>,
 ) -> Program {
     fn merge_codegen_declarations(
         output: &mut Vec<Spanned<Decl>>,
@@ -912,14 +852,10 @@ fn codegen_program_for_unit(
     };
     let mut seen_specializations = HashSet::new();
 
-    let mut relevant_files = dependency_closure
-        .map(|closure| closure.iter().cloned().collect::<Vec<_>>())
-        .unwrap_or_else(|| {
-            rewritten_files
-                .iter()
-                .map(|unit| unit.file.clone())
-                .collect()
-        });
+    let mut relevant_files = rewritten_files
+        .iter()
+        .map(|unit| unit.file.clone())
+        .collect::<Vec<_>>();
     if !relevant_files.iter().any(|file| file == active_file) {
         relevant_files.push(active_file.to_path_buf());
     }
@@ -931,13 +867,7 @@ fn codegen_program_for_unit(
             continue;
         };
         let unit = &rewritten_files[index];
-        let source_program = if unit.file == active_file {
-            unit.program.clone()
-        } else {
-            declaration_symbols
-                .map(|symbols| filter_codegen_program_by_symbols(&unit.program, symbols))
-                .unwrap_or_else(|| unit.api_program.clone())
-        };
+        let source_program = unit.program.clone();
         merge_codegen_declarations(
             &mut program.declarations,
             &source_program.declarations,
@@ -6625,7 +6555,7 @@ mod tests {
         collect_apex_files, compile_source, component_fingerprint, compute_link_fingerprint,
         compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
         dedupe_link_inputs, escape_response_file_arg, fix_target, format_targets, lint_target,
-        parse_project_unit, precompute_all_transitive_dependencies,
+        object_ext, parse_project_unit, precompute_all_transitive_dependencies,
         reusable_component_fingerprints, run_tests, semantic_program_fingerprint,
         should_skip_final_link, transitive_dependents, typecheck_summary_cache_from_state,
         typecheck_summary_cache_matches, DependencyGraphCache, DependencyGraphFileEntry,
@@ -7812,6 +7742,70 @@ function main(): None {
                 "project build should support namespace alias nested generic method specializations",
             );
         });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_emits_nested_generic_specialization_symbols_in_one_object_file() {
+        let temp_root = make_temp_project_root("namespace-alias-nested-generic-object-ownership");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n        async function mk_async(value: Integer): Task<Box<Integer>> { return Box<Integer>(value); }\n    }\n}\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nimport util.M.N.Box as B;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { return u.M.N.mk(46).map<Integer>(inc).get() + u.M.N.Box<Integer>(41).value + B<Integer>(1).get() + await(u.M.N.mk_async(43)).get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should emit nested generic specialization bodies in a single object",
+            );
+        });
+
+        let object_dir = temp_root.join(".apexcache").join("objects");
+        let mut defining_objects = Vec::new();
+        for entry in fs::read_dir(&object_dir).expect("read object cache dir") {
+            let path = entry.expect("read object cache entry").path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some(object_ext()) {
+                continue;
+            }
+            let output = std::process::Command::new("llvm-nm")
+                .arg("--defined-only")
+                .arg(&path)
+                .output()
+                .expect("run llvm-nm on cached object");
+            assert!(
+                output.status.success(),
+                "llvm-nm should succeed for '{}': {}",
+                path.display(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.contains(" util__M__N__Box__spec__I64__new")
+                || stdout.contains(" util__M__N__Box__spec__I64__get")
+                || stdout.contains(" util__M__N__Box__spec__I64__map")
+            {
+                defining_objects.push(path);
+            }
+        }
+
+        assert_eq!(
+            defining_objects.len(),
+            1,
+            "nested generic specialization symbols should be emitted by one object file, found: {:?}",
+            defining_objects
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -12296,7 +12290,7 @@ function main(): None {
     }
 
     #[test]
-    fn codegen_program_for_unit_uses_full_program_for_relevant_dependency_files() {
+    fn codegen_program_for_unit_uses_full_program_for_all_project_files() {
         let make_function = |name: &str| {
             Spanned::new(
                 Decl::Function(FunctionDecl {
@@ -12361,6 +12355,9 @@ function main(): None {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["fa".to_string(), "fb".to_string()]);
+        assert_eq!(
+            names,
+            vec!["fa".to_string(), "fb".to_string(), "fc".to_string()]
+        );
     }
 }

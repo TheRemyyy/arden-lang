@@ -4800,11 +4800,14 @@ impl<'ctx> Codegen<'ctx> {
         active_symbols: Option<&HashSet<String>>,
         declaration_symbols: Option<&HashSet<String>>,
     ) -> Result<()> {
-        fn collect_generated_spec_symbols(program: &Program) -> HashSet<String> {
+        fn collect_generated_spec_symbols(
+            program: &Program,
+        ) -> (HashMap<String, HashSet<String>>, HashSet<String>) {
             fn collect_decl_symbols(
                 decl: &Spanned<Decl>,
                 module_prefix: Option<&str>,
-                symbols: &mut HashSet<String>,
+                symbols_by_owner: &mut HashMap<String, HashSet<String>>,
+                standalone_function_specs: &mut HashSet<String>,
             ) {
                 match &decl.node {
                     Decl::Function(func) => {
@@ -4813,8 +4816,12 @@ impl<'ctx> Codegen<'ctx> {
                         } else {
                             func.name.clone()
                         };
-                        if name.contains("__spec__") {
-                            symbols.insert(name);
+                        if let Some((owner, _)) = name.split_once("__spec__") {
+                            symbols_by_owner
+                                .entry(owner.to_string())
+                                .or_default()
+                                .insert(name.clone());
+                            standalone_function_specs.insert(name);
                         }
                     }
                     Decl::Class(class) => {
@@ -4823,13 +4830,28 @@ impl<'ctx> Codegen<'ctx> {
                         } else {
                             class.name.clone()
                         };
-                        if class_name.contains("__spec__") {
-                            symbols.insert(class_name.clone());
+                        let class_owner = class_name
+                            .split_once("__spec__")
+                            .map(|(owner, _)| owner.to_string());
+                        if let Some(owner) = class_owner.as_ref() {
+                            symbols_by_owner
+                                .entry(owner.clone())
+                                .or_default()
+                                .insert(class_name.clone());
+                            symbols_by_owner
+                                .entry(owner.clone())
+                                .or_default()
+                                .insert(format!("{}__new", class_name));
                         }
                         for method in &class.methods {
                             let method_name = format!("{}__{}", class_name, method.name);
-                            if method_name.contains("__spec__") {
-                                symbols.insert(method_name);
+                            if method_name.contains("__spec__") || class_owner.is_some() {
+                                if let Some(owner) = class_owner.as_ref() {
+                                    symbols_by_owner
+                                        .entry(owner.clone())
+                                        .or_default()
+                                        .insert(method_name);
+                                }
                             }
                         }
                     }
@@ -4839,8 +4861,11 @@ impl<'ctx> Codegen<'ctx> {
                         } else {
                             en.name.clone()
                         };
-                        if name.contains("__spec__") {
-                            symbols.insert(name);
+                        if let Some((owner, _)) = name.split_once("__spec__") {
+                            symbols_by_owner
+                                .entry(owner.to_string())
+                                .or_default()
+                                .insert(name);
                         }
                     }
                     Decl::Module(module) => {
@@ -4850,18 +4875,29 @@ impl<'ctx> Codegen<'ctx> {
                             module.name.clone()
                         };
                         for inner in &module.declarations {
-                            collect_decl_symbols(inner, Some(&module_name), symbols);
+                            collect_decl_symbols(
+                                inner,
+                                Some(&module_name),
+                                symbols_by_owner,
+                                standalone_function_specs,
+                            );
                         }
                     }
                     Decl::Interface(_) | Decl::Import(_) => {}
                 }
             }
 
-            let mut symbols = HashSet::new();
+            let mut symbols_by_owner = HashMap::new();
+            let mut standalone_function_specs = HashSet::new();
             for decl in &program.declarations {
-                collect_decl_symbols(decl, None, &mut symbols);
+                collect_decl_symbols(
+                    decl,
+                    None,
+                    &mut symbols_by_owner,
+                    &mut standalone_function_specs,
+                );
             }
-            symbols
+            (symbols_by_owner, standalone_function_specs)
         }
 
         let class_specialized_program = Self::specialize_generic_classes(program)?;
@@ -4873,9 +4909,16 @@ impl<'ctx> Codegen<'ctx> {
         } else {
             &class_specialized_program
         };
+        let (generated_spec_symbols_by_owner, standalone_function_specs) =
+            collect_generated_spec_symbols(program);
         let specialized_active_symbols = active_symbols.map(|symbols| {
             let mut combined = symbols.clone();
-            combined.extend(collect_generated_spec_symbols(program));
+            for owner in symbols {
+                if let Some(generated_symbols) = generated_spec_symbols_by_owner.get(owner) {
+                    combined.extend(generated_symbols.iter().cloned());
+                }
+            }
+            combined.extend(standalone_function_specs.iter().cloned());
             combined
         });
 
@@ -4926,7 +4969,7 @@ impl<'ctx> Codegen<'ctx> {
         for decl in &program.declarations {
             let should_compile = specialized_active_symbols
                 .as_ref()
-                .map(|symbols| self.should_compile_decl(&decl.node, symbols))
+                .map(|symbols| self.should_emit_decl_body(&decl.node, symbols))
                 .unwrap_or(true);
             if !should_compile {
                 continue;
@@ -5014,6 +5057,69 @@ impl<'ctx> Codegen<'ctx> {
             Decl::Class(class) => {
                 active_symbols.contains(&class.name)
                     || class.name.contains("__spec__")
+                    || class_has_active_method_symbol(&class.name, active_symbols)
+            }
+            Decl::Module(module) => module_has_active_symbol(module, &module.name, active_symbols),
+            Decl::Enum(en) => active_symbols.contains(&en.name),
+            Decl::Interface(_) | Decl::Import(_) => false,
+        }
+    }
+
+    fn should_emit_decl_body(&self, decl: &Decl, active_symbols: &HashSet<String>) -> bool {
+        fn class_has_active_method_symbol(
+            class_name: &str,
+            active_symbols: &HashSet<String>,
+        ) -> bool {
+            let method_prefix = format!("{}__", class_name);
+            active_symbols
+                .iter()
+                .any(|symbol| symbol.starts_with(&method_prefix))
+        }
+
+        fn module_has_active_symbol(
+            module: &ModuleDecl,
+            prefix: &str,
+            active_symbols: &HashSet<String>,
+        ) -> bool {
+            if active_symbols.contains(prefix) {
+                return true;
+            }
+            for inner in &module.declarations {
+                match &inner.node {
+                    Decl::Function(func) => {
+                        if active_symbols.contains(&format!("{}__{}", prefix, func.name)) {
+                            return true;
+                        }
+                    }
+                    Decl::Class(class) => {
+                        let class_name = format!("{}__{}", prefix, class.name);
+                        if active_symbols.contains(&class_name)
+                            || class_has_active_method_symbol(&class_name, active_symbols)
+                        {
+                            return true;
+                        }
+                    }
+                    Decl::Enum(en) => {
+                        if active_symbols.contains(&format!("{}__{}", prefix, en.name)) {
+                            return true;
+                        }
+                    }
+                    Decl::Module(nested) => {
+                        let nested_prefix = format!("{}__{}", prefix, nested.name);
+                        if module_has_active_symbol(nested, &nested_prefix, active_symbols) {
+                            return true;
+                        }
+                    }
+                    Decl::Interface(_) | Decl::Import(_) => {}
+                }
+            }
+            false
+        }
+
+        match decl {
+            Decl::Function(func) => active_symbols.contains(&func.name),
+            Decl::Class(class) => {
+                active_symbols.contains(&class.name)
                     || class_has_active_method_symbol(&class.name, active_symbols)
             }
             Decl::Module(module) => module_has_active_symbol(module, &module.name, active_symbols),
@@ -5640,7 +5746,13 @@ impl<'ctx> Codegen<'ctx> {
         active_symbols: &HashSet<String>,
     ) -> Result<()> {
         let ctor_name = format!("{}__new", class.name);
-        if active_symbols.contains(&class.name) || active_symbols.contains(&ctor_name) {
+        let class_is_specialized = class.name.contains("__spec__");
+        let compile_entire_specialized_class =
+            class_is_specialized && active_symbols.contains(&class.name);
+        if compile_entire_specialized_class
+            || active_symbols.contains(&class.name)
+            || active_symbols.contains(&ctor_name)
+        {
             let implicit_constructor = Constructor {
                 params: vec![],
                 body: vec![],
@@ -5653,7 +5765,7 @@ impl<'ctx> Codegen<'ctx> {
 
         for method in &class.methods {
             let method_name = format!("{}__{}", class.name, method.name);
-            if active_symbols.contains(&method_name) {
+            if compile_entire_specialized_class || active_symbols.contains(&method_name) {
                 self.compile_method(class, method)?;
             }
         }
