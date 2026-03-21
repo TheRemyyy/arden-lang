@@ -26,6 +26,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed collection/string negative constant index validation:
   - `apex check` now rejects constant negative indices for `List.get(...)`, `List.set(...)`, `list[index]`, and `string[index]` instead of letting them compile and fail only at runtime
   - dynamic negative indices still keep the existing runtime guards, so non-constant bad indices continue to fail cleanly instead of producing undefined behavior
+- Fixed string literal constant out-of-bounds index validation:
+  - `apex check` now rejects constant literal accesses such as `"abc"[5]` instead of letting them compile and fail only at runtime
+- Fixed Unicode `Char` handling for constant string-literal indexing:
+  - constant literal accesses such as `"🚀"[0]` now yield the full Unicode `Char` instead of truncating to the first UTF-8 byte
+  - constant out-of-bounds checks on string literals now count Unicode characters rather than raw UTF-8 bytes
+- Fixed Unicode string-literal indexing for dynamic indices:
+  - dynamic accesses like `"🚀"[idx]` now index by Unicode character position instead of raw UTF-8 byte offset
+  - runtime out-of-bounds checks for literal Unicode strings now respect character count, so `"🚀"[1]` fails cleanly instead of reading a continuation byte
+- Fixed Unicode string-variable indexing at runtime:
+  - `s: String = "🚀"; s[idx]` now indexes by Unicode character position instead of raw UTF-8 bytes
+  - runtime out-of-bounds checks for Unicode `String` values now respect character count instead of allowing continuation-byte reads
+- Fixed Unicode `String.length()` runtime semantics:
+  - `String.length()` now counts Unicode characters instead of raw UTF-8 bytes, so values like `"🚀"` correctly report length `1` instead of `4`
 - Fixed entrypoint `main()` signature validation:
   - `apex check` now rejects invalid entrypoint signatures such as `main(x: Integer)`, `async main()`, generic `main<T>()`, or `main()` returning unsupported types like `String`
   - this prevents backend crashes and invalid LLVM/Clang failures that previously happened when malformed `main()` signatures reached code generation

@@ -124,7 +124,7 @@ impl std::fmt::Display for ResolvedType {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum NumericConst {
+pub(crate) enum NumericConst {
     Integer(i64),
     Float(f64),
 }
@@ -245,7 +245,7 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
-    fn eval_numeric_const_expr(expr: &Expr) -> Option<NumericConst> {
+    pub(crate) fn eval_numeric_const_expr(expr: &Expr) -> Option<NumericConst> {
         match expr {
             Expr::Literal(Literal::Integer(value)) => Some(NumericConst::Integer(*value)),
             Expr::Literal(Literal::Float(value)) => Some(NumericConst::Float(*value)),
@@ -289,6 +289,13 @@ impl TypeChecker {
             Some(NumericConst::Integer(value)) if value < 0
         ) {
             self.error(message.to_string(), span);
+        }
+    }
+
+    fn eval_const_string_len(expr: &Expr) -> Option<usize> {
+        match expr {
+            Expr::Literal(Literal::String(text)) => Some(text.chars().count()),
+            _ => None,
         }
     }
 
@@ -3166,6 +3173,17 @@ impl TypeChecker {
                                 index.span.clone(),
                                 "String index cannot be negative",
                             );
+                            if let (Some(string_len), Some(NumericConst::Integer(value))) = (
+                                Self::eval_const_string_len(&object.node),
+                                Self::eval_numeric_const_expr(&index.node),
+                            ) {
+                                if value >= 0 && (value as usize) >= string_len {
+                                    self.error(
+                                        "String index out of bounds".to_string(),
+                                        index.span.clone(),
+                                    );
+                                }
+                            }
                         }
                         ResolvedType::Char
                     }
@@ -7395,6 +7413,50 @@ mod tests {
             joined.contains("String index cannot be negative"),
             "{joined}"
         );
+    }
+
+    #[test]
+    fn string_index_rejects_constant_out_of_bounds_literal_index() {
+        let src = r#"
+            function bad(): Char {
+                return "abc"[5];
+            }
+
+            function main(): Integer {
+                c: Char = bad();
+                return 0;
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("constant out-of-bounds string index should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("String index out of bounds"), "{joined}");
+    }
+
+    #[test]
+    fn string_index_rejects_unicode_literal_index_past_char_len() {
+        let src = r#"
+            function bad(): Char {
+                return "🚀"[1];
+            }
+
+            function main(): Integer {
+                c: Char = bad();
+                return 0;
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("unicode string literal char index past len should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("String index out of bounds"), "{joined}");
     }
 
     #[test]

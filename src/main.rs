@@ -9883,7 +9883,8 @@ function main(): None {
         let output_path = temp_root.join("string_index_oob_runtime");
         let source = r#"
             function main(): Integer {
-                c: Char = "abc"[10];
+                idx: Integer = 10;
+                c: Char = "abc"[idx];
                 return 20;
             }
         "#;
@@ -9896,6 +9897,183 @@ function main(): None {
             .status()
             .expect("run compiled string index oob binary");
         assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_unicode_string_literal_index_operator() {
+        let temp_root = make_temp_project_root("unicode-string-index-runtime");
+        let source_path = temp_root.join("unicode_string_index_runtime.apex");
+        let output_path = temp_root.join("unicode_string_index_runtime");
+        let source = r#"
+            function main(): Integer {
+                c: Char = "🚀"[0];
+                return if (c == '🚀') { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unicode string literal index should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unicode string index binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_unicode_string_literal_index_operator_with_dynamic_index() {
+        let temp_root = make_temp_project_root("unicode-string-dynamic-index-runtime");
+        let source_path = temp_root.join("unicode_string_dynamic_index_runtime.apex");
+        let output_path = temp_root.join("unicode_string_dynamic_index_runtime");
+        let source = r#"
+            function main(): Integer {
+                idx: Integer = 0;
+                c: Char = "🚀"[idx];
+                return if (c == '🚀') { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unicode string literal dynamic index should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unicode dynamic string index binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_unicode_string_literal_index_operator_past_char_len() {
+        let temp_root = make_temp_project_root("unicode-string-index-oob-runtime");
+        let source_path = temp_root.join("unicode_string_index_oob_runtime.apex");
+        let output_path = temp_root.join("unicode_string_index_oob_runtime");
+        let source = r#"
+            function main(): Integer {
+                idx: Integer = 1;
+                c: Char = "🚀"[idx];
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unicode string literal oob dynamic index should still codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled unicode dynamic string index oob binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(stdout.contains("String index out of bounds\n"), "{stdout}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_unicode_string_variable_index_operator() {
+        let temp_root = make_temp_project_root("unicode-string-variable-index-runtime");
+        let source_path = temp_root.join("unicode_string_variable_index_runtime.apex");
+        let output_path = temp_root.join("unicode_string_variable_index_runtime");
+        let source = r#"
+            function main(): Integer {
+                s: String = "🚀";
+                idx: Integer = 0;
+                c: Char = s[idx];
+                return if (c == '🚀') { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unicode string variable index should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unicode string variable index binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_unicode_string_literal_length() {
+        let temp_root = make_temp_project_root("unicode-string-literal-length-runtime");
+        let source_path = temp_root.join("unicode_string_literal_length_runtime.apex");
+        let output_path = temp_root.join("unicode_string_literal_length_runtime");
+        let source = r#"
+            function main(): Integer {
+                return if ("🚀".length() == 1) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unicode string literal length should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unicode string literal length binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_unicode_string_variable_length() {
+        let temp_root = make_temp_project_root("unicode-string-variable-length-runtime");
+        let source_path = temp_root.join("unicode_string_variable_length_runtime.apex");
+        let output_path = temp_root.join("unicode_string_variable_length_runtime");
+        let source = r#"
+            function main(): Integer {
+                s: String = "🚀";
+                return if (s.length() == 1) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unicode string variable length should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unicode string variable length binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_unicode_string_variable_index_operator_past_char_len() {
+        let temp_root = make_temp_project_root("unicode-string-variable-index-oob-runtime");
+        let source_path = temp_root.join("unicode_string_variable_index_oob_runtime.apex");
+        let output_path = temp_root.join("unicode_string_variable_index_oob_runtime");
+        let source = r#"
+            function main(): Integer {
+                s: String = "🚀";
+                idx: Integer = 1;
+                c: Char = s[idx];
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unicode string variable oob index should still codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled unicode string variable index oob binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(stdout.contains("String index out of bounds\n"), "{stdout}");
 
         let _ = fs::remove_dir_all(temp_root);
     }

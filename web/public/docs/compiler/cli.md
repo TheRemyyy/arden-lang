@@ -183,6 +183,11 @@ Notes:
 - Constant negative `Task.await_timeout(...)` arguments are rejected during `apex check`, while dynamic negative timeout values still fail fast at runtime with an explicit diagnostic.
 - Constant negative `Time.sleep(...)` arguments are rejected during `apex check`, while dynamic negative sleep values still fail fast at runtime with an explicit diagnostic.
 - Constant negative collection/string indices are rejected during `apex check` for `List.get`, `List.set`, `list[index]`, and `string[index]`, while dynamic negative indices still fail fast at runtime with explicit diagnostics.
+- Constant out-of-bounds indices on string literals like `"abc"[5]` are also rejected during `apex check` instead of being deferred to runtime.
+- Constant string-literal indexing also uses Unicode character positions, so `"🚀"[1]` is rejected during `apex check` and `"🚀"[0]` yields the expected `Char`.
+- Dynamic indexing on string literals also uses Unicode character positions at runtime, so `"🚀"[idx]` behaves consistently with `Char` semantics instead of indexing raw UTF-8 bytes.
+- Dynamic indexing on `String` values also uses Unicode character positions at runtime, so `s[idx]` is aligned with `Char` semantics instead of indexing raw UTF-8 bytes.
+- `String.length()` also uses Unicode character count semantics at runtime, so `"🚀".length()` and `s.length()` now return `1` instead of the UTF-8 byte count.
 - The entrypoint `main()` must be synchronous, non-generic, parameterless, non-extern, and return either `None` or `Integer`; invalid signatures are now rejected during `apex check` instead of leaking into backend crashes.
 
 Lint/fix note:
