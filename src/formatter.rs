@@ -5,6 +5,7 @@ use crate::ast::{
 };
 use crate::lexer;
 use crate::parser::Parser;
+use std::sync::Arc;
 
 pub fn format_source(source: &str) -> Result<String, String> {
     let shebang = source
@@ -20,7 +21,11 @@ pub fn format_source(source: &str) -> Result<String, String> {
         .parse_program()
         .map_err(|e| format!("Parse error: {}", e.message))?;
 
-    let mut formatter = Formatter::with_comments(collect_comments(source), package_offset);
+    let mut formatter = Formatter::with_comments(
+        collect_comments(source),
+        package_offset,
+        Some(Arc::<str>::from(source)),
+    );
     formatter.format_program(&program);
     let formatted = formatter.finish();
 
@@ -49,6 +54,7 @@ struct Formatter {
     comments: Vec<SourceComment>,
     next_comment: usize,
     package_offset: Option<usize>,
+    source: Option<Arc<str>>,
 }
 
 impl Formatter {
@@ -59,16 +65,22 @@ impl Formatter {
             comments: Vec::new(),
             next_comment: 0,
             package_offset: None,
+            source: None,
         }
     }
 
-    fn with_comments(comments: Vec<SourceComment>, package_offset: Option<usize>) -> Self {
+    fn with_comments(
+        comments: Vec<SourceComment>,
+        package_offset: Option<usize>,
+        source: Option<Arc<str>>,
+    ) -> Self {
         Self {
             output: String::new(),
             indent: 0,
             comments,
             next_comment: 0,
             package_offset,
+            source,
         }
     }
 
@@ -348,19 +360,20 @@ impl Formatter {
                 mutable,
             } => {
                 let prefix = if *mutable { "mut " } else { "" };
+                let formatted_value = self.format_expr(&value.node);
                 self.push_line(&format!(
                     "{}{}: {} = {};",
                     prefix,
                     name,
                     self.format_type(ty),
-                    self.format_expr(&value.node)
+                    formatted_value
                 ));
             }
-            Stmt::Assign { target, value } => self.push_line(&format!(
-                "{} = {};",
-                self.format_expr(&target.node),
-                self.format_expr(&value.node)
-            )),
+            Stmt::Assign { target, value } => {
+                let formatted_target = self.format_expr(&target.node);
+                let formatted_value = self.format_expr(&value.node);
+                self.push_line(&format!("{} = {};", formatted_target, formatted_value));
+            }
             Stmt::Expr(expr) => {
                 let formatted = self.format_expr(&expr.node);
                 if matches!(expr.node, Expr::Match { .. } | Expr::IfExpr { .. }) {
@@ -371,7 +384,8 @@ impl Formatter {
             }
             Stmt::Return(expr) => {
                 if let Some(expr) = expr {
-                    self.push_line(&format!("return {};", self.format_expr(&expr.node)));
+                    let formatted_expr = self.format_expr(&expr.node);
+                    self.push_line(&format!("return {};", formatted_expr));
                 } else {
                     self.push_line("return;");
                 }
@@ -381,7 +395,8 @@ impl Formatter {
                 then_block,
                 else_block,
             } => {
-                self.push_line(&format!("if ({}) {{", self.format_expr(&condition.node)));
+                let formatted_condition = self.format_expr(&condition.node);
+                self.push_line(&format!("if ({}) {{", formatted_condition));
                 self.indent += 1;
                 self.format_block_contents(then_block);
                 self.indent -= 1;
@@ -392,7 +407,8 @@ impl Formatter {
                 }
             }
             Stmt::While { condition, body } => {
-                self.push_line(&format!("while ({}) {{", self.format_expr(&condition.node)));
+                let formatted_condition = self.format_expr(&condition.node);
+                self.push_line(&format!("while ({}) {{", formatted_condition));
                 self.indent += 1;
                 self.format_block_contents(body);
                 self.indent -= 1;
@@ -421,7 +437,8 @@ impl Formatter {
             Stmt::Break => self.push_line("break;"),
             Stmt::Continue => self.push_line("continue;"),
             Stmt::Match { expr, arms } => {
-                self.push_line(&format!("match ({}) {{", self.format_expr(&expr.node)));
+                let formatted_expr = self.format_expr(&expr.node);
+                self.push_line(&format!("match ({}) {{", formatted_expr));
                 self.indent += 1;
                 for arm in arms {
                     self.push_line(&format!("{} => {{", self.format_pattern(&arm.pattern)));
@@ -452,11 +469,11 @@ impl Formatter {
         }
     }
 
-    fn format_expr(&self, expr: &Expr) -> String {
+    fn format_expr(&mut self, expr: &Expr) -> String {
         self.format_expr_with_prec(expr, 0)
     }
 
-    fn format_expr_with_prec(&self, expr: &Expr, parent_prec: u8) -> String {
+    fn format_expr_with_prec(&mut self, expr: &Expr, parent_prec: u8) -> String {
         match expr {
             Expr::Literal(literal) => self.format_literal(literal),
             Expr::Ident(name) => name.clone(),
@@ -590,12 +607,15 @@ impl Formatter {
                 }
             }
             Expr::AsyncBlock(block) => {
-                let mut nested = Formatter::new();
-                nested.indent = 1;
-                nested.format_block_contents(block);
-                let body = nested.finish();
+                let body = if block.is_empty() {
+                    self.format_empty_block_comments()
+                        .unwrap_or_else(|| String::from("\n"))
+                } else {
+                    self.format_nested_block_contents(block)
+                };
                 let body = body.trim_end_matches('\n');
-                let formatted = format!("async {{\n{}\n}}", body);
+                let closing_indent = "    ".repeat(self.indent);
+                let formatted = format!("async {{\n{}\n{}}}", body, closing_indent);
                 if 9 <= parent_prec {
                     format!("({})", formatted)
                 } else {
@@ -673,7 +693,7 @@ impl Formatter {
         }
     }
 
-    fn format_match_arm_inline(&self, arm: &MatchArm) -> String {
+    fn format_match_arm_inline(&mut self, arm: &MatchArm) -> String {
         format!(
             "{} => {}",
             self.format_pattern(&arm.pattern),
@@ -689,10 +709,8 @@ impl Formatter {
                 else_block,
             } = &nested.node
             {
-                self.push_line(&format!(
-                    "}} else if ({}) {{",
-                    self.format_expr(&condition.node)
-                ));
+                let formatted_condition = self.format_expr(&condition.node);
+                self.push_line(&format!("}} else if ({}) {{", formatted_condition));
                 self.indent += 1;
                 self.format_block_contents(then_block);
                 self.indent -= 1;
@@ -712,20 +730,125 @@ impl Formatter {
         self.push_line("}");
     }
 
-    fn format_inline_block(&self, block: &Block) -> String {
+    fn format_inline_block(&mut self, block: &Block) -> String {
         if block.is_empty() {
+            if let Some(body) = self.format_empty_block_comments() {
+                let lines = body.trim_end_matches('\n');
+                let closing_indent = "    ".repeat(self.indent);
+                return format!("{{\n{}\n{}}}", lines, closing_indent);
+            }
             return "{ }".to_string();
         }
 
-        let mut nested = Formatter::new();
-        nested.indent = 1;
-        nested.format_block_contents(block);
-        let body = nested.finish();
+        let body = self.format_nested_block_contents(block);
         let lines = body.trim_end_matches('\n');
-        format!("{{\n{}\n}}", lines)
+        let closing_indent = "    ".repeat(self.indent);
+        format!("{{\n{}\n{}}}", lines, closing_indent)
     }
 
-    fn format_string_interp(&self, parts: &[StringPart]) -> String {
+    fn format_nested_block_contents(&mut self, block: &Block) -> String {
+        let Some(block_end) = block.last().map(|stmt| stmt.span.end) else {
+            return String::new();
+        };
+        let block_limit = self.find_block_close_offset(block_end).unwrap_or(block_end);
+
+        let comment_end = self
+            .comments
+            .iter()
+            .enumerate()
+            .skip(self.next_comment)
+            .find_map(|(index, comment)| (comment.start >= block_limit).then_some(index))
+            .unwrap_or(self.comments.len());
+        let block_comments = self.comments[self.next_comment..comment_end].to_vec();
+
+        let mut nested = Formatter::with_comments(block_comments, None, self.source.clone());
+        nested.indent = self.indent + 1;
+        nested.format_block_contents(block);
+        nested.emit_comments_before(block_limit);
+        let consumed_comments = nested.next_comment;
+        let body = nested.finish();
+        self.next_comment += consumed_comments;
+        body
+    }
+
+    fn format_empty_block_comments(&mut self) -> Option<String> {
+        let comments = self.take_empty_block_comments();
+        if comments.is_empty() {
+            return None;
+        }
+
+        let mut nested = Formatter::with_comments(comments, None, self.source.clone());
+        nested.indent = self.indent + 1;
+        nested.emit_comments_before(usize::MAX);
+        Some(nested.finish())
+    }
+
+    fn take_empty_block_comments(&mut self) -> Vec<SourceComment> {
+        let Some(source) = self.source.as_ref() else {
+            return Vec::new();
+        };
+        let Some(first_comment) = self.comments.get(self.next_comment) else {
+            return Vec::new();
+        };
+
+        let mut end = first_comment.start + first_comment.text.len();
+        let mut comment_count = 1usize;
+        while let Some(next_comment) = self.comments.get(self.next_comment + comment_count) {
+            let between = &source[end..next_comment.start];
+            if !between.chars().all(char::is_whitespace) {
+                break;
+            }
+            end = next_comment.start + next_comment.text.len();
+            comment_count += 1;
+        }
+
+        let trailing = &source[end..];
+        let mut index = 0usize;
+        let bytes = trailing.as_bytes();
+        while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+            index += 1;
+        }
+        if bytes.get(index) != Some(&b'}') {
+            return Vec::new();
+        }
+
+        let comments = self.comments[self.next_comment..self.next_comment + comment_count].to_vec();
+        self.next_comment += comment_count;
+        comments
+    }
+
+    fn find_block_close_offset(&self, block_end: usize) -> Option<usize> {
+        let source = self.source.as_ref()?;
+        let bytes = source.as_bytes();
+        let mut index = block_end;
+        while index < bytes.len() {
+            let current = bytes[index];
+            if current.is_ascii_whitespace() {
+                index += 1;
+                continue;
+            }
+            if current == b'/' && index + 1 < bytes.len() && bytes[index + 1] == b'/' {
+                index += 2;
+                while index < bytes.len() && bytes[index] != b'\n' {
+                    index += 1;
+                }
+                continue;
+            }
+            if current == b'/' && index + 1 < bytes.len() && bytes[index + 1] == b'*' {
+                index += 2;
+                while index + 1 < bytes.len() && !(bytes[index] == b'*' && bytes[index + 1] == b'/')
+                {
+                    index += 1;
+                }
+                index = (index + 2).min(bytes.len());
+                continue;
+            }
+            return (current == b'}').then_some(index);
+        }
+        None
+    }
+
+    fn format_string_interp(&mut self, parts: &[StringPart]) -> String {
         let mut result = String::from("\"");
         for part in parts {
             match part {
@@ -832,7 +955,7 @@ impl Formatter {
 
     fn emit_comments_before(&mut self, offset: usize) {
         while let Some(comment) = self.comments.get(self.next_comment) {
-            if comment.start >= offset {
+            if comment.start > offset {
                 break;
             }
             let comment = comment.clone();
@@ -1333,5 +1456,249 @@ function f<T extends A, B>(value: T): None {
         parser
             .parse_program()
             .expect("formatted generic bounds should parse");
+    }
+
+    #[test]
+    fn preserves_comments_inside_async_blocks() {
+        let source = r#"
+function main(): None {
+    task: Task<Integer> = async {
+        // keep me
+        return 1;
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("async {\n        // keep me\n        return 1;\n    }"),
+            "{formatted}"
+        );
+    }
+
+    #[test]
+    fn preserves_comments_inside_if_expression_blocks() {
+        let source = r#"
+function main(): None {
+    value: Integer = if (true) {
+        // keep me
+        1;
+    } else {
+        2;
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("if (true) {\n        // keep me\n        1;\n    }"),
+            "{formatted}"
+        );
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn preserves_comments_inside_match_expression_blocks() {
+        let source = r#"
+function main(): None {
+    value: Integer = match (1) {
+        1 => {
+            // keep me
+            1;
+        },
+        _ => {
+            2;
+        }
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("// keep me"), "{formatted}");
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn preserves_trailing_comments_inside_async_blocks() {
+        let source = r#"
+function main(): None {
+    task: Task<Integer> = async {
+        return 1;
+        // trailing keep me
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("return 1;\n        // trailing keep me\n    }"),
+            "{formatted}"
+        );
+    }
+
+    #[test]
+    fn preserves_trailing_comments_inside_if_expression_blocks() {
+        let source = r#"
+function main(): None {
+    value: Integer = if (true) {
+        1;
+        // trailing keep me
+    } else {
+        2;
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("1;\n        // trailing keep me\n    } else {"),
+            "{formatted}"
+        );
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn preserves_trailing_comments_inside_match_expression_blocks() {
+        let source = r#"
+function main(): None {
+    value: Integer = match (1) {
+        1 => {
+            1;
+            // trailing keep me
+        },
+        _ => {
+            2;
+        }
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("// trailing keep me"), "{formatted}");
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn preserves_block_comments_inside_async_blocks() {
+        let source = r#"
+function main(): None {
+    task: Task<Integer> = async {
+        /* keep me */
+        return 1;
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("async {\n        /* keep me */\n        return 1;\n    }"),
+            "{formatted}"
+        );
+    }
+
+    #[test]
+    fn preserves_trailing_block_comments_inside_if_expression_blocks() {
+        let source = r#"
+function main(): None {
+    value: Integer = if (true) {
+        1;
+        /* trailing keep me */
+    } else {
+        2;
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("1;\n        /* trailing keep me */\n    } else {"),
+            "{formatted}"
+        );
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn preserves_comments_inside_empty_async_blocks() {
+        let source = r#"
+function main(): None {
+    task: Task<None> = async {
+        // keep me
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("async {\n        // keep me\n    }"),
+            "{formatted}"
+        );
+    }
+
+    #[test]
+    fn preserves_comments_inside_empty_if_expression_blocks() {
+        let source = r#"
+function main(): None {
+    value: Integer = if (true) {
+        // keep me
+    } else {
+        2;
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("if (true) {\n        // keep me\n    } else {"),
+            "{formatted}"
+        );
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn preserves_comments_inside_empty_match_expression_blocks() {
+        let source = r#"
+function main(): None {
+    value: Integer = match (1) {
+        1 => {
+            // keep me
+        },
+        _ => {
+            2;
+        }
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("// keep me"), "{formatted}");
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should parse");
     }
 }

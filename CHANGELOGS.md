@@ -8,6 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed `apex fmt` comment stability inside inline expression blocks:
+  - comments inside `async { ... }`, `if (...) { ... } else { ... }`, and `match (...) { ... }` expression bodies are now preserved in place instead of being dropped or moved outside the expression during formatting
+  - trailing comments after the last statement inside those expression blocks now also stay inside the block instead of being hoisted below the enclosing statement
+  - comments inside otherwise-empty expression blocks now also stay inside the block instead of collapsing into `{ }` / `async {}` and being moved below the enclosing statement
+- Fixed static validation of constant-zero `range` steps:
+  - `apex check` now rejects constant numeric step expressions like `range(0, 3, 1 - 1)` and `range(0.0, 3.0, 0.5 - 0.5)` instead of letting them compile and fail only at runtime
+- Fixed integer divide/modulo by zero diagnostics:
+  - `apex check` now rejects constant integer zero divisors such as `6 / (2 - 2)` and `6 % (2 - 2)` instead of letting them compile into crashing binaries
+  - generated code now traps dynamic integer zero divisors with clean runtime errors (`Integer division by zero` / `Integer modulo by zero`) instead of crashing the process with a raw arithmetic fault
+- Fixed `Task.await_timeout()` validation for negative constants:
+  - `apex check` now rejects constant negative timeout expressions such as `await_timeout(-1)` and `await_timeout(1 - 2)` instead of letting them compile and fail only at runtime
+  - dynamic negative timeout values still fail fast at runtime with the existing explicit diagnostic instead of hanging or misbehaving
+- Fixed `Time.sleep()` validation for negative millisecond values:
+  - `apex check` now rejects constant negative sleep expressions such as `Time.sleep(-1)` and `Time.sleep(1 - 2)` instead of letting them compile and fail only at runtime
+  - dynamic negative sleep values now fail fast with a clean runtime error instead of overflowing into a huge platform sleep interval
+- Fixed collection/string negative constant index validation:
+  - `apex check` now rejects constant negative indices for `List.get(...)`, `List.set(...)`, `list[index]`, and `string[index]` instead of letting them compile and fail only at runtime
+  - dynamic negative indices still keep the existing runtime guards, so non-constant bad indices continue to fail cleanly instead of producing undefined behavior
+- Fixed entrypoint `main()` signature validation:
+  - `apex check` now rejects invalid entrypoint signatures such as `main(x: Integer)`, `async main()`, generic `main<T>()`, or `main()` returning unsupported types like `String`
+  - this prevents backend crashes and invalid LLVM/Clang failures that previously happened when malformed `main()` signatures reached code generation
+
 - Fixed `apex fmt` leading-comment ordering for package files:
   - banner comments that appear before `package ...;` now stay above the package declaration instead of being moved below it during formatting
 

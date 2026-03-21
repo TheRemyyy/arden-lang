@@ -6551,17 +6551,16 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
 mod tests {
     use super::{
         api_program_fingerprint, build_file_dependency_graph_incremental, build_project,
-        build_reverse_dependency_graph, check_command, codegen_program_for_unit,
-        collect_apex_files, compile_source, component_fingerprint, compute_link_fingerprint,
-        compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
-        dedupe_link_inputs, escape_response_file_arg, fix_target, format_targets, lint_target,
-        parse_project_unit, precompute_all_transitive_dependencies,
-        reusable_component_fingerprints, run_tests, semantic_program_fingerprint,
-        should_skip_final_link, transitive_dependents, typecheck_summary_cache_from_state,
-        typecheck_summary_cache_matches, DependencyGraphCache, DependencyGraphFileEntry,
-        DependencyResolutionContext, LinkConfig, LinkManifestCache, OutputKind, ParsedProjectUnit,
-        RewriteFingerprintContext, RewrittenProjectUnit, DEPENDENCY_GRAPH_CACHE_SCHEMA,
-        LINK_MANIFEST_CACHE_SCHEMA,
+        build_reverse_dependency_graph, check_command, codegen_program_for_unit, compile_source,
+        component_fingerprint, compute_link_fingerprint, compute_namespace_api_fingerprints,
+        compute_rewrite_context_fingerprint_for_unit, dedupe_link_inputs, escape_response_file_arg,
+        fix_target, format_targets, lint_target, parse_project_unit,
+        precompute_all_transitive_dependencies, reusable_component_fingerprints, run_tests,
+        semantic_program_fingerprint, should_skip_final_link, transitive_dependents,
+        typecheck_summary_cache_from_state, typecheck_summary_cache_matches, DependencyGraphCache,
+        DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig, LinkManifestCache,
+        OutputKind, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
+        DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
     };
     use crate::ast::{Decl, FunctionDecl, ImportDecl, Program, Spanned, Type, Visibility};
     use crate::borrowck::BorrowChecker;
@@ -8026,7 +8025,7 @@ function main(): None {
         write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
         fs::write(
             src_dir.join("main.apex"),
-            "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction choose(): Result<(Integer) -> Integer, String> { return Result.ok(inc); }\nfunction main(): Result<None, String> { value: Integer = (choose()?)(1); require(value == 2); return Result.ok(None); }\n",
+            "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction choose(): Result<(Integer) -> Integer, String> { return Result.ok(inc); }\nfunction compute(): Result<Integer, String> { value: Integer = (choose()?)(1); return Result.ok(value); }\nfunction main(): Integer { value: Integer = compute().unwrap(); require(value == 2); return 0; }\n",
         )
         .expect("write main");
 
@@ -8470,7 +8469,8 @@ function main(): None {
             }
 
             function main(): Integer {
-                maybe: Option<Integer> = work().await_timeout(-1);
+                timeout_ms: Integer = -1;
+                maybe: Option<Integer> = work().await_timeout(timeout_ms);
                 if (maybe.is_some()) { return 99; }
                 return 0;
             }
@@ -8536,6 +8536,90 @@ function main(): None {
         let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
         assert!(stdout.contains("Result.unwrap() called on Error\n"));
         assert!(!stdout.contains("\\n"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_prints_clean_integer_division_by_zero_runtime_error() {
+        let temp_root = make_temp_project_root("integer-division-by-zero-runtime");
+        let source_path = temp_root.join("integer_division_by_zero_runtime.apex");
+        let output_path = temp_root.join("integer_division_by_zero_runtime");
+        let source = r#"
+            function main(): Integer {
+                denominator: Integer = 0;
+                return 6 / denominator;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("dynamic integer division by zero path should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled integer division by zero binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(stdout.contains("Integer division by zero\n"), "{stdout}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_prints_clean_integer_modulo_by_zero_runtime_error() {
+        let temp_root = make_temp_project_root("integer-modulo-by-zero-runtime");
+        let source_path = temp_root.join("integer_modulo_by_zero_runtime.apex");
+        let output_path = temp_root.join("integer_modulo_by_zero_runtime");
+        let source = r#"
+            function main(): Integer {
+                denominator: Integer = 0;
+                return 6 % denominator;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("dynamic integer modulo by zero path should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled integer modulo by zero binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(stdout.contains("Integer modulo by zero\n"), "{stdout}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_negative_time_sleep() {
+        let temp_root = make_temp_project_root("time-sleep-negative-runtime");
+        let source_path = temp_root.join("time_sleep_negative_runtime.apex");
+        let output_path = temp_root.join("time_sleep_negative_runtime");
+        let source = r#"
+            import std.time.*;
+
+            function main(): Integer {
+                delay_ms: Integer = -1;
+                Time.sleep(delay_ms);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("dynamic negative Time.sleep should still codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled negative Time.sleep binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("Time.sleep() milliseconds must be non-negative\n"),
+            "{stdout}"
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -9565,7 +9649,8 @@ function main(): None {
             function main(): Integer {
                 mut xs: List<Integer> = List<Integer>();
                 xs.push(1);
-                xs[-1] = 25;
+                index: Integer = -1;
+                xs[index] = 25;
                 return 25;
             }
         "#;
@@ -9678,7 +9763,8 @@ function main(): None {
             function main(): Integer {
                 xs: List<Integer> = List<Integer>();
                 xs.push(1);
-                return xs.get(-1);
+                index: Integer = -1;
+                return xs.get(index);
             }
         "#;
 
@@ -9703,7 +9789,8 @@ function main(): None {
             function main(): Integer {
                 xs: List<Integer> = List<Integer>();
                 xs.push(1);
-                return xs[-1];
+                index: Integer = -1;
+                return xs[index];
             }
         "#;
 
@@ -9740,6 +9827,51 @@ function main(): None {
             .status()
             .expect("run compiled string index binary");
         assert_eq!(status.code(), Some(19));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_main_with_string_return_type() {
+        let temp_root = make_temp_project_root("main-string-return-type");
+        let source_path = temp_root.join("main_string_return_type.apex");
+        let output_path = temp_root.join("main_string_return_type");
+        let source = r#"
+            function main(): String {
+                return "oops";
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("main string return type should fail before codegen");
+        assert!(
+            err.to_string()
+                .contains("main() must return None or Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_main_with_parameters() {
+        let temp_root = make_temp_project_root("main-parameters");
+        let source_path = temp_root.join("main_parameters.apex");
+        let output_path = temp_root.join("main_parameters");
+        let source = r#"
+            function main(x: Integer): Integer {
+                return x;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("main parameters should fail before codegen");
+        assert!(
+            err.to_string().contains("main() cannot declare parameters"),
+            "{err}"
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -10720,8 +10852,8 @@ function main(): None {
             .expect("write outside file");
         symlink(&outside_dir, temp_root.join("linked-outside")).expect("create dir symlink");
 
-        let files =
-            collect_apex_files(&temp_root).expect("collect_apex_files should skip symlink dirs");
+        let files = super::collect_apex_files(&temp_root)
+            .expect("collect_apex_files should skip symlink dirs");
         assert!(
             files.contains(&inside_file),
             "expected real apex file to be discovered: {files:?}"

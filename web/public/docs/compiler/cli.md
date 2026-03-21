@@ -153,6 +153,7 @@ Behavior:
   - non-generic calls with type arguments (rejected),
   - generic arity mismatch (rejected),
   - unknown explicit type arguments (rejected).
+- `apex check` now also rejects constant-zero `range` step expressions such as `range(0, 3, 1 - 1)` and `range(0.0, 3.0, 0.5 - 0.5)` before codegen/runtime.
 - Assignment mutability checks now apply to nested targets too (`obj.field = ...`, `arr[i] = ...`), not only direct identifier targets.
 - Invalid `import ... as alias` usages now report an actionable unknown-namespace-alias error instead of a bogus synthetic import suggestion.
 
@@ -175,8 +176,14 @@ Notes:
 - Recursive directory formatting skips symlinked directories to avoid traversing outside the requested tree.
 - You can point `apex fmt` at either a single `.apex` file or a directory.
 - Formatter output now preserves ambiguous expression statements (`if`/`match`) by emitting them as parenthesized expressions in statement position, so `fmt` round-trips without changing semantics.
+- Comments inside inline expression blocks such as `async { ... }`, `if (...) { ... } else { ... }`, and `match (...) { ... }` are preserved in place, including trailing comments after the last statement and comments inside otherwise-empty blocks, instead of being moved outside the expression.
 - Formatter now preserves a script shebang line (`#!/usr/bin/env apex`) during rewrite and `--check` runs.
 - Leading comments before a `package ...;` declaration are preserved above the package line instead of being moved below it.
+- Constant integer divide/modulo-by-zero expressions are rejected during `apex check`, and dynamic integer zero divisors now fail with explicit runtime diagnostics instead of crashing with a raw arithmetic fault.
+- Constant negative `Task.await_timeout(...)` arguments are rejected during `apex check`, while dynamic negative timeout values still fail fast at runtime with an explicit diagnostic.
+- Constant negative `Time.sleep(...)` arguments are rejected during `apex check`, while dynamic negative sleep values still fail fast at runtime with an explicit diagnostic.
+- Constant negative collection/string indices are rejected during `apex check` for `List.get`, `List.set`, `list[index]`, and `string[index]`, while dynamic negative indices still fail fast at runtime with explicit diagnostics.
+- The entrypoint `main()` must be synchronous, non-generic, parameterless, non-extern, and return either `None` or `Integer`; invalid signatures are now rejected during `apex check` instead of leaking into backend crashes.
 
 Lint/fix note:
 - `apex lint <path>` and `apex fix <path>` now validate explicit paths up front and reject directories or non-`.apex` files with a direct CLI error.

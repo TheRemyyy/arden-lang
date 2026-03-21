@@ -32,6 +32,8 @@ timestamp: Integer = Time.unix();
 
 Suspends the execution of the current thread for the specified number of milliseconds.
 
+Negative millisecond values are invalid. Constant negative arguments are rejected during `apex check`, and dynamic negative values fail fast at runtime with a direct diagnostic.
+
 ```apex
 import std.io.*;
 

@@ -8507,6 +8507,22 @@ impl<'ctx> Codegen<'ctx> {
             let l = lhs.into_int_value();
             let r = rhs.into_int_value();
 
+            if matches!(op, BinOp::Div | BinOp::Mod) {
+                self.guard_nonzero_integer_divisor(
+                    r,
+                    match op {
+                        BinOp::Div => "Integer division by zero",
+                        BinOp::Mod => "Integer modulo by zero",
+                        _ => unreachable!(),
+                    },
+                    match op {
+                        BinOp::Div => "int_div_zero",
+                        BinOp::Mod => "int_mod_zero",
+                        _ => unreachable!(),
+                    },
+                )?;
+            }
+
             let result = match op {
                 BinOp::Add => self.builder.build_int_add(l, r, "add").unwrap(),
                 BinOp::Sub => self.builder.build_int_sub(l, r, "sub").unwrap(),
@@ -8643,6 +8659,42 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         Err(CodegenError::new("Type mismatch in binary operation"))
+    }
+
+    fn guard_nonzero_integer_divisor(
+        &mut self,
+        divisor: IntValue<'ctx>,
+        message: &str,
+        block_prefix: &str,
+    ) -> Result<()> {
+        let current_fn = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("integer division guard emitted outside function"))?;
+        let zero = divisor.get_type().const_zero();
+        let is_zero = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                divisor,
+                zero,
+                &format!("{block_prefix}_is_zero"),
+            )
+            .unwrap();
+        let ok_block = self
+            .context
+            .append_basic_block(current_fn, &format!("{block_prefix}_ok"));
+        let error_block = self
+            .context
+            .append_basic_block(current_fn, &format!("{block_prefix}_error"));
+        self.builder
+            .build_conditional_branch(is_zero, error_block, ok_block)
+            .unwrap();
+
+        self.builder.position_at_end(error_block);
+        self.emit_runtime_error(message, &format!("{block_prefix}_runtime_error"))?;
+
+        self.builder.position_at_end(ok_block);
+        Ok(())
     }
 
     pub fn compile_unary(&mut self, op: UnaryOp, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
@@ -11787,12 +11839,50 @@ impl<'ctx> Codegen<'ctx> {
 
             "Time__sleep" => {
                 let ms = self.compile_expr(&args[0].node)?;
+                if !ms.is_int_value() {
+                    return Err(CodegenError::new(
+                        "Time.sleep(ms) requires Integer milliseconds",
+                    ));
+                }
+                let ms_i64 = self
+                    .builder
+                    .build_int_cast(ms.into_int_value(), self.context.i64_type(), "sleep_ms")
+                    .unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("Time.sleep used outside function"))?;
+                let sleep_valid_bb = self
+                    .context
+                    .append_basic_block(current_fn, "time_sleep_valid");
+                let sleep_invalid_bb = self
+                    .context
+                    .append_basic_block(current_fn, "time_sleep_invalid");
+                let sleep_negative = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::SLT,
+                        ms_i64,
+                        self.context.i64_type().const_zero(),
+                        "time_sleep_negative",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(sleep_negative, sleep_invalid_bb, sleep_valid_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(sleep_invalid_bb);
+                self.emit_runtime_error(
+                    "Time.sleep() milliseconds must be non-negative",
+                    "time_sleep_negative_runtime_error",
+                )?;
+
+                self.builder.position_at_end(sleep_valid_bb);
                 #[cfg(windows)]
                 {
                     let sleep_fn = self.get_or_declare_sleep_win();
                     let ms_i32 = self
                         .builder
-                        .build_int_truncate(ms.into_int_value(), self.context.i32_type(), "ms32")
+                        .build_int_truncate(ms_i64, self.context.i32_type(), "ms32")
                         .unwrap();
                     self.builder
                         .build_call(sleep_fn, &[ms_i32.into()], "")
@@ -11803,11 +11893,7 @@ impl<'ctx> Codegen<'ctx> {
                     let usleep_fn = self.get_or_declare_usleep();
                     let us = self
                         .builder
-                        .build_int_mul(
-                            ms.into_int_value(),
-                            self.context.i64_type().const_int(1000, false),
-                            "us",
-                        )
+                        .build_int_mul(ms_i64, self.context.i64_type().const_int(1000, false), "us")
                         .unwrap();
                     let us_i32 = self
                         .builder

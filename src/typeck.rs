@@ -123,6 +123,21 @@ impl std::fmt::Display for ResolvedType {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum NumericConst {
+    Integer(i64),
+    Float(f64),
+}
+
+impl NumericConst {
+    fn is_zero(self) -> bool {
+        match self {
+            NumericConst::Integer(value) => value == 0,
+            NumericConst::Float(value) => value == 0.0,
+        }
+    }
+}
+
 /// Variable information in symbol table
 #[derive(Debug, Clone)]
 pub struct VarInfo {
@@ -230,6 +245,53 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
+    fn eval_numeric_const_expr(expr: &Expr) -> Option<NumericConst> {
+        match expr {
+            Expr::Literal(Literal::Integer(value)) => Some(NumericConst::Integer(*value)),
+            Expr::Literal(Literal::Float(value)) => Some(NumericConst::Float(*value)),
+            Expr::Unary {
+                op: UnaryOp::Neg,
+                expr,
+            } => match Self::eval_numeric_const_expr(&expr.node)? {
+                NumericConst::Integer(value) => value.checked_neg().map(NumericConst::Integer),
+                NumericConst::Float(value) => Some(NumericConst::Float(-value)),
+            },
+            Expr::Binary { op, left, right } => {
+                let left = Self::eval_numeric_const_expr(&left.node)?;
+                let right = Self::eval_numeric_const_expr(&right.node)?;
+                match (left, right) {
+                    (NumericConst::Integer(left), NumericConst::Integer(right)) => match op {
+                        BinOp::Add => left.checked_add(right).map(NumericConst::Integer),
+                        BinOp::Sub => left.checked_sub(right).map(NumericConst::Integer),
+                        BinOp::Mul => left.checked_mul(right).map(NumericConst::Integer),
+                        BinOp::Div => (right != 0).then(|| NumericConst::Integer(left / right)),
+                        BinOp::Mod => (right != 0).then(|| NumericConst::Integer(left % right)),
+                        _ => None,
+                    },
+                    (NumericConst::Float(left), NumericConst::Float(right)) => match op {
+                        BinOp::Add => Some(NumericConst::Float(left + right)),
+                        BinOp::Sub => Some(NumericConst::Float(left - right)),
+                        BinOp::Mul => Some(NumericConst::Float(left * right)),
+                        BinOp::Div => (right != 0.0).then(|| NumericConst::Float(left / right)),
+                        BinOp::Mod => (right != 0.0).then(|| NumericConst::Float(left % right)),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn check_non_negative_integer_const(&mut self, expr: &Expr, span: Span, message: &str) {
+        if matches!(
+            Self::eval_numeric_const_expr(expr),
+            Some(NumericConst::Integer(value)) if value < 0
+        ) {
+            self.error(message.to_string(), span);
+        }
+    }
+
     fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
         match expr {
             Expr::Ident(name) => Some(vec![name.clone()]),
@@ -2209,8 +2271,42 @@ impl TypeChecker {
         }
     }
 
+    fn validate_main_signature(&mut self, func: &FunctionDecl, span: Span) {
+        if !func.generic_params.is_empty() {
+            self.error(
+                "main() cannot declare generic parameters".to_string(),
+                span.clone(),
+            );
+        }
+        if !func.params.is_empty() {
+            self.error("main() cannot declare parameters".to_string(), span.clone());
+        }
+        if func.is_async {
+            self.error(
+                "main() cannot be async; use a synchronous main() entrypoint".to_string(),
+                span.clone(),
+            );
+        }
+        if func.is_extern || func.extern_abi.is_some() {
+            self.error("main() cannot be declared extern".to_string(), span.clone());
+        }
+        if func.is_variadic {
+            self.error("main() cannot be variadic".to_string(), span.clone());
+        }
+        if !matches!(func.return_type, Type::None | Type::Integer) {
+            self.error(
+                "main() must return None or Integer".to_string(),
+                span.clone(),
+            );
+        }
+    }
+
     /// Check a function
     fn check_function(&mut self, func: &FunctionDecl, span: Span, function_key: Option<&str>) {
+        let is_entry_main = matches!(function_key, None | Some("main")) && func.name == "main";
+        if is_entry_main {
+            self.validate_main_signature(func, span.clone());
+        }
         let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
         self.current_generic_type_bindings = self.make_generic_type_bindings(&func.generic_params);
         self.enter_scope();
@@ -2936,6 +3032,22 @@ impl TypeChecker {
                 let left_type = self.check_expr(&left.node, left.span.clone());
                 let right_type = self.check_expr(&right.node, right.span.clone());
 
+                if matches!(op, BinOp::Div | BinOp::Mod)
+                    && matches!(left_type, ResolvedType::Integer)
+                    && matches!(right_type, ResolvedType::Integer)
+                    && matches!(
+                        Self::eval_numeric_const_expr(&right.node),
+                        Some(NumericConst::Integer(0))
+                    )
+                {
+                    let message = match op {
+                        BinOp::Div => "Integer division by zero",
+                        BinOp::Mod => "Integer modulo by zero",
+                        _ => unreachable!(),
+                    };
+                    self.error(message.to_string(), right.span.clone());
+                }
+
                 self.check_binary_op(*op, &left_type, &right_type, span)
             }
 
@@ -3033,6 +3145,12 @@ impl TypeChecker {
                                 format!("Index must be Integer, found {}", idx_type),
                                 index.span.clone(),
                             );
+                        } else {
+                            self.check_non_negative_integer_const(
+                                &index.node,
+                                index.span.clone(),
+                                "List index cannot be negative",
+                            );
                         }
                         (**inner).clone()
                     }
@@ -3041,6 +3159,12 @@ impl TypeChecker {
                             self.error(
                                 format!("Index must be Integer, found {}", idx_type),
                                 index.span.clone(),
+                            );
+                        } else {
+                            self.check_non_negative_integer_const(
+                                &index.node,
+                                index.span.clone(),
+                                "String index cannot be negative",
                             );
                         }
                         ResolvedType::Char
@@ -4553,8 +4677,7 @@ impl TypeChecker {
                     }
                 }
                 if let Some(step) = args.get(2) {
-                    if matches!(step.node, Expr::Literal(Literal::Integer(0)))
-                        || matches!(step.node, Expr::Literal(Literal::Float(f)) if f == 0.0)
+                    if Self::eval_numeric_const_expr(&step.node).is_some_and(NumericConst::is_zero)
                     {
                         self.error("range() step cannot be 0".to_string(), step.span.clone());
                     }
@@ -4644,6 +4767,12 @@ impl TypeChecker {
                         self.error(
                             "Time.sleep() requires Integer milliseconds".to_string(),
                             span,
+                        );
+                    } else {
+                        self.check_non_negative_integer_const(
+                            &args[0].node,
+                            args[0].span.clone(),
+                            "Time.sleep() milliseconds must be non-negative",
                         );
                     }
                 }
@@ -4841,6 +4970,12 @@ impl TypeChecker {
                                 format!("List.get() index must be Integer, got {}", idx_type),
                                 args[0].span.clone(),
                             );
+                        } else {
+                            self.check_non_negative_integer_const(
+                                &args[0].node,
+                                args[0].span.clone(),
+                                "List.get() index cannot be negative",
+                            );
                         }
                     }
                     (**inner).clone()
@@ -4854,6 +4989,12 @@ impl TypeChecker {
                             self.error(
                                 "List.set() index must be Integer".to_string(),
                                 args[0].span.clone(),
+                            );
+                        } else {
+                            self.check_non_negative_integer_const(
+                                &args[0].node,
+                                args[0].span.clone(),
+                                "List.set() index cannot be negative",
                             );
                         }
                         if !self.types_compatible(inner, &val_type) {
@@ -5130,6 +5271,14 @@ impl TypeChecker {
                                     "Task.await_timeout() expects Integer milliseconds, got {}",
                                     t
                                 ),
+                                arg.span.clone(),
+                            );
+                        } else if matches!(
+                            Self::eval_numeric_const_expr(&arg.node),
+                            Some(NumericConst::Integer(value)) if value < 0
+                        ) {
+                            self.error(
+                                "Task.await_timeout() timeout must be non-negative".to_string(),
                                 arg.span.clone(),
                             );
                         }
@@ -7006,6 +7155,304 @@ mod tests {
             .join("\n");
         assert!(joined.contains("range() step cannot be 0"), "{joined}");
     }
+
+    #[test]
+    fn range_rejects_constant_integer_zero_step_expression() {
+        let src = r#"
+            function main(): None {
+                r: Range<Integer> = range(0, 3, 1 - 1);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("constant integer zero step should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("range() step cannot be 0"), "{joined}");
+    }
+
+    #[test]
+    fn range_rejects_constant_float_zero_step_expression() {
+        let src = r#"
+            function main(): None {
+                r: Range<Float> = range(0.0, 3.0, 0.5 - 0.5);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("constant float zero step should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("range() step cannot be 0"), "{joined}");
+    }
+
+    #[test]
+    fn integer_division_rejects_constant_zero_divisor() {
+        let src = r#"
+            function main(): Integer {
+                return 6 / (2 - 2);
+            }
+        "#;
+        let errors = check_source(src).expect_err("constant integer zero divisor should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Integer division by zero"), "{joined}");
+    }
+
+    #[test]
+    fn integer_modulo_rejects_constant_zero_divisor() {
+        let src = r#"
+            function main(): Integer {
+                return 6 % (2 - 2);
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("constant integer zero modulo divisor should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Integer modulo by zero"), "{joined}");
+    }
+
+    #[test]
+    fn await_timeout_rejects_negative_constant_literal() {
+        let src = r#"
+            async function work(): Integer {
+                return 1;
+            }
+
+            function main(): Integer {
+                maybe: Option<Integer> = work().await_timeout(-1);
+                if (maybe.is_some()) { return 1; }
+                return 0;
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative await_timeout literal should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Task.await_timeout() timeout must be non-negative"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn await_timeout_rejects_negative_constant_expression() {
+        let src = r#"
+            async function work(): Integer {
+                return 1;
+            }
+
+            function main(): Integer {
+                maybe: Option<Integer> = work().await_timeout(1 - 2);
+                if (maybe.is_some()) { return 1; }
+                return 0;
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative await_timeout expression should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Task.await_timeout() timeout must be non-negative"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn time_sleep_rejects_negative_constant_literal() {
+        let src = r#"
+            import std.time.*;
+
+            function main(): Integer {
+                Time.sleep(-1);
+                return 0;
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative Time.sleep literal should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Time.sleep() milliseconds must be non-negative"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn time_sleep_rejects_negative_constant_expression() {
+        let src = r#"
+            import std.time.*;
+
+            function main(): Integer {
+                Time.sleep(1 - 2);
+                return 0;
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative Time.sleep expression should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Time.sleep() milliseconds must be non-negative"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn list_get_rejects_negative_constant_index() {
+        let src = r#"
+            function main(): Integer {
+                values: List<Integer> = List<Integer>();
+                values.push(1);
+                return values.get(-1);
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative list.get index should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("List.get() index cannot be negative"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn list_index_rejects_negative_constant_index() {
+        let src = r#"
+            function main(): Integer {
+                values: List<Integer> = List<Integer>();
+                values.push(1);
+                return values[-1];
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative list index should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("List index cannot be negative"), "{joined}");
+    }
+
+    #[test]
+    fn list_set_rejects_negative_constant_index() {
+        let src = r#"
+            function main(): Integer {
+                values: List<Integer> = List<Integer>();
+                values.push(1);
+                values.set(-1, 2);
+                return 0;
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative list.set index should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("List.set() index cannot be negative"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn string_index_rejects_negative_constant_index() {
+        let src = r#"
+            function main(): Char {
+                return "abc"[-1];
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative string index should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("String index cannot be negative"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn main_rejects_non_integer_or_none_return_type() {
+        let src = r#"
+            function main(): String {
+                return "oops";
+            }
+        "#;
+        let errors = check_source(src).expect_err("main string return type should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("main() must return None or Integer"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn main_rejects_parameters() {
+        let src = r#"
+            function main(x: Integer): Integer {
+                return x;
+            }
+        "#;
+        let errors = check_source(src).expect_err("main parameters should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("main() cannot declare parameters"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn main_rejects_async_entrypoint() {
+        let src = r#"
+            async function main(): Task<Integer> {
+                return 1;
+            }
+        "#;
+        let errors = check_source(src).expect_err("async main should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("main() cannot be async; use a synchronous main() entrypoint"),
+            "{joined}"
+        );
+    }
 }
 
 /// Format type errors with source context
@@ -7045,11 +7492,12 @@ pub fn format_errors(errors: &[TypeError], source: &str, filename: &str) -> Stri
 
             // Underline
             let underline_start = col.saturating_sub(1);
-            let underline_len = (error.span.end - error.span.start).max(1);
+            let underline_len = error.span.end.saturating_sub(error.span.start).max(1);
+            let available = lines[line_num - 1].len().saturating_sub(underline_start);
             output.push_str(&format!(
                 "   \x1b[1;34m|\x1b[0m {}\x1b[1;31m{}\x1b[0m\n",
                 " ".repeat(underline_start),
-                "^".repeat(underline_len.min(lines[line_num - 1].len() - underline_start))
+                "^".repeat(underline_len.min(available).max(1))
             ));
         }
 
