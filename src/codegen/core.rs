@@ -12670,18 +12670,16 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
                 let file_ptr = self.extract_call_value(file_call).into_pointer_value();
 
-                let _null = self.context.ptr_type(AddressSpace::default()).const_null();
                 let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
 
-                let success_block = self
+                let current_fn = self.current_function.unwrap();
+                let success_block = self.context.append_basic_block(current_fn, "file.success");
+                let fail_block = self.context.append_basic_block(current_fn, "file.fail");
+                let merge_block = self.context.append_basic_block(current_fn, "file.merge");
+                let write_ok_block = self.context.append_basic_block(current_fn, "file.write_ok");
+                let write_fail_block = self
                     .context
-                    .append_basic_block(self.current_function.unwrap(), "file.success");
-                let fail_block = self
-                    .context
-                    .append_basic_block(self.current_function.unwrap(), "file.fail");
-                let merge_block = self
-                    .context
-                    .append_basic_block(self.current_function.unwrap(), "file.merge");
+                    .append_basic_block(current_fn, "file.write_fail");
 
                 self.builder
                     .build_conditional_branch(is_null, fail_block, success_block)
@@ -12695,12 +12693,48 @@ impl<'ctx> Codegen<'ctx> {
 
                 // Success
                 self.builder.position_at_end(success_block);
-                self.builder
+                let write_result = self
+                    .builder
                     .build_call(fputs, &[content.into(), file_ptr.into()], "write")
                     .unwrap();
-                self.builder
+                let write_code = self.extract_call_value(write_result).into_int_value();
+                let close_result = self
+                    .builder
                     .build_call(fclose, &[file_ptr.into()], "close")
                     .unwrap();
+                let close_code = self.extract_call_value(close_result).into_int_value();
+                let write_failed = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::SLT,
+                        write_code,
+                        self.context.i32_type().const_zero(),
+                        "file_write_failed",
+                    )
+                    .unwrap();
+                let close_failed = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        close_code,
+                        self.context.i32_type().const_zero(),
+                        "file_close_failed",
+                    )
+                    .unwrap();
+                let io_failed = self
+                    .builder
+                    .build_or(write_failed, close_failed, "file_io_failed")
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(io_failed, write_fail_block, write_ok_block)
+                    .unwrap();
+
+                self.builder.position_at_end(write_fail_block);
+                self.builder
+                    .build_unconditional_branch(merge_block)
+                    .unwrap();
+
+                self.builder.position_at_end(write_ok_block);
                 self.builder
                     .build_unconditional_branch(merge_block)
                     .unwrap();
@@ -12713,7 +12747,11 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
                 let true_val = self.context.bool_type().const_int(1, false);
                 let false_val = self.context.bool_type().const_int(0, false);
-                phi.add_incoming(&[(&false_val, fail_block), (&true_val, success_block)]);
+                phi.add_incoming(&[
+                    (&false_val, fail_block),
+                    (&false_val, write_fail_block),
+                    (&true_val, write_ok_block),
+                ]);
 
                 Ok(Some(phi.as_basic_value()))
             }
@@ -12750,6 +12788,14 @@ impl<'ctx> Codegen<'ctx> {
                 let success_block = self.context.append_basic_block(current_fn, "read.success");
                 let fail_block = self.context.append_basic_block(current_fn, "read.fail");
                 let merge_block = self.context.append_basic_block(current_fn, "read.merge");
+                let seek_ok_block = self.context.append_basic_block(current_fn, "read.seek_ok");
+                let seek_fail_block = self
+                    .context
+                    .append_basic_block(current_fn, "read.seek_fail");
+                let size_ok_block = self.context.append_basic_block(current_fn, "read.size_ok");
+                let size_fail_block = self
+                    .context
+                    .append_basic_block(current_fn, "read.size_fail");
 
                 self.builder
                     .build_conditional_branch(is_null, fail_block, success_block)
@@ -12773,9 +12819,31 @@ impl<'ctx> Codegen<'ctx> {
                 // fseek(f, 0, SEEK_END)
                 let seek_end = self.context.i32_type().const_int(2, false); // SEEK_END = 2
                 let zero = self.context.i64_type().const_int(0, false);
-                self.builder
+                let seek_result = self
+                    .builder
                     .build_call(fseek, &[file_ptr.into(), zero.into(), seek_end.into()], "")
                     .unwrap();
+                let seek_code = self.extract_call_value(seek_result).into_int_value();
+                let seek_succeeded = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        seek_code,
+                        self.context.i32_type().const_zero(),
+                        "file_read_seek_succeeded",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(seek_succeeded, seek_ok_block, seek_fail_block)
+                    .unwrap();
+
+                self.builder.position_at_end(seek_fail_block);
+                self.emit_runtime_error(
+                    "File.read() requires a seekable regular file",
+                    "file_read_non_seekable",
+                )?;
+
+                self.builder.position_at_end(seek_ok_block);
 
                 // size = ftell(f)
                 let size_call = self
@@ -12783,6 +12851,26 @@ impl<'ctx> Codegen<'ctx> {
                     .build_call(ftell, &[file_ptr.into()], "size")
                     .unwrap();
                 let size = self.extract_call_value(size_call).into_int_value();
+                let size_non_negative = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::SGE,
+                        size,
+                        self.context.i64_type().const_zero(),
+                        "file_read_size_non_negative",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(size_non_negative, size_ok_block, size_fail_block)
+                    .unwrap();
+
+                self.builder.position_at_end(size_fail_block);
+                self.emit_runtime_error(
+                    "File.read() requires a seekable regular file",
+                    "file_read_invalid_size",
+                )?;
+
+                self.builder.position_at_end(size_ok_block);
 
                 // rewind(f)
                 self.builder
@@ -12953,8 +13041,9 @@ impl<'ctx> Codegen<'ctx> {
                 let path = self.compile_expr(&args[0].node)?;
                 let fopen = self.get_or_declare_fopen();
                 let fclose = self.get_or_declare_fclose();
+                let fseek = self.get_or_declare_fseek();
 
-                let mode = self.context.const_string(b"r", true);
+                let mode = self.context.const_string(b"rb", true);
                 let mode_global = self.module.add_global(mode.get_type(), None, "mode_r");
                 mode_global.set_linkage(Linkage::Private);
                 mode_global.set_initializer(&mode);
@@ -12970,7 +13059,13 @@ impl<'ctx> Codegen<'ctx> {
                 let file_ptr = self.extract_call_value(file_call).into_pointer_value();
 
                 let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
-
+                let alloca_exists_slot = self
+                    .builder
+                    .build_alloca(self.context.bool_type(), "exists_result_slot")
+                    .unwrap();
+                self.builder
+                    .build_store(alloca_exists_slot, self.context.bool_type().const_zero())
+                    .unwrap();
                 let exists = self.builder.build_not(is_null, "exists").unwrap();
 
                 // Close if opened
@@ -12986,34 +13081,176 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
 
                 self.builder.position_at_end(close_block);
+                let seek_end = self.context.i32_type().const_int(2, false);
+                let seek_result = self
+                    .builder
+                    .build_call(
+                        fseek,
+                        &[
+                            file_ptr.into(),
+                            self.context.i64_type().const_zero().into(),
+                            seek_end.into(),
+                        ],
+                        "exists_seek_result",
+                    )
+                    .unwrap();
+                let seek_code = self.extract_call_value(seek_result).into_int_value();
                 self.builder
                     .build_call(fclose, &[file_ptr.into()], "")
+                    .unwrap();
+                let seek_ok = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        seek_code,
+                        self.context.i32_type().const_zero(),
+                        "exists_seek_ok",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_store(alloca_exists_slot, seek_ok)
                     .unwrap();
                 self.builder.build_unconditional_branch(end_block).unwrap();
 
                 self.builder.position_at_end(end_block);
-
-                // Cast i1 to boolean (i1) - basically same
-                Ok(Some(exists.into()))
+                let final_exists = self
+                    .builder
+                    .build_load(
+                        self.context.bool_type(),
+                        alloca_exists_slot,
+                        "exists_final_value",
+                    )
+                    .unwrap();
+                Ok(Some(final_exists))
             }
 
             "File__delete" => {
                 let path = self.compile_expr(&args[0].node)?;
+                let fopen = self.get_or_declare_fopen();
+                let fclose = self.get_or_declare_fclose();
+                let fseek = self.get_or_declare_fseek();
                 let remove = self.get_or_declare_remove();
 
+                let mode = self.context.const_string(b"rb", true);
+                let mode_global = self
+                    .module
+                    .add_global(mode.get_type(), None, "mode_delete_r");
+                mode_global.set_linkage(Linkage::Private);
+                mode_global.set_initializer(&mode);
+
+                let file_call = self
+                    .builder
+                    .build_call(
+                        fopen,
+                        &[path.into(), mode_global.as_pointer_value().into()],
+                        "delete_file_probe",
+                    )
+                    .unwrap();
+                let file_ptr = self.extract_call_value(file_call).into_pointer_value();
+                let current_fn = self.current_function.unwrap();
+                let probe_open_bb = self
+                    .context
+                    .append_basic_block(current_fn, "file_delete_probe_open");
+                let probe_closed_bb = self
+                    .context
+                    .append_basic_block(current_fn, "file_delete_probe_closed");
+                let delete_remove_bb = self
+                    .context
+                    .append_basic_block(current_fn, "file_delete_remove");
+                let delete_fail_bb = self
+                    .context
+                    .append_basic_block(current_fn, "file_delete_fail");
+                let delete_merge_bb = self
+                    .context
+                    .append_basic_block(current_fn, "file_delete_merge");
+                let delete_result_slot = self
+                    .builder
+                    .build_alloca(self.context.bool_type(), "file_delete_result_slot")
+                    .unwrap();
+                self.builder
+                    .build_store(delete_result_slot, self.context.bool_type().const_zero())
+                    .unwrap();
+
+                let probe_is_null = self
+                    .builder
+                    .build_is_null(file_ptr, "delete_probe_is_null")
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(probe_is_null, probe_closed_bb, probe_open_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(probe_open_bb);
+                let seek_end = self.context.i32_type().const_int(2, false);
+                let seek_result = self
+                    .builder
+                    .build_call(
+                        fseek,
+                        &[
+                            file_ptr.into(),
+                            self.context.i64_type().const_zero().into(),
+                            seek_end.into(),
+                        ],
+                        "delete_probe_seek",
+                    )
+                    .unwrap();
+                let seek_code = self.extract_call_value(seek_result).into_int_value();
+                self.builder
+                    .build_call(fclose, &[file_ptr.into()], "delete_probe_close")
+                    .unwrap();
+                let seek_ok = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        seek_code,
+                        self.context.i32_type().const_zero(),
+                        "delete_probe_seek_ok",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(seek_ok, delete_remove_bb, delete_fail_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(probe_closed_bb);
+                self.builder
+                    .build_unconditional_branch(delete_remove_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(delete_remove_bb);
                 let res_call = self
                     .builder
                     .build_call(remove, &[path.into()], "res")
                     .unwrap();
                 let res = self.extract_call_value(res_call).into_int_value();
-
                 let zero = self.context.i32_type().const_int(0, false);
                 let success = self
                     .builder
                     .build_int_compare(IntPredicate::EQ, res, zero, "success")
                     .unwrap();
+                self.builder
+                    .build_store(delete_result_slot, success)
+                    .unwrap();
+                self.builder
+                    .build_unconditional_branch(delete_merge_bb)
+                    .unwrap();
 
-                Ok(Some(success.into()))
+                self.builder.position_at_end(delete_fail_bb);
+                self.builder
+                    .build_store(delete_result_slot, self.context.bool_type().const_zero())
+                    .unwrap();
+                self.builder
+                    .build_unconditional_branch(delete_merge_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(delete_merge_bb);
+                let final_result = self
+                    .builder
+                    .build_load(
+                        self.context.bool_type(),
+                        delete_result_slot,
+                        "file_delete_result",
+                    )
+                    .unwrap();
+                Ok(Some(final_result))
             }
 
             // Time Functions
@@ -13276,6 +13513,11 @@ impl<'ctx> Codegen<'ctx> {
                 self.builder.build_unconditional_branch(merge_bb).unwrap();
 
                 self.builder.position_at_end(success_bb);
+                self.compile_utf8_string_length_runtime(val)?;
+                let success_merge_block = self
+                    .builder
+                    .get_insert_block()
+                    .ok_or_else(|| CodegenError::new("System.getenv merge predecessor missing"))?;
                 self.builder.build_unconditional_branch(merge_bb).unwrap();
 
                 self.builder.position_at_end(merge_bb);
@@ -13283,7 +13525,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_phi(self.context.ptr_type(AddressSpace::default()), "res")
                     .unwrap();
-                phi.add_incoming(&[(&empty_str, fail_bb), (&val, success_bb)]);
+                phi.add_incoming(&[(&empty_str, fail_bb), (&val, success_merge_block)]);
                 Ok(Some(phi.as_basic_value()))
             }
 
@@ -13295,6 +13537,107 @@ impl<'ctx> Codegen<'ctx> {
                     .build_call(system_fn, &[cmd.into()], "exit_code")
                     .unwrap();
                 let code = self.extract_call_value(res).into_int_value();
+                #[cfg(not(windows))]
+                let code = {
+                    let i32_type = self.context.i32_type();
+                    let current_fn = self.current_function.unwrap();
+                    let decode_error_bb = self
+                        .context
+                        .append_basic_block(current_fn, "system_shell_decode_error");
+                    let signal_check_bb = self
+                        .context
+                        .append_basic_block(current_fn, "system_shell_signal_check");
+                    let signaled_bb = self
+                        .context
+                        .append_basic_block(current_fn, "system_shell_signaled");
+                    let exited_bb = self
+                        .context
+                        .append_basic_block(current_fn, "system_shell_exited");
+                    let merge_bb = self
+                        .context
+                        .append_basic_block(current_fn, "system_shell_decoded_merge");
+
+                    let call_failed = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            code,
+                            i32_type.const_all_ones(),
+                            "system_shell_call_failed",
+                        )
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(call_failed, decode_error_bb, signal_check_bb)
+                        .unwrap();
+
+                    self.builder.position_at_end(decode_error_bb);
+                    self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                    self.builder.position_at_end(signal_check_bb);
+                    let signal_bits = self
+                        .builder
+                        .build_and(
+                            code,
+                            i32_type.const_int(0x7f, false),
+                            "system_shell_signal_bits",
+                        )
+                        .unwrap();
+                    let has_signal = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::NE,
+                            signal_bits,
+                            i32_type.const_zero(),
+                            "system_shell_has_signal",
+                        )
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(has_signal, signaled_bb, exited_bb)
+                        .unwrap();
+
+                    self.builder.position_at_end(signaled_bb);
+                    let signaled_code = self
+                        .builder
+                        .build_int_add(
+                            signal_bits,
+                            i32_type.const_int(128, false),
+                            "system_shell_signaled_code",
+                        )
+                        .unwrap();
+                    self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                    self.builder.position_at_end(exited_bb);
+                    let shifted_code = self
+                        .builder
+                        .build_right_shift(
+                            code,
+                            i32_type.const_int(8, false),
+                            false,
+                            "system_shell_shifted_code",
+                        )
+                        .unwrap();
+                    let exit_code = self
+                        .builder
+                        .build_and(
+                            shifted_code,
+                            i32_type.const_int(0xff, false),
+                            "system_shell_exit_code",
+                        )
+                        .unwrap();
+                    self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                    self.builder.position_at_end(merge_bb);
+                    let decoded_phi = self
+                        .builder
+                        .build_phi(i32_type, "system_shell_decoded")
+                        .unwrap();
+                    decoded_phi.add_incoming(&[
+                        (&i32_type.const_all_ones(), decode_error_bb),
+                        (&signaled_code, signaled_bb),
+                        (&exit_code, exited_bb),
+                    ]);
+                    decoded_phi.as_basic_value().into_int_value()
+                };
                 let code64 = self
                     .builder
                     .build_int_s_extend(code, self.context.i64_type(), "code64")
@@ -13546,6 +13889,98 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(ptr_type, buf_slot, "exec_final_buf")
                     .unwrap()
                     .into_pointer_value();
+                let scan_index_slot = self
+                    .builder
+                    .build_alloca(i64_type, "exec_scan_index_slot")
+                    .unwrap();
+                self.builder
+                    .build_store(scan_index_slot, i64_type.const_zero())
+                    .unwrap();
+                let scan_cond_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.scan.cond");
+                let scan_body_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.scan.body");
+                let scan_next_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.scan.next");
+                let scan_fail_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.scan.fail");
+                let validate_utf8_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.validate_utf8");
+                self.builder
+                    .build_unconditional_branch(scan_cond_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(scan_cond_bb);
+                let scan_index = self
+                    .builder
+                    .build_load(i64_type, scan_index_slot, "exec_scan_index")
+                    .unwrap()
+                    .into_int_value();
+                let scan_has_more = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::ULT,
+                        scan_index,
+                        final_total,
+                        "exec_scan_has_more",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(scan_has_more, scan_body_bb, validate_utf8_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(scan_body_bb);
+                let scan_byte_ptr = unsafe {
+                    self.builder
+                        .build_gep(i8_type, final_buf, &[scan_index], "exec_scan_byte_ptr")
+                        .unwrap()
+                };
+                let scan_byte = self
+                    .builder
+                    .build_load(i8_type, scan_byte_ptr, "exec_scan_byte")
+                    .unwrap()
+                    .into_int_value();
+                let scan_is_zero = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        scan_byte,
+                        i8_type.const_zero(),
+                        "exec_scan_is_zero",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(scan_is_zero, scan_fail_bb, scan_next_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(scan_fail_bb);
+                self.emit_runtime_error(
+                    "System.exec() cannot load NUL bytes",
+                    "system_exec_nul_byte",
+                )?;
+
+                self.builder.position_at_end(scan_next_bb);
+                let next_scan_index = self
+                    .builder
+                    .build_int_add(
+                        scan_index,
+                        i64_type.const_int(1, false),
+                        "exec_next_scan_index",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_store(scan_index_slot, next_scan_index)
+                    .unwrap();
+                self.builder
+                    .build_unconditional_branch(scan_cond_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(validate_utf8_bb);
                 let term_ptr = unsafe {
                     self.builder
                         .build_gep(i8_type, final_buf, &[final_total], "term_ptr")
@@ -13554,9 +13989,14 @@ impl<'ctx> Codegen<'ctx> {
                 self.builder
                     .build_store(term_ptr, i8_type.const_zero())
                     .unwrap();
+                self.compile_utf8_string_length_runtime(final_buf)?;
                 self.builder
                     .build_call(pclose_fn, &[pipe_ptr.into()], "")
                     .unwrap();
+                let success_merge_block = self
+                    .builder
+                    .get_insert_block()
+                    .ok_or_else(|| CodegenError::new("System.exec merge predecessor missing"))?;
                 self.builder.build_unconditional_branch(merge_bb).unwrap();
 
                 // Merge
@@ -13565,7 +14005,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_phi(self.context.ptr_type(AddressSpace::default()), "res")
                     .unwrap();
-                phi.add_incoming(&[(&empty_str, fail_bb), (&final_buf, done_bb)]);
+                phi.add_incoming(&[(&empty_str, fail_bb), (&final_buf, success_merge_block)]);
                 Ok(Some(phi.as_basic_value()))
             }
 

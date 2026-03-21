@@ -59,6 +59,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - documentation now reflects that `File.read()` is text-oriented and not a binary-safe byte loader
 - Fixed `File.read()` late invalid-UTF-8 failures:
   - `File.read()` now validates UTF-8 at load time, so invalid text bytes fail immediately instead of slipping into a `String` and only exploding later in unrelated operations like `Str.len(...)`
+- Fixed `File.write()` false-success results on flush/close errors:
+  - `File.write()` now checks both the write call and final close result before returning `true`, so devices like `/dev/full` no longer report success when the actual write never committed
+- Fixed `File.exists()` returning `true` for directories:
+  - `File.exists()` now verifies that the path behaves like a readable regular file instead of treating directories as successful file hits
+- Fixed `File.delete()` reporting success for directories:
+  - `File.delete()` now rejects directory paths instead of treating an empty directory removal as a successful file deletion
+- Fixed `File.read()` special-file handling for non-seekable paths:
+  - `File.read()` now fails fast with a direct diagnostic on FIFOs and other non-seekable paths instead of wandering into broken `ftell`-based behavior and misleading downstream errors
+- Fixed `System.exec()` binary stdout boundary handling:
+  - `System.exec()` now rejects embedded NUL bytes instead of silently truncating process output at the first `0x00`
+  - `System.exec()` now also validates UTF-8 immediately, so invalid command output fails at the boundary instead of slipping into a `String` and exploding later in unrelated string operations
+- Fixed `System.getenv()` invalid UTF-8 boundary handling:
+  - `System.getenv()` now validates environment values immediately instead of letting invalid UTF-8 bytes slip into a `String` and only crash later in unrelated string operations
+- Fixed POSIX `System.shell()` exit-code decoding:
+  - `System.shell("sh -c 'exit N'")` now returns the real exit code `N` instead of the raw `system()` wait-status word such as `1792`
 - Fixed entrypoint `main()` signature validation:
   - `apex check` now rejects invalid entrypoint signatures such as `main(x: Integer)`, `async main()`, generic `main<T>()`, or `main()` returning unsupported types like `String`
   - this prevents backend crashes and invalid LLVM/Clang failures that previously happened when malformed `main()` signatures reached code generation

@@ -6569,6 +6569,8 @@ mod tests {
     use crate::typeck::TypeChecker;
     use std::collections::{HashMap, HashSet};
     use std::fs;
+    #[cfg(not(windows))]
+    use std::os::unix::ffi::OsStringExt;
     use std::path::Path;
     use std::path::PathBuf;
     use std::sync::{Mutex, OnceLock};
@@ -8756,6 +8758,144 @@ function main(): None {
         let _ = fs::remove_dir_all(temp_root);
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn compile_source_reports_file_write_failure_when_flush_fails() {
+        let temp_root = make_temp_project_root("file-write-dev-full-runtime");
+        let source_path = temp_root.join("file_write_dev_full_runtime.apex");
+        let output_path = temp_root.join("file_write_dev_full_runtime");
+        let source = r#"
+            import std.fs.*;
+
+            function main(): Integer {
+                ok: Boolean = File.write("/dev/full", "hello world");
+                return if (ok) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("File.write /dev/full failure path should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled File.write /dev/full binary");
+        assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_reports_file_exists_false_for_directories() {
+        let temp_root = make_temp_project_root("file-exists-directory-runtime");
+        let source_path = temp_root.join("file_exists_directory_runtime.apex");
+        let output_path = temp_root.join("file_exists_directory_runtime");
+        let directory_path = temp_root.join("dir");
+        let source = r#"
+            import std.fs.*;
+
+            function main(): Integer {
+                return if (File.exists("dir")) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::create_dir_all(&directory_path).expect("create directory");
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("File.exists directory path should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .current_dir(&temp_root)
+            .status()
+            .expect("run compiled File.exists directory binary");
+        assert_eq!(status.code(), Some(1));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_reports_file_delete_false_for_directories() {
+        let temp_root = make_temp_project_root("file-delete-directory-runtime");
+        let source_path = temp_root.join("file_delete_directory_runtime.apex");
+        let output_path = temp_root.join("file_delete_directory_runtime");
+        let directory_path = temp_root.join("dir");
+        let source = r#"
+            import std.fs.*;
+
+            function main(): Integer {
+                return if (File.delete("dir")) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::create_dir_all(&directory_path).expect("create directory");
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("File.delete directory path should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .current_dir(&temp_root)
+            .status()
+            .expect("run compiled File.delete directory binary");
+        assert_eq!(status.code(), Some(1));
+        assert!(directory_path.exists(), "directory should not be removed");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn compile_source_fails_fast_on_file_read_from_fifo() {
+        let temp_root = make_temp_project_root("file-read-fifo-runtime");
+        let source_path = temp_root.join("file_read_fifo_runtime.apex");
+        let output_path = temp_root.join("file_read_fifo_runtime");
+        let fifo_path = temp_root.join("pipe");
+        let source = r#"
+            import std.fs.*;
+
+            function main(): Integer {
+                data: String = File.read("pipe");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let mkfifo_status = std::process::Command::new("mkfifo")
+            .arg(&fifo_path)
+            .status()
+            .expect("spawn mkfifo");
+        assert!(mkfifo_status.success(), "mkfifo should succeed");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("File.read FIFO failure path should codegen");
+
+        let writer_fifo = fifo_path.clone();
+        let writer = std::thread::spawn(move || {
+            let mut handle = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&writer_fifo)
+                .expect("open fifo for writing");
+            use std::io::Write as _;
+            match handle.write_all(b"abc") {
+                Ok(()) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::BrokenPipe => {}
+                Err(err) => panic!("write fifo payload: {err}"),
+            }
+        });
+
+        let output = std::process::Command::new(&output_path)
+            .current_dir(&temp_root)
+            .output()
+            .expect("run compiled File.read FIFO binary");
+        writer.join().expect("join fifo writer");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("File.read() requires a seekable regular file\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
     #[test]
     fn compile_source_runs_if_expression_generic_constructor_branches() {
         let temp_root = make_temp_project_root("ifexpr-generic-ctor-runtime");
@@ -10219,6 +10359,133 @@ function main(): None {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled large System.exec binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn compile_source_fails_fast_on_system_exec_nul_bytes() {
+        let temp_root = make_temp_project_root("system-exec-nul-bytes-runtime");
+        let source_path = temp_root.join("system_exec_nul_bytes_runtime.apex");
+        let output_path = temp_root.join("system_exec_nul_bytes_runtime");
+        let source = r#"
+            import std.system.*;
+
+            function main(): Integer {
+                out: String = System.exec("python3 -c \"import sys; sys.stdout.buffer.write(b'A\\x00B')\"");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("System.exec NUL-byte failure path should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled System.exec NUL-byte binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("System.exec() cannot load NUL bytes\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn compile_source_fails_fast_on_system_exec_invalid_utf8() {
+        let temp_root = make_temp_project_root("system-exec-invalid-utf8-runtime");
+        let source_path = temp_root.join("system_exec_invalid_utf8_runtime.apex");
+        let output_path = temp_root.join("system_exec_invalid_utf8_runtime");
+        let source = r#"
+            import std.system.*;
+
+            function main(): Integer {
+                out: String = System.exec("python3 -c \"import sys; sys.stdout.buffer.write(bytes([0xff]))\"");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("System.exec invalid UTF-8 failure path should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled System.exec invalid UTF-8 binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("Invalid UTF-8 sequence in String\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn compile_source_fails_fast_on_system_getenv_invalid_utf8() {
+        let temp_root = make_temp_project_root("system-getenv-invalid-utf8-runtime");
+        let source_path = temp_root.join("system_getenv_invalid_utf8_runtime.apex");
+        let output_path = temp_root.join("system_getenv_invalid_utf8_runtime");
+        let source = r#"
+            import std.system.*;
+
+            function main(): Integer {
+                value: String = System.getenv("APEX_BAD_UTF8_ENV");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("System.getenv invalid UTF-8 failure path should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .env(
+                "APEX_BAD_UTF8_ENV",
+                std::ffi::OsString::from_vec(vec![0xff]),
+            )
+            .output()
+            .expect("run compiled System.getenv invalid UTF-8 binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("Invalid UTF-8 sequence in String\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn compile_source_runs_system_shell_with_decoded_exit_code() {
+        let temp_root = make_temp_project_root("system-shell-decoded-exit-code-runtime");
+        let source_path = temp_root.join("system_shell_decoded_exit_code_runtime.apex");
+        let output_path = temp_root.join("system_shell_decoded_exit_code_runtime");
+        let source = r#"
+            import std.system.*;
+
+            function main(): Integer {
+                code: Integer = System.shell("sh -c 'exit 7'");
+                return if (code == 7) { 0; } else { code; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("System.shell decoded exit code should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled System.shell decoded exit code binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);

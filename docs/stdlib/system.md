@@ -9,6 +9,7 @@ The `System` object provides static methods for system-level operations.
 ### `System.getenv(name: String): String`
 
 Retrieves the value of an environment variable. Returns an empty string if the variable is not set.
+Invalid UTF-8 environment values are rejected immediately instead of slipping into a broken `String`.
 
 ```apex
 import std.io.*;
@@ -20,6 +21,7 @@ println("Path: {path}");
 ### `System.shell(command: String): Integer`
 
 Executes a command in the system shell and returns the exit code.
+On POSIX hosts this is now the decoded process exit code, not the raw `system()` wait-status word.
 
 ```apex
 exitCode: Integer = System.shell("echo Hello");
@@ -29,6 +31,7 @@ exitCode: Integer = System.shell("echo Hello");
 
 Executes a command in the system shell and captures its standard output (stdout).
 The full stdout stream is returned; longer output is no longer truncated to a small fixed buffer.
+Binary-looking stdout is rejected: embedded NUL bytes and invalid UTF-8 now fail immediately instead of slipping into a broken `String`.
 
 ```apex
 import std.io.*;

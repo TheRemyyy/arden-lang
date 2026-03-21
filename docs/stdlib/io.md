@@ -52,6 +52,7 @@ The `File` object provides static methods for interacting with the file system.
 Reads the entire content of a text file. Returns an empty string if the file cannot be read.
 Files containing embedded `0x00` bytes are rejected at runtime instead of being silently truncated.
 Invalid UTF-8 byte sequences are also rejected at load time instead of leaking into later string operations.
+Non-seekable paths such as FIFOs are rejected with a direct runtime error instead of being treated like normal files.
 
 ```apex
 content: String = File.read("data.txt");
@@ -59,7 +60,7 @@ content: String = File.read("data.txt");
 
 ### `File.write(path: String, content: String): Boolean`
 
-Writes the given content to a file. Overwrites the file if it already exists. Returns `true` if successful.
+Writes the given content to a file. Overwrites the file if it already exists. Returns `true` only if both the write and final close/flush succeed.
 
 ```apex
 success: Boolean = File.write("output.txt", "Hello, Apex!");
@@ -67,7 +68,7 @@ success: Boolean = File.write("output.txt", "Hello, Apex!");
 
 ### `File.exists(path: String): Boolean`
 
-Checks if a file exists and is accessible.
+Checks if a readable regular file exists at the given path. Directories return `false`.
 
 ```apex
 import std.io.*;
@@ -79,7 +80,7 @@ if (File.exists("config.json")) {
 
 ### `File.delete(path: String): Boolean`
 
-Deletes a file from the file system. Returns `true` if successful.
+Deletes a regular file from the file system. Returns `true` if successful. Directories return `false`.
 
 ```apex
 File.delete("temp.log");

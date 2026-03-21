@@ -190,9 +190,16 @@ Notes:
 - `String.length()` also uses Unicode character count semantics at runtime, so `"🚀".length()` and `s.length()` now return `1` instead of the UTF-8 byte count.
 - `Args.get(...)` now rejects constant negative indices during `apex check`, and dynamic negative or out-of-bounds argument indices fail fast at runtime with explicit diagnostics.
 - `System.exec(...)` now captures full stdout instead of truncating longer command output to a fixed small buffer.
+- `System.exec(...)` now also rejects embedded NUL bytes and invalid UTF-8 at the boundary instead of silently truncating binary stdout or failing later in unrelated string operations.
+- `System.getenv(...)` now validates environment values at the boundary, so invalid UTF-8 fails immediately instead of surfacing later in unrelated string operations.
+- On POSIX hosts, `System.shell(...)` now returns the decoded process exit code instead of the raw `system()` wait-status word.
 - `System.cwd()` now returns the full working directory for deep paths instead of collapsing to an empty string once the current path exceeds the old fixed 1024-byte buffer.
 - `File.read()` now fails fast on embedded NUL bytes instead of silently truncating binary-looking content at the first `0x00`.
 - `File.read()` now also validates UTF-8 at load time, so invalid text bytes fail immediately instead of slipping through and only crashing later in string operations.
+- `File.write()` now returns `false` when the write or final flush/close fails instead of reporting success just because the file handle opened.
+- `File.exists()` now returns `false` for directories instead of treating any readable path as a file hit.
+- `File.delete()` now returns `false` for directories instead of deleting them as if they were regular files.
+- `File.read()` now rejects FIFOs and other non-seekable paths with a direct runtime diagnostic instead of producing misleading follow-on string errors.
 - `Str.len(...)` now matches `String.length()` and Unicode indexing semantics by returning character count instead of raw UTF-8 byte count.
 - `Time.now(format)` now handles long format strings without corrupting the returned string through a too-small fixed output buffer.
 - `read_line()` imported from `std.io.*` now typechecks correctly, and long input lines are no longer truncated to a tiny fixed buffer.
