@@ -124,10 +124,7 @@ impl NamespaceResolver {
         let qualified = QualifiedName::new(parts);
 
         // Check if exists
-        if self
-            .modules
-            .contains_key(&qualified.namespace().unwrap_or_default())
-        {
+        if self.name_exists(&qualified) {
             return Some(qualified);
         }
 
@@ -137,13 +134,12 @@ impl NamespaceResolver {
                 if import.wildcard {
                     // Check if name exists in imported namespace
                     let mut import_parts = import.path.parts.clone();
-                    import_parts.pop(); // Remove *
                     import_parts.push(name.to_string());
                     let candidate = QualifiedName::new(import_parts);
                     if self.name_exists(&candidate) {
                         return Some(candidate);
                     }
-                } else if import.path.name() == name {
+                } else if import.alias.as_deref() == Some(name) || import.path.name() == name {
                     return Some(import.path.clone());
                 }
             }
@@ -265,5 +261,60 @@ mod tests {
         let import = parse_import("import utils.math.factorial;").unwrap();
         assert!(!import.wildcard);
         assert_eq!(import.path.to_string(), "utils.math.factorial");
+    }
+
+    #[test]
+    fn resolve_prefers_imports_when_current_namespace_does_not_export_symbol() {
+        let mut resolver = NamespaceResolver::new(PathBuf::from("src"));
+        resolver.modules.insert(
+            "app.main".to_string(),
+            Module {
+                path: PathBuf::from("app/main.apex"),
+                namespace: "app.main".to_string(),
+                exports: vec![],
+                imports: vec![Import {
+                    path: QualifiedName::from_string("util.math"),
+                    wildcard: true,
+                    alias: None,
+                }],
+            },
+        );
+        resolver.modules.insert(
+            "util.math".to_string(),
+            Module {
+                path: PathBuf::from("util/math.apex"),
+                namespace: "util.math".to_string(),
+                exports: vec!["abs".to_string()],
+                imports: vec![],
+            },
+        );
+
+        let resolved = resolver
+            .resolve("abs", "app.main")
+            .expect("import fallback should resolve exported symbol");
+        assert_eq!(resolved.to_qualified_string(), "util.math.abs");
+    }
+
+    #[test]
+    fn resolve_supports_import_alias_names() {
+        let mut resolver = NamespaceResolver::new(PathBuf::from("src"));
+        resolver.modules.insert(
+            "app.main".to_string(),
+            Module {
+                path: PathBuf::from("app/main.apex"),
+                namespace: "app.main".to_string(),
+                exports: vec![],
+                imports: vec![Import {
+                    path: QualifiedName::from_string("util.math.abs"),
+                    wildcard: false,
+                    alias: Some("fabs".to_string()),
+                }],
+            },
+        );
+
+        let resolved = resolver
+            .resolve("fabs", "app.main")
+            .expect("alias import should resolve");
+        assert_eq!(resolved.to_qualified_string(), "util.math.abs");
     }
 }

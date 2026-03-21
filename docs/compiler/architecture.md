@@ -105,6 +105,7 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
   - Qualified import paths used through namespace aliases (for example `import util as u; f = u.add1`) now seed that closure too, so imported function values and alias-qualified calls pull in the right owner declarations during filtered object rebuilds.
   - Alias-qualified class/module references (for example `u.Box(...)`) now seed dependency edges and declaration closure entries too, so constructor/object codegen sees the owning type declarations instead of treating alias-rooted constructors as isolated files.
   - Filtered object emission now also activates closure-discovered body symbols that belong to the rebuilt source file itself, so direct-constructor receiver calls such as `Boxed(...).get()` emit the required methods without duplicating imported dependency bodies in the caller object.
+  - Class activation now keeps the class body closure (`__new` + methods) alive as part of the same root symbol family, so exact imported top-level class aliases and namespace-alias generic class uses do not silently drop required member bodies during per-file object emission.
   - Project rewrite now also normalizes local qualified nested-module expression paths, so local forms like `M.E.A(...)`, `match (...) { M.E.A(v) => ... }`, and module-body references like `M.mk()` / `M.Box(...)` survive the second module-local rewrite pass without leaving stale `app__M.*` chains behind.
   - Nested module declarations are now rewritten recursively with the local symbol set of the current nested module, so deeper chains like `M.N.mk()` and `await(M.N.mk()).value` preserve the correct single `M__N__...` prefix instead of either skipping rewrite or doubling the nested module segment.
 - **Impacted semantic view**:
@@ -124,6 +125,12 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
 
 ## Recent Correctness Hardening
 
+- **Import-check lexical shadowing**:
+  - Import analysis now tracks ordinary local names alongside imported callable symbols.
+  - Local bindings introduced by params, `let`-style declarations, `for` variables, and `match` patterns shadow import candidates cleanly, so alias roots like `u` and plain names like `print` no longer produce false missing-import diagnostics when a lexical binding owns the identifier.
+- **Test discovery suite materialization**:
+  - Nested-module hooks are now attached only to suites that contain at least one discovered `@Test`.
+  - Hook-only helper modules no longer generate empty runnable suites in `apex test`, but real nested suites still inherit their local lifecycle hooks.
 - **Scope-aware LSP rename/references**:
   - Symbol rename/reference resolution now follows lexical bindings selected at cursor position.
   - Prevents accidental edits of unrelated same-name symbols in nested/outer scopes.
@@ -233,6 +240,7 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
 - The same alias rewrite/codegen path now handles nested module-qualified alias calls like `u.M.add1`, not just single-segment `u.func` lookups.
 - Namespace alias constructor calls like `u.Box(2)` now lower through project rewrite into constructor expressions and carry matching dependency edges/import-check knowledge, so class-only namespaces work with alias-based construction too.
 - Aliased constructors now work on all currently supported paths: namespace-alias enum variants like `u.E.A(1)`, exact imported enum aliases like `import util.E as Enum; Enum.A(1)`, and exact imported class constructor aliases like `import util.Box as B; B(1)`.
+- Constructor lowering now treats explicit `return None;` as “return the allocated instance” for constructor bodies, which keeps constructor syntax compatible with existing frontend examples without emitting invalid pointer-return LLVM IR.
 - Exact imported enum variant aliases like `import app.E.B as Variant; Variant(2)` now also resolve end to end in project mode; the dependency graph treats them as depending on the parent enum owner file so semantic checking keeps the enum metadata in the same component.
 - The same exact imported variant aliases now rewrite in pattern positions too, so `match (e) { Variant(v) => ... }` lowers to the owning mangled enum variant before semantic checking.
 - The nested-module forms now work too: exact aliases like `import app.M.E as Enum` / `import app.M.E.B as Variant` and namespace aliases like `import app as u` all resolve nested enum type, constructor, and pattern paths through the same project rewrite and dependency-closure logic.
@@ -243,6 +251,9 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
 - The same codegen specialization pass now does the corresponding owner-aware rewrite for generic methods on specialized classes, so nested module code like `M.Box<Integer>(2).map<Integer>(inc).get()` no longer falls through unsupported explicit-generic method calls or returns zero-initialized objects.
 - Filtered project codegen now compiles only the requested class methods when a class is pulled in solely through method-symbol activation, which prevents duplicate base symbol emission while still allowing imported expression-receiver chains like `import app.M.make as make; make<Integer>(2).map<Integer>(inc).get()`.
 - Parser precedence now keeps postfix chains outside `await`, so `await(make_box()).get()` is interpreted as “await the task result, then call `get()`” instead of accidentally treating `.get()` as part of the awaited operand.
+- Codegen-side function return inference now also recognizes module-qualified and namespace-alias calls before `await` lowering, so `(await api.fetch()).get()` preserves the real inner object/container type instead of collapsing to integer fallback layouts.
+- Direct `Type::Option(...)` and `Type::Result(...)` zero-argument constructors now lower through the declared generic payload layouts, so typed default constructors like `Option<String>()` and `Result<Boolean, Float>()` stay ABI-compatible with the rest of typed container/runtime codegen.
+- Unannotated direct static constructors like `Option.none()`, `Result.ok(v)`, and `Result.error(e)` now follow an explicit split: codegen uses a stable fallback layout for ephemeral expression chains, while paths that still lack a resolvable typed target fail explicitly instead of silently reusing mismatched placeholder structs.
 - Direct map indexing now shares the same typed lookup/fail-fast path as `Map.get(...)`, so `m[key]` respects the actual `Map<K, V>` key type and no longer falls through a bogus raw-pointer indexing path in codegen.
 - Direct string indexing now also goes through an explicit bounds check before loading a `Char`, so `"abc"[i]` no longer relies on unchecked pointer arithmetic when `i` is out of range.
 - Map index assignment now desugars cleanly at codegen time into the same typed update path as `Map.set(...)`, so `m[key] = value` no longer falls through a list-only lvalue implementation.

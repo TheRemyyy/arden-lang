@@ -33,7 +33,6 @@ pub struct Backend {
 }
 
 struct ScopedSymbolResolver<'a> {
-    backend: &'a Backend,
     text: &'a str,
     symbol: &'a str,
     cursor_offset: usize,
@@ -44,9 +43,8 @@ struct ScopedSymbolResolver<'a> {
 }
 
 impl<'a> ScopedSymbolResolver<'a> {
-    fn new(backend: &'a Backend, text: &'a str, symbol: &'a str, cursor_offset: usize) -> Self {
+    fn new(text: &'a str, symbol: &'a str, cursor_offset: usize) -> Self {
         Self {
-            backend,
             text,
             symbol,
             cursor_offset,
@@ -71,23 +69,31 @@ impl<'a> ScopedSymbolResolver<'a> {
 
     fn predeclare_globals(&mut self, program: &Program) {
         for decl in &program.declarations {
-            self.predeclare_decl(decl);
+            self.predeclare_top_level_decl(decl);
         }
     }
 
-    fn predeclare_decl(&mut self, decl: &crate::ast::Spanned<Decl>) {
+    fn predeclare_top_level_decl(&mut self, decl: &crate::ast::Spanned<Decl>) {
         match &decl.node {
             Decl::Function(func) => self.predeclare_named(&func.name, &decl.span),
             Decl::Class(class) => self.predeclare_named(&class.name, &decl.span),
             Decl::Enum(en) => self.predeclare_named(&en.name, &decl.span),
             Decl::Interface(interface) => self.predeclare_named(&interface.name, &decl.span),
-            Decl::Module(module) => {
-                self.predeclare_named(&module.name, &decl.span);
-                for inner in &module.declarations {
-                    self.predeclare_decl(inner);
-                }
-            }
+            Decl::Module(module) => self.predeclare_named(&module.name, &decl.span),
             Decl::Import(_) => {}
+        }
+    }
+
+    fn predeclare_module_members(&mut self, declarations: &[crate::ast::Spanned<Decl>]) {
+        for decl in declarations {
+            match &decl.node {
+                Decl::Function(func) => self.predeclare_named(&func.name, &decl.span),
+                Decl::Class(class) => self.predeclare_named(&class.name, &decl.span),
+                Decl::Enum(en) => self.predeclare_named(&en.name, &decl.span),
+                Decl::Interface(interface) => self.predeclare_named(&interface.name, &decl.span),
+                Decl::Module(module) => self.predeclare_named(&module.name, &decl.span),
+                Decl::Import(_) => {}
+            }
         }
     }
 
@@ -95,10 +101,7 @@ impl<'a> ScopedSymbolResolver<'a> {
         if name != self.symbol {
             return;
         }
-        if let Some(name_span) = self
-            .backend
-            .find_name_occurrence_in_span(self.text, name, span)
-        {
+        if let Some(name_span) = find_name_occurrence_in_span(self.text, name, span) {
             let id = self.next_binding_id;
             self.next_binding_id += 1;
             if let Some(global) = self.scopes.first_mut() {
@@ -120,11 +123,9 @@ impl<'a> ScopedSymbolResolver<'a> {
                 self.enter_scope();
                 for param in &func.params {
                     if param.name == self.symbol {
-                        if let Some(span) = self.backend.find_name_occurrence_in_span(
-                            self.text,
-                            &param.name,
-                            &decl.span,
-                        ) {
+                        if let Some(span) =
+                            find_name_occurrence_in_span(self.text, &param.name, &decl.span)
+                        {
                             self.declare_binding(&param.name, span);
                         }
                     }
@@ -135,11 +136,9 @@ impl<'a> ScopedSymbolResolver<'a> {
             Decl::Class(class) => {
                 for field in &class.fields {
                     if field.name == self.symbol {
-                        if let Some(span) = self.backend.find_name_occurrence_in_span(
-                            self.text,
-                            &field.name,
-                            &decl.span,
-                        ) {
+                        if let Some(span) =
+                            find_name_occurrence_in_span(self.text, &field.name, &decl.span)
+                        {
                             let id = self.next_binding_id;
                             self.next_binding_id += 1;
                             self.record_occurrence(id, span);
@@ -150,11 +149,9 @@ impl<'a> ScopedSymbolResolver<'a> {
                     self.enter_scope();
                     for param in &constructor.params {
                         if param.name == self.symbol {
-                            if let Some(span) = self.backend.find_name_occurrence_in_span(
-                                self.text,
-                                &param.name,
-                                &decl.span,
-                            ) {
+                            if let Some(span) =
+                                find_name_occurrence_in_span(self.text, &param.name, &decl.span)
+                            {
                                 self.declare_binding(&param.name, span);
                             }
                         }
@@ -171,11 +168,9 @@ impl<'a> ScopedSymbolResolver<'a> {
                     self.enter_scope();
                     for param in &method.params {
                         if param.name == self.symbol {
-                            if let Some(span) = self.backend.find_name_occurrence_in_span(
-                                self.text,
-                                &param.name,
-                                &decl.span,
-                            ) {
+                            if let Some(span) =
+                                find_name_occurrence_in_span(self.text, &param.name, &decl.span)
+                            {
                                 self.declare_binding(&param.name, span);
                             }
                         }
@@ -185,18 +180,19 @@ impl<'a> ScopedSymbolResolver<'a> {
                 }
             }
             Decl::Module(module) => {
+                self.enter_scope();
+                self.predeclare_module_members(&module.declarations);
                 for inner in &module.declarations {
                     self.walk_decl(inner);
                 }
+                self.exit_scope();
             }
             Decl::Interface(interface) => {
                 for method in &interface.methods {
                     if method.name == self.symbol {
-                        if let Some(span) = self.backend.find_name_occurrence_in_span(
-                            self.text,
-                            &method.name,
-                            &decl.span,
-                        ) {
+                        if let Some(span) =
+                            find_name_occurrence_in_span(self.text, &method.name, &decl.span)
+                        {
                             let id = self.next_binding_id;
                             self.next_binding_id += 1;
                             self.record_occurrence(id, span);
@@ -204,11 +200,9 @@ impl<'a> ScopedSymbolResolver<'a> {
                     }
                     for param in &method.params {
                         if param.name == self.symbol {
-                            if let Some(span) = self.backend.find_name_occurrence_in_span(
-                                self.text,
-                                &param.name,
-                                &decl.span,
-                            ) {
+                            if let Some(span) =
+                                find_name_occurrence_in_span(self.text, &param.name, &decl.span)
+                            {
                                 let id = self.next_binding_id;
                                 self.next_binding_id += 1;
                                 self.record_occurrence(id, span);
@@ -232,10 +226,7 @@ impl<'a> ScopedSymbolResolver<'a> {
             Stmt::Let { name, value, .. } => {
                 self.walk_expr(value);
                 if name == self.symbol {
-                    if let Some(span) = self
-                        .backend
-                        .find_name_occurrence_in_span(self.text, name, &stmt.span)
-                    {
+                    if let Some(span) = find_name_occurrence_in_span(self.text, name, &stmt.span) {
                         self.declare_binding(name, span);
                     }
                 }
@@ -280,10 +271,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                 self.walk_expr(iterable);
                 self.enter_scope();
                 if var == self.symbol {
-                    if let Some(span) = self
-                        .backend
-                        .find_name_occurrence_in_span(self.text, var, &stmt.span)
-                    {
+                    if let Some(span) = find_name_occurrence_in_span(self.text, var, &stmt.span) {
                         self.declare_binding(var, span);
                     }
                 }
@@ -342,11 +330,9 @@ impl<'a> ScopedSymbolResolver<'a> {
                 self.enter_scope();
                 for param in params {
                     if param.name == self.symbol {
-                        if let Some(span) = self.backend.find_name_occurrence_in_span(
-                            self.text,
-                            &param.name,
-                            &expr.span,
-                        ) {
+                        if let Some(span) =
+                            find_name_occurrence_in_span(self.text, &param.name, &expr.span)
+                        {
                             self.declare_binding(&param.name, span);
                         }
                     }
@@ -412,10 +398,7 @@ impl<'a> ScopedSymbolResolver<'a> {
         match pattern {
             Pattern::Ident(name) => {
                 if name == self.symbol {
-                    if let Some(span) =
-                        self.backend
-                            .find_name_occurrence_in_span(self.text, name, search_span)
-                    {
+                    if let Some(span) = find_name_occurrence_in_span(self.text, name, search_span) {
                         self.declare_binding(name, span);
                     }
                 }
@@ -423,11 +406,9 @@ impl<'a> ScopedSymbolResolver<'a> {
             Pattern::Variant(_, bindings) => {
                 for binding in bindings {
                     if binding == self.symbol {
-                        if let Some(span) = self.backend.find_name_occurrence_in_span(
-                            self.text,
-                            binding,
-                            search_span,
-                        ) {
+                        if let Some(span) =
+                            find_name_occurrence_in_span(self.text, binding, search_span)
+                        {
                             self.declare_binding(binding, span);
                         }
                     }
@@ -729,7 +710,7 @@ impl Backend {
         }
 
         let mut spans =
-            ScopedSymbolResolver::new(self, text, symbol, cursor_offset).resolve(program);
+            ScopedSymbolResolver::new(text, symbol, cursor_offset).resolve(program);
         if spans.is_empty() {
             let mut legacy_spans: Vec<std::ops::Range<usize>> = Vec::new();
             self.collect_symbol_spans_program(text, program, symbol, &mut legacy_spans);
@@ -765,8 +746,7 @@ impl Backend {
         match &decl.node {
             Decl::Function(func) => {
                 if func.name == symbol {
-                    if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &func.name, &decl.span)
+                    if let Some(span) = find_name_occurrence_in_span(text, &func.name, &decl.span)
                     {
                         out.push(span);
                     }
@@ -776,7 +756,7 @@ impl Backend {
             Decl::Class(class) => {
                 if class.name == symbol {
                     if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &class.name, &decl.span)
+                        find_name_occurrence_in_span(text, &class.name, &decl.span)
                     {
                         out.push(span);
                     }
@@ -784,7 +764,7 @@ impl Backend {
                 for field in &class.fields {
                     if field.name == symbol {
                         if let Some(span) =
-                            self.find_name_occurrence_in_span(text, &field.name, &decl.span)
+                            find_name_occurrence_in_span(text, &field.name, &decl.span)
                         {
                             out.push(span);
                         }
@@ -794,7 +774,7 @@ impl Backend {
                     for param in &constructor.params {
                         if param.name == symbol {
                             if let Some(span) =
-                                self.find_name_occurrence_in_span(text, &param.name, &decl.span)
+                                find_name_occurrence_in_span(text, &param.name, &decl.span)
                             {
                                 out.push(span);
                             }
@@ -812,7 +792,7 @@ impl Backend {
             Decl::Module(module) => {
                 if module.name == symbol {
                     if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &module.name, &decl.span)
+                        find_name_occurrence_in_span(text, &module.name, &decl.span)
                     {
                         out.push(span);
                     }
@@ -823,9 +803,7 @@ impl Backend {
             }
             Decl::Enum(en) => {
                 if en.name == symbol {
-                    if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &en.name, &decl.span)
-                    {
+                    if let Some(span) = find_name_occurrence_in_span(text, &en.name, &decl.span) {
                         out.push(span);
                     }
                 }
@@ -833,7 +811,7 @@ impl Backend {
             Decl::Interface(interface) => {
                 if interface.name == symbol {
                     if let Some(span) =
-                        self.find_name_occurrence_in_span(text, &interface.name, &decl.span)
+                        find_name_occurrence_in_span(text, &interface.name, &decl.span)
                     {
                         out.push(span);
                     }
@@ -841,7 +819,7 @@ impl Backend {
                 for method in &interface.methods {
                     if method.name == symbol {
                         if let Some(span) =
-                            self.find_name_occurrence_in_span(text, &method.name, &decl.span)
+                            find_name_occurrence_in_span(text, &method.name, &decl.span)
                         {
                             out.push(span);
                         }
@@ -849,7 +827,7 @@ impl Backend {
                     for param in &method.params {
                         if param.name == symbol {
                             if let Some(span) =
-                                self.find_name_occurrence_in_span(text, &param.name, &decl.span)
+                                find_name_occurrence_in_span(text, &param.name, &decl.span)
                             {
                                 out.push(span);
                             }
@@ -870,14 +848,13 @@ impl Backend {
         out: &mut Vec<std::ops::Range<usize>>,
     ) {
         if func.name == symbol {
-            if let Some(span) = self.find_name_occurrence_in_span(text, &func.name, fallback_span) {
+            if let Some(span) = find_name_occurrence_in_span(text, &func.name, fallback_span) {
                 out.push(span);
             }
         }
         for param in &func.params {
             if param.name == symbol {
-                if let Some(span) =
-                    self.find_name_occurrence_in_span(text, &param.name, fallback_span)
+                if let Some(span) = find_name_occurrence_in_span(text, &param.name, fallback_span)
                 {
                     out.push(span);
                 }
@@ -906,12 +883,12 @@ impl Backend {
         out: &mut Vec<std::ops::Range<usize>>,
     ) {
         match &stmt.node {
-            Stmt::Let { name, value, .. } => {
-                if name == symbol {
-                    if let Some(span) = self.find_name_occurrence_in_span(text, name, &stmt.span) {
-                        out.push(span);
+                Stmt::Let { name, value, .. } => {
+                    if name == symbol {
+                        if let Some(span) = find_name_occurrence_in_span(text, name, &stmt.span) {
+                            out.push(span);
+                        }
                     }
-                }
                 self.collect_symbol_spans_expr(text, symbol, value, out);
             }
             Stmt::Assign { target, value } => {
@@ -944,12 +921,12 @@ impl Backend {
                 iterable,
                 body,
                 ..
-            } => {
-                if var == symbol {
-                    if let Some(span) = self.find_name_occurrence_in_span(text, var, &stmt.span) {
-                        out.push(span);
+                } => {
+                    if var == symbol {
+                        if let Some(span) = find_name_occurrence_in_span(text, var, &stmt.span) {
+                            out.push(span);
+                        }
                     }
-                }
                 self.collect_symbol_spans_expr(text, symbol, iterable, out);
                 self.collect_symbol_spans_block(text, symbol, body, out);
             }
@@ -1006,7 +983,7 @@ impl Backend {
                 for param in params {
                     if param.name == symbol {
                         if let Some(span) =
-                            self.find_name_occurrence_in_span(text, &param.name, &expr.span)
+                            find_name_occurrence_in_span(text, &param.name, &expr.span)
                         {
                             out.push(span);
                         }
@@ -1057,34 +1034,6 @@ impl Backend {
             }
             Expr::Literal(_) | Expr::This => {}
         }
-    }
-
-    fn find_name_occurrence_in_span(
-        &self,
-        text: &str,
-        name: &str,
-        span: &std::ops::Range<usize>,
-    ) -> Option<std::ops::Range<usize>> {
-        if name.is_empty() || span.start >= span.end || span.end > text.len() {
-            return None;
-        }
-        let bytes = text.as_bytes();
-        let sym = name.as_bytes();
-        let mut i = span.start;
-        while i + sym.len() <= span.end {
-            if &bytes[i..i + sym.len()] == sym {
-                let left_ok =
-                    i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
-                let right_idx = i + sym.len();
-                let right_ok = right_idx == bytes.len()
-                    || !(bytes[right_idx].is_ascii_alphanumeric() || bytes[right_idx] == b'_');
-                if left_ok && right_ok {
-                    return Some(i..right_idx);
-                }
-            }
-            i += 1;
-        }
-        None
     }
 
     /// Get completion items for a position
@@ -1195,6 +1144,64 @@ impl Backend {
         }
 
         None
+    }
+}
+
+fn find_name_occurrence_in_span(
+    text: &str,
+    name: &str,
+    span: &std::ops::Range<usize>,
+) -> Option<std::ops::Range<usize>> {
+    if name.is_empty() || span.start >= span.end || span.end > text.len() {
+        return None;
+    }
+    let bytes = text.as_bytes();
+    let sym = name.as_bytes();
+    let mut i = span.start;
+    while i + sym.len() <= span.end {
+        if &bytes[i..i + sym.len()] == sym {
+            let left_ok = i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_');
+            let right_idx = i + sym.len();
+            let right_ok = right_idx == bytes.len()
+                || !(bytes[right_idx].is_ascii_alphanumeric() || bytes[right_idx] == b'_');
+            if left_ok && right_ok {
+                return Some(i..right_idx);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod tests {
+    use super::ScopedSymbolResolver;
+    use crate::lexer;
+    use crate::parser::Parser;
+
+    #[test]
+    fn scoped_resolver_keeps_sibling_module_symbols_separate() {
+        let source = r#"
+            module A {
+                function run(): None { return None; }
+                function use(): None { run(); return None; }
+            }
+            module B {
+                function run(): None { return None; }
+            }
+        "#;
+        let tokens = lexer::tokenize(source).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().expect("parse");
+        let cursor = source
+            .find("run(): None { return None; }")
+            .expect("find module A declaration");
+        let spans = ScopedSymbolResolver::new(source, "run", cursor).resolve(&program);
+
+        assert_eq!(spans.len(), 2);
+        let module_b_decl = source.rfind("function run(): None { return None; }").expect("find module B run");
+        assert!(spans.iter().all(|span| span.start < module_b_decl));
     }
 }
 

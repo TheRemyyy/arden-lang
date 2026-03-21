@@ -1772,23 +1772,25 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn create_default_result(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        // Result is struct { is_ok: i8, ok_value: i64, err_value: ptr }
-        // We default to Error (tag=0) with null pointer
-        let result_type = self.context.struct_type(
-            &[
-                self.context.i8_type().into(),
-                self.context.i64_type().into(), // default ok type
-                self.context.ptr_type(AddressSpace::default()).into(),
-            ],
-            false,
-        );
+        self.create_default_result_typed(&Type::Integer, &Type::String)
+    }
+
+    pub fn create_default_result_typed(
+        &mut self,
+        ok_ty: &Type,
+        err_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let ok_llvm = self.llvm_type(ok_ty);
+        let err_llvm = self.llvm_type(err_ty);
+        let result_type = self
+            .context
+            .struct_type(&[self.context.i8_type().into(), ok_llvm, err_llvm], false);
 
         let alloca = self
             .builder
             .build_alloca(result_type, "default_result")
             .unwrap();
 
-        // Set is_ok = 0
         let i32_type = self.context.i32_type();
         let zero = i32_type.const_int(0, false);
         let tag_ptr = unsafe {
@@ -1805,7 +1807,6 @@ impl<'ctx> Codegen<'ctx> {
             .build_store(tag_ptr, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        // Set ok_value to 0
         let ok_ptr = unsafe {
             self.builder
                 .build_gep(
@@ -1816,11 +1817,8 @@ impl<'ctx> Codegen<'ctx> {
                 )
                 .unwrap()
         };
-        self.builder
-            .build_store(ok_ptr, self.context.i64_type().const_int(0, false))
-            .unwrap();
+        self.builder.build_store(ok_ptr, ok_llvm.const_zero()).unwrap();
 
-        // Set err_value to null
         let err_ptr = unsafe {
             self.builder
                 .build_gep(
@@ -1831,8 +1829,7 @@ impl<'ctx> Codegen<'ctx> {
                 )
                 .unwrap()
         };
-        let null = self.context.ptr_type(AddressSpace::default()).const_null();
-        self.builder.build_store(err_ptr, null).unwrap();
+        self.builder.build_store(err_ptr, err_llvm.const_zero()).unwrap();
 
         Ok(self
             .builder

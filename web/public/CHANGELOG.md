@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed lexical shadowing in import checking:
+  - import analysis now tracks local names, pattern bindings, `for` variables, and function/constructor parameters separately from imported callables, so local shadows like `print`, namespace-alias shadows like `u`, and `match`-bound names no longer trigger bogus missing-import or unknown-alias diagnostics
+- Fixed test discovery for hook-only nested modules:
+  - module-local `@beforeEach` / `@afterEach` hooks are no longer enough to materialize a runnable suite by themselves, so `apex test` skips hook-only modules instead of inventing empty suites while still preserving hooks for real nested test suites
+- Fixed direct `Option` / `Result` constructor lowering and inference consistency:
+  - typed zero-argument constructors like `Option<String>()` and `Result<Boolean, Float>()` now lower through their declared generic payload layouts instead of legacy placeholder ABI structs
+  - direct no-context static constructors like `Option.none()`, `Result.ok(v)`, and `Result.error(e)` now use a stable fallback runtime layout for ephemeral method/equality chains, while truly unresolved bare constructor calls fail explicitly instead of silently mixing typed and placeholder layouts
+- Fixed filtered project codegen closure for class bodies:
+  - active-symbol collection now keeps class constructors and methods alongside the class symbol itself, so exact imported top-level class aliases like `import util.Box as B; make().get()` no longer link against missing `util__Box__get` / `util__Box__unwrap` symbols
+  - the same class-body activation also keeps namespace-alias nested generic class field/method paths compiled in their owning object instead of dropping them during filtered object emission
+- Fixed constructor return lowering in backend codegen:
+  - explicit `return None;` inside constructors now lowers to returning the allocated `this` instance instead of emitting an invalid `ret void` inside pointer-returning constructor functions
+  - runtime paths such as exact imported class alias constructors inside `match` expressions and namespace-alias generic class constructors no longer segfault from garbage constructor results
+- Fixed alias/module-qualified async call inference in codegen:
+  - object inference now recognizes module-qualified and namespace-alias function calls as real function-returning expressions, not only local identifiers and object methods
+  - `await` now preserves aggregate inner types for alias-qualified async calls like `(await api.fetch()).get(0)` instead of degrading the task result to `Integer` and misloading container/object layouts at runtime
 - Fixed remaining built-in expression-receiver backend gaps:
   - `Map<K, V>` methods like `length`, `contains`, `get`, and `set` now lower correctly on non-local receivers such as `build().contains(1)` instead of failing to infer the object type
   - `Option.is_some()` and `Result.is_ok()` now return real LLVM booleans in conditional positions instead of raw `i8` tags that could break branching IR

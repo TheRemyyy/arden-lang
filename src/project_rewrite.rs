@@ -561,6 +561,7 @@ pub fn rewrite_program_for_project(
                                             &module_prefix,
                                             &module_local_functions,
                                             &module_local_classes,
+                                            &mut scopes,
                                         );
                                         Decl::Function(f)
                                     }
@@ -645,6 +646,7 @@ pub fn rewrite_program_for_project(
                                                 &module_prefix,
                                                 &module_local_functions,
                                                 &module_local_classes,
+                                                &mut scopes,
                                             );
                                             c.constructor = Some(new_ctor);
                                         }
@@ -721,6 +723,7 @@ pub fn rewrite_program_for_project(
                                                     &module_prefix,
                                                     &module_local_functions,
                                                     &module_local_classes,
+                                                    &mut scopes,
                                                 );
                                                 nm
                                             })
@@ -1387,6 +1390,7 @@ fn rewrite_nested_module_decl_for_project(
                 module_prefix,
                 module_local_functions,
                 module_local_classes,
+                &mut scopes,
             );
             Decl::Function(f)
         }
@@ -1468,6 +1472,7 @@ fn rewrite_nested_module_decl_for_project(
                     module_prefix,
                     module_local_functions,
                     module_local_classes,
+                    &mut scopes,
                 );
                 c.constructor = Some(new_ctor);
             }
@@ -1541,6 +1546,7 @@ fn rewrite_nested_module_decl_for_project(
                         module_prefix,
                         module_local_functions,
                         module_local_classes,
+                        &mut scopes,
                     );
                     nm
                 })
@@ -1661,16 +1667,23 @@ fn fix_module_local_expr(
     module_prefix: &str,
     local_functions: &HashSet<String>,
     local_classes: &HashSet<String>,
+    scopes: &mut Vec<HashSet<String>>,
 ) -> Expr {
     match expr {
-        Expr::Ident(name) => remap_module_local_mangled_name(
-            name,
-            current_namespace,
-            entry_namespace,
-            module_prefix,
-            local_functions,
-        )
-        .map_or_else(|| Expr::Ident(name.clone()), Expr::Ident),
+        Expr::Ident(name) => {
+            if is_shadowed(name, scopes) {
+                Expr::Ident(name.clone())
+            } else {
+                remap_module_local_mangled_name(
+                    name,
+                    current_namespace,
+                    entry_namespace,
+                    module_prefix,
+                    local_functions,
+                )
+                .map_or_else(|| Expr::Ident(name.clone()), Expr::Ident)
+            }
+        }
         Expr::Call {
             callee,
             args,
@@ -1702,6 +1715,7 @@ fn fix_module_local_expr(
                                             module_prefix,
                                             local_functions,
                                             local_classes,
+                                            scopes,
                                         ),
                                         arg.span.clone(),
                                     )
@@ -1731,6 +1745,7 @@ fn fix_module_local_expr(
                                             module_prefix,
                                             local_functions,
                                             local_classes,
+                                            scopes,
                                         ),
                                         arg.span.clone(),
                                     )
@@ -1749,6 +1764,7 @@ fn fix_module_local_expr(
                         module_prefix,
                         local_functions,
                         local_classes,
+                        scopes,
                     ),
                     callee.span.clone(),
                 )),
@@ -1763,6 +1779,7 @@ fn fix_module_local_expr(
                                 module_prefix,
                                 local_functions,
                                 local_classes,
+                                scopes,
                             ),
                             arg.span.clone(),
                         )
@@ -1793,6 +1810,7 @@ fn fix_module_local_expr(
                                 module_prefix,
                                 local_functions,
                                 local_classes,
+                                scopes,
                             ),
                             arg.span.clone(),
                         )
@@ -1809,6 +1827,7 @@ fn fix_module_local_expr(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 object.span.clone(),
             )),
@@ -1824,6 +1843,7 @@ fn fix_module_local_expr(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 left.span.clone(),
             )),
@@ -1835,6 +1855,7 @@ fn fix_module_local_expr(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 right.span.clone(),
             )),
@@ -1849,6 +1870,7 @@ fn fix_module_local_expr(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 expr.span.clone(),
             )),
@@ -1857,8 +1879,8 @@ fn fix_module_local_expr(
             condition,
             then_branch,
             else_branch,
-        } => Expr::IfExpr {
-            condition: Box::new(ast::Spanned::new(
+        } => {
+            let condition = Box::new(ast::Spanned::new(
                 fix_module_local_expr(
                     &condition.node,
                     current_namespace,
@@ -1866,44 +1888,69 @@ fn fix_module_local_expr(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 condition.span.clone(),
-            )),
-            then_branch: fix_module_local_block(
+            ));
+            push_scope(scopes);
+            let then_branch = fix_module_local_block(
                 then_branch,
                 current_namespace,
                 entry_namespace,
                 module_prefix,
                 local_functions,
                 local_classes,
-            ),
-            else_branch: else_branch.as_ref().map(|block| {
-                fix_module_local_block(
+                scopes,
+            );
+            pop_scope(scopes);
+            let else_branch = else_branch.as_ref().map(|block| {
+                push_scope(scopes);
+                let rewritten = fix_module_local_block(
                     block,
                     current_namespace,
                     entry_namespace,
                     module_prefix,
                     local_functions,
                     local_classes,
-                )
-            }),
-        },
-        Expr::Block(block) => Expr::Block(fix_module_local_block(
-            block,
-            current_namespace,
-            entry_namespace,
-            module_prefix,
-            local_functions,
-            local_classes,
-        )),
-        Expr::AsyncBlock(body) => Expr::AsyncBlock(fix_module_local_block(
-            body,
-            current_namespace,
-            entry_namespace,
-            module_prefix,
-            local_functions,
-            local_classes,
-        )),
+                    scopes,
+                );
+                pop_scope(scopes);
+                rewritten
+            });
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            }
+        }
+        Expr::Block(block) => {
+            push_scope(scopes);
+            let rewritten = fix_module_local_block(
+                block,
+                current_namespace,
+                entry_namespace,
+                module_prefix,
+                local_functions,
+                local_classes,
+                scopes,
+            );
+            pop_scope(scopes);
+            Expr::Block(rewritten)
+        }
+        Expr::AsyncBlock(body) => {
+            push_scope(scopes);
+            let rewritten = fix_module_local_block(
+                body,
+                current_namespace,
+                entry_namespace,
+                module_prefix,
+                local_functions,
+                local_classes,
+                scopes,
+            );
+            pop_scope(scopes);
+            Expr::AsyncBlock(rewritten)
+        }
         Expr::Match { expr, arms } => Expr::Match {
             expr: Box::new(ast::Spanned::new(
                 fix_module_local_expr(
@@ -1913,21 +1960,31 @@ fn fix_module_local_expr(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 expr.span.clone(),
             )),
             arms: arms
                 .iter()
-                .map(|arm| ast::MatchArm {
-                    pattern: arm.pattern.clone(),
-                    body: fix_module_local_block(
+                .map(|arm| {
+                    push_scope(scopes);
+                    if let Some(scope) = scopes.last_mut() {
+                        bind_pattern_locals(&arm.pattern, scope);
+                    }
+                    let body = fix_module_local_block(
                         &arm.body,
                         current_namespace,
                         entry_namespace,
                         module_prefix,
                         local_functions,
                         local_classes,
-                    ),
+                        scopes,
+                    );
+                    pop_scope(scopes);
+                    ast::MatchArm {
+                        pattern: arm.pattern.clone(),
+                        body,
+                    }
                 })
                 .collect(),
         },
@@ -1940,6 +1997,7 @@ fn fix_module_local_expr(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 object.span.clone(),
             )),
@@ -1951,6 +2009,7 @@ fn fix_module_local_expr(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 index.span.clone(),
             )),
@@ -1963,6 +2022,7 @@ fn fix_module_local_expr(
                 module_prefix,
                 local_functions,
                 local_classes,
+                scopes,
             ),
             inner.span.clone(),
         ))),
@@ -1974,6 +2034,7 @@ fn fix_module_local_expr(
                 module_prefix,
                 local_functions,
                 local_classes,
+                scopes,
             ),
             inner.span.clone(),
         ))),
@@ -1985,6 +2046,7 @@ fn fix_module_local_expr(
                 module_prefix,
                 local_functions,
                 local_classes,
+                scopes,
             ),
             inner.span.clone(),
         ))),
@@ -1996,6 +2058,7 @@ fn fix_module_local_expr(
                 module_prefix,
                 local_functions,
                 local_classes,
+                scopes,
             ),
             inner.span.clone(),
         ))),
@@ -2007,23 +2070,32 @@ fn fix_module_local_expr(
                 module_prefix,
                 local_functions,
                 local_classes,
+                scopes,
             ),
             inner.span.clone(),
         ))),
-        Expr::Lambda { params, body } => Expr::Lambda {
-            params: params.clone(),
-            body: Box::new(ast::Spanned::new(
-                fix_module_local_expr(
-                    &body.node,
-                    current_namespace,
-                    entry_namespace,
-                    module_prefix,
-                    local_functions,
-                    local_classes,
-                ),
-                body.span.clone(),
-            )),
-        },
+        Expr::Lambda { params, body } => {
+            push_scope(scopes);
+            if let Some(scope) = scopes.last_mut() {
+                for param in params {
+                    scope.insert(param.name.clone());
+                }
+            }
+            let rewritten_body = fix_module_local_expr(
+                &body.node,
+                current_namespace,
+                entry_namespace,
+                module_prefix,
+                local_functions,
+                local_classes,
+                scopes,
+            );
+            pop_scope(scopes);
+            Expr::Lambda {
+                params: params.clone(),
+                body: Box::new(ast::Spanned::new(rewritten_body, body.span.clone())),
+            }
+        }
         Expr::Require { condition, message } => Expr::Require {
             condition: Box::new(ast::Spanned::new(
                 fix_module_local_expr(
@@ -2033,6 +2105,7 @@ fn fix_module_local_expr(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 condition.span.clone(),
             )),
@@ -2045,6 +2118,7 @@ fn fix_module_local_expr(
                         module_prefix,
                         local_functions,
                         local_classes,
+                        scopes,
                     ),
                     msg.span.clone(),
                 ))
@@ -2064,6 +2138,7 @@ fn fix_module_local_expr(
                         module_prefix,
                         local_functions,
                         local_classes,
+                        scopes,
                     ),
                     expr.span.clone(),
                 ))
@@ -2077,6 +2152,7 @@ fn fix_module_local_expr(
                         module_prefix,
                         local_functions,
                         local_classes,
+                        scopes,
                     ),
                     expr.span.clone(),
                 ))
@@ -2096,6 +2172,7 @@ fn fix_module_local_expr(
                             module_prefix,
                             local_functions,
                             local_classes,
+                            scopes,
                         ),
                         expr.span.clone(),
                     )),
@@ -2113,6 +2190,7 @@ fn fix_module_local_stmt(
     module_prefix: &str,
     local_functions: &HashSet<String>,
     local_classes: &HashSet<String>,
+    scopes: &mut Vec<HashSet<String>>,
 ) -> Stmt {
     match stmt {
         Stmt::Let {
@@ -2120,22 +2198,29 @@ fn fix_module_local_stmt(
             ty,
             value,
             mutable,
-        } => Stmt::Let {
-            name: name.clone(),
-            ty: ty.clone(),
-            value: ast::Spanned::new(
-                fix_module_local_expr(
-                    &value.node,
-                    current_namespace,
-                    entry_namespace,
-                    module_prefix,
-                    local_functions,
-                    local_classes,
+        } => {
+            let rewritten = Stmt::Let {
+                name: name.clone(),
+                ty: ty.clone(),
+                value: ast::Spanned::new(
+                    fix_module_local_expr(
+                        &value.node,
+                        current_namespace,
+                        entry_namespace,
+                        module_prefix,
+                        local_functions,
+                        local_classes,
+                        scopes,
+                    ),
+                    value.span.clone(),
                 ),
-                value.span.clone(),
-            ),
-            mutable: *mutable,
-        },
+                mutable: *mutable,
+            };
+            if let Some(scope) = scopes.last_mut() {
+                scope.insert(name.clone());
+            }
+            rewritten
+        }
         Stmt::Assign { target, value } => Stmt::Assign {
             target: ast::Spanned::new(
                 fix_module_local_expr(
@@ -2145,6 +2230,7 @@ fn fix_module_local_stmt(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 target.span.clone(),
             ),
@@ -2156,6 +2242,7 @@ fn fix_module_local_stmt(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 value.span.clone(),
             ),
@@ -2168,6 +2255,7 @@ fn fix_module_local_stmt(
                 module_prefix,
                 local_functions,
                 local_classes,
+                scopes,
             ),
             expr.span.clone(),
         )),
@@ -2180,6 +2268,7 @@ fn fix_module_local_stmt(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 expr.span.clone(),
             )
@@ -2188,8 +2277,8 @@ fn fix_module_local_stmt(
             condition,
             then_block,
             else_block,
-        } => Stmt::If {
-            condition: ast::Spanned::new(
+        } => {
+            let condition = ast::Spanned::new(
                 fix_module_local_expr(
                     &condition.node,
                     current_namespace,
@@ -2197,30 +2286,43 @@ fn fix_module_local_stmt(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 condition.span.clone(),
-            ),
-            then_block: fix_module_local_block(
+            );
+            push_scope(scopes);
+            let then_block = fix_module_local_block(
                 then_block,
                 current_namespace,
                 entry_namespace,
                 module_prefix,
                 local_functions,
                 local_classes,
-            ),
-            else_block: else_block.as_ref().map(|block| {
-                fix_module_local_block(
+                scopes,
+            );
+            pop_scope(scopes);
+            let else_block = else_block.as_ref().map(|block| {
+                push_scope(scopes);
+                let rewritten = fix_module_local_block(
                     block,
                     current_namespace,
                     entry_namespace,
                     module_prefix,
                     local_functions,
                     local_classes,
-                )
-            }),
-        },
-        Stmt::While { condition, body } => Stmt::While {
-            condition: ast::Spanned::new(
+                    scopes,
+                );
+                pop_scope(scopes);
+                rewritten
+            });
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            }
+        }
+        Stmt::While { condition, body } => {
+            let condition = ast::Spanned::new(
                 fix_module_local_expr(
                     &condition.node,
                     current_namespace,
@@ -2228,18 +2330,23 @@ fn fix_module_local_stmt(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 condition.span.clone(),
-            ),
-            body: fix_module_local_block(
+            );
+            push_scope(scopes);
+            let body = fix_module_local_block(
                 body,
                 current_namespace,
                 entry_namespace,
                 module_prefix,
                 local_functions,
                 local_classes,
-            ),
-        },
+                scopes,
+            );
+            pop_scope(scopes);
+            Stmt::While { condition, body }
+        }
         Stmt::For {
             var,
             var_type,
@@ -2256,17 +2363,27 @@ fn fix_module_local_stmt(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 iterable.span.clone(),
             ),
-            body: fix_module_local_block(
-                body,
-                current_namespace,
-                entry_namespace,
-                module_prefix,
-                local_functions,
-                local_classes,
-            ),
+            body: {
+                push_scope(scopes);
+                if let Some(scope) = scopes.last_mut() {
+                    scope.insert(var.clone());
+                }
+                let rewritten = fix_module_local_block(
+                    body,
+                    current_namespace,
+                    entry_namespace,
+                    module_prefix,
+                    local_functions,
+                    local_classes,
+                    scopes,
+                );
+                pop_scope(scopes);
+                rewritten
+            },
         },
         Stmt::Match { expr, arms } => Stmt::Match {
             expr: ast::Spanned::new(
@@ -2277,21 +2394,31 @@ fn fix_module_local_stmt(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 expr.span.clone(),
             ),
             arms: arms
                 .iter()
-                .map(|arm| ast::MatchArm {
-                    pattern: arm.pattern.clone(),
-                    body: fix_module_local_block(
+                .map(|arm| {
+                    push_scope(scopes);
+                    if let Some(scope) = scopes.last_mut() {
+                        bind_pattern_locals(&arm.pattern, scope);
+                    }
+                    let body = fix_module_local_block(
                         &arm.body,
                         current_namespace,
                         entry_namespace,
                         module_prefix,
                         local_functions,
                         local_classes,
-                    ),
+                        scopes,
+                    );
+                    pop_scope(scopes);
+                    ast::MatchArm {
+                        pattern: arm.pattern.clone(),
+                        body,
+                    }
                 })
                 .collect(),
         },
@@ -2306,6 +2433,7 @@ fn fix_module_local_block(
     module_prefix: &str,
     local_functions: &HashSet<String>,
     local_classes: &HashSet<String>,
+    scopes: &mut Vec<HashSet<String>>,
 ) -> ast::Block {
     block
         .iter()
@@ -2318,6 +2446,7 @@ fn fix_module_local_block(
                     module_prefix,
                     local_functions,
                     local_classes,
+                    scopes,
                 ),
                 stmt.span.clone(),
             )
@@ -5414,6 +5543,112 @@ mod tests {
             panic!("expected ident callee");
         };
         assert_eq!(name, "foo");
+    }
+
+    #[test]
+    fn keeps_match_pattern_bindings_unmangled_in_nested_module_bodies() {
+        let program = Program {
+            package: Some("util".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "M".to_string(),
+                declarations: vec![
+                    sp(Decl::Function(ast::FunctionDecl {
+                        name: "add1".to_string(),
+                        generic_params: vec![],
+                        params: vec![ast::Parameter {
+                            name: "value".to_string(),
+                            ty: ast::Type::Integer,
+                            mutable: false,
+                            mode: ast::ParamMode::Owned,
+                        }],
+                        is_variadic: false,
+                        extern_abi: None,
+                        extern_link_name: None,
+                        return_type: ast::Type::Integer,
+                        body: vec![sp(Stmt::Return(Some(sp(Expr::Binary {
+                            op: ast::BinOp::Add,
+                            left: Box::new(sp(Expr::Ident("value".to_string()))),
+                            right: Box::new(sp(Expr::Literal(ast::Literal::Integer(1)))),
+                        }))))],
+                        is_async: false,
+                        is_extern: false,
+                        visibility: ast::Visibility::Private,
+                        attributes: vec![],
+                    })),
+                    sp(Decl::Function(ast::FunctionDecl {
+                        name: "run".to_string(),
+                        generic_params: vec![],
+                        params: vec![],
+                        is_variadic: false,
+                        extern_abi: None,
+                        extern_link_name: None,
+                        return_type: ast::Type::None,
+                        body: vec![sp(Stmt::Match {
+                            expr: sp(Expr::Literal(ast::Literal::Integer(1))),
+                            arms: vec![
+                                ast::MatchArm {
+                                    pattern: ast::Pattern::Ident("add1".to_string()),
+                                    body: vec![sp(Stmt::Expr(sp(Expr::Ident("add1".to_string()))))],
+                                },
+                                ast::MatchArm {
+                                    pattern: ast::Pattern::Wildcard,
+                                    body: vec![sp(Stmt::Expr(sp(Expr::Literal(
+                                        ast::Literal::Integer(0),
+                                    ))))],
+                                },
+                            ],
+                        })],
+                        is_async: false,
+                        is_extern: false,
+                        visibility: ast::Visibility::Private,
+                        attributes: vec![],
+                    })),
+                ],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "util",
+            "util",
+            &HashMap::from([(
+                "util".to_string(),
+                HashSet::from(["M__add1".to_string(), "M__run".to_string()]),
+            )]),
+            &HashMap::from([
+                ("M__add1".to_string(), "util".to_string()),
+                ("M__run".to_string(), "util".to_string()),
+            ]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let Decl::Module(module) = &rewritten.declarations[0].node else {
+            panic!("expected module declaration");
+        };
+        let run = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Function(func) if func.name == "run" => Some(func),
+                _ => None,
+            })
+            .expect("expected rewritten run function");
+        let Stmt::Match { arms, .. } = &run.body[0].node else {
+            panic!("expected match statement");
+        };
+        let Stmt::Expr(expr) = &arms[0].body[0].node else {
+            panic!("expected expr statement in match arm");
+        };
+        let Expr::Ident(name) = &expr.node else {
+            panic!("expected arm-local identifier");
+        };
+        assert_eq!(name, "add1");
     }
 
     #[test]

@@ -119,6 +119,10 @@ pub struct ImportChecker<'a> {
     available_functions: Vec<String>,
     /// Functions declared in currently checked program/file.
     local_functions: HashSet<String>,
+    /// Lexically visible local names that shadow imported functions/aliases.
+    local_name_scopes: Vec<HashSet<String>>,
+    /// Lexically visible local callable values (params/lets with function type).
+    local_callable_scopes: Vec<HashSet<String>>,
     /// Collected errors
     errors: Vec<ImportError>,
 }
@@ -221,7 +225,59 @@ impl<'a> ImportChecker<'a> {
             stdlib,
             available_functions,
             local_functions: HashSet::new(),
+            local_name_scopes: vec![HashSet::new()],
+            local_callable_scopes: vec![HashSet::new()],
             errors: Vec::new(),
+        }
+    }
+
+    fn enter_callable_scope(&mut self) {
+        self.local_name_scopes.push(HashSet::new());
+        self.local_callable_scopes.push(HashSet::new());
+    }
+
+    fn exit_callable_scope(&mut self) {
+        self.local_name_scopes.pop();
+        self.local_callable_scopes.pop();
+    }
+
+    fn declare_local_name(&mut self, name: &str) {
+        if let Some(scope) = self.local_name_scopes.last_mut() {
+            scope.insert(name.to_string());
+        }
+    }
+
+    fn declare_local_callable(&mut self, name: &str, ty: &Type) {
+        if matches!(ty, Type::Function(_, _)) {
+            if let Some(scope) = self.local_callable_scopes.last_mut() {
+                scope.insert(name.to_string());
+            }
+        }
+    }
+
+    fn is_local_name(&self, name: &str) -> bool {
+        self.local_name_scopes
+            .iter()
+            .rev()
+            .any(|scope| scope.contains(name))
+    }
+
+    fn is_local_callable(&self, name: &str) -> bool {
+        self.local_callable_scopes
+            .iter()
+            .rev()
+            .any(|scope| scope.contains(name))
+    }
+
+    fn declare_pattern_bindings(&mut self, pattern: &Pattern) {
+        match pattern {
+            Pattern::Ident(name) => self.declare_local_name(name),
+            Pattern::Variant(_, bindings) => {
+                for binding in bindings {
+                    self.declare_local_name(binding);
+                }
+            }
+            Pattern::Literal(_) | Pattern::Wildcard => {}
         }
     }
 
@@ -456,10 +512,21 @@ impl<'a> ImportChecker<'a> {
             Expr::Call { callee, args, .. } => {
                 match &callee.node {
                     // Direct function call
-                    Expr::Ident(name) => self.check_function_call(name, callee.span.clone()),
+                    Expr::Ident(name) => {
+                        if !self.is_local_name(name) && !self.is_local_callable(name) {
+                            self.check_function_call(name, callee.span.clone());
+                        }
+                    }
                     // Module-style call: Module.func(...)
                     Expr::Field { object, field } => {
                         if let Expr::Ident(module_or_type) = &object.node {
+                            if self.is_local_name(module_or_type) {
+                                self.check_expr(&callee.node);
+                                for arg in args {
+                                    self.check_expr(&arg.node);
+                                }
+                                return;
+                            }
                             let mut handled_alias_call = false;
                             if let Some(ns) = self.namespace_aliases.get(module_or_type) {
                                 if let Some(canonical_name) =
@@ -535,21 +602,31 @@ impl<'a> ImportChecker<'a> {
             }
 
             Expr::Block(block) => {
+                self.enter_callable_scope();
                 for stmt in block {
                     self.check_stmt(&stmt.node);
                 }
+                self.exit_callable_scope();
             }
 
             Expr::Match { expr, arms } => {
                 self.check_expr(&expr.node);
                 for arm in arms {
+                    self.enter_callable_scope();
+                    self.declare_pattern_bindings(&arm.pattern);
                     for stmt in &arm.body {
                         self.check_stmt(&stmt.node);
                     }
+                    self.exit_callable_scope();
                 }
             }
-            Expr::Lambda { body, .. } => {
+            Expr::Lambda { params, body } => {
+                self.enter_callable_scope();
+                for param in params {
+                    self.declare_local_callable(&param.name, &param.ty);
+                }
                 self.check_expr(&body.node);
+                self.exit_callable_scope();
             }
             Expr::Construct { args, .. } => {
                 for arg in args {
@@ -562,13 +639,17 @@ impl<'a> ImportChecker<'a> {
                 else_branch,
             } => {
                 self.check_expr(&condition.node);
+                self.enter_callable_scope();
                 for stmt in then_branch {
                     self.check_stmt(&stmt.node);
                 }
+                self.exit_callable_scope();
                 if let Some(else_stmts) = else_branch {
+                    self.enter_callable_scope();
                     for stmt in else_stmts {
                         self.check_stmt(&stmt.node);
                     }
+                    self.exit_callable_scope();
                 }
             }
             Expr::Require { condition, message } => {
@@ -616,8 +697,10 @@ impl<'a> ImportChecker<'a> {
             Stmt::Expr(expr) => {
                 self.check_expr(&expr.node);
             }
-            Stmt::Let { value, .. } => {
+            Stmt::Let { name, ty, value, .. } => {
                 self.check_expr(&value.node);
+                self.declare_local_name(name);
+                self.declare_local_callable(name, ty);
             }
             Stmt::Return(Some(expr)) => {
                 self.check_expr(&expr.node);
@@ -628,33 +711,53 @@ impl<'a> ImportChecker<'a> {
                 else_block,
             } => {
                 self.check_expr(&condition.node);
+                self.enter_callable_scope();
                 for stmt in then_block {
                     self.check_stmt(&stmt.node);
                 }
+                self.exit_callable_scope();
                 if let Some(else_stmts) = else_block {
+                    self.enter_callable_scope();
                     for stmt in else_stmts {
                         self.check_stmt(&stmt.node);
                     }
+                    self.exit_callable_scope();
                 }
             }
             Stmt::While { condition, body } => {
                 self.check_expr(&condition.node);
+                self.enter_callable_scope();
                 for stmt in body {
                     self.check_stmt(&stmt.node);
                 }
+                self.exit_callable_scope();
             }
-            Stmt::For { iterable, body, .. } => {
+            Stmt::For {
+                var,
+                var_type,
+                iterable,
+                body,
+            } => {
                 self.check_expr(&iterable.node);
+                self.enter_callable_scope();
+                self.declare_local_name(var);
+                if let Some(ty) = var_type {
+                    self.declare_local_callable(var, ty);
+                }
                 for stmt in body {
                     self.check_stmt(&stmt.node);
                 }
+                self.exit_callable_scope();
             }
             Stmt::Match { expr, arms } => {
                 self.check_expr(&expr.node);
                 for arm in arms {
+                    self.enter_callable_scope();
+                    self.declare_pattern_bindings(&arm.pattern);
                     for stmt in &arm.body {
                         self.check_stmt(&stmt.node);
                     }
+                    self.exit_callable_scope();
                 }
             }
             _ => {} // Break, Continue, Return(None), etc.
@@ -666,25 +769,45 @@ impl<'a> ImportChecker<'a> {
         fn check_decl(checker: &mut ImportChecker<'_>, decl: &Decl) {
             match decl {
                 Decl::Function(func) => {
+                    checker.enter_callable_scope();
+                    for param in &func.params {
+                        checker.declare_local_name(&param.name);
+                        checker.declare_local_callable(&param.name, &param.ty);
+                    }
                     for stmt in &func.body {
                         checker.check_stmt(&stmt.node);
                     }
+                    checker.exit_callable_scope();
                 }
                 Decl::Class(class) => {
                     if let Some(ctor) = &class.constructor {
+                        checker.enter_callable_scope();
+                        for param in &ctor.params {
+                            checker.declare_local_name(&param.name);
+                            checker.declare_local_callable(&param.name, &param.ty);
+                        }
                         for stmt in &ctor.body {
                             checker.check_stmt(&stmt.node);
                         }
+                        checker.exit_callable_scope();
                     }
                     if let Some(dtor) = &class.destructor {
+                        checker.enter_callable_scope();
                         for stmt in &dtor.body {
                             checker.check_stmt(&stmt.node);
                         }
+                        checker.exit_callable_scope();
                     }
                     for method in &class.methods {
+                        checker.enter_callable_scope();
+                        for param in &method.params {
+                            checker.declare_local_name(&param.name);
+                            checker.declare_local_callable(&param.name, &param.ty);
+                        }
                         for stmt in &method.body {
                             checker.check_stmt(&stmt.node);
                         }
+                        checker.exit_callable_scope();
                     }
                 }
                 Decl::Module(module) => {
@@ -908,6 +1031,86 @@ function main(): None {
         let errors = check_import_errors(source);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].function_name, "Math__abs");
+    }
+
+    #[test]
+    fn local_function_value_calls_do_not_require_imports() {
+        let source = r#"
+function apply(f: (Integer) -> Integer, x: Integer): Integer { return f(x); }
+function main(): None {
+    inc: (Integer) -> Integer = (x: Integer) => x + 1;
+    value: Integer = apply(inc, 1);
+    direct: Integer = inc(2);
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn local_non_callable_shadow_does_not_trigger_missing_import_error() {
+        let source = r#"
+package app;
+function helper(): None {
+    return None;
+}
+function main(helper: Integer): None {
+    helper();
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn local_alias_shadow_does_not_trigger_unknown_namespace_alias_error() {
+        let source = r#"
+import std.io as io;
+function main(): None {
+    io: Integer = 1;
+    io.println("x");
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn match_pattern_bindings_shadow_imported_names() {
+        let source = r#"
+package app;
+function main(): None {
+    match (1) {
+        print => {
+            print();
+        },
+        _ => {
+            return None;
+        }
+    }
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn for_loop_variable_shadow_does_not_trigger_missing_import_error() {
+        let source = r#"
+package app;
+function main(range: Integer): None {
+    for (range in 1) {
+        range();
+    }
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
