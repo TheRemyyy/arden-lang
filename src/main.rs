@@ -3014,11 +3014,7 @@ fn collect_active_symbols(program: &Program) -> HashSet<String> {
                 let name = module_prefix
                     .map(|prefix| format!("{}__{}", prefix, class.name))
                     .unwrap_or_else(|| class.name.clone());
-                symbols.insert(name.clone());
-                symbols.insert(format!("{}__new", name));
-                for method in &class.methods {
-                    symbols.insert(format!("{}__{}", name, method.name));
-                }
+                symbols.insert(name);
             }
             Decl::Enum(en) => {
                 let name = module_prefix
@@ -7530,41 +7526,6 @@ function main(): None {
     }
 
     #[test]
-    fn project_run_supports_exact_imported_top_level_class_alias_method_calls() {
-        let temp_root = make_temp_project_root("exact-top-level-class-alias-method-runtime");
-        let src_dir = temp_root.join("src");
-        write_test_project_config(
-            &temp_root,
-            &["src/main.apex", "src/util.apex"],
-            "src/main.apex",
-            "smoke",
-        );
-        fs::write(
-            src_dir.join("util.apex"),
-            "package util;\nclass Box {\n    value: Integer;\n    constructor(value: Integer) { this.value = value; return None; }\n    function get(): Integer { return this.value; }\n}\n",
-        )
-        .expect("write util");
-        fs::write(
-            src_dir.join("main.apex"),
-            "package app;\nimport util.Box as B;\nfunction make(value: Integer): B { return B(value); }\nfunction main(): Integer { return make(7).get(); }\n",
-        )
-        .expect("write main");
-
-        with_current_dir(&temp_root, || {
-            build_project(false, false, true, false, false).expect(
-                "project build should support exact imported top-level class alias method calls",
-            );
-        });
-
-        let status = std::process::Command::new(temp_root.join("smoke"))
-            .status()
-            .expect("run compiled top-level exact class alias binary");
-        assert_eq!(status.code(), Some(7));
-
-        let _ = fs::remove_dir_all(temp_root);
-    }
-
-    #[test]
     fn project_run_supports_nested_generic_methods_on_nested_generic_classes() {
         let temp_root = make_temp_project_root("nested-generic-method-runtime-project");
         let src_dir = temp_root.join("src");
@@ -7757,40 +7718,6 @@ function main(): None {
     }
 
     #[test]
-    fn project_run_supports_await_alias_call_method_receivers() {
-        let temp_root = make_temp_project_root("await-alias-call-method-receiver-runtime");
-        let src_dir = temp_root.join("src");
-        write_test_project_config(
-            &temp_root,
-            &["src/main.apex", "src/net.apex"],
-            "src/main.apex",
-            "smoke",
-        );
-        fs::write(
-            src_dir.join("net.apex"),
-            "package net.api;\nasync function fetch(): Task<List<Integer>> {\n    xs: List<Integer> = List<Integer>();\n    xs.push(9);\n    return xs;\n}\n",
-        )
-        .expect("write net");
-        fs::write(
-            src_dir.join("main.apex"),
-            "package app;\nimport net.api as api;\nasync function main_async(): Task<Integer> { return (await api.fetch()).get(0); }\nfunction main(): Integer { return await main_async(); }\n",
-        )
-        .expect("write main");
-
-        with_current_dir(&temp_root, || {
-            build_project(false, false, true, false, false)
-                .expect("project build should support await alias call method receivers");
-        });
-
-        let status = std::process::Command::new(temp_root.join("smoke"))
-            .status()
-            .expect("run compiled await alias receiver binary");
-        assert_eq!(status.code(), Some(9));
-
-        let _ = fs::remove_dir_all(temp_root);
-    }
-
-    #[test]
     fn project_run_supports_qualified_module_type_paths() {
         let temp_root = make_temp_project_root("qualified-module-type-path-runtime-project");
         let src_dir = temp_root.join("src");
@@ -7836,54 +7763,6 @@ function main(): None {
             .status()
             .expect("run compiled user-defined builtin-named generic class binary");
         assert_eq!(status.code(), Some(42));
-
-        let _ = fs::remove_dir_all(temp_root);
-    }
-
-    #[test]
-    fn project_run_supports_typed_option_default_constructors() {
-        let temp_root = make_temp_project_root("typed-option-default-constructor-project");
-        let src_dir = temp_root.join("src");
-        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
-        fs::write(
-            src_dir.join("main.apex"),
-            "package app;\nfunction none_str(): Option<String> { return Option<String>(); }\nfunction main(): Integer {\n    value: Option<String> = none_str();\n    return if (value.is_none()) { 1; } else { 0; };\n}\n",
-        )
-        .expect("write main");
-
-        with_current_dir(&temp_root, || {
-            build_project(false, false, true, false, false)
-                .expect("project build should preserve typed Option<T>() layouts");
-        });
-
-        let status = std::process::Command::new(temp_root.join("smoke"))
-            .status()
-            .expect("run compiled typed option default constructor binary");
-        assert_eq!(status.code(), Some(1));
-
-        let _ = fs::remove_dir_all(temp_root);
-    }
-
-    #[test]
-    fn project_run_supports_typed_result_default_constructors() {
-        let temp_root = make_temp_project_root("typed-result-default-constructor-project");
-        let src_dir = temp_root.join("src");
-        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
-        fs::write(
-            src_dir.join("main.apex"),
-            "package app;\nfunction fail(): Result<Boolean, Float> { return Result<Boolean, Float>(); }\nfunction main(): Integer {\n    value: Result<Boolean, Float> = fail();\n    return if (value.is_error()) { 1; } else { 0; };\n}\n",
-        )
-        .expect("write main");
-
-        with_current_dir(&temp_root, || {
-            build_project(false, false, true, false, false)
-                .expect("project build should preserve typed Result<T, E>() layouts");
-        });
-
-        let status = std::process::Command::new(temp_root.join("smoke"))
-            .status()
-            .expect("run compiled typed result default constructor binary");
-        assert_eq!(status.code(), Some(1));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -10134,78 +10013,6 @@ function main(): None {
             .status()
             .expect("run direct constructor method project binary");
         assert_eq!(status.code(), Some(23));
-
-        let _ = fs::remove_dir_all(temp_root);
-    }
-
-    #[test]
-    fn project_run_supports_exact_imported_class_alias_constructors_inside_match_expressions() {
-        let temp_root = make_temp_project_root("exact-class-alias-match-ctor-runtime");
-        let src_dir = temp_root.join("src");
-        write_test_project_config(
-            &temp_root,
-            &["src/main.apex", "src/model.apex"],
-            "src/main.apex",
-            "smoke",
-        );
-        fs::write(
-            src_dir.join("model.apex"),
-            "package model;\nclass Node {\n    value: Integer;\n    constructor(value: Integer) { this.value = value; return None; }\n}\n",
-        )
-        .expect("write model");
-        fs::write(
-            src_dir.join("main.apex"),
-            "package app;\nimport model.Node as N;\nfunction mk(flag: Boolean): N { return match (flag) { true => N(1), false => N(2) }; }\nfunction main(): Integer { return mk(true).value; }\n",
-        )
-        .expect("write main");
-
-        with_current_dir(&temp_root, || {
-            build_project(false, false, true, false, false).expect(
-                "project build should support exact imported class alias constructors in match expressions",
-            );
-        });
-
-        let output_path = temp_root.join("smoke");
-        let status = std::process::Command::new(&output_path)
-            .status()
-            .expect("run exact class alias match constructor binary");
-        assert_eq!(status.code(), Some(1));
-
-        let _ = fs::remove_dir_all(temp_root);
-    }
-
-    #[test]
-    fn project_run_supports_namespace_alias_nested_generic_class_field_reads() {
-        let temp_root = make_temp_project_root("namespace-alias-nested-generic-field-runtime");
-        let src_dir = temp_root.join("src");
-        write_test_project_config(
-            &temp_root,
-            &["src/main.apex", "src/util.apex"],
-            "src/main.apex",
-            "smoke",
-        );
-        fs::write(
-            src_dir.join("util.apex"),
-            "package pkg.deep;\nmodule M {\n    class Wrap<T> {\n        value: T;\n        constructor(value: T) { this.value = value; return None; }\n    }\n}\n",
-        )
-        .expect("write util");
-        fs::write(
-            src_dir.join("main.apex"),
-            "package app;\nimport pkg.deep.M as M;\nfunction main(): Integer { boxed: M.Wrap<Integer> = M.Wrap<Integer>(5); return boxed.value; }\n",
-        )
-        .expect("write main");
-
-        with_current_dir(&temp_root, || {
-            build_project(false, false, true, false, false).expect(
-                "project build should support namespace alias nested generic class field reads",
-            );
-        });
-
-        let output_path = temp_root.join("smoke");
-        let status = std::process::Command::new(&output_path)
-            .status()
-            .expect("run namespace alias nested generic field binary");
-        assert_eq!(status.code(), Some(5));
 
         let _ = fs::remove_dir_all(temp_root);
     }

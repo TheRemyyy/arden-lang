@@ -68,15 +68,6 @@ impl Formatter {
         }
     }
 
-    fn nested_formatter(&self) -> Self {
-        Self {
-            output: String::new(),
-            indent: 0,
-            comments: self.comments.clone(),
-            next_comment: self.next_comment,
-        }
-    }
-
     fn finish(mut self) -> String {
         while self.output.ends_with('\n') {
             self.output.pop();
@@ -350,20 +341,19 @@ impl Formatter {
                 mutable,
             } => {
                 let prefix = if *mutable { "mut " } else { "" };
-                let value_str = self.format_expr(&value.node);
                 self.push_line(&format!(
                     "{}{}: {} = {};",
                     prefix,
                     name,
                     self.format_type(ty),
-                    value_str
+                    self.format_expr(&value.node)
                 ));
             }
-            Stmt::Assign { target, value } => {
-                let target_str = self.format_expr(&target.node);
-                let value_str = self.format_expr(&value.node);
-                self.push_line(&format!("{} = {};", target_str, value_str));
-            }
+            Stmt::Assign { target, value } => self.push_line(&format!(
+                "{} = {};",
+                self.format_expr(&target.node),
+                self.format_expr(&value.node)
+            )),
             Stmt::Expr(expr) => {
                 let formatted = self.format_expr(&expr.node);
                 if matches!(expr.node, Expr::Match { .. } | Expr::IfExpr { .. }) {
@@ -374,8 +364,7 @@ impl Formatter {
             }
             Stmt::Return(expr) => {
                 if let Some(expr) = expr {
-                    let expr_str = self.format_expr(&expr.node);
-                    self.push_line(&format!("return {};", expr_str));
+                    self.push_line(&format!("return {};", self.format_expr(&expr.node)));
                 } else {
                     self.push_line("return;");
                 }
@@ -385,8 +374,7 @@ impl Formatter {
                 then_block,
                 else_block,
             } => {
-                let condition_str = self.format_expr(&condition.node);
-                self.push_line(&format!("if ({}) {{", condition_str));
+                self.push_line(&format!("if ({}) {{", self.format_expr(&condition.node)));
                 self.indent += 1;
                 self.format_block_contents(then_block);
                 self.indent -= 1;
@@ -397,8 +385,7 @@ impl Formatter {
                 }
             }
             Stmt::While { condition, body } => {
-                let condition_str = self.format_expr(&condition.node);
-                self.push_line(&format!("while ({}) {{", condition_str));
+                self.push_line(&format!("while ({}) {{", self.format_expr(&condition.node)));
                 self.indent += 1;
                 self.format_block_contents(body);
                 self.indent -= 1;
@@ -427,8 +414,7 @@ impl Formatter {
             Stmt::Break => self.push_line("break;"),
             Stmt::Continue => self.push_line("continue;"),
             Stmt::Match { expr, arms } => {
-                let expr_str = self.format_expr(&expr.node);
-                self.push_line(&format!("match ({}) {{", expr_str));
+                self.push_line(&format!("match ({}) {{", self.format_expr(&expr.node)));
                 self.indent += 1;
                 for arm in arms {
                     self.push_line(&format!("{} => {{", self.format_pattern(&arm.pattern)));
@@ -459,11 +445,11 @@ impl Formatter {
         }
     }
 
-    fn format_expr(&mut self, expr: &Expr) -> String {
+    fn format_expr(&self, expr: &Expr) -> String {
         self.format_expr_with_prec(expr, 0)
     }
 
-    fn format_expr_with_prec(&mut self, expr: &Expr, parent_prec: u8) -> String {
+    fn format_expr_with_prec(&self, expr: &Expr, parent_prec: u8) -> String {
         match expr {
             Expr::Literal(literal) => self.format_literal(literal),
             Expr::Ident(name) => name.clone(),
@@ -597,10 +583,9 @@ impl Formatter {
                 }
             }
             Expr::AsyncBlock(block) => {
-                let mut nested = self.nested_formatter();
+                let mut nested = Formatter::new();
                 nested.indent = 1;
                 nested.format_block_contents(block);
-                self.next_comment = nested.next_comment;
                 let body = nested.finish();
                 let body = body.trim_end_matches('\n');
                 let formatted = format!("async {{\n{}\n}}", body);
@@ -681,7 +666,7 @@ impl Formatter {
         }
     }
 
-    fn format_match_arm_inline(&mut self, arm: &MatchArm) -> String {
+    fn format_match_arm_inline(&self, arm: &MatchArm) -> String {
         format!(
             "{} => {}",
             self.format_pattern(&arm.pattern),
@@ -697,10 +682,9 @@ impl Formatter {
                 else_block,
             } = &nested.node
             {
-                let condition_str = self.format_expr(&condition.node);
                 self.push_line(&format!(
                     "}} else if ({}) {{",
-                    condition_str
+                    self.format_expr(&condition.node)
                 ));
                 self.indent += 1;
                 self.format_block_contents(then_block);
@@ -721,21 +705,20 @@ impl Formatter {
         self.push_line("}");
     }
 
-    fn format_inline_block(&mut self, block: &Block) -> String {
+    fn format_inline_block(&self, block: &Block) -> String {
         if block.is_empty() {
             return "{ }".to_string();
         }
 
-        let mut nested = self.nested_formatter();
+        let mut nested = Formatter::new();
         nested.indent = 1;
         nested.format_block_contents(block);
-        self.next_comment = nested.next_comment;
         let body = nested.finish();
         let lines = body.trim_end_matches('\n');
         format!("{{\n{}\n}}", lines)
     }
 
-    fn format_string_interp(&mut self, parts: &[StringPart]) -> String {
+    fn format_string_interp(&self, parts: &[StringPart]) -> String {
         let mut result = String::from("\"");
         for part in parts {
             match part {
@@ -1261,21 +1244,6 @@ function main(): None {
         parser
             .parse_program()
             .expect("formatted output should parse");
-    }
-
-    #[test]
-    fn keeps_comments_inside_async_expression_blocks() {
-        let source = r#"
-function main(): None {
-    task: Task<None> = async {
-        // keep me
-        return None;
-    };
-    return None;
-}
-"#;
-        let formatted = format_source(source).expect("format succeeds");
-        assert!(formatted.contains("// keep me"));
     }
 
     #[test]

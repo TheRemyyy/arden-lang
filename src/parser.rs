@@ -219,17 +219,6 @@ impl<'src> Parser<'src> {
             .unwrap_or(0..0)
     }
 
-    fn current_offset_or_eof(&self) -> usize {
-        if self.is_at_end() {
-            self.tokens
-                .last()
-                .map(|(_, span)| span.end)
-                .unwrap_or(0)
-        } else {
-            self.current_span().start
-        }
-    }
-
     fn advance(&mut self) -> Option<Token<'src>> {
         if self.pos < self.tokens.len() {
             let token = self.tokens[self.pos].0.clone();
@@ -428,7 +417,7 @@ impl<'src> Parser<'src> {
             }
         };
 
-        let end = self.current_offset_or_eof();
+        let end = self.current_span().start;
         Ok(Spanned::new(decl, start..end))
     }
 
@@ -1396,14 +1385,14 @@ impl<'src> Parser<'src> {
             }
         };
 
-        let end = self.current_offset_or_eof();
+        let end = self.current_span().start;
         Ok(Spanned::new(stmt, start..end))
     }
 
     fn parse_ident_stmt(&mut self) -> ParseResult<Stmt> {
         // Look ahead to determine if this is a declaration or expression
-        let start = self.current_span().start;
         let name = self.parse_ident()?;
+        let start = self.current_span().start;
 
         if self.check(&Token::Colon) {
             // Variable declaration: name: Type = value;
@@ -1583,7 +1572,7 @@ impl<'src> Parser<'src> {
             None
         };
 
-        let end = self.current_offset_or_eof();
+        let end = self.current_span().start;
         Ok(Spanned::new(
             Expr::IfExpr {
                 condition: Box::new(condition),
@@ -1740,21 +1729,15 @@ impl<'src> Parser<'src> {
             }
             Some(Token::Minus) => {
                 self.advance();
-                match self.current() {
-                    Some(Token::Integer(n)) => {
-                        let n = -*n;
-                        self.advance();
-                        Ok(Pattern::Literal(Literal::Integer(n)))
-                    }
-                    Some(Token::Float(n)) => {
-                        let n = -*n;
-                        self.advance();
-                        Ok(Pattern::Literal(Literal::Float(n)))
-                    }
-                    _ => Err(ParseError::new(
-                        format!("Expected numeric literal after '-', found {:?}", self.current()),
+                if let Some(Token::Integer(n)) = self.current() {
+                    let n = -*n;
+                    self.advance();
+                    Ok(Pattern::Literal(Literal::Integer(n)))
+                } else {
+                    Err(ParseError::new(
+                        format!("Expected integer after '-', found {:?}", self.current()),
                         self.current_span(),
-                    )),
+                    ))
                 }
             }
             Some(Token::Float(n)) => {
@@ -1771,7 +1754,7 @@ impl<'src> Parser<'src> {
                 Ok(Pattern::Literal(Literal::Boolean(false)))
             }
             Some(Token::String(s)) => {
-                let s = decode_escaped_string(s);
+                let s = s.to_string();
                 self.advance();
                 Ok(Pattern::Literal(Literal::String(s)))
             }
@@ -2532,7 +2515,7 @@ impl<'src> Parser<'src> {
             }
         };
 
-        let end = self.current_offset_or_eof();
+        let end = self.current_span().start;
         Ok(Spanned::new(expr, start..end))
     }
 
@@ -3139,46 +3122,6 @@ mod tests {
             panic!("Expected if expression");
         };
         assert!(else_branch.is_none());
-    }
-
-    #[test]
-    fn test_assignment_identifier_span_includes_variable_name() {
-        let source = r#"
-            function main(): None {
-                value = 1;
-                return None;
-            }
-        "#;
-        let program = parse_source(source).expect("Should parse assignment");
-        let Decl::Function(func) = &program.declarations[0].node else {
-            panic!("Expected function declaration");
-        };
-        let Stmt::Assign { target, .. } = &func.body[0].node else {
-            panic!("Expected assignment");
-        };
-        assert_eq!(target.span.start, source.find("value = 1;").expect("find assignment"));
-    }
-
-    #[test]
-    fn test_last_top_level_declaration_span_reaches_eof() {
-        let source = "function main(): None { return None; }";
-        let program = parse_source(source).expect("Should parse program");
-        let decl = &program.declarations[0];
-        assert_eq!(decl.span.start, 0);
-        assert_eq!(decl.span.end, source.len());
-    }
-
-    #[test]
-    fn test_last_statement_span_reaches_eof_before_closing_brace() {
-        let source = "function main(): None { x: Integer = 1; }";
-        let program = parse_source(source).expect("Should parse program");
-        let Decl::Function(func) = &program.declarations[0].node else {
-            panic!("Expected function declaration");
-        };
-        let stmt = &func.body[0];
-        assert!(stmt.span.end > stmt.span.start);
-        let stmt_text = &source[stmt.span.clone()];
-        assert!(stmt_text.starts_with("x: Integer = 1;"));
     }
 
     #[test]
@@ -3962,11 +3905,9 @@ mod tests {
         let source = r#"
             function main(): None {
                 f: Float = 1.0;
-                nf: Float = -1.5;
                 c: Char = 'a';
                 i: Integer = -1;
                 match (f) { 1.0 => { }, _ => { } }
-                match (nf) { -1.5 => { }, _ => { } }
                 match (c) { 'a' => { }, _ => { } }
                 match (i) { -1 => { }, _ => { } }
                 return None;
@@ -4051,32 +3992,6 @@ mod tests {
             panic!("Expected string literal");
         };
         assert_eq!(s, "line1\nline2\t\"ok\"\\");
-    }
-
-    #[test]
-    fn test_string_pattern_decodes_common_escapes() {
-        let source = r#"
-            function main(): Integer {
-                return match ("line1\nline2") {
-                    "line1\nline2" => 1,
-                    _ => 0
-                };
-            }
-        "#;
-        let program = parse_source(source).expect("Should parse");
-        let Decl::Function(func) = &program.declarations[0].node else {
-            panic!("Expected function declaration");
-        };
-        let Stmt::Return(Some(expr)) = &func.body[0].node else {
-            panic!("Expected return statement");
-        };
-        let Expr::Match { arms, .. } = &expr.node else {
-            panic!("Expected match expression");
-        };
-        let Pattern::Literal(Literal::String(s)) = &arms[0].pattern else {
-            panic!("Expected string literal pattern");
-        };
-        assert_eq!(s, "line1\nline2");
     }
 
     #[test]

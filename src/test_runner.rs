@@ -64,20 +64,18 @@ pub struct TestSummary {
 
 /// Discover all tests in a program
 pub fn discover_tests(program: &Program) -> TestDiscovery {
-    fn collect_suite(
+    #[allow(clippy::too_many_arguments)]
+    fn collect_suite_functions(
         declarations: &[crate::ast::Spanned<Decl>],
-        suite_name: String,
         module_prefix: Option<&str>,
-        suites: &mut Vec<TestSuite>,
+        suite_tests: &mut Vec<Test>,
+        before_all: &mut Option<FunctionDecl>,
+        before_each: &mut Option<FunctionDecl>,
+        after_each: &mut Option<FunctionDecl>,
+        after_all: &mut Option<FunctionDecl>,
         total_tests: &mut usize,
         ignored_tests: &mut usize,
     ) {
-        let mut suite_tests = Vec::new();
-        let mut before_all = None;
-        let mut before_each = None;
-        let mut after_each = None;
-        let mut after_all = None;
-
         for decl in declarations {
             match &decl.node {
                 Decl::Function(func) => {
@@ -88,19 +86,19 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
                     qualified_func.name = qualified_name.clone();
 
                     if has_attribute(&func.attributes, Attribute::BeforeAll) {
-                        before_all = Some(qualified_func);
+                        *before_all = Some(qualified_func);
                         continue;
                     }
                     if has_attribute(&func.attributes, Attribute::Before) {
-                        before_each = Some(qualified_func);
+                        *before_each = Some(qualified_func);
                         continue;
                     }
                     if has_attribute(&func.attributes, Attribute::After) {
-                        after_each = Some(qualified_func);
+                        *after_each = Some(qualified_func);
                         continue;
                     }
                     if has_attribute(&func.attributes, Attribute::AfterAll) {
-                        after_all = Some(qualified_func);
+                        *after_all = Some(qualified_func);
                         continue;
                     }
 
@@ -125,11 +123,14 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
                     let next_prefix = module_prefix
                         .map(|prefix| format!("{}__{}", prefix, module.name))
                         .unwrap_or_else(|| module.name.clone());
-                    collect_suite(
+                    collect_suite_functions(
                         &module.declarations,
-                        next_prefix.clone(),
                         Some(&next_prefix),
-                        suites,
+                        suite_tests,
+                        before_all,
+                        before_each,
+                        after_each,
+                        after_all,
                         total_tests,
                         ignored_tests,
                     );
@@ -137,31 +138,43 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
                 Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
             }
         }
-
-        if !suite_tests.is_empty() {
-            suites.push(TestSuite {
-                name: suite_name,
-                tests: suite_tests,
-                before_all,
-                before_each,
-                after_each,
-                after_all,
-            });
-        }
     }
 
     let mut suites = Vec::new();
     let mut total_tests = 0;
     let mut ignored_tests = 0;
 
-    collect_suite(
+    // For now, we create a single "default" suite for all top-level test functions
+    // In the future, we can support test classes/modules
+    let mut suite_tests = Vec::new();
+    let mut before_all = None;
+    let mut before_each = None;
+    let mut after_each = None;
+    let mut after_all = None;
+
+    collect_suite_functions(
         &program.declarations,
-        "default".to_string(),
         None,
-        &mut suites,
+        &mut suite_tests,
+        &mut before_all,
+        &mut before_each,
+        &mut after_each,
+        &mut after_all,
         &mut total_tests,
         &mut ignored_tests,
     );
+
+    // Create default suite if we found any tests
+    if !suite_tests.is_empty() {
+        suites.push(TestSuite {
+            name: "default".to_string(),
+            tests: suite_tests,
+            before_all,
+            before_each,
+            after_each,
+            after_all,
+        });
+    }
 
     TestDiscovery {
         suites,
@@ -651,7 +664,6 @@ module Tests {
 
         assert_eq!(discovery.total_tests, 1);
         assert_eq!(discovery.suites[0].tests[0].name, "Tests__works");
-        assert_eq!(discovery.suites[0].name, "Tests");
         assert_eq!(
             discovery.suites[0]
                 .before_each
@@ -660,63 +672,6 @@ module Tests {
                 .name,
             "Tests__setup"
         );
-    }
-
-    #[test]
-    fn discover_tests_keeps_module_hooks_isolated_per_suite() {
-        let source = r#"
-module A {
-    @Before
-    function setup_a(): None { return None; }
-
-    @Test
-    function works_a(): None { return None; }
-}
-
-module B {
-    @Before
-    function setup_b(): None { return None; }
-
-    @Test
-    function works_b(): None { return None; }
-}
-"#;
-        let tokens = tokenize(source).expect("tokenize");
-        let mut parser = Parser::new(tokens);
-        let program = parser.parse_program().expect("parse");
-        let discovery = discover_tests(&program);
-
-        assert_eq!(discovery.total_tests, 2);
-        assert_eq!(discovery.suites.len(), 2);
-        assert_eq!(discovery.suites[0].name, "A");
-        assert_eq!(
-            discovery.suites[0].before_each.as_ref().expect("suite A hook").name,
-            "A__setup_a"
-        );
-        assert_eq!(discovery.suites[0].tests[0].name, "A__works_a");
-        assert_eq!(discovery.suites[1].name, "B");
-        assert_eq!(
-            discovery.suites[1].before_each.as_ref().expect("suite B hook").name,
-            "B__setup_b"
-        );
-        assert_eq!(discovery.suites[1].tests[0].name, "B__works_b");
-    }
-
-    #[test]
-    fn discovery_ignores_hook_only_modules_without_tests() {
-        let source = r#"
-module Helpers {
-    @BeforeAll
-    function setup(): None { return None; }
-}
-"#;
-        let tokens = tokenize(source).expect("tokenize");
-        let mut parser = Parser::new(tokens);
-        let program = parser.parse_program().expect("parse");
-        let discovery = discover_tests(&program);
-
-        assert_eq!(discovery.total_tests, 0);
-        assert!(discovery.suites.is_empty());
     }
 }
 

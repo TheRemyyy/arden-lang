@@ -35,123 +35,6 @@ struct TargetMachineCacheKey {
     reloc_mode: &'static str,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::Codegen;
-    use crate::ast::{Expr, Literal, Spanned, Type};
-    use inkwell::context::Context;
-
-    fn ident(name: &str) -> Spanned<Expr> {
-        Spanned::new(Expr::Ident(name.to_string()), 0..0)
-    }
-
-    fn field(object: Spanned<Expr>, field: &str) -> Spanned<Expr> {
-        Spanned::new(
-            Expr::Field {
-                object: Box::new(object),
-                field: field.to_string(),
-            },
-            0..0,
-        )
-    }
-
-    #[test]
-    fn infer_option_none_uses_explicit_type_args() {
-        let context = Context::create();
-        let codegen = Codegen::new(&context, "test");
-        let expr = Expr::Call {
-            callee: Box::new(field(ident("Option"), "none")),
-            args: Vec::new(),
-            type_args: vec![Type::String],
-        };
-
-        assert_eq!(codegen.infer_expr_type(&expr, &[]), Type::Option(Box::new(Type::String)));
-    }
-
-    #[test]
-    fn infer_result_ok_uses_explicit_error_type_arg() {
-        let context = Context::create();
-        let codegen = Codegen::new(&context, "test");
-        let expr = Expr::Call {
-            callee: Box::new(field(ident("Result"), "ok")),
-            args: vec![Spanned::new(Expr::Literal(Literal::Integer(1)), 0..0)],
-            type_args: vec![Type::Integer, Type::Float],
-        };
-
-        assert_eq!(
-            codegen.infer_expr_type(&expr, &[]),
-            Type::Result(Box::new(Type::Integer), Box::new(Type::Float))
-        );
-    }
-
-    #[test]
-    fn infer_result_error_uses_explicit_ok_type_arg() {
-        let context = Context::create();
-        let codegen = Codegen::new(&context, "test");
-        let expr = Expr::Call {
-            callee: Box::new(field(ident("Result"), "error")),
-            args: vec![Spanned::new(
-                Expr::Literal(Literal::String("boom".to_string())),
-                0..0,
-            )],
-            type_args: vec![Type::Boolean, Type::String],
-        };
-
-        assert_eq!(
-            codegen.infer_expr_type(&expr, &[]),
-            Type::Result(Box::new(Type::Boolean), Box::new(Type::String))
-        );
-    }
-
-    #[test]
-    fn infer_object_type_leaves_untyped_option_none_unresolved() {
-        let context = Context::create();
-        let codegen = Codegen::new(&context, "test");
-        let expr = Expr::Call {
-            callee: Box::new(field(ident("Option"), "none")),
-            args: Vec::new(),
-            type_args: vec![],
-        };
-
-        assert_eq!(codegen.infer_object_type(&expr), Some(Type::Option(Box::new(Type::Integer))));
-    }
-
-    #[test]
-    fn infer_object_type_leaves_untyped_result_ok_unresolved() {
-        let context = Context::create();
-        let codegen = Codegen::new(&context, "test");
-        let expr = Expr::Call {
-            callee: Box::new(field(ident("Result"), "ok")),
-            args: vec![Spanned::new(Expr::Literal(Literal::Integer(1)), 0..0)],
-            type_args: vec![],
-        };
-
-        assert_eq!(
-            codegen.infer_object_type(&expr),
-            Some(Type::Result(Box::new(Type::Integer), Box::new(Type::String)))
-        );
-    }
-
-    #[test]
-    fn infer_object_type_leaves_untyped_result_error_unresolved() {
-        let context = Context::create();
-        let codegen = Codegen::new(&context, "test");
-        let expr = Expr::Call {
-            callee: Box::new(field(ident("Result"), "error")),
-            args: vec![Spanned::new(
-                Expr::Literal(Literal::String("boom".to_string())),
-                0..0,
-            )],
-            type_args: vec![],
-        };
-
-        assert_eq!(
-            codegen.infer_object_type(&expr),
-            Some(Type::Result(Box::new(Type::Integer), Box::new(Type::String)))
-        );
-    }
-}
-
 thread_local! {
     // LLVM target machines are not Send, so cache them per worker thread.
     static TARGET_MACHINE_CACHE: RefCell<HashMap<TargetMachineCacheKey, TargetMachine>> =
@@ -159,100 +42,6 @@ thread_local! {
 }
 
 impl<'ctx> Codegen<'ctx> {
-    fn infer_option_result_constructor_type(
-        &self,
-        owner: &str,
-        field: &str,
-        args: &[Spanned<Expr>],
-        type_args: &[Type],
-        params: &[Parameter],
-    ) -> Option<Type> {
-        match (owner, field) {
-            ("Option", "some") => args.first().map(|first_arg| {
-                Type::Option(Box::new(self.infer_expr_type(&first_arg.node, params)))
-            }),
-            ("Option", "none") => type_args
-                .first()
-                .cloned()
-                .map(|inner| Type::Option(Box::new(inner))),
-            ("Result", "ok") => args.first().and_then(|first_arg| {
-                type_args.get(1).cloned().map(|err_ty| {
-                    Type::Result(
-                        Box::new(self.infer_expr_type(&first_arg.node, params)),
-                        Box::new(err_ty),
-                    )
-                })
-            }),
-            ("Result", "error") => args.first().and_then(|first_arg| {
-                type_args.first().cloned().map(|ok_ty| {
-                    Type::Result(
-                        Box::new(ok_ty),
-                        Box::new(self.infer_expr_type(&first_arg.node, params)),
-                    )
-                })
-            }),
-            _ => None,
-        }
-    }
-
-    fn flatten_field_chain_local(expr: &Expr) -> Option<Vec<String>> {
-        match expr {
-            Expr::Ident(name) => Some(vec![name.clone()]),
-            Expr::Field { object, field } => {
-                let mut parts = Self::flatten_field_chain_local(&object.node)?;
-                parts.push(field.clone());
-                Some(parts)
-            }
-            _ => None,
-        }
-    }
-
-    fn infer_called_function_return_type(&self, callee: &Expr) -> Option<Type> {
-        match callee {
-            Expr::Ident(name) => self.functions.get(name).and_then(|(_, ty)| match ty {
-                Type::Function(_, ret) => Some((**ret).clone()),
-                _ => None,
-            }),
-            Expr::Field { object, field } => {
-                if let Expr::Ident(owner_name) = &object.node {
-                    let resolved_owner = self.resolve_module_alias(owner_name);
-                    let mangled = format!("{}__{}", resolved_owner, field);
-                    if let Some((_, ty)) = self.functions.get(&mangled) {
-                        return match ty {
-                            Type::Function(_, ret) => Some((**ret).clone()),
-                            _ => None,
-                        };
-                    }
-                }
-
-                if let Some(path_parts) = Self::flatten_field_chain_local(callee) {
-                    if path_parts.len() >= 3 {
-                        let candidate = path_parts.join("__");
-                        if let Some((_, ty)) = self.functions.get(&candidate) {
-                            return match ty {
-                                Type::Function(_, ret) => Some((**ret).clone()),
-                                _ => None,
-                            };
-                        }
-                    }
-                }
-
-                let callee_ty = self.infer_object_type(callee)?;
-                match callee_ty {
-                    Type::Function(_, ret) => Some((*ret).clone()),
-                    _ => None,
-                }
-            }
-            _ => {
-                let callee_ty = self.infer_object_type(callee)?;
-                match callee_ty {
-                    Type::Function(_, ret) => Some((*ret).clone()),
-                    _ => None,
-                }
-            }
-        }
-    }
-
     fn normalize_inferred_object_type(&self, ty: Type) -> Type {
         self.normalize_codegen_type(&ty)
     }
@@ -747,7 +536,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, fn_type, None)
     }
 
-    pub fn get_or_declare_stdin(&self) -> Result<PointerValue<'ctx>> {
+    pub fn get_or_declare_stdin(&self) -> PointerValue<'ctx> {
         let name = "__acrt_iob_func";
         let func = if let Some(f) = self.module.get_function(name) {
             f
@@ -767,7 +556,7 @@ impl<'ctx> Codegen<'ctx> {
                 "stdin",
             )
             .unwrap();
-        Ok(self.extract_call_value(call)?.into_pointer_value())
+        self.extract_call_value(call).into_pointer_value()
     }
 
     pub fn get_or_declare_exit(&self) -> FunctionValue<'ctx> {
@@ -786,10 +575,10 @@ impl<'ctx> Codegen<'ctx> {
     pub fn extract_call_value(
         &self,
         call: inkwell::values::CallSiteValue<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>> {
+    ) -> BasicValueEnum<'ctx> {
         match call.try_as_basic_value() {
-            ValueKind::Basic(val) => Ok(val),
-            _ => Err(CodegenError::new("Expected call to return a value")),
+            ValueKind::Basic(val) => val,
+            _ => panic!("Expected call to return a value"),
         }
     }
 
@@ -807,7 +596,7 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(strlen_fn, &[s_ptr.into()], "len")
             .unwrap();
-        let len = self.extract_call_value(len_call)?.into_int_value();
+        let len = self.extract_call_value(len_call).into_int_value();
 
         let one = self.context.i64_type().const_int(1, false);
         let size = self.builder.build_int_add(len, one, "size").unwrap();
@@ -815,7 +604,7 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc_fn, &[size.into()], "buf")
             .unwrap();
-        let buf = self.extract_call_value(buf_call)?.into_pointer_value();
+        let buf = self.extract_call_value(buf_call).into_pointer_value();
 
         let current_fn = self.current_function.unwrap();
         let cond_bb = self.context.append_basic_block(current_fn, "trans.cond");
@@ -864,7 +653,7 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(transform_fn, &[char_i32.into()], "t32")
             .unwrap();
-        let trans_val32 = self.extract_call_value(trans_call)?.into_int_value();
+        let trans_val32 = self.extract_call_value(trans_call).into_int_value();
         let trans_val = self
             .builder
             .build_int_truncate(trans_val32, self.context.i8_type(), "t8")
@@ -951,9 +740,15 @@ impl<'ctx> Codegen<'ctx> {
 
         let malloc = self.get_or_declare_malloc();
         let size = env_struct_ty.size_of().unwrap();
-        let env_ptr_raw = self
-            .extract_call_value(self.builder.build_call(malloc, &[size.into()], "env_ptr").unwrap())?
-            .into_pointer_value();
+        let env_ptr_raw = match self
+            .builder
+            .build_call(malloc, &[size.into()], "env_ptr")
+            .unwrap()
+            .try_as_basic_value()
+        {
+            ValueKind::Basic(val) => val.into_pointer_value(),
+            _ => panic!("malloc should return a value"),
+        };
 
         // Fill environment
         for (i, (name, ty)) in captures.iter().enumerate() {
@@ -1203,7 +998,7 @@ impl<'ctx> Codegen<'ctx> {
                                 "match_expr_strcmp",
                             )
                             .unwrap();
-                        let cmp_val = self.extract_call_value(cmp)?.into_int_value();
+                        let cmp_val = self.extract_call_value(cmp).into_int_value();
                         self.builder
                             .build_int_compare(
                                 IntPredicate::EQ,
@@ -1636,63 +1431,73 @@ impl<'ctx> Codegen<'ctx> {
                 Expr::Field { object, field } => {
                     if let Expr::Ident(owner_name) = &object.node {
                         let resolved_owner = self.resolve_module_alias(owner_name);
-                        if let Expr::Call {
-                            args, type_args, ..
-                        } = expr
-                        {
-                            if let Some(ty) = self.infer_option_result_constructor_type(
-                                &resolved_owner,
-                                field,
-                                args,
-                                type_args,
-                                &[],
-                            ) {
-                                return Some(ty);
-                            }
-                            match resolved_owner.as_str() {
-                                "Option" if field == "none" => {
-                                    return Some(Type::Option(Box::new(Type::Integer)));
+                        match (resolved_owner.as_str(), field.as_str()) {
+                            ("Option", "some") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Some(Type::Option(Box::new(
+                                            self.infer_expr_type(&first_arg.node, &[]),
+                                        )));
+                                    }
                                 }
-                                "Result" if field == "ok" => {
-                                    return args.first().map(|first_arg| {
-                                        Type::Result(
+                            }
+                            ("Option", "none") => {
+                                return Some(Type::Option(Box::new(Type::Integer)))
+                            }
+                            ("Result", "ok") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Some(Type::Result(
                                             Box::new(self.infer_expr_type(&first_arg.node, &[])),
                                             Box::new(Type::String),
-                                        )
-                                    });
+                                        ));
+                                    }
                                 }
-                                "Result" if field == "error" => {
-                                    return args.first().map(|first_arg| {
-                                        Type::Result(
+                            }
+                            ("Result", "error") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Some(Type::Result(
                                             Box::new(Type::Integer),
                                             Box::new(self.infer_expr_type(&first_arg.node, &[])),
-                                        )
-                                    });
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    if let Some(obj_ty) = self.infer_object_type(&object.node) {
-                        if let Some(ret_ty) = self.builtin_method_return_type(&obj_ty, field) {
-                            return Some(ret_ty);
-                        }
-                        if let Some(class_name) = self.type_to_class_name(&obj_ty) {
-                            if let Some(method_name) =
-                                self.resolve_method_function_name(&class_name, field)
-                            {
-                                if let Some((_, ty)) = self.functions.get(&method_name) {
-                                    return match ty {
-                                        Type::Function(_, ret) => Some((**ret).clone()),
-                                        _ => None,
-                                    };
+                                        ));
+                                    }
                                 }
                             }
+                            _ => {}
                         }
                     }
-                    self.infer_called_function_return_type(&callee.node)
+                    let obj_ty = self.infer_object_type(&object.node)?;
+                    if let Some(ret_ty) = self.builtin_method_return_type(&obj_ty, field) {
+                        Some(ret_ty)
+                    } else {
+                        let class_name = self.type_to_class_name(&obj_ty)?;
+                        let method_name = self.resolve_method_function_name(&class_name, field)?;
+                        let (_, ty) = self.functions.get(&method_name)?;
+                        match ty {
+                            Type::Function(_, ret) => Some((**ret).clone()),
+                            _ => None,
+                        }
+                    }
                 }
-                _ => self.infer_called_function_return_type(&callee.node),
+                Expr::Ident(name) => {
+                    let callee_ty = self
+                        .variables
+                        .get(name)
+                        .map(|v| v.ty.clone())
+                        .or_else(|| self.functions.get(name).map(|(_, ty)| ty.clone()))?;
+                    match callee_ty {
+                        Type::Function(_, ret) => Some((*ret).clone()),
+                        _ => None,
+                    }
+                }
+                _ => {
+                    let callee_ty = self.infer_object_type(&callee.node)?;
+                    match callee_ty {
+                        Type::Function(_, ret) => Some((*ret).clone()),
+                        _ => None,
+                    }
+                }
             },
             Expr::Try(inner) => match self.infer_object_type(&inner.node)? {
                 Type::Result(ok, _) => Some((*ok).clone()),
@@ -2183,32 +1988,59 @@ impl<'ctx> Codegen<'ctx> {
                                 _ => Type::Integer,
                             };
                         }
-                        if let Expr::Call {
-                            args, type_args, ..
-                        } = expr
-                        {
-                            if let Some(ty) = self.infer_option_result_constructor_type(
-                                &resolved_owner,
-                                field,
-                                args,
-                                type_args,
-                                params,
-                            ) {
-                                return ty;
-        }
-    }
-}
-
+                        match (resolved_owner.as_str(), field.as_str()) {
+                            ("Option", "some") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Type::Option(Box::new(
+                                            self.infer_expr_type(&first_arg.node, params),
+                                        ));
+                                    }
+                                }
+                            }
+                            ("Option", "none") => return Type::Option(Box::new(Type::Integer)),
+                            ("Result", "ok") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Type::Result(
+                                            Box::new(self.infer_expr_type(&first_arg.node, params)),
+                                            Box::new(Type::String),
+                                        );
+                                    }
+                                }
+                            }
+                            ("Result", "error") => {
+                                if let Expr::Call { args, .. } = expr {
+                                    if let Some(first_arg) = args.first() {
+                                        return Type::Result(
+                                            Box::new(Type::Integer),
+                                            Box::new(self.infer_expr_type(&first_arg.node, params)),
+                                        );
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                     let obj_ty = self.infer_expr_type(&object.node, params);
                     if let Some(ret_ty) = self.builtin_method_return_type(&obj_ty, field) {
                         return ret_ty;
                     }
-                    self.infer_called_function_return_type(&callee.node)
-                        .unwrap_or(Type::Integer)
+                    let callee_ty = self.infer_expr_type(&callee.node, params);
+                    if let Type::Function(_, ret_ty) = callee_ty {
+                        *ret_ty
+                    } else {
+                        Type::Integer
+                    }
                 }
-                _ => self
-                    .infer_called_function_return_type(&callee.node)
-                    .unwrap_or(Type::Integer),
+                _ => {
+                    let callee_ty = self.infer_expr_type(&callee.node, params);
+                    if let Type::Function(_, ret_ty) = callee_ty {
+                        *ret_ty
+                    } else {
+                        Type::Integer
+                    }
+                }
             },
             Expr::Field { object, field } => {
                 let obj_ty = self.infer_expr_type(&object.node, params);

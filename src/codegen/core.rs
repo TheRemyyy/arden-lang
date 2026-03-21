@@ -4964,7 +4964,7 @@ impl<'ctx> Codegen<'ctx> {
             let method_prefix = format!("{}__", class_name);
             active_symbols
                 .iter()
-                .any(|symbol| symbol == &format!("{}__new", class_name) || symbol.starts_with(&method_prefix))
+                .any(|symbol| symbol.starts_with(&method_prefix))
         }
 
         fn module_has_active_symbol(
@@ -5750,12 +5750,6 @@ impl<'ctx> Codegen<'ctx> {
         // Compile body
         for stmt in &constructor.body {
             self.compile_stmt(&stmt.node)?;
-        }
-
-        if !self.needs_terminator() {
-            self.current_function = None;
-            self.current_return_type = None;
-            return Ok(());
         }
 
         // Return instance
@@ -6892,35 +6886,10 @@ impl<'ctx> Codegen<'ctx> {
 
             Stmt::Return(value) => {
                 // Check if we're in main function (returns i32)
-                let current_name = self
+                let is_main = self
                     .current_function
-                    .and_then(|f| f.get_name().to_str().ok().map(ToString::to_string))
-                    .unwrap_or_default();
-                let is_main = current_name == "main";
-                let is_constructor = current_name.ends_with("__new");
-
-                if is_constructor
-                    && value
-                        .as_ref()
-                        .is_none_or(|expr| matches!(&expr.node, Expr::Literal(Literal::None)))
-                {
-                    let this_var = self
-                        .variables
-                        .get("this")
-                        .ok_or_else(|| CodegenError::new("Constructor return missing 'this'"))?;
-                    let this_val = self
-                        .builder
-                        .build_load(
-                            self.context.ptr_type(AddressSpace::default()),
-                            this_var.ptr,
-                            "ctor_return_this",
-                        )
-                        .map_err(|e| {
-                            CodegenError::new(format!("load failed for constructor 'this': {}", e))
-                        })?;
-                    self.builder.build_return(Some(&this_val)).unwrap();
-                    return Ok(());
-                }
+                    .map(|f| f.get_name().to_str().unwrap_or("") == "main")
+                    .unwrap_or(false);
 
                 match value {
                     Some(expr) => {
@@ -7542,7 +7511,7 @@ impl<'ctx> Codegen<'ctx> {
                                 "match_strcmp",
                             )
                             .unwrap();
-                        let cmp_val = self.extract_call_value(cmp)?.into_int_value();
+                        let cmp_val = self.extract_call_value(cmp).into_int_value();
                         self.builder
                             .build_int_compare(
                                 IntPredicate::EQ,
@@ -8425,12 +8394,8 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>> {
         let lhs = self.compile_expr(left)?;
         let rhs = self.compile_expr(right)?;
-        let left_ty = self
-            .infer_object_type(left)
-            .unwrap_or_else(|| self.infer_expr_type(left, &[]));
-        let right_ty = self
-            .infer_object_type(right)
-            .unwrap_or_else(|| self.infer_expr_type(right, &[]));
+        let left_ty = self.infer_expr_type(left, &[]);
+        let right_ty = self.infer_expr_type(right, &[]);
 
         if matches!(op, BinOp::Eq | BinOp::NotEq) && left_ty == right_ty {
             let eq = self.build_value_equality(lhs, rhs, &left_ty, "eq")?;
@@ -8557,7 +8522,7 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_call(strcmp, &[lhs.into(), rhs.into()], "strcmp")
                 .map_err(|e| CodegenError::new(format!("strcmp call failed: {}", e)))?;
-            let cmp = self.extract_call_value(cmp)?.into_int_value();
+            let cmp = self.extract_call_value(cmp).into_int_value();
             let result = match op {
                 BinOp::Eq => self
                     .builder
@@ -8679,7 +8644,7 @@ impl<'ctx> Codegen<'ctx> {
                         if let Type::Option(inner_ty) = &inferred_expr_ty {
                             return self.create_option_none_typed(inner_ty);
                         }
-                        return self.create_option_none_typed(&Type::Integer);
+                        return self.create_option_none();
                     }
                     ("Result", "ok") => {
                         if args.len() != 1 {
@@ -8691,9 +8656,8 @@ impl<'ctx> Codegen<'ctx> {
                             let val = self.compile_expr_with_expected_type(&args[0].node, ok_ty)?;
                             return self.create_result_ok_typed(val, ok_ty, err_ty);
                         }
-                        let ok_ty = self.infer_expr_type(&args[0].node, &[]);
-                        let val = self.compile_expr_with_expected_type(&args[0].node, &ok_ty)?;
-                        return self.create_result_ok_typed(val, &ok_ty, &Type::String);
+                        let val = self.compile_expr(&args[0].node)?;
+                        return self.create_result_ok(val);
                     }
                     ("Result", "error") => {
                         if args.len() != 1 {
@@ -8706,9 +8670,8 @@ impl<'ctx> Codegen<'ctx> {
                                 self.compile_expr_with_expected_type(&args[0].node, err_ty)?;
                             return self.create_result_error_typed(val, ok_ty, err_ty);
                         }
-                        let err_ty = self.infer_expr_type(&args[0].node, &[]);
-                        let val = self.compile_expr_with_expected_type(&args[0].node, &err_ty)?;
-                        return self.create_result_error_typed(val, &Type::Integer, &err_ty);
+                        let val = self.compile_expr(&args[0].node)?;
+                        return self.create_result_error(val);
                     }
                     _ => {}
                 }
@@ -9117,7 +9080,7 @@ impl<'ctx> Codegen<'ctx> {
                             .builder
                             .build_call(strlen_fn, &[s.into()], "strlen")
                             .unwrap();
-                        return self.extract_call_value(call);
+                        return Ok(self.extract_call_value(call));
                     }
                 }
                 _ => {}
@@ -10184,8 +10147,8 @@ impl<'ctx> Codegen<'ctx> {
             Type::Map(_, _) => {
                 return self.create_empty_map_for_type(&normalized_ty);
             }
-            Type::Option(inner) => return self.create_option_none_typed(inner),
-            Type::Result(ok, err) => return self.create_default_result_typed(ok, err),
+            Type::Option(_) => return self.create_option_none(),
+            Type::Result(_, _) => return self.create_default_result(),
             Type::Set(_) => return self.create_empty_set_for_type(&normalized_ty),
             Type::Box(_) => return self.create_empty_box(),
             Type::Rc(_) => return self.create_empty_rc(),
@@ -10502,7 +10465,7 @@ impl<'ctx> Codegen<'ctx> {
                 } else {
                     let fabs = self.get_or_declare_math_func("fabs", true);
                     let call = self.builder.build_call(fabs, &[val.into()], "abs").unwrap();
-                    Ok(Some(self.extract_call_value(call)?))
+                    Ok(Some(self.extract_call_value(call)))
                 }
             }
             "Math__min" => {
@@ -10523,7 +10486,7 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_call(fmin, &[a.into(), b.into()], "min")
                         .unwrap();
-                    Ok(Some(self.extract_call_value(call)?))
+                    Ok(Some(self.extract_call_value(call)))
                 }
             }
             "Math__max" => {
@@ -10544,7 +10507,7 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_call(fmax, &[a.into(), b.into()], "max")
                         .unwrap();
-                    Ok(Some(self.extract_call_value(call)?))
+                    Ok(Some(self.extract_call_value(call)))
                 }
             }
             "Math__sqrt" => {
@@ -10566,7 +10529,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(sqrt, &[fval.into()], "sqrt")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__pow" => {
                 let base = self.compile_expr(&args[0].node)?;
@@ -10600,7 +10563,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(pow_fn, &[fbase.into(), fexp.into()], "pow")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__sin" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -10621,7 +10584,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(sin_fn, &[fval.into()], "sin")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__cos" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -10642,7 +10605,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(cos_fn, &[fval.into()], "cos")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__tan" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -10663,7 +10626,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(tan_fn, &[fval.into()], "tan")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__floor" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -10672,7 +10635,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(floor_fn, &[val.into()], "floor")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__ceil" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -10681,7 +10644,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(ceil_fn, &[val.into()], "ceil")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__round" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -10690,7 +10653,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(round_fn, &[val.into()], "round")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__log" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -10711,7 +10674,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(log_fn, &[fval.into()], "log")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__log10" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -10732,7 +10695,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(log10_fn, &[fval.into()], "log10")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Math__exp" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -10753,13 +10716,13 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(exp_fn, &[fval.into()], "exp")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
 
             "Math__random" => {
                 let rand_fn = self.get_or_declare_rand();
                 let res = self.builder.build_call(rand_fn, &[], "r").unwrap();
-                let val = self.extract_call_value(res)?.into_int_value();
+                let val = self.extract_call_value(res).into_int_value();
                 let fval = self
                     .builder
                     .build_unsigned_int_to_float(val, self.context.f64_type(), "rf")
@@ -10859,7 +10822,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[buffer_size.into()], "strbuf")
                     .unwrap();
-                let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
+                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
 
                 // Format string based on type
                 let (fmt, print_args): (&str, Vec<BasicMetadataValueEnum>) = if val.is_int_value() {
@@ -10901,7 +10864,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strlen_fn, &[s.into()], "len")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)?))
+                Ok(Some(self.extract_call_value(call)))
             }
             "Str__compare" => {
                 let s1 = self.compile_expr(&args[0].node)?;
@@ -10912,7 +10875,7 @@ impl<'ctx> Codegen<'ctx> {
                     .build_call(strcmp_fn, &[s1.into(), s2.into()], "cmp")
                     .unwrap();
                 // strcmp returns i32, extend to i64
-                let result = self.extract_call_value(call)?.into_int_value();
+                let result = self.extract_call_value(call).into_int_value();
                 let extended = self
                     .builder
                     .build_int_s_extend(result, self.context.i64_type(), "cmp64")
@@ -10934,12 +10897,12 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strlen_fn, &[s1.into()], "len1")
                     .unwrap();
-                let len1 = self.extract_call_value(len1_call)?.into_int_value();
+                let len1 = self.extract_call_value(len1_call).into_int_value();
                 let len2_call = self
                     .builder
                     .build_call(strlen_fn, &[s2.into()], "len2")
                     .unwrap();
-                let len2 = self.extract_call_value(len2_call)?.into_int_value();
+                let len2 = self.extract_call_value(len2_call).into_int_value();
 
                 // Allocate len1 + len2 + 1
                 let total_len = self.builder.build_int_add(len1, len2, "total").unwrap();
@@ -10956,7 +10919,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[buffer_size.into()], "buf")
                     .unwrap();
-                let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
+                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
 
                 // strcpy(buffer, s1)
                 self.builder
@@ -10994,7 +10957,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strlen_fn, &[s_ptr.into()], "len")
                     .unwrap();
-                let len = self.extract_call_value(len_call)?.into_int_value();
+                let len = self.extract_call_value(len_call).into_int_value();
 
                 // Find start (first non-space)
                 let start_ptr = self
@@ -11042,7 +11005,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_int_compare(
                         IntPredicate::NE,
-                        self.extract_call_value(is_space_call)?.into_int_value(),
+                        self.extract_call_value(is_space_call).into_int_value(),
                         self.context.i32_type().const_int(0, false),
                         "",
                     )
@@ -11114,7 +11077,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_int_compare(
                         IntPredicate::NE,
-                        self.extract_call_value(is_space_call)?.into_int_value(),
+                        self.extract_call_value(is_space_call).into_int_value(),
                         self.context.i32_type().const_int(0, false),
                         "",
                     )
@@ -11156,7 +11119,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc_fn, &[alloc_size.into()], "buf")
                     .unwrap();
-                let buf = self.extract_call_value(buf_call)?.into_pointer_value();
+                let buf = self.extract_call_value(buf_call).into_pointer_value();
 
                 let src_ptr = unsafe {
                     self.builder
@@ -11192,7 +11155,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strstr, &[s.into(), sub.into()], "pos")
                     .unwrap();
-                let ptr = self.extract_call_value(res)?.into_pointer_value();
+                let ptr = self.extract_call_value(res).into_pointer_value();
                 let is_null = self.builder.build_is_null(ptr, "not_found").unwrap();
                 let found = self.builder.build_not(is_null, "found").unwrap();
                 Ok(Some(found.into()))
@@ -11214,7 +11177,7 @@ impl<'ctx> Codegen<'ctx> {
                         &[
                             s.into(),
                             pre.into(),
-                            self.extract_call_value(pre_len)?.into_int_value().into(),
+                            self.extract_call_value(pre_len).into_int_value().into(),
                         ],
                         "cmp",
                     )
@@ -11223,7 +11186,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_int_compare(
                         IntPredicate::EQ,
-                        self.extract_call_value(res)?.into_int_value(),
+                        self.extract_call_value(res).into_int_value(),
                         self.context.i32_type().const_int(0, false),
                         "is_zero",
                     )
@@ -11245,8 +11208,8 @@ impl<'ctx> Codegen<'ctx> {
                     .build_call(strlen, &[suf.into()], "suf_len")
                     .unwrap();
 
-                let s_len_val = self.extract_call_value(s_len)?.into_int_value();
-                let suf_len_val = self.extract_call_value(suf_len)?.into_int_value();
+                let s_len_val = self.extract_call_value(s_len).into_int_value();
+                let suf_len_val = self.extract_call_value(suf_len).into_int_value();
 
                 let can_end = self
                     .builder
@@ -11276,7 +11239,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_int_compare(
                         IntPredicate::EQ,
-                        self.extract_call_value(res)?.into_int_value(),
+                        self.extract_call_value(res).into_int_value(),
                         self.context.i32_type().const_int(0, false),
                         "is_zero",
                     )
@@ -11291,14 +11254,14 @@ impl<'ctx> Codegen<'ctx> {
                 // Read a line from stdin
                 let malloc = self.get_or_declare_malloc();
                 let fgets = self.get_or_declare_fgets();
-                let stdin = self.get_or_declare_stdin()?;
+                let stdin = self.get_or_declare_stdin();
 
                 let buffer_size = self.context.i64_type().const_int(1024, false);
                 let buffer_call = self
                     .builder
                     .build_call(malloc, &[buffer_size.into()], "linebuf")
                     .unwrap();
-                let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
+                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
 
                 let stdin_val = self
                     .builder
@@ -11381,7 +11344,7 @@ impl<'ctx> Codegen<'ctx> {
                         "file",
                     )
                     .unwrap();
-                let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
+                let file_ptr = self.extract_call_value(file_call).into_pointer_value();
 
                 let _null = self.context.ptr_type(AddressSpace::default()).const_null();
                 let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
@@ -11455,7 +11418,7 @@ impl<'ctx> Codegen<'ctx> {
                         "file",
                     )
                     .unwrap();
-                let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
+                let file_ptr = self.extract_call_value(file_call).into_pointer_value();
 
                 let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
 
@@ -11500,7 +11463,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(ftell, &[file_ptr.into()], "size")
                     .unwrap();
-                let size = self.extract_call_value(size_call)?.into_int_value();
+                let size = self.extract_call_value(size_call).into_int_value();
 
                 // rewind(f)
                 self.builder
@@ -11514,7 +11477,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[alloc_size.into()], "buffer")
                     .unwrap();
-                let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
+                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
 
                 // fread(buffer, 1, size, f)
                 let size_size_t = size; // Assuming size_t is i64
@@ -11579,7 +11542,7 @@ impl<'ctx> Codegen<'ctx> {
                         "file",
                     )
                     .unwrap();
-                let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
+                let file_ptr = self.extract_call_value(file_call).into_pointer_value();
 
                 let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
 
@@ -11617,7 +11580,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(remove, &[path.into()], "res")
                     .unwrap();
-                let res = self.extract_call_value(res_call)?.into_int_value();
+                let res = self.extract_call_value(res_call).into_int_value();
 
                 let zero = self.context.i32_type().const_int(0, false);
                 let success = self
@@ -11642,7 +11605,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(time_fn, &[null.into()], "t")
                     .unwrap();
-                let t_raw = self.extract_call_value(t_val)?;
+                let t_raw = self.extract_call_value(t_val);
 
                 // 2. Alloca for time_t (i64)
                 let t_ptr = self
@@ -11656,7 +11619,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(localtime_fn, &[t_ptr.into()], "tm")
                     .unwrap();
-                let tm_ptr = self.extract_call_value(tm_ptr_val)?.into_pointer_value();
+                let tm_ptr = self.extract_call_value(tm_ptr_val).into_pointer_value();
 
                 // 4. Allocate buffer for string (64 bytes should be enough for time)
                 let buf_size = self.context.i64_type().const_int(64, false);
@@ -11664,7 +11627,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[buf_size.into()], "buf")
                     .unwrap();
-                let buf_ptr = self.extract_call_value(buf_ptr_val)?.into_pointer_value();
+                let buf_ptr = self.extract_call_value(buf_ptr_val).into_pointer_value();
 
                 // 5. If format is empty string, use default "%H:%M:%S"
                 let strlen_fn = self.get_or_declare_strlen();
@@ -11672,7 +11635,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strlen_fn, &[format.into()], "len")
                     .unwrap();
-                let is_empty_val = self.extract_call_value(is_empty)?.into_int_value();
+                let is_empty_val = self.extract_call_value(is_empty).into_int_value();
                 let is_zero = self
                     .builder
                     .build_int_compare(
@@ -11724,7 +11687,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(time_fn, &[null.into()], "time")
                     .unwrap();
-                Ok(Some(self.extract_call_value(res)?))
+                Ok(Some(self.extract_call_value(res)))
             }
 
             "Time__sleep" => {
@@ -11770,7 +11733,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(getenv_fn, &[name.into()], "env")
                     .unwrap();
-                let val = self.extract_call_value(res)?.into_pointer_value();
+                let val = self.extract_call_value(res).into_pointer_value();
 
                 // If NULL, return empty string
                 let is_null = self.builder.build_is_null(val, "is_null").unwrap();
@@ -11807,7 +11770,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(system_fn, &[cmd.into()], "exit_code")
                     .unwrap();
-                let code = self.extract_call_value(res)?.into_int_value();
+                let code = self.extract_call_value(res).into_int_value();
                 let code64 = self
                     .builder
                     .build_int_s_extend(code, self.context.i64_type(), "code64")
@@ -11835,7 +11798,7 @@ impl<'ctx> Codegen<'ctx> {
                         "pipe",
                     )
                     .unwrap();
-                let pipe_ptr = self.extract_call_value(pipe_val)?.into_pointer_value();
+                let pipe_ptr = self.extract_call_value(pipe_val).into_pointer_value();
 
                 let is_null = self.builder.build_is_null(pipe_ptr, "is_null").unwrap();
 
@@ -11860,7 +11823,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[buf_size.into()], "buf")
                     .unwrap();
-                let buf = self.extract_call_value(buf_call)?.into_pointer_value();
+                let buf = self.extract_call_value(buf_call).into_pointer_value();
 
                 let one = self.context.i64_type().const_int(1, false);
                 let read_len_call = self
@@ -11871,7 +11834,7 @@ impl<'ctx> Codegen<'ctx> {
                         "read_len",
                     )
                     .unwrap();
-                let read_len = self.extract_call_value(read_len_call)?.into_int_value();
+                let read_len = self.extract_call_value(read_len_call).into_int_value();
 
                 // Null terminate at read_len
                 let term_ptr = unsafe {
@@ -11906,7 +11869,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[size.into()], "buf")
                     .unwrap();
-                let buf = self.extract_call_value(buf_call)?.into_pointer_value();
+                let buf = self.extract_call_value(buf_call).into_pointer_value();
                 self.builder
                     .build_call(getcwd_fn, &[buf.into(), size.into()], "cwd")
                     .unwrap();
@@ -12073,7 +12036,7 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_call(strcmp, &[a.into(), b.into()], "cmp")
                         .unwrap();
-                    let cmp_val = self.extract_call_value(res)?.into_int_value();
+                    let cmp_val = self.extract_call_value(res).into_int_value();
                     self.builder
                         .build_int_compare(
                             IntPredicate::EQ,
@@ -12151,7 +12114,7 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_call(strcmp, &[a.into(), b.into()], "cmp")
                         .unwrap();
-                    let cmp_val = self.extract_call_value(res)?.into_int_value();
+                    let cmp_val = self.extract_call_value(res).into_int_value();
                     self.builder
                         .build_int_compare(
                             IntPredicate::NE,
@@ -12361,55 +12324,5 @@ impl<'ctx> Codegen<'ctx> {
             // Not a stdlib function
             _ => Ok(None),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Codegen;
-    use crate::ast::{ClassDecl, Constructor, Decl, ModuleDecl, Spanned, Visibility};
-    use inkwell::context::Context;
-    use std::collections::HashSet;
-
-    fn empty_class(name: &str) -> ClassDecl {
-        ClassDecl {
-            name: name.to_string(),
-            generic_params: Vec::new(),
-            extends: None,
-            implements: Vec::new(),
-            fields: Vec::new(),
-            constructor: Some(Constructor {
-                params: Vec::new(),
-                body: Vec::new(),
-            }),
-            destructor: None,
-            methods: Vec::new(),
-            visibility: Visibility::Public,
-        }
-    }
-
-    #[test]
-    fn filtered_codegen_keeps_class_decl_for_constructor_symbol() {
-        let context = Context::create();
-        let codegen = Codegen::new(&context, "test");
-        let decl = Decl::Class(empty_class("Box"));
-
-        let active_symbols = HashSet::from(["Box__new".to_string()]);
-
-        assert!(codegen.should_compile_decl(&decl, &active_symbols));
-    }
-
-    #[test]
-    fn filtered_codegen_keeps_nested_class_decl_for_constructor_symbol() {
-        let context = Context::create();
-        let codegen = Codegen::new(&context, "test");
-        let decl = Decl::Module(ModuleDecl {
-            name: "Outer".to_string(),
-            declarations: vec![Spanned::new(Decl::Class(empty_class("Box")), 0..0)],
-        });
-
-        let active_symbols = HashSet::from(["Outer__Box__new".to_string()]);
-
-        assert!(codegen.should_compile_decl(&decl, &active_symbols));
     }
 }

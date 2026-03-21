@@ -220,9 +220,6 @@ impl BorrowChecker {
                 }
             }
             Decl::Class(class) => {
-                let qualified_name = module_prefix
-                    .map(|prefix| format!("{}__{}", prefix, class.name))
-                    .unwrap_or_else(|| class.name.clone());
                 let mut methods = HashMap::new();
                 let mutating_methods = Self::class_mutating_methods(class);
                 for method in &class.methods {
@@ -250,7 +247,7 @@ impl BorrowChecker {
                     .collect();
 
                 self.classes.insert(
-                    qualified_name,
+                    class.name.clone(),
                     ClassBorrowSigs {
                         methods,
                         constructor,
@@ -2854,24 +2851,5 @@ mod tests {
             }
         "#;
         borrow_ok(source);
-    }
-
-    #[test]
-    fn nested_module_class_constructor_borrow_params_cannot_be_moved() {
-        let source = r#"
-            function consume(owned s: String): None { return None; }
-            module Outer {
-                class Boxed {
-                    constructor(borrow s: String) {
-                        consume(s);
-                        return None;
-                    }
-                }
-            }
-        "#;
-        let errors = borrow_errors(source);
-        assert!(errors
-            .iter()
-            .any(|m| m.contains("Cannot move 's' while borrowed")));
     }
 }

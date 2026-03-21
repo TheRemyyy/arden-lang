@@ -186,11 +186,7 @@ impl ProjectConfig {
 
 /// Find project root by looking for apex.toml
 pub fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
-    let mut current = if start_dir.is_dir() {
-        Some(start_dir)
-    } else {
-        start_dir.parent()
-    };
+    let mut current = Some(start_dir);
 
     while let Some(dir) = current {
         let config_path = dir.join("apex.toml");
@@ -212,16 +208,7 @@ pub fn is_in_project(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_project_root, is_in_project, OutputKind, ProjectConfig};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn unique_temp_path(name: &str) -> std::path::PathBuf {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time should be after unix epoch")
-            .as_nanos();
-        std::env::temp_dir().join(format!("apex_{name}_{suffix}"))
-    }
+    use super::{OutputKind, ProjectConfig};
 
     #[test]
     fn defaults_include_linker_configuration_fields() {
@@ -272,22 +259,5 @@ output = "demo"
         let _ = std::fs::remove_file(&path);
         assert_eq!(config.name, "demo");
         assert_eq!(config.entry, "src/main.apex");
-    }
-
-    #[test]
-    fn finds_project_root_from_source_file_path() {
-        let root = unique_temp_path("project_root_lookup");
-        let src_dir = root.join("src");
-        let source_file = src_dir.join("main.apex");
-        std::fs::create_dir_all(&src_dir).expect("create src dir");
-        std::fs::write(root.join("apex.toml"), "name = \"demo\"\n").expect("write apex.toml");
-        std::fs::write(&source_file, "function main(): None { return None; }\n")
-            .expect("write source file");
-
-        let detected = find_project_root(&source_file).expect("should find project root");
-        assert_eq!(detected, root);
-        assert!(is_in_project(&source_file));
-
-        let _ = std::fs::remove_dir_all(&root);
     }
 }

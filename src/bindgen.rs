@@ -27,17 +27,13 @@ fn strip_comments(input: &str) -> String {
 }
 
 fn normalize_c_type(raw: &str) -> String {
-    raw.trim()
-        .replace('\t', " ")
-        .split_whitespace()
-        .filter(|token| {
-            !matches!(
-                *token,
-                "const" | "volatile" | "register" | "signed" | "extern" | "static"
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    let mut s = raw.trim().replace('\t', " ");
+    for q in [
+        "const", "volatile", "register", "signed", "extern", "static",
+    ] {
+        s = s.replace(q, "");
+    }
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn map_c_type_to_apex(c_type: &str) -> Option<String> {
@@ -213,12 +209,5 @@ mod tests {
             "void qsort(void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*))",
         );
         assert!(generated.is_none());
-    }
-
-    #[test]
-    fn parses_unsigned_integer_prototypes() {
-        let generated = generate_from_prototype("unsigned int next_id(void)")
-            .expect("unsigned integer prototype should parse");
-        assert_eq!(generated, "extern(c) function next_id(): Integer;");
     }
 }
