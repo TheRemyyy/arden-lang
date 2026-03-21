@@ -22,6 +22,69 @@ fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+platform_name() {
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      echo "windows"
+      ;;
+    Darwin)
+      echo "macos"
+      ;;
+    *)
+      echo "linux"
+      ;;
+  esac
+}
+
+assert_output_artifact_exists() {
+  local base_path="$1"
+  local kind="$2"
+  local platform
+  platform="$(platform_name)"
+  local candidates=()
+
+  case "${kind}" in
+    bin)
+      candidates+=("${base_path}")
+      [[ "${platform}" == "windows" ]] && candidates+=("${base_path}.exe")
+      ;;
+    shared)
+      candidates+=("${base_path}")
+      case "${platform}" in
+        windows)
+          candidates+=("${base_path}.dll" "${base_path}.lib")
+          ;;
+        macos)
+          candidates+=("${base_path}.dylib")
+          ;;
+        *)
+          candidates+=("${base_path}.so")
+          ;;
+      esac
+      ;;
+    static)
+      candidates+=("${base_path}" "${base_path}.a" "${base_path}.lib")
+      ;;
+    *)
+      echo "unknown artifact kind: ${kind}" >&2
+      exit 1
+      ;;
+  esac
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "${candidate}" ]]; then
+      return 0
+    fi
+  done
+
+  echo "expected ${kind} artifact for ${platform}, but none of these files exist:" >&2
+  for candidate in "${candidates[@]}"; do
+    echo "  - ${candidate}" >&2
+  done
+  exit 1
+}
+
 PROJECT_DIR="${TMP_DIR}/sample_project"
 UGLY_FILE="${TMP_DIR}/ugly.apex"
 LINT_FILE="${TMP_DIR}/linty.apex"
@@ -1388,7 +1451,7 @@ path.write_text(content)
 PY
 pushd "${SHARED_PROJECT}" >/dev/null
 "${COMPILER}" build >/dev/null
-test -f "${SHARED_PROJECT}/shared_project"
+assert_output_artifact_exists "${SHARED_PROJECT}/shared_project" "shared"
 popd >/dev/null
 
 "${COMPILER}" new static_project --path "${STATIC_PROJECT}" >/dev/null
@@ -1403,5 +1466,5 @@ path.write_text(content)
 PY
 pushd "${STATIC_PROJECT}" >/dev/null
 "${COMPILER}" build >/dev/null
-test -f "${STATIC_PROJECT}/static_project"
+assert_output_artifact_exists "${STATIC_PROJECT}/static_project" "static"
 popd >/dev/null

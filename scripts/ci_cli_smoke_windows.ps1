@@ -50,6 +50,7 @@ if (-not $repoRootUnix) {
 }
 
 $ciSkip = if ($env:CI_SKIP_COMPILER_BUILD) { $env:CI_SKIP_COMPILER_BUILD } else { "0" }
+$logPath = Join-Path $env:RUNNER_TEMP "apex-ci-smoke-windows.log"
 $bashRun = @"
 set -euo pipefail
 cd '$repoRootUnix'
@@ -63,10 +64,15 @@ echo "=== Smoke script done ==="
 
 $bashOutput = & $bashCommand.Source --noprofile --norc -lc $bashRun 2>&1
 $exitCode = $LASTEXITCODE
+$joinedOutput = ($bashOutput | Out-String)
+$joinedOutput | Set-Content -Path $logPath -Encoding UTF8
 Write-Host "Bash output:"
-Write-Host $bashOutput
+Write-Host $joinedOutput
 Write-Host "Bash exit code: $exitCode"
+Write-Host "Bash log: $logPath"
 if ($exitCode -ne 0) {
+    Write-Host "Last 80 log lines:"
+    Get-Content -Path $logPath -Tail 80 | ForEach-Object { Write-Host $_ }
     Write-Error "Windows CLI smoke wrapper failed with exit code $exitCode"
     exit $exitCode
 }

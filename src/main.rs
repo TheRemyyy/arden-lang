@@ -842,10 +842,75 @@ fn codegen_program_for_unit(
     dependency_closure: Option<&HashSet<PathBuf>>,
     declaration_symbols: Option<&HashSet<String>>,
 ) -> Program {
+    fn merge_codegen_declarations(
+        output: &mut Vec<Spanned<Decl>>,
+        incoming: &[Spanned<Decl>],
+        seen_specializations: &mut HashSet<String>,
+    ) {
+        for decl in incoming {
+            match &decl.node {
+                Decl::Function(func) => {
+                    if func.name.contains("__spec__")
+                        && !seen_specializations.insert(func.name.clone())
+                    {
+                        continue;
+                    }
+                    output.push(decl.clone());
+                }
+                Decl::Class(class) => {
+                    if class.name.contains("__spec__")
+                        && !seen_specializations.insert(class.name.clone())
+                    {
+                        continue;
+                    }
+                    output.push(decl.clone());
+                }
+                Decl::Enum(en) => {
+                    if en.name.contains("__spec__") && !seen_specializations.insert(en.name.clone())
+                    {
+                        continue;
+                    }
+                    output.push(decl.clone());
+                }
+                Decl::Module(module) => {
+                    if let Some(existing_module) =
+                        output
+                            .iter_mut()
+                            .find_map(|existing| match &mut existing.node {
+                                Decl::Module(existing_module)
+                                    if existing_module.name == module.name =>
+                                {
+                                    Some(existing_module)
+                                }
+                                _ => None,
+                            })
+                    {
+                        merge_codegen_declarations(
+                            &mut existing_module.declarations,
+                            &module.declarations,
+                            seen_specializations,
+                        );
+                    } else {
+                        let mut merged_module = module.clone();
+                        merged_module.declarations.clear();
+                        merge_codegen_declarations(
+                            &mut merged_module.declarations,
+                            &module.declarations,
+                            seen_specializations,
+                        );
+                        output.push(Spanned::new(Decl::Module(merged_module), decl.span.clone()));
+                    }
+                }
+                Decl::Interface(_) | Decl::Import(_) => output.push(decl.clone()),
+            }
+        }
+    }
+
     let mut program = Program {
         package: None,
         declarations: Vec::new(),
     };
+    let mut seen_specializations = HashSet::new();
 
     let mut relevant_files = dependency_closure
         .map(|closure| closure.iter().cloned().collect::<Vec<_>>())
@@ -873,7 +938,11 @@ fn codegen_program_for_unit(
                 .map(|symbols| filter_codegen_program_by_symbols(&unit.program, symbols))
                 .unwrap_or_else(|| unit.api_program.clone())
         };
-        program.declarations.extend(source_program.declarations);
+        merge_codegen_declarations(
+            &mut program.declarations,
+            &source_program.declarations,
+            &mut seen_specializations,
+        );
     }
 
     program
@@ -6661,7 +6730,9 @@ mod tests {
     }
 
     fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
-        let _lock = cli_test_lock().lock().expect("lock cwd test mutex");
+        let _lock = cli_test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let previous = std::env::current_dir().expect("current dir");
         std::env::set_current_dir(dir).expect("set current dir");
         let _restore = CwdRestore { previous };
@@ -8459,7 +8530,7 @@ function main(): None {
             .output()
             .expect("run compiled Option.none unwrap binary");
         assert_eq!(output.status.code(), Some(1));
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
         assert!(stdout.contains("Option.unwrap() called on None\n"));
         assert!(!stdout.contains("\\n"));
 
@@ -8485,7 +8556,7 @@ function main(): None {
             .output()
             .expect("run compiled Result.error unwrap binary");
         assert_eq!(output.status.code(), Some(1));
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
         assert!(stdout.contains("Result.unwrap() called on Error\n"));
         assert!(!stdout.contains("\\n"));
 

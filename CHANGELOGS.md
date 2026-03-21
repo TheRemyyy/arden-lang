@@ -14,6 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed invalid import-alias diagnostics in import checking:
   - calls through unresolved aliases like `import nope.missing as alias; alias();` now report an actionable unknown-namespace-alias error instead of suggesting impossible imports such as `import <invalid import alias>.alias;`
 
+- Fixed Windows-specific project/codegen test stability issues:
+  - unwrap panic-message runtime tests now normalize `\r\n` output before asserting, so Windows console line endings no longer fail otherwise-correct panic text checks
+  - temp-project tests no longer cascade into `PoisonError` after one failure because the cwd guard now recovers the poisoned test mutex instead of aborting every subsequent project test
+  - filtered project codegen now deduplicates generated `__spec__` specializations while merging dependency declarations, preventing duplicate-symbol link failures on Windows for namespace-alias nested generic class/method specializations
+- Fixed Windows CLI smoke diagnostics and artifact assertions:
+  - the smoke script now checks platform-appropriate shared/static artifact names (`.dll`, `.lib`, `.so`, `.dylib`, `.a`) instead of assuming Unix-style bare filenames for every target
+  - the PowerShell wrapper now persists the bash log and prints the tail on failure, so Windows smoke failures no longer collapse into a bare `exit code 1` with no actionable context
+
 - Fixed `apex bindgen` C-type normalization for real-world headers:
   - inline `/* ... */` and `// ...` comments now preserve token boundaries instead of merging declarations like `unsigned/*x*/int` into an unparseable pseudo-type
   - `unsigned` integer prototypes now stay typed as integers instead of being corrupted by substring-based qualifier stripping
