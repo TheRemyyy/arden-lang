@@ -225,7 +225,9 @@ impl ProjectConfig {
 
 /// Find project root by looking for apex.toml
 pub fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
-    let mut current = if start_dir.is_file() || start_dir.extension().is_some() {
+    let mut current = if start_dir.is_dir() {
+        Some(start_dir)
+    } else if start_dir.is_file() || start_dir.extension().is_some() {
         start_dir.parent()
     } else {
         Some(start_dir)
@@ -467,6 +469,24 @@ output = "demo"
         let discovered = super::find_project_root(&future_source_file);
 
         let _ = std::fs::remove_dir_all(&project_root);
+
+        assert_eq!(discovered.as_deref(), Some(project_root.as_path()));
+    }
+
+    #[test]
+    fn find_project_root_accepts_existing_directory_with_dot_in_name() {
+        let parent_root = unique_temp_dir("apex_project_find_root_dotted_dir_parent");
+        let project_root = parent_root.join("demo.v1");
+        std::fs::create_dir_all(project_root.join("src")).expect("project src dir should exist");
+        std::fs::write(
+            project_root.join("apex.toml"),
+            "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n",
+        )
+        .expect("project config should be written");
+
+        let discovered = super::find_project_root(&project_root);
+
+        let _ = std::fs::remove_dir_all(&parent_root);
 
         assert_eq!(discovered.as_deref(), Some(project_root.as_path()));
     }

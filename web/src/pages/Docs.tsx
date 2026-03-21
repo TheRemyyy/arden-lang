@@ -67,11 +67,11 @@ function TableOfContents({ html }: { html: string }) {
     useEffect(() => {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = html;
-        const headers = Array.from(tempDiv.querySelectorAll('h2'));
+        const headers = Array.from(tempDiv.querySelectorAll('h2[id]'));
 
         const extracted = headers.map(h => {
             const text = h.textContent || '';
-            const id = text.toLowerCase().replace(/[^\w]+/g, '-');
+            const id = h.getAttribute('id') || '';
             return { id, text };
         });
         setHeadings(extracted);
@@ -110,7 +110,7 @@ export function Docs() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     // Normalize path (without .md)
-    const normalizedPath = location.pathname === '/docs' || location.pathname === '/docs/' ? '/docs/overview' : location.pathname;
+    const normalizedPath = normalizeDocsPath(location.pathname);
     
     // Fetch path (with .md extension)
     const fetchPath = normalizedPath + '.md';
@@ -122,9 +122,11 @@ export function Docs() {
 
     useEffect(() => {
         setIsSidebarOpen(false);
-        if (!content) setLoading(true);
+        setLoading(true);
+        setContent('');
+        const controller = new AbortController();
 
-        fetch(fetchPath)
+        fetch(fetchPath, { signal: controller.signal })
             .then(res => {
                 if (!res.ok) throw new Error('Not found');
                 return res.text();
@@ -137,11 +139,15 @@ export function Docs() {
                 window.scrollTo(0, 0);
             })
             .catch(err => {
+                if (err instanceof DOMException && err.name === 'AbortError') {
+                    return;
+                }
                 console.error(err);
                 setContent('<h1>Document not found</h1><p>The requested page could not be found.</p>');
                 setLoading(false);
             });
-    }, [normalizedPath]);
+        return () => controller.abort();
+    }, [fetchPath, normalizedPath]);
 
     const handleContentClick = (event: React.MouseEvent<HTMLElement>) => {
         const target = event.target as HTMLElement;
@@ -286,4 +292,16 @@ export function Docs() {
 
         </div>
     );
+}
+
+function normalizeDocsPath(pathname: string): string {
+    if (pathname === '/docs' || pathname === '/docs/') {
+        return '/docs/overview';
+    }
+
+    if (pathname.endsWith('/')) {
+        return pathname.slice(0, -1);
+    }
+
+    return pathname;
 }

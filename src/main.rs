@@ -4104,6 +4104,7 @@ fn build_project(
 
     // Validate project
     config.validate(&project_root)?;
+    validate_opt_level(Some(&config.opt_level))?;
 
     let output_path = project_root.join(&config.output);
     let fingerprint = compute_project_fingerprint(&project_root, &config, emit_llvm, do_check)?;
@@ -5385,6 +5386,8 @@ fn compile_source(
     opt_level: Option<&str>,
     target: Option<&str>,
 ) -> Result<(), String> {
+    validate_opt_level(opt_level)?;
+
     let filename = source_path
         .file_name()
         .and_then(|s| s.to_str())
@@ -5467,6 +5470,26 @@ fn compile_source(
     }
 
     Ok(())
+}
+
+fn validate_opt_level(opt_level: Option<&str>) -> Result<(), String> {
+    let Some(raw) = opt_level else {
+        return Ok(());
+    };
+
+    let normalized = raw.trim().to_ascii_lowercase();
+    if matches!(
+        normalized.as_str(),
+        "0" | "1" | "2" | "3" | "s" | "z" | "fast"
+    ) {
+        return Ok(());
+    }
+
+    Err(format!(
+        "{}: Invalid optimization level '{}'. Expected one of: 0, 1, 2, 3, s, z, fast.",
+        "error".red().bold(),
+        raw
+    ))
 }
 
 fn resolve_clang_opt_flag(opt_level: Option<&str>) -> &'static str {
@@ -10152,6 +10175,29 @@ function main(): None {
             err.to_string().contains("main() cannot declare parameters"),
             "{err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_invalid_opt_level() {
+        let temp_root = make_temp_project_root("compile-invalid-opt");
+        let source_path = temp_root.join("invalid_opt.apex");
+        let output_path = temp_root.join("invalid_opt");
+        let source = "function main(): None { return None; }\n";
+
+        let err = compile_source(
+            source,
+            &source_path,
+            &output_path,
+            true,
+            true,
+            Some("turbo"),
+            None,
+        )
+        .expect_err("invalid opt level should be rejected");
+
+        assert!(err.contains("Invalid optimization level"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }

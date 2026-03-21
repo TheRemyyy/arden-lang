@@ -1,19 +1,33 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
-const renderer = new marked.Renderer();
+function slugifyHeading(text: string): string {
+    const slug = text
+        .toLowerCase()
+        .replace(/[^\w]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return slug || 'section';
+}
 
-// marked's heading signature is broader than the typed package currently exposes.
-// @ts-ignore typed package lags the runtime API here
-renderer.heading = (text: string, depth: number) => {
-    const escapedText = text.toLowerCase().replace(/[^\w]+/g, '-');
-    return `<h${depth} id="${escapedText}">${text}</h${depth}>`;
-};
+function createRenderer() {
+    const renderer = new marked.Renderer();
+    const headingCounts = new Map<string, number>();
 
-marked.use({ renderer });
+    // marked's heading signature is broader than the typed package currently exposes.
+    // @ts-ignore typed package lags the runtime API here
+    renderer.heading = (text: string, depth: number) => {
+        const baseSlug = slugifyHeading(text);
+        const count = headingCounts.get(baseSlug) ?? 0;
+        headingCounts.set(baseSlug, count + 1);
+        const headingId = count === 0 ? baseSlug : `${baseSlug}-${count}`;
+        return `<h${depth} id="${headingId}">${text}</h${depth}>`;
+    };
+
+    return renderer;
+}
 
 export async function renderMarkdown(markdown: string): Promise<string> {
-    const html = await marked.parse(markdown);
+    const html = await marked.parse(markdown, { renderer: createRenderer() });
     return sanitizeMarkdownHtml(html);
 }
 
@@ -30,7 +44,7 @@ export function rewriteInternalDocLinks(html: string, currentPath: string): stri
     const baseDocPath = `${currentPath}.md`;
     const baseUrl = new URL(baseDocPath, window.location.origin);
 
-    const isExternalHref = (href: string) => /^(https?:|mailto:|tel:)/i.test(href);
+    const isExternalHref = (href: string) => /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(href);
 
     tempDiv.querySelectorAll('a').forEach((anchor) => {
         const rawHref = anchor.getAttribute('href');

@@ -49,6 +49,7 @@ Optimization note:
 - In project mode, optimization level is controlled by `opt_level` in `apex.toml` (`0/1/2/3/s/z/fast`, default `3`).
 - In project mode, `target` in `apex.toml` is passed to Clang as `--target <triple>` when set.
 - In single-file mode (`apex compile file.apex` / `apex run file.apex`), Apex defaults to `-O3` and uses native tuning when available.
+- Invalid `--opt-level` / `opt_level` values are now rejected up front instead of silently falling back to `-O3`.
 
 Build cache note:
 - `apex build` now writes cache metadata into `.apexcache/` in the project root.

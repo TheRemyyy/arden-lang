@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed docs-site routing and loading edge cases:
+  - nested trailing-slash routes like `/docs/features/projects/` now normalize to the real markdown path instead of fetching `/docs/features/projects/.md` and showing a false 404
+  - navigating between docs now clears stale content and aborts the previous fetch, so old pages can no longer flash or overwrite the newly selected page during slow responses
+  - generated heading anchors now stay unique for repeated headings, and the table of contents now reads the actual rendered heading IDs instead of recomputing mismatched slugs
+  - non-HTTP custom-scheme links in markdown are no longer rewritten into broken client-side router links
+- Fixed project/CLI optimization-level validation:
+  - invalid `--opt-level` values in single-file mode and invalid `opt_level` values in `apex.toml` now fail fast with a direct validation error instead of silently compiling at `-O3`
+- Fixed project-root discovery for existing directories with dots in their names:
+  - commands invoked from project folders like `demo.v1/` now still detect the local `apex.toml` instead of incorrectly treating the directory as if it were a file path
+
 - Fixed `apex fmt` comment stability inside inline expression blocks:
   - comments inside `async { ... }`, `if (...) { ... } else { ... }`, and `match (...) { ... }` expression bodies are now preserved in place instead of being dropped or moved outside the expression during formatting
   - trailing comments after the last statement inside those expression blocks now also stay inside the block instead of being hoisted below the enclosing statement
