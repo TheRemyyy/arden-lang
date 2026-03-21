@@ -38,7 +38,6 @@ That same codegen-side inference now also recognizes plain constructor expressio
 Dependency/reference scanning now also records method symbols used on direct constructor receivers, so filtered project codegen can emit the required method bodies for expressions like `Boxed(23).get()` instead of linking against missing class-method symbols.
 Task timeout handling now also validates that `await_timeout(ms)` receives a non-negative timeout before entering the polling loop, preventing negative integers from turning into effectively unbounded waits through unsigned loop arithmetic.
 Runtime unwrap failure diagnostics now emit real newline-terminated panic messages for `Option.unwrap()` and `Result.unwrap()` instead of embedding escaped `\\n` text in stdout.
-Backend call-result validation is now explicit on several remaining ABI-sensitive paths: constructor lowering rejects `__new` symbols that do not return a value, runtime storage helpers validate allocator/reallocator results before reinterpreting pointers, and adjacent system-call/value-return paths such as `CreateThread` and string-length queries now fail with structured codegen errors instead of crashing through internal panic assumptions.
 
 ## Build Caching
 

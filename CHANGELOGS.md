@@ -8,10 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
-- Fixed backend call-result hardening for constructor/runtime storage helpers:
-  - constructor lowering now reports a direct codegen error when a resolved `__new` symbol does not actually return a value, instead of panicking in the backend
-  - runtime storage helpers for class instances, tasks, async blocks, ranges, strings, lists, maps, sets, and smart-pointer containers now turn malformed allocator call results into explicit compiler errors instead of aborting through internal panic paths
-  - adjacent backend call sites like `CreateThread`, `realloc`, and string-length queries now also validate returned values explicitly on ABI-sensitive paths instead of assuming a well-typed LLVM result
 - Fixed lexical shadowing in import checking:
   - import analysis now tracks local names, pattern bindings, `for` variables, and function/constructor parameters separately from imported callables, so local shadows like `print`, namespace-alias shadows like `u`, and `match`-bound names no longer trigger bogus missing-import or unknown-alias diagnostics
 - Fixed test discovery for hook-only nested modules:

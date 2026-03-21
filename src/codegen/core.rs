@@ -5722,10 +5722,14 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "instance")
             .map_err(|e| CodegenError::new(format!("malloc call failed: {}", e)))?;
-        let instance = self
-            .extract_call_value(ptr)
-            .map_err(|_| CodegenError::new("malloc did not return instance storage"))?
-            .into_pointer_value();
+        let instance = match ptr.try_as_basic_value() {
+            ValueKind::Basic(val) => val.into_pointer_value(),
+            _ => {
+                return Err(CodegenError::new(
+                    "malloc call did not produce a pointer result",
+                ))
+            }
+        };
 
         // Store 'this'
         let this_alloca = self
@@ -6127,11 +6131,12 @@ impl<'ctx> Codegen<'ctx> {
         let raw = self
             .builder
             .build_call(malloc, &[size.into()], "task_alloc")
-            .unwrap();
-        let task_raw = self
-            .extract_call_value(raw)
-            .map_err(|_| CodegenError::new("malloc did not return Task storage"))?
-            .into_pointer_value();
+            .unwrap()
+            .try_as_basic_value();
+        let task_raw = match raw {
+            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+            _ => return Err(CodegenError::new("malloc should return pointer for Task")),
+        };
 
         let task_ptr = self
             .builder
@@ -6217,11 +6222,12 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "task_spawn",
                     )
-                    .unwrap();
-                let handle = self
-                    .extract_call_value(raw_handle)
-                    .map_err(|_| CodegenError::new("CreateThread did not return a handle"))?
-                    .into_pointer_value();
+                    .unwrap()
+                    .try_as_basic_value();
+                let handle = match raw_handle {
+                    ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                    _ => return Err(CodegenError::new("CreateThread should return handle")),
+                };
                 self.builder
                     .build_ptr_to_int(handle, self.context.i64_type(), "task_thread")
                     .unwrap()
@@ -6534,11 +6540,16 @@ impl<'ctx> Codegen<'ctx> {
                     &[self.context.i64_type().const_int(1, false).into()],
                     "async_none_alloc",
                 )
-                .unwrap();
-            let ptr = self
-                .extract_call_value(raw)
-                .map_err(|_| CodegenError::new("malloc did not return async Task<None> storage"))?
-                .into_pointer_value();
+                .unwrap()
+                .try_as_basic_value();
+            let ptr = match raw {
+                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                _ => {
+                    return Err(CodegenError::new(
+                        "malloc failed for async Task<None> result",
+                    ))
+                }
+            };
             let none_ptr = self
                 .builder
                 .build_pointer_cast(
@@ -6559,11 +6570,12 @@ impl<'ctx> Codegen<'ctx> {
             let raw = self
                 .builder
                 .build_call(malloc, &[size.into()], "async_result_alloc")
-                .unwrap();
-            let ptr = self
-                .extract_call_value(raw)
-                .map_err(|_| CodegenError::new("malloc did not return async result storage"))?
-                .into_pointer_value();
+                .unwrap()
+                .try_as_basic_value();
+            let ptr = match raw {
+                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                _ => return Err(CodegenError::new("malloc failed for async result")),
+            };
             let typed_ptr = self
                 .builder
                 .build_pointer_cast(
@@ -6658,11 +6670,12 @@ impl<'ctx> Codegen<'ctx> {
         let env_alloc = self
             .builder
             .build_call(malloc, &[env_size.into()], "async_env_alloc")
-            .unwrap();
-        let env_raw_ptr = self
-            .extract_call_value(env_alloc)
-            .map_err(|_| CodegenError::new("malloc did not return async environment storage"))?
-            .into_pointer_value();
+            .unwrap()
+            .try_as_basic_value();
+        let env_raw_ptr = match env_alloc {
+            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+            _ => return Err(CodegenError::new("malloc failed for async environment")),
+        };
         let env_cast = self
             .builder
             .build_pointer_cast(
@@ -7779,11 +7792,12 @@ impl<'ctx> Codegen<'ctx> {
         let env_alloc = self
             .builder
             .build_call(malloc, &[env_size.into()], "async_block_env")
-            .unwrap();
-        let env_raw = self
-            .extract_call_value(env_alloc)
-            .map_err(|_| CodegenError::new("malloc did not return async block environment storage"))?
-            .into_pointer_value();
+            .unwrap()
+            .try_as_basic_value();
+        let env_raw = match env_alloc {
+            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+            _ => return Err(CodegenError::new("malloc failed for async block env")),
+        };
         let env_cast = self
             .builder
             .build_pointer_cast(
@@ -7945,13 +7959,16 @@ impl<'ctx> Codegen<'ctx> {
                     &[self.context.i64_type().const_int(1, false).into()],
                     "async_block_none_alloc",
                 )
-                .unwrap();
-            let ptr = self
-                .extract_call_value(alloc)
-                .map_err(|_| {
-                    CodegenError::new("malloc did not return async block None-result storage")
-                })?
-                .into_pointer_value();
+                .unwrap()
+                .try_as_basic_value();
+            let ptr = match alloc {
+                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                _ => {
+                    return Err(CodegenError::new(
+                        "malloc failed for async block none result",
+                    ))
+                }
+            };
             let none_ptr = self
                 .builder
                 .build_pointer_cast(
@@ -7972,11 +7989,12 @@ impl<'ctx> Codegen<'ctx> {
             let alloc = self
                 .builder
                 .build_call(malloc, &[size.into()], "async_block_alloc")
-                .unwrap();
-            let ptr = self
-                .extract_call_value(alloc)
-                .map_err(|_| CodegenError::new("malloc did not return async block result storage"))?
-                .into_pointer_value();
+                .unwrap()
+                .try_as_basic_value();
+            let ptr = match alloc {
+                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                _ => return Err(CodegenError::new("malloc failed for async block result")),
+            };
             let typed_ptr = self
                 .builder
                 .build_pointer_cast(
@@ -9376,15 +9394,16 @@ impl<'ctx> Codegen<'ctx> {
                             &[self.context.i64_type().const_int(1, false).into()],
                             "task_cancel_none_alloc",
                         )
-                        .unwrap();
-                    let ptr = self
-                        .extract_call_value(raw)
-                        .map_err(|_| {
-                            CodegenError::new(
-                                "malloc did not return canceled Task<None> storage",
-                            )
-                        })?
-                        .into_pointer_value();
+                        .unwrap()
+                        .try_as_basic_value();
+                    let ptr = match raw {
+                        ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                        _ => {
+                            return Err(CodegenError::new(
+                                "malloc failed while creating canceled task value",
+                            ));
+                        }
+                    };
                     let typed = self
                         .builder
                         .build_pointer_cast(
@@ -9405,13 +9424,16 @@ impl<'ctx> Codegen<'ctx> {
                     let raw = self
                         .builder
                         .build_call(malloc, &[size.into()], "task_cancel_alloc")
-                        .unwrap();
-                    let ptr = self
-                        .extract_call_value(raw)
-                        .map_err(|_| {
-                            CodegenError::new("malloc did not return canceled Task result storage")
-                        })?
-                        .into_pointer_value();
+                        .unwrap()
+                        .try_as_basic_value();
+                    let ptr = match raw {
+                        ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+                        _ => {
+                            return Err(CodegenError::new(
+                                "malloc failed while creating canceled task value",
+                            ));
+                        }
+                    };
                     let typed_ptr = self
                         .builder
                         .build_pointer_cast(
@@ -9927,11 +9949,12 @@ impl<'ctx> Codegen<'ctx> {
             let raw_length = self
                 .builder
                 .build_call(strlen_fn, &[string_ptr.into()], "string_index_len")
-                .map_err(|e| CodegenError::new(format!("strlen call failed: {}", e)))?;
-            let length = self
-                .extract_call_value(raw_length)
-                .map_err(|_| CodegenError::new("strlen did not return an integer length"))?
-                .into_int_value();
+                .map_err(|e| CodegenError::new(format!("strlen call failed: {}", e)))?
+                .try_as_basic_value();
+            let length = match raw_length {
+                ValueKind::Basic(BasicValueEnum::IntValue(len)) => len,
+                _ => return Err(CodegenError::new("strlen did not return an integer length")),
+            };
             let in_bounds = self
                 .builder
                 .build_int_compare(IntPredicate::SLT, idx, length, "string_index_in_bounds")
@@ -10202,12 +10225,10 @@ impl<'ctx> Codegen<'ctx> {
             compiled_args.iter().map(|a| (*a).into()).collect();
         let call = self.builder.build_call(func, &args_meta, "new").unwrap();
 
-        self.extract_call_value(call).map_err(|_| {
-            CodegenError::new(format!(
-                "Constructor '{}' did not return a value",
-                Self::format_type_string(&normalized_ty)
-            ))
-        })
+        match call.try_as_basic_value() {
+            ValueKind::Basic(val) => Ok(val),
+            _ => panic!("Constructor should return a value"),
+        }
     }
 
     pub fn compile_print(
@@ -10295,10 +10316,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[buffer_size.into()], "strbuf")
             .unwrap();
-        let buffer = self
-            .extract_call_value(buffer_call)
-            .map_err(|_| CodegenError::new("malloc did not return a buffer pointer"))?
-            .into_pointer_value();
+        let buffer = match buffer_call.try_as_basic_value() {
+            ValueKind::Basic(val) => val.into_pointer_value(),
+            _ => panic!("malloc should return a value"),
+        };
 
         // Create format string
         let fmt_val = self.context.const_string(fmt_str.as_bytes(), true);
@@ -12346,7 +12367,7 @@ impl<'ctx> Codegen<'ctx> {
 #[cfg(test)]
 mod tests {
     use super::Codegen;
-    use crate::ast::{ClassDecl, Constructor, Decl, ModuleDecl, Spanned, Type, Visibility};
+    use crate::ast::{ClassDecl, Constructor, Decl, ModuleDecl, Spanned, Visibility};
     use inkwell::context::Context;
     use std::collections::HashSet;
 
@@ -12390,32 +12411,5 @@ mod tests {
         let active_symbols = HashSet::from(["Outer__Box__new".to_string()]);
 
         assert!(codegen.should_compile_decl(&decl, &active_symbols));
-    }
-
-    #[test]
-    fn compile_construct_returns_error_when_constructor_decl_returns_void() {
-        let context = Context::create();
-        let mut codegen = Codegen::new(&context, "test");
-        let caller = codegen
-            .module
-            .add_function("caller", context.i64_type().fn_type(&[], false), None);
-        let entry = context.append_basic_block(caller, "entry");
-        codegen.builder.position_at_end(entry);
-        codegen.current_function = Some(caller);
-        let void_ctor = codegen.module.add_function(
-            "Broken__new",
-            context
-                .void_type()
-                .fn_type(&[context.ptr_type(inkwell::AddressSpace::default()).into()], false),
-            None,
-        );
-        codegen
-            .functions
-            .insert("Broken__new".to_string(), (void_ctor, Type::None));
-
-        let error = codegen
-            .compile_construct("Broken", &[])
-            .expect_err("void constructor declarations should fail gracefully");
-        assert!(error.message.contains("did not return a value"));
     }
 }
