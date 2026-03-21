@@ -6568,6 +6568,7 @@ mod tests {
     use crate::formatter::format_program_canonical;
     use crate::parser::Parser;
     use crate::typeck::TypeChecker;
+    use object::{Object, ObjectSymbol};
     use std::collections::{HashMap, HashSet};
     use std::fs;
     use std::path::Path;
@@ -7774,28 +7775,28 @@ function main(): None {
         });
 
         let object_dir = temp_root.join(".apexcache").join("objects");
+        let specialization_symbols = [
+            "util__M__N__Box__spec__I64__new",
+            "util__M__N__Box__spec__I64__get",
+            "util__M__N__Box__spec__I64__map",
+            "util__M__N__Box__spec__I64__map__spec__I64",
+        ];
         let mut defining_objects = Vec::new();
         for entry in fs::read_dir(&object_dir).expect("read object cache dir") {
             let path = entry.expect("read object cache entry").path();
             if path.extension().and_then(|ext| ext.to_str()) != Some(object_ext()) {
                 continue;
             }
-            let output = std::process::Command::new("llvm-nm")
-                .arg("--defined-only")
-                .arg(&path)
-                .output()
-                .expect("run llvm-nm on cached object");
-            assert!(
-                output.status.success(),
-                "llvm-nm should succeed for '{}': {}",
-                path.display(),
-                String::from_utf8_lossy(&output.stderr)
-            );
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.contains(" util__M__N__Box__spec__I64__new")
-                || stdout.contains(" util__M__N__Box__spec__I64__get")
-                || stdout.contains(" util__M__N__Box__spec__I64__map")
-            {
+            let bytes = fs::read(&path).expect("read cached object");
+            let object = object::File::parse(&*bytes).expect("parse cached object");
+            let defines_specialization = object.symbols().any(|symbol| {
+                symbol.is_definition()
+                    && symbol
+                        .name()
+                        .ok()
+                        .is_some_and(|name| specialization_symbols.contains(&name))
+            });
+            if defines_specialization {
                 defining_objects.push(path);
             }
         }
