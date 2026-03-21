@@ -216,7 +216,17 @@ function main(): None {
 EOF_ESCAPE
 "${COMPILER}" compile "${ESCAPE_FILE}" -o "${ESCAPE_OUT}" >/dev/null
 "${ESCAPE_OUT}" > "${ESCAPE_STDOUT}"
-cmp -s "${ESCAPE_STDOUT}" <(printf 'A\nB\nX\tY\nQ:" Z\n')
+python3 - <<'PY' "${ESCAPE_STDOUT}"
+from pathlib import Path
+import sys
+
+actual = Path(sys.argv[1]).read_text().replace("\r\n", "\n")
+expected = 'A\nB\nX\tY\nQ:" Z\n'
+if actual != expected:
+    raise SystemExit(
+        f"escape stdout mismatch\nexpected={expected!r}\nactual={actual!r}"
+    )
+PY
 
 "${COMPILER}" run "${REPO_ROOT}/examples/35_visibility_enforcement.apex" >"${EXAMPLE_STDOUT}"
 grep -Fq 'Account: Standard, balance=150' "${EXAMPLE_STDOUT}"

@@ -3234,6 +3234,17 @@ fn compute_link_fingerprint(
     format!("{:016x}", hasher.finish())
 }
 
+fn dedupe_link_inputs(link_inputs: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    let mut deduped = Vec::with_capacity(link_inputs.len());
+    for path in link_inputs {
+        if seen.insert(path.clone()) {
+            deduped.push(path);
+        }
+    }
+    deduped
+}
+
 fn load_link_manifest_cache(project_root: &Path) -> Option<LinkManifestCache> {
     let path = link_manifest_cache_path(project_root);
     let cache: LinkManifestCache = read_cache_blob(&path, "link manifest cache").ok()??;
@@ -5179,7 +5190,7 @@ fn build_project(
             );
         }
 
-        let link_inputs: Vec<PathBuf> = object_paths.into_iter().flatten().collect();
+        let link_inputs = dedupe_link_inputs(object_paths.into_iter().flatten().collect());
         let current_link_manifest = LinkManifestCache {
             schema: LINK_MANIFEST_CACHE_SCHEMA.to_string(),
             compiler_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -6613,13 +6624,14 @@ mod tests {
         build_reverse_dependency_graph, check_command, codegen_program_for_unit,
         collect_apex_files, compile_source, component_fingerprint, compute_link_fingerprint,
         compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
-        escape_response_file_arg, fix_target, format_targets, lint_target, parse_project_unit,
-        precompute_all_transitive_dependencies, reusable_component_fingerprints, run_tests,
-        semantic_program_fingerprint, should_skip_final_link, transitive_dependents,
-        typecheck_summary_cache_from_state, typecheck_summary_cache_matches, DependencyGraphCache,
-        DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig, LinkManifestCache,
-        OutputKind, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
-        DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
+        dedupe_link_inputs, escape_response_file_arg, fix_target, format_targets, lint_target,
+        parse_project_unit, precompute_all_transitive_dependencies,
+        reusable_component_fingerprints, run_tests, semantic_program_fingerprint,
+        should_skip_final_link, transitive_dependents, typecheck_summary_cache_from_state,
+        typecheck_summary_cache_matches, DependencyGraphCache, DependencyGraphFileEntry,
+        DependencyResolutionContext, LinkConfig, LinkManifestCache, OutputKind, ParsedProjectUnit,
+        RewriteFingerprintContext, RewrittenProjectUnit, DEPENDENCY_GRAPH_CACHE_SCHEMA,
+        LINK_MANIFEST_CACHE_SCHEMA,
     };
     use crate::ast::{Decl, FunctionDecl, ImportDecl, Program, Spanned, Type, Visibility};
     use crate::borrowck::BorrowChecker;
@@ -12193,6 +12205,26 @@ function main(): None {
         assert!(should_skip_final_link(Some(&current), &current, &temp, 0));
 
         let _ = fs::remove_file(temp);
+    }
+
+    #[test]
+    fn dedupe_link_inputs_removes_duplicate_object_paths_stably() {
+        let deduped = dedupe_link_inputs(vec![
+            PathBuf::from("a.obj"),
+            PathBuf::from("b.obj"),
+            PathBuf::from("a.obj"),
+            PathBuf::from("c.obj"),
+            PathBuf::from("b.obj"),
+        ]);
+
+        assert_eq!(
+            deduped,
+            vec![
+                PathBuf::from("a.obj"),
+                PathBuf::from("b.obj"),
+                PathBuf::from("c.obj")
+            ]
+        );
     }
 
     #[test]
