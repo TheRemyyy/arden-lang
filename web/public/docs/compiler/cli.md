@@ -188,6 +188,14 @@ Notes:
 - Dynamic indexing on string literals also uses Unicode character positions at runtime, so `"🚀"[idx]` behaves consistently with `Char` semantics instead of indexing raw UTF-8 bytes.
 - Dynamic indexing on `String` values also uses Unicode character positions at runtime, so `s[idx]` is aligned with `Char` semantics instead of indexing raw UTF-8 bytes.
 - `String.length()` also uses Unicode character count semantics at runtime, so `"🚀".length()` and `s.length()` now return `1` instead of the UTF-8 byte count.
+- `Args.get(...)` now rejects constant negative indices during `apex check`, and dynamic negative or out-of-bounds argument indices fail fast at runtime with explicit diagnostics.
+- `System.exec(...)` now captures full stdout instead of truncating longer command output to a fixed small buffer.
+- `System.cwd()` now returns the full working directory for deep paths instead of collapsing to an empty string once the current path exceeds the old fixed 1024-byte buffer.
+- `File.read()` now fails fast on embedded NUL bytes instead of silently truncating binary-looking content at the first `0x00`.
+- `File.read()` now also validates UTF-8 at load time, so invalid text bytes fail immediately instead of slipping through and only crashing later in string operations.
+- `Str.len(...)` now matches `String.length()` and Unicode indexing semantics by returning character count instead of raw UTF-8 byte count.
+- `Time.now(format)` now handles long format strings without corrupting the returned string through a too-small fixed output buffer.
+- `read_line()` imported from `std.io.*` now typechecks correctly, and long input lines are no longer truncated to a tiny fixed buffer.
 - The entrypoint `main()` must be synchronous, non-generic, parameterless, non-extern, and return either `None` or `Integer`; invalid signatures are now rejected during `apex check` instead of leaking into backend crashes.
 
 Lint/fix note:

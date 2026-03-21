@@ -8,7 +8,7 @@ String manipulation utilities. All functions are available as static methods on 
 
 | Function | Type Signature | Description |
 | :--- | :--- | :--- |
-| `Str.len` | `(s: String) -> Integer` | Returns the length of the string in bytes. |
+| `Str.len` | `(s: String) -> Integer` | Returns the length of the string in Unicode characters. |
 | `Str.compare` | `(a: String, b: String) -> Integer` | Compares two strings. Returns 0 if equal. |
 | `Str.concat` | `(a: String, b: String) -> String` | Concatenates two strings into a new one. |
 | `Str.upper` | `(s: String) -> String` | Converts string to uppercase. |

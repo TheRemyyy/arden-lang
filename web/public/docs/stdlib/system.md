@@ -28,6 +28,7 @@ exitCode: Integer = System.shell("echo Hello");
 ### `System.exec(command: String): String`
 
 Executes a command in the system shell and captures its standard output (stdout).
+The full stdout stream is returned; longer output is no longer truncated to a small fixed buffer.
 
 ```apex
 import std.io.*;
@@ -39,6 +40,7 @@ println("Current user: {output}");
 ### `System.cwd(): String`
 
 Returns the current working directory.
+Deep working directories are supported without truncating or collapsing the result to an empty string.
 
 ```apex
 import std.io.*;

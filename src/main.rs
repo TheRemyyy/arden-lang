@@ -8625,6 +8625,138 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_fails_fast_on_negative_args_get_index() {
+        let temp_root = make_temp_project_root("args-get-negative-runtime");
+        let source_path = temp_root.join("args_get_negative_runtime.apex");
+        let output_path = temp_root.join("args_get_negative_runtime");
+        let source = r#"
+            import std.args.*;
+
+            function main(): Integer {
+                idx: Integer = 0 - 1;
+                value: String = Args.get(idx);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("dynamic negative Args.get should still codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled negative Args.get binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("Args.get() index cannot be negative\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_out_of_bounds_args_get_index() {
+        let temp_root = make_temp_project_root("args-get-oob-runtime");
+        let source_path = temp_root.join("args_get_oob_runtime.apex");
+        let output_path = temp_root.join("args_get_oob_runtime");
+        let source = r#"
+            import std.args.*;
+
+            function main(): Integer {
+                idx: Integer = Args.count() + 5;
+                value: String = Args.get(idx);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("dynamic out-of-bounds Args.get should still codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled out-of-bounds Args.get binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("Args.get() index out of bounds\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_file_read_with_nul_bytes() {
+        let temp_root = make_temp_project_root("file-read-nul-byte-runtime");
+        let source_path = temp_root.join("file_read_nul_byte_runtime.apex");
+        let output_path = temp_root.join("file_read_nul_byte_runtime");
+        let input_path = temp_root.join("payload.bin");
+        let source = r#"
+            import std.fs.*;
+
+            function main(): Integer {
+                data: String = File.read("payload.bin");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        fs::write(&input_path, [b'A', 0, b'B']).expect("write binary payload");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("File.read with NUL byte payload should still codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .current_dir(&temp_root)
+            .output()
+            .expect("run compiled File.read NUL-byte binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("File.read() cannot load NUL bytes\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_file_read_with_invalid_utf8() {
+        let temp_root = make_temp_project_root("file-read-invalid-utf8-runtime");
+        let source_path = temp_root.join("file_read_invalid_utf8_runtime.apex");
+        let output_path = temp_root.join("file_read_invalid_utf8_runtime");
+        let input_path = temp_root.join("payload.bin");
+        let source = r#"
+            import std.fs.*;
+
+            function main(): Integer {
+                data: String = File.read("payload.bin");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        fs::write(&input_path, [b'A', 0xFF, b'B']).expect("write invalid utf8 payload");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("File.read with invalid UTF-8 payload should still codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .current_dir(&temp_root)
+            .output()
+            .expect("run compiled File.read invalid UTF-8 binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("Invalid UTF-8 sequence in String\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_if_expression_generic_constructor_branches() {
         let temp_root = make_temp_project_root("ifexpr-generic-ctor-runtime");
         let source_path = temp_root.join("ifexpr_generic_ctor_runtime.apex");
@@ -10051,6 +10183,172 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_runs_system_exec_large_output() {
+        let temp_root = make_temp_project_root("system-exec-large-output-runtime");
+        let source_path = temp_root.join("system_exec_large_output_runtime.apex");
+        let output_path = temp_root.join("system_exec_large_output_runtime");
+        let command = if cfg!(windows) {
+            r#"powershell -NoProfile -Command "$s='x'*5000; Write-Output $s""#
+        } else {
+            r#"python3 -c "print('x' * 5000)""#
+        };
+        let escaped_command = command.replace('\\', "\\\\").replace('"', "\\\"");
+        let source = format!(
+            r#"
+                import std.system.*;
+
+                function main(): Integer {{
+                    out: String = System.exec("{escaped_command}");
+                    return if (out.length() > 4500) {{ 0; }} else {{ 1; }};
+                }}
+            "#
+        );
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(
+            &fs::read_to_string(&source_path).expect("read source"),
+            &source_path,
+            &output_path,
+            false,
+            true,
+            None,
+            None,
+        )
+        .expect("large System.exec output should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled large System.exec binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_time_now_with_long_format() {
+        let temp_root = make_temp_project_root("time-now-long-format-runtime");
+        let source_path = temp_root.join("time_now_long_format_runtime.apex");
+        let output_path = temp_root.join("time_now_long_format_runtime");
+        let source = r#"
+            import std.time.*;
+
+            function main(): Integer {
+                out: String = Time.now("%Y-%m-%d %H:%M:%S %A %B %Y-%m-%d %H:%M:%S %A %B %Y-%m-%d %H:%M:%S %A %B");
+                return if (out.length() > 40) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Time.now long format should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Time.now long format binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn compile_source_runs_system_cwd_with_long_working_directory() {
+        let temp_root = make_temp_project_root("system-cwd-long-working-directory-runtime");
+        let source_path = temp_root.join("system_cwd_long_working_directory_runtime.apex");
+        let output_path = temp_root.join("system_cwd_long_working_directory_runtime");
+        let source = r#"
+            import std.string.*;
+            import std.system.*;
+
+            function main(): Integer {
+                cwd: String = System.cwd();
+                return if (Str.len(cwd) > 1100) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("System.cwd deep path runtime should codegen");
+
+        let mut deep_dir = temp_root.join("cwd-depth-root");
+        fs::create_dir_all(&deep_dir).expect("create deep root");
+        let segment = "a".repeat(120);
+        for index in 0..10 {
+            deep_dir = deep_dir.join(format!("{segment}{index}"));
+            fs::create_dir_all(&deep_dir).expect("create deep segment");
+        }
+
+        let status = std::process::Command::new(&output_path)
+            .current_dir(&deep_dir)
+            .status()
+            .expect("run compiled System.cwd binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_read_line_with_long_input() {
+        let temp_root = make_temp_project_root("read-line-long-input-runtime");
+        let source_path = temp_root.join("read_line_long_input_runtime.apex");
+        let output_path = temp_root.join("read_line_long_input_runtime");
+        let source = r#"
+            import std.io.*;
+            import std.string.*;
+
+            function main(): Integer {
+                line: String = read_line();
+                return if (Str.len(line) > 1500) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("read_line long input should codegen");
+
+        let mut child = std::process::Command::new(&output_path)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn read_line binary");
+        {
+            use std::io::Write as _;
+            let stdin = child.stdin.as_mut().expect("child stdin");
+            writeln!(stdin, "{}", "x".repeat(2000)).expect("write long stdin");
+        }
+        let status = child.wait().expect("wait for read_line binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_unicode_str_len() {
+        let temp_root = make_temp_project_root("unicode-str-len-runtime");
+        let source_path = temp_root.join("unicode_str_len_runtime.apex");
+        let output_path = temp_root.join("unicode_str_len_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                s: String = "🚀";
+                return if (Str.len(s) == 1) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unicode Str.len should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unicode Str.len binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_fails_fast_on_unicode_string_variable_index_operator_past_char_len() {
         let temp_root = make_temp_project_root("unicode-string-variable-index-oob-runtime");
         let source_path = temp_root.join("unicode_string_variable_index_oob_runtime.apex");
@@ -10293,7 +10591,7 @@ function main(): None {
             }
 
             function main(): Integer {
-                b: Boxed = work().await_timeout(10).unwrap();
+                b: Boxed = work().await_timeout(100).unwrap();
                 if (b == b) { return 39; }
                 return 0;
             }

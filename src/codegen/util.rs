@@ -536,27 +536,52 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, fn_type, None)
     }
 
+    pub fn get_or_declare_getchar(&self) -> FunctionValue<'ctx> {
+        let name = "getchar";
+        if let Some(f) = self.module.get_function(name) {
+            return f;
+        }
+        let fn_type = self.context.i32_type().fn_type(&[], false);
+        self.module.add_function(name, fn_type, None)
+    }
+
     pub fn get_or_declare_stdin(&self) -> PointerValue<'ctx> {
-        let name = "__acrt_iob_func";
-        let func = if let Some(f) = self.module.get_function(name) {
-            f
-        } else {
-            let fn_type = self
-                .context
-                .ptr_type(AddressSpace::default())
-                .fn_type(&[self.context.i32_type().into()], false);
-            self.module.add_function(name, fn_type, None)
-        };
-        // stdin is __acrt_iob_func(0) on Windows
-        let call = self
-            .builder
-            .build_call(
-                func,
-                &[self.context.i32_type().const_int(0, false).into()],
-                "stdin",
-            )
-            .unwrap();
-        self.extract_call_value(call).into_pointer_value()
+        #[cfg(windows)]
+        {
+            let name = "__acrt_iob_func";
+            let func = if let Some(f) = self.module.get_function(name) {
+                f
+            } else {
+                let fn_type = self
+                    .context
+                    .ptr_type(AddressSpace::default())
+                    .fn_type(&[self.context.i32_type().into()], false);
+                self.module.add_function(name, fn_type, None)
+            };
+            let call = self
+                .builder
+                .build_call(
+                    func,
+                    &[self.context.i32_type().const_int(0, false).into()],
+                    "stdin",
+                )
+                .unwrap();
+            return self.extract_call_value(call).into_pointer_value();
+        }
+
+        #[cfg(not(windows))]
+        {
+            let ptr_type = self.context.ptr_type(AddressSpace::default());
+            let stdin_global = if let Some(global) = self.module.get_global("stdin") {
+                global
+            } else {
+                self.module.add_global(ptr_type, None, "stdin")
+            };
+            self.builder
+                .build_load(ptr_type, stdin_global.as_pointer_value(), "stdin")
+                .unwrap()
+                .into_pointer_value()
+        }
     }
 
     pub fn get_or_declare_exit(&self) -> FunctionValue<'ctx> {

@@ -39,6 +39,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - runtime out-of-bounds checks for Unicode `String` values now respect character count instead of allowing continuation-byte reads
 - Fixed Unicode `String.length()` runtime semantics:
   - `String.length()` now counts Unicode characters instead of raw UTF-8 bytes, so values like `"🚀"` correctly report length `1` instead of `4`
+- Fixed `Args.get()` index validation:
+  - `apex check` now rejects constant negative indices like `Args.get(-1)` instead of letting them compile
+  - dynamic negative or out-of-bounds argument indices now fail fast with explicit runtime diagnostics instead of reading invalid argv entries
+- Fixed `System.exec()` stdout truncation:
+  - `System.exec(...)` now reads the full command stdout stream instead of silently truncating output at roughly 4KB
+- Fixed `Str.len()` Unicode semantics:
+  - `Str.len(...)` now returns Unicode character count instead of raw UTF-8 byte length, so values like `"🚀"` report `1` instead of `4`
+- Fixed `Time.now(format)` long-format runtime output:
+  - longer format strings now allocate a format-sized buffer and keep the result null-terminated instead of overflowing the old fixed 64-byte buffer and tripping invalid UTF-8 at runtime
+- Fixed `read_line()` stdlib import and long-input handling:
+  - `import std.io.*; read_line()` now typechecks correctly as a built-in console I/O function
+  - longer stdin lines are now read through a growing buffer instead of silently truncating at 1023 characters
+- Fixed `System.cwd()` deep-path runtime handling:
+  - `System.cwd()` now asks the platform runtime for a dynamically sized working-directory buffer instead of hard-coding a 1024-byte limit
+  - deep working directories no longer collapse into an empty string when the current path exceeds the old fixed buffer size
+- Fixed `File.read()` silent truncation on binary NUL bytes:
+  - `File.read()` now fails fast with an explicit runtime diagnostic when a file contains embedded `0x00` bytes instead of silently truncating the returned string at the first NUL
+  - documentation now reflects that `File.read()` is text-oriented and not a binary-safe byte loader
+- Fixed `File.read()` late invalid-UTF-8 failures:
+  - `File.read()` now validates UTF-8 at load time, so invalid text bytes fail immediately instead of slipping into a `String` and only exploding later in unrelated operations like `Str.len(...)`
 - Fixed entrypoint `main()` signature validation:
   - `apex check` now rejects invalid entrypoint signatures such as `main(x: Integer)`, `async main()`, generic `main<T>()`, or `main()` returning unsupported types like `String`
   - this prevents backend crashes and invalid LLVM/Clang failures that previously happened when malformed `main()` signatures reached code generation

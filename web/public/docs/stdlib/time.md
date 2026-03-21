@@ -9,6 +9,7 @@ The `Time` object provides static methods for time retrieval and manipulation.
 ### `Time.now(format: String): String`
 
 Returns the current local time as a formatted string. If an empty string `""` is provided as the format, it defaults to `"%H:%M:%S"`.
+Longer format strings are supported without truncating or corrupting the returned value.
 
 Uses standard C `strftime` format specifiers.
 

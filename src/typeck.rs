@@ -4470,6 +4470,10 @@ impl TypeChecker {
                 }
                 Some(ResolvedType::None)
             }
+            "read_line" => {
+                self.check_arg_count(name, args, 0, span);
+                Some(ResolvedType::String)
+            }
             "Math__abs" => {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
@@ -4866,6 +4870,12 @@ impl TypeChecker {
                         self.error(
                             "Args.get() requires Integer index".to_string(),
                             span.clone(),
+                        );
+                    } else {
+                        self.check_non_negative_integer_const(
+                            &args[0].node,
+                            args[0].span.clone(),
+                            "Args.get() index cannot be negative",
                         );
                     }
                 }
@@ -7333,6 +7343,41 @@ mod tests {
             joined.contains("Time.sleep() milliseconds must be non-negative"),
             "{joined}"
         );
+    }
+
+    #[test]
+    fn args_get_rejects_negative_constant_literal() {
+        let src = r#"
+            import std.args.*;
+
+            function main(): Integer {
+                value: String = Args.get(-1);
+                return 0;
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative Args.get literal should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Args.get() index cannot be negative"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn read_line_imported_from_std_io_typechecks() {
+        let src = r#"
+            import std.io.*;
+
+            function main(): Integer {
+                line: String = read_line();
+                return 0;
+            }
+        "#;
+        check_source(src).expect("read_line should typecheck from std.io wildcard import");
     }
 
     #[test]

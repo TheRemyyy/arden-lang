@@ -12002,12 +12002,8 @@ impl<'ctx> Codegen<'ctx> {
             // String functions
             "Str__len" => {
                 let s = self.compile_expr(&args[0].node)?;
-                let strlen_fn = self.get_or_declare_strlen();
-                let call = self
-                    .builder
-                    .build_call(strlen_fn, &[s.into()], "len")
-                    .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                self.compile_utf8_string_length_runtime(s.into_pointer_value())
+                    .map(Some)
             }
             "Str__compare" => {
                 let s1 = self.compile_expr(&args[0].node)?;
@@ -12394,40 +12390,225 @@ impl<'ctx> Codegen<'ctx> {
 
             // I/O functions
             "read_line" => {
-                // Read a line from stdin
+                // Read a line from stdin with a growing buffer so long lines do not
+                // truncate and we do not depend on platform-specific stdin symbols.
                 let malloc = self.get_or_declare_malloc();
-                let fgets = self.get_or_declare_fgets();
-                let stdin = self.get_or_declare_stdin();
+                let realloc = self.get_or_declare_realloc();
+                let getchar_fn = self.get_or_declare_getchar();
 
-                let buffer_size = self.context.i64_type().const_int(1024, false);
+                let i8_type = self.context.i8_type();
+                let i32_type = self.context.i32_type();
+                let i64_type = self.context.i64_type();
+                let ptr_type = self.context.ptr_type(AddressSpace::default());
+                let chunk_chars = i64_type.const_int(1024, false);
+                let initial_capacity = i64_type.const_int(1025, false);
                 let buffer_call = self
                     .builder
-                    .build_call(malloc, &[buffer_size.into()], "linebuf")
+                    .build_call(malloc, &[initial_capacity.into()], "linebuf")
                     .unwrap();
                 let buffer = self.extract_call_value(buffer_call).into_pointer_value();
-
-                let stdin_val = self
+                let buffer_slot = self
                     .builder
-                    .build_load(
-                        self.context.ptr_type(AddressSpace::default()),
-                        stdin,
-                        "stdin",
-                    )
+                    .build_alloca(ptr_type, "read_line_buffer_slot")
                     .unwrap();
+                let capacity_slot = self
+                    .builder
+                    .build_alloca(i64_type, "read_line_capacity_slot")
+                    .unwrap();
+                let total_read_slot = self
+                    .builder
+                    .build_alloca(i64_type, "read_line_total_slot")
+                    .unwrap();
+                self.builder.build_store(buffer_slot, buffer).unwrap();
+                self.builder
+                    .build_store(capacity_slot, initial_capacity)
+                    .unwrap();
+                self.builder
+                    .build_store(total_read_slot, i64_type.const_zero())
+                    .unwrap();
+                self.builder
+                    .build_store(buffer, i8_type.const_zero())
+                    .unwrap();
+
+                let current_fn = self.current_function.unwrap();
+                let read_cond_bb = self
+                    .context
+                    .append_basic_block(current_fn, "read_line.cond");
+                let read_body_bb = self
+                    .context
+                    .append_basic_block(current_fn, "read_line.body");
+                let append_bb = self
+                    .context
+                    .append_basic_block(current_fn, "read_line.append");
+                let grow_bb = self
+                    .context
+                    .append_basic_block(current_fn, "read_line.grow");
+                let grow_ok_bb = self
+                    .context
+                    .append_basic_block(current_fn, "read_line.grow.ok");
+                let eof_bb = self.context.append_basic_block(current_fn, "read_line.eof");
+                let done_bb = self
+                    .context
+                    .append_basic_block(current_fn, "read_line.done");
+                let oom_bb = self.context.append_basic_block(current_fn, "read_line.oom");
 
                 self.builder
-                    .build_call(
-                        fgets,
-                        &[
-                            buffer.into(),
-                            self.context.i32_type().const_int(1024, false).into(),
-                            stdin_val.into(),
-                        ],
-                        "fgets",
-                    )
+                    .build_unconditional_branch(read_cond_bb)
                     .unwrap();
 
-                Ok(Some(buffer.into()))
+                self.builder.position_at_end(read_cond_bb);
+                let current_capacity = self
+                    .builder
+                    .build_load(i64_type, capacity_slot, "read_line_capacity")
+                    .unwrap()
+                    .into_int_value();
+                let current_total = self
+                    .builder
+                    .build_load(i64_type, total_read_slot, "read_line_total")
+                    .unwrap()
+                    .into_int_value();
+                let remaining_capacity = self
+                    .builder
+                    .build_int_sub(
+                        current_capacity,
+                        current_total,
+                        "read_line_remaining_capacity",
+                    )
+                    .unwrap();
+                let enough_room = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::UGT,
+                        remaining_capacity,
+                        i64_type.const_int(1, false),
+                        "read_line_enough_room",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(enough_room, read_body_bb, grow_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(read_body_bb);
+                let getchar_call = self
+                    .builder
+                    .build_call(getchar_fn, &[], "read_line_char")
+                    .unwrap();
+                let char_i32 = self.extract_call_value(getchar_call).into_int_value();
+                let is_eof = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        char_i32,
+                        i32_type.const_int(u32::MAX as u64, false),
+                        "read_line_is_eof",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(is_eof, eof_bb, append_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(eof_bb);
+                self.builder.build_unconditional_branch(done_bb).unwrap();
+
+                self.builder.position_at_end(append_bb);
+                let current_buffer = self
+                    .builder
+                    .build_load(ptr_type, buffer_slot, "read_line_buffer")
+                    .unwrap()
+                    .into_pointer_value();
+                let write_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            i8_type,
+                            current_buffer,
+                            &[current_total],
+                            "read_line_write_ptr",
+                        )
+                        .unwrap()
+                };
+                let char_i8 = self
+                    .builder
+                    .build_int_truncate(char_i32, i8_type, "read_line_char_i8")
+                    .unwrap();
+                self.builder.build_store(write_ptr, char_i8).unwrap();
+                let next_total = self
+                    .builder
+                    .build_int_add(
+                        current_total,
+                        i64_type.const_int(1, false),
+                        "read_line_next_total",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_store(total_read_slot, next_total)
+                    .unwrap();
+                let term_ptr = unsafe {
+                    self.builder
+                        .build_gep(i8_type, current_buffer, &[next_total], "read_line_term_ptr")
+                        .unwrap()
+                };
+                self.builder
+                    .build_store(term_ptr, i8_type.const_zero())
+                    .unwrap();
+                let saw_newline = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        char_i8,
+                        i8_type.const_int(b'\n' as u64, false),
+                        "read_line_saw_newline",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(saw_newline, done_bb, read_cond_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(grow_bb);
+                let grown_capacity = self
+                    .builder
+                    .build_int_add(current_capacity, chunk_chars, "read_line_new_capacity")
+                    .unwrap();
+                let grown_buffer = self
+                    .builder
+                    .build_load(ptr_type, buffer_slot, "read_line_grow_buffer")
+                    .unwrap()
+                    .into_pointer_value();
+                let realloc_call = self
+                    .builder
+                    .build_call(
+                        realloc,
+                        &[grown_buffer.into(), grown_capacity.into()],
+                        "read_line_realloc",
+                    )
+                    .unwrap();
+                let realloc_ptr = self.extract_call_value(realloc_call).into_pointer_value();
+                let realloc_failed = self
+                    .builder
+                    .build_is_null(realloc_ptr, "read_line_realloc_failed")
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(realloc_failed, oom_bb, grow_ok_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(oom_bb);
+                self.emit_runtime_error("read_line() out of memory", "read_line_out_of_memory")?;
+
+                self.builder.position_at_end(grow_ok_bb);
+                self.builder.build_store(buffer_slot, realloc_ptr).unwrap();
+                self.builder
+                    .build_store(capacity_slot, grown_capacity)
+                    .unwrap();
+                self.builder
+                    .build_unconditional_branch(read_cond_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(done_bb);
+                let final_buffer = self
+                    .builder
+                    .build_load(ptr_type, buffer_slot, "read_line_final_buffer")
+                    .unwrap();
+
+                Ok(Some(final_buffer))
             }
             "System__exit" | "exit" => {
                 let code = self.compile_expr(&args[0].node)?;
@@ -12565,15 +12746,10 @@ impl<'ctx> Codegen<'ctx> {
 
                 let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
 
-                let success_block = self
-                    .context
-                    .append_basic_block(self.current_function.unwrap(), "read.success");
-                let fail_block = self
-                    .context
-                    .append_basic_block(self.current_function.unwrap(), "read.fail");
-                let merge_block = self
-                    .context
-                    .append_basic_block(self.current_function.unwrap(), "read.merge");
+                let current_fn = self.current_function.unwrap();
+                let success_block = self.context.append_basic_block(current_fn, "read.success");
+                let fail_block = self.context.append_basic_block(current_fn, "read.fail");
+                let merge_block = self.context.append_basic_block(current_fn, "read.merge");
 
                 self.builder
                     .build_conditional_branch(is_null, fail_block, success_block)
@@ -12637,6 +12813,106 @@ impl<'ctx> Codegen<'ctx> {
                     )
                     .unwrap();
 
+                let scan_index_slot = self
+                    .builder
+                    .build_alloca(self.context.i64_type(), "file_read_scan_index")
+                    .unwrap();
+                self.builder
+                    .build_store(scan_index_slot, self.context.i64_type().const_zero())
+                    .unwrap();
+
+                let scan_cond_block = self
+                    .context
+                    .append_basic_block(current_fn, "file_read_scan_cond");
+                let scan_body_block = self
+                    .context
+                    .append_basic_block(current_fn, "file_read_scan_body");
+                let scan_next_block = self
+                    .context
+                    .append_basic_block(current_fn, "file_read_scan_next");
+                let scan_done_block = self
+                    .context
+                    .append_basic_block(current_fn, "file_read_scan_done");
+                let scan_fail_block = self
+                    .context
+                    .append_basic_block(current_fn, "file_read_scan_fail");
+
+                self.builder
+                    .build_unconditional_branch(scan_cond_block)
+                    .unwrap();
+
+                self.builder.position_at_end(scan_cond_block);
+                let scan_index = self
+                    .builder
+                    .build_load(
+                        self.context.i64_type(),
+                        scan_index_slot,
+                        "file_read_scan_index_value",
+                    )
+                    .unwrap()
+                    .into_int_value();
+                let scan_has_more = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::ULT,
+                        scan_index,
+                        size,
+                        "file_read_scan_has_more",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(scan_has_more, scan_body_block, scan_done_block)
+                    .unwrap();
+
+                self.builder.position_at_end(scan_body_block);
+                let scan_byte_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            self.context.i8_type(),
+                            buffer,
+                            &[scan_index],
+                            "file_read_scan_byte_ptr",
+                        )
+                        .unwrap()
+                };
+                let scan_byte = self
+                    .builder
+                    .build_load(self.context.i8_type(), scan_byte_ptr, "file_read_scan_byte")
+                    .unwrap()
+                    .into_int_value();
+                let scan_is_zero = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        scan_byte,
+                        self.context.i8_type().const_zero(),
+                        "file_read_scan_is_zero",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(scan_is_zero, scan_fail_block, scan_next_block)
+                    .unwrap();
+
+                self.builder.position_at_end(scan_fail_block);
+                self.emit_runtime_error("File.read() cannot load NUL bytes", "file_read_nul_byte")?;
+
+                self.builder.position_at_end(scan_next_block);
+                let next_scan_index = self
+                    .builder
+                    .build_int_add(
+                        scan_index,
+                        self.context.i64_type().const_int(1, false),
+                        "file_read_next_scan_index",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_store(scan_index_slot, next_scan_index)
+                    .unwrap();
+                self.builder
+                    .build_unconditional_branch(scan_cond_block)
+                    .unwrap();
+
+                self.builder.position_at_end(scan_done_block);
                 // buffer[size] = 0 (null terminate)
                 let term_ptr = unsafe {
                     self.builder
@@ -12647,11 +12923,17 @@ impl<'ctx> Codegen<'ctx> {
                     .build_store(term_ptr, self.context.i8_type().const_int(0, false))
                     .unwrap();
 
+                self.compile_utf8_string_length_runtime(buffer)?;
+
                 // fclose(f)
                 self.builder
                     .build_call(fclose, &[file_ptr.into()], "")
                     .unwrap();
 
+                let success_merge_block = self
+                    .builder
+                    .get_insert_block()
+                    .ok_or_else(|| CodegenError::new("File.read merge predecessor missing"))?;
                 self.builder
                     .build_unconditional_branch(merge_block)
                     .unwrap();
@@ -12662,7 +12944,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_phi(self.context.ptr_type(AddressSpace::default()), "result")
                     .unwrap();
-                phi.add_incoming(&[(&fail_res, fail_block), (&buffer, success_block)]);
+                phi.add_incoming(&[(&fail_res, fail_block), (&buffer, success_merge_block)]);
 
                 Ok(Some(phi.as_basic_value()))
             }
@@ -12764,16 +13046,81 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
                 let tm_ptr = self.extract_call_value(tm_ptr_val).into_pointer_value();
 
-                // 4. Allocate buffer for string (64 bytes should be enough for time)
-                let buf_size = self.context.i64_type().const_int(64, false);
+                // 4. Allocate a buffer sized from the format string instead of a fixed
+                // 64-byte slab, which truncated longer formats and could leave invalid output.
+                let strlen_fn = self.get_or_declare_strlen();
+                let format_len_call = self
+                    .builder
+                    .build_call(strlen_fn, &[format.into()], "format_len")
+                    .unwrap();
+                let format_len = self.extract_call_value(format_len_call).into_int_value();
+                let scaled_format_len = self
+                    .builder
+                    .build_int_mul(
+                        format_len,
+                        self.context.i64_type().const_int(8, false),
+                        "scaled_format_len",
+                    )
+                    .unwrap();
+                let dynamic_buf_size = self
+                    .builder
+                    .build_int_add(
+                        scaled_format_len,
+                        self.context.i64_type().const_int(64, false),
+                        "dynamic_time_buf_size",
+                    )
+                    .unwrap();
+                let min_buf_size = self.context.i64_type().const_int(64, false);
+                let use_dynamic_buf = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::UGT,
+                        dynamic_buf_size,
+                        min_buf_size,
+                        "use_dynamic_time_buf",
+                    )
+                    .unwrap();
+                let buf_size = self
+                    .builder
+                    .build_select(
+                        use_dynamic_buf,
+                        dynamic_buf_size,
+                        min_buf_size,
+                        "time_buf_size",
+                    )
+                    .unwrap()
+                    .into_int_value();
                 let buf_ptr_val = self
                     .builder
                     .build_call(malloc, &[buf_size.into()], "buf")
                     .unwrap();
                 let buf_ptr = self.extract_call_value(buf_ptr_val).into_pointer_value();
+                let last_byte_offset = self
+                    .builder
+                    .build_int_sub(
+                        buf_size,
+                        self.context.i64_type().const_int(1, false),
+                        "time_last_byte_offset",
+                    )
+                    .unwrap();
+                let last_byte_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            self.context.i8_type(),
+                            buf_ptr,
+                            &[last_byte_offset],
+                            "time_last_byte_ptr",
+                        )
+                        .unwrap()
+                };
+                self.builder
+                    .build_store(buf_ptr, self.context.i8_type().const_zero())
+                    .unwrap();
+                self.builder
+                    .build_store(last_byte_ptr, self.context.i8_type().const_zero())
+                    .unwrap();
 
                 // 5. If format is empty string, use default "%H:%M:%S"
-                let strlen_fn = self.get_or_declare_strlen();
                 let is_empty = self
                     .builder
                     .build_call(strlen_fn, &[format.into()], "len")
@@ -12961,6 +13308,7 @@ impl<'ctx> Codegen<'ctx> {
                 let pclose_fn = self.get_or_declare_pclose();
                 let fread_fn = self.get_or_declare_fread();
                 let malloc = self.get_or_declare_malloc();
+                let realloc = self.get_or_declare_realloc();
 
                 let mode = self.context.const_string(b"r", true);
                 let mode_global = self.module.add_global(mode.get_type(), None, "mode_pop_r");
@@ -12995,34 +13343,217 @@ impl<'ctx> Codegen<'ctx> {
 
                 // Success - Read from pipe
                 self.builder.position_at_end(success_bb);
-                let buf_size = self.context.i64_type().const_int(4096, false); // Cap at 4KB for simplicity
+                let i8_type = self.context.i8_type();
+                let i64_type = self.context.i64_type();
+                let ptr_type = self.context.ptr_type(AddressSpace::default());
+                let chunk_size = i64_type.const_int(4096, false);
+                let one = i64_type.const_int(1, false);
+                let initial_capacity = i64_type.const_int(4097, false);
+                let read_cond_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.read.cond");
+                let read_body_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.read.body");
+                let read_after_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.read.after");
+                let grow_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.read.grow");
+                let grow_ok_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.read.grow.ok");
+                let oom_bb = self.context.append_basic_block(current_fn, "exec.read.oom");
+                let done_bb = self
+                    .context
+                    .append_basic_block(current_fn, "exec.read.done");
+
+                let buf_slot = self
+                    .builder
+                    .build_alloca(ptr_type, "exec_buf_slot")
+                    .unwrap();
+                let capacity_slot = self
+                    .builder
+                    .build_alloca(i64_type, "exec_capacity_slot")
+                    .unwrap();
+                let total_read_slot = self
+                    .builder
+                    .build_alloca(i64_type, "exec_total_read_slot")
+                    .unwrap();
+
                 let buf_call = self
                     .builder
-                    .build_call(malloc, &[buf_size.into()], "buf")
+                    .build_call(malloc, &[initial_capacity.into()], "buf")
                     .unwrap();
                 let buf = self.extract_call_value(buf_call).into_pointer_value();
+                self.builder.build_store(buf_slot, buf).unwrap();
+                self.builder
+                    .build_store(capacity_slot, initial_capacity)
+                    .unwrap();
+                self.builder
+                    .build_store(total_read_slot, i64_type.const_zero())
+                    .unwrap();
+                self.builder
+                    .build_unconditional_branch(read_cond_bb)
+                    .unwrap();
 
-                let one = self.context.i64_type().const_int(1, false);
+                self.builder.position_at_end(read_cond_bb);
+                let current_capacity = self
+                    .builder
+                    .build_load(i64_type, capacity_slot, "exec_capacity")
+                    .unwrap()
+                    .into_int_value();
+                let current_total = self
+                    .builder
+                    .build_load(i64_type, total_read_slot, "exec_total_read")
+                    .unwrap()
+                    .into_int_value();
+                let remaining_capacity = self
+                    .builder
+                    .build_int_sub(
+                        current_capacity,
+                        self.builder
+                            .build_int_add(current_total, one, "exec_total_plus_term")
+                            .unwrap(),
+                        "exec_remaining_capacity",
+                    )
+                    .unwrap();
+                let needs_grow = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        remaining_capacity,
+                        i64_type.const_zero(),
+                        "exec_needs_grow",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(needs_grow, grow_bb, read_body_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(read_body_bb);
+                let current_buf = self
+                    .builder
+                    .build_load(ptr_type, buf_slot, "exec_buf")
+                    .unwrap()
+                    .into_pointer_value();
+                let write_ptr = unsafe {
+                    self.builder
+                        .build_gep(i8_type, current_buf, &[current_total], "exec_write_ptr")
+                        .unwrap()
+                };
                 let read_len_call = self
                     .builder
                     .build_call(
                         fread_fn,
-                        &[buf.into(), one.into(), buf_size.into(), pipe_ptr.into()],
+                        &[
+                            write_ptr.into(),
+                            one.into(),
+                            remaining_capacity.into(),
+                            pipe_ptr.into(),
+                        ],
                         "read_len",
                     )
                     .unwrap();
                 let read_len = self.extract_call_value(read_len_call).into_int_value();
+                let reached_eof = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        read_len,
+                        i64_type.const_zero(),
+                        "exec_reached_eof",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(reached_eof, done_bb, read_after_bb)
+                    .unwrap();
 
-                // Null terminate at read_len
+                self.builder.position_at_end(read_after_bb);
+                let next_total = self
+                    .builder
+                    .build_int_add(current_total, read_len, "exec_next_total")
+                    .unwrap();
+                self.builder
+                    .build_store(total_read_slot, next_total)
+                    .unwrap();
+                let filled_chunk = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        read_len,
+                        remaining_capacity,
+                        "exec_filled_chunk",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(filled_chunk, grow_bb, read_cond_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(grow_bb);
+                let grow_capacity = self
+                    .builder
+                    .build_load(i64_type, capacity_slot, "exec_grow_capacity")
+                    .unwrap()
+                    .into_int_value();
+                let new_capacity = self
+                    .builder
+                    .build_int_add(grow_capacity, chunk_size, "exec_new_capacity")
+                    .unwrap();
+                let grow_buf = self
+                    .builder
+                    .build_load(ptr_type, buf_slot, "exec_grow_buf")
+                    .unwrap()
+                    .into_pointer_value();
+                let realloc_call = self
+                    .builder
+                    .build_call(
+                        realloc,
+                        &[grow_buf.into(), new_capacity.into()],
+                        "exec_realloc",
+                    )
+                    .unwrap();
+                let realloc_buf = self.extract_call_value(realloc_call).into_pointer_value();
+                let realloc_failed = self
+                    .builder
+                    .build_is_null(realloc_buf, "exec_realloc_failed")
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(realloc_failed, oom_bb, grow_ok_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(oom_bb);
+                self.emit_runtime_error("System.exec() out of memory", "exec_out_of_memory")?;
+
+                self.builder.position_at_end(grow_ok_bb);
+                self.builder.build_store(buf_slot, realloc_buf).unwrap();
+                self.builder
+                    .build_store(capacity_slot, new_capacity)
+                    .unwrap();
+                self.builder
+                    .build_unconditional_branch(read_cond_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(done_bb);
+                let final_total = self
+                    .builder
+                    .build_load(i64_type, total_read_slot, "exec_final_total")
+                    .unwrap()
+                    .into_int_value();
+                let final_buf = self
+                    .builder
+                    .build_load(ptr_type, buf_slot, "exec_final_buf")
+                    .unwrap()
+                    .into_pointer_value();
                 let term_ptr = unsafe {
                     self.builder
-                        .build_gep(self.context.i8_type(), buf, &[read_len], "term_ptr")
+                        .build_gep(i8_type, final_buf, &[final_total], "term_ptr")
                         .unwrap()
                 };
                 self.builder
-                    .build_store(term_ptr, self.context.i8_type().const_int(0, false))
+                    .build_store(term_ptr, i8_type.const_zero())
                     .unwrap();
-
                 self.builder
                     .build_call(pclose_fn, &[pipe_ptr.into()], "")
                     .unwrap();
@@ -13034,23 +13565,42 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_phi(self.context.ptr_type(AddressSpace::default()), "res")
                     .unwrap();
-                phi.add_incoming(&[(&empty_str, fail_bb), (&buf, success_bb)]);
+                phi.add_incoming(&[(&empty_str, fail_bb), (&final_buf, done_bb)]);
                 Ok(Some(phi.as_basic_value()))
             }
 
             "System__cwd" => {
                 let getcwd_fn = self.get_or_declare_getcwd();
-                let malloc = self.get_or_declare_malloc();
-                let size = self.context.i64_type().const_int(1024, false);
-                let buf_call = self
+                let ptr_type = self.context.ptr_type(AddressSpace::default());
+                let cwd_call = self
                     .builder
-                    .build_call(malloc, &[size.into()], "buf")
+                    .build_call(
+                        getcwd_fn,
+                        &[
+                            ptr_type.const_null().into(),
+                            self.context.i64_type().const_zero().into(),
+                        ],
+                        "cwd",
+                    )
                     .unwrap();
-                let buf = self.extract_call_value(buf_call).into_pointer_value();
+                let cwd_ptr = self.extract_call_value(cwd_call).into_pointer_value();
+                let cwd_failed = self.builder.build_is_null(cwd_ptr, "cwd_failed").unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("System.cwd used outside function"))?;
+                let cwd_ok_bb = self.context.append_basic_block(current_fn, "system_cwd_ok");
+                let cwd_fail_bb = self
+                    .context
+                    .append_basic_block(current_fn, "system_cwd_fail");
                 self.builder
-                    .build_call(getcwd_fn, &[buf.into(), size.into()], "cwd")
+                    .build_conditional_branch(cwd_failed, cwd_fail_bb, cwd_ok_bb)
                     .unwrap();
-                Ok(Some(buf.into()))
+
+                self.builder.position_at_end(cwd_fail_bb);
+                self.emit_runtime_error("System.cwd() failed", "system_cwd_failed")?;
+
+                self.builder.position_at_end(cwd_ok_bb);
+                Ok(Some(cwd_ptr.into()))
             }
             "System__os" => {
                 let os = if cfg!(target_os = "windows") {
@@ -13092,7 +13642,21 @@ impl<'ctx> Codegen<'ctx> {
 
             "Args__get" => {
                 let index = self.compile_expr(&args[0].node)?.into_int_value();
+                let argc_global = self.module.get_global("_apex_argc").unwrap();
                 let argv_global = self.module.get_global("_apex_argv").unwrap();
+                let argc = self
+                    .builder
+                    .build_load(
+                        self.context.i32_type(),
+                        argc_global.as_pointer_value(),
+                        "argc",
+                    )
+                    .unwrap()
+                    .into_int_value();
+                let argc64 = self
+                    .builder
+                    .build_int_s_extend(argc, self.context.i64_type(), "argc64")
+                    .unwrap();
                 let argv = self
                     .builder
                     .build_load(
@@ -13103,6 +13667,52 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap()
                     .into_pointer_value();
 
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("Args.get used outside function"))?;
+                let negative_bb = self
+                    .context
+                    .append_basic_block(current_fn, "args_get_negative");
+                let bounds_check_bb = self
+                    .context
+                    .append_basic_block(current_fn, "args_get_bounds_check");
+                let oob_bb = self.context.append_basic_block(current_fn, "args_get_oob");
+                let ok_bb = self.context.append_basic_block(current_fn, "args_get_ok");
+                let non_negative = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::SGE,
+                        index,
+                        self.context.i64_type().const_zero(),
+                        "args_get_non_negative",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(non_negative, bounds_check_bb, negative_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(negative_bb);
+                self.emit_runtime_error(
+                    "Args.get() index cannot be negative",
+                    "args_get_negative_runtime_error",
+                )?;
+
+                self.builder.position_at_end(bounds_check_bb);
+                let in_bounds = self
+                    .builder
+                    .build_int_compare(IntPredicate::SLT, index, argc64, "args_get_in_bounds")
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(in_bounds, ok_bb, oob_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(oob_bb);
+                self.emit_runtime_error(
+                    "Args.get() index out of bounds",
+                    "args_get_oob_runtime_error",
+                )?;
+
+                self.builder.position_at_end(ok_bb);
                 // index is i64, need to truncate to i32 for GEP if needed, but ptr is 64bit
                 let elem_ptr = unsafe {
                     self.builder
