@@ -7794,6 +7794,7 @@ function main(): None {
                     && symbol
                         .name()
                         .ok()
+                        .map(|name| name.trim_start_matches('_'))
                         .is_some_and(|name| specialization_symbols.contains(&name))
             });
             if defines_specialization {
