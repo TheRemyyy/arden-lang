@@ -882,12 +882,11 @@ impl<'ctx> Codegen<'ctx> {
                                 &[data_ptr.into(), new_size.into()],
                                 "set_grown_ptr",
                             )
-                            .unwrap()
-                            .try_as_basic_value();
-                        let grown_ptr = match grown_ptr {
-                            ValueKind::Basic(BasicValueEnum::PointerValue(ptr)) => ptr,
-                            _ => return Err(CodegenError::new("realloc failed for Set growth")),
-                        };
+                            .unwrap();
+                        let grown_ptr = self
+                            .extract_call_value(grown_ptr)
+                            .map_err(|_| CodegenError::new("realloc did not return Set storage"))?
+                            .into_pointer_value();
                         self.builder.build_store(data_ptr_ptr, grown_ptr).unwrap();
                         self.builder
                             .build_store(capacity_ptr, grown_capacity)
@@ -1999,10 +1998,9 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "data")
             .unwrap();
-        let data_ptr = match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => val,
-            _ => panic!("malloc should return a value"),
-        };
+        let data_ptr = self
+            .extract_call_value(call_result)
+            .map_err(|_| CodegenError::new("malloc did not return list storage"))?;
 
         let data_ptr_field = unsafe {
             self.builder
@@ -2056,10 +2054,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[new_size.into()], "grown_data")
             .unwrap();
-        let grown_data = match grown_call.try_as_basic_value() {
-            ValueKind::Basic(v) => v.into_pointer_value(),
-            _ => panic!("malloc should return a value"),
-        };
+        let grown_data = self
+            .extract_call_value(grown_call)
+            .map_err(|_| CodegenError::new("malloc did not return grown list storage"))?
+            .into_pointer_value();
 
         let bytes_to_copy = self
             .builder
@@ -2218,10 +2216,9 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[keys_size.into()], "keys")
             .unwrap();
-        let keys_ptr = match keys_call.try_as_basic_value() {
-            ValueKind::Basic(val) => val,
-            _ => panic!("malloc should return a value"),
-        };
+        let keys_ptr = self
+            .extract_call_value(keys_call)
+            .map_err(|_| CodegenError::new("malloc did not return map key storage"))?;
         let keys_field = unsafe {
             self.builder
                 .build_gep(
@@ -2238,10 +2235,9 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[values_size.into()], "values")
             .unwrap();
-        let values_ptr = match values_call.try_as_basic_value() {
-            ValueKind::Basic(val) => val,
-            _ => panic!("malloc should return a value"),
-        };
+        let values_ptr = self
+            .extract_call_value(values_call)
+            .map_err(|_| CodegenError::new("malloc did not return map value storage"))?;
         let values_field = unsafe {
             self.builder
                 .build_gep(
@@ -2327,10 +2323,9 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "data")
             .unwrap();
-        let data_ptr = match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => val,
-            _ => panic!("malloc should return a value"),
-        };
+        let data_ptr = self
+            .extract_call_value(call_result)
+            .map_err(|_| CodegenError::new("malloc did not return set storage"))?;
 
         let data_ptr_field = unsafe {
             self.builder
@@ -2354,10 +2349,8 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "box")
             .unwrap();
-        match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => Ok(val),
-            _ => panic!("malloc should return a value"),
-        }
+        self.extract_call_value(call_result)
+            .map_err(|_| CodegenError::new("malloc did not return Box storage"))
     }
 
     pub fn create_empty_rc(&mut self) -> Result<BasicValueEnum<'ctx>> {
@@ -2367,10 +2360,8 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "rc")
             .unwrap();
-        match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => Ok(val),
-            _ => panic!("malloc should return a value"),
-        }
+        self.extract_call_value(call_result)
+            .map_err(|_| CodegenError::new("malloc did not return Rc storage"))
     }
 
     pub fn create_empty_arc(&mut self) -> Result<BasicValueEnum<'ctx>> {
@@ -2380,10 +2371,8 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "arc")
             .unwrap();
-        match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => Ok(val),
-            _ => panic!("malloc should return a value"),
-        }
+        self.extract_call_value(call_result)
+            .map_err(|_| CodegenError::new("malloc did not return Arc storage"))
     }
 
     pub fn compile_list_method(
@@ -3559,12 +3548,11 @@ impl<'ctx> Codegen<'ctx> {
                         &[keys_ptr.into(), new_key_size.into()],
                         "grown_keys",
                     )
-                    .unwrap()
-                    .try_as_basic_value();
-                let grown_keys = match grown_keys {
-                    ValueKind::Basic(BasicValueEnum::PointerValue(ptr)) => ptr,
-                    _ => return Err(CodegenError::new("realloc failed for Map key growth")),
-                };
+                    .unwrap();
+                let grown_keys = self
+                    .extract_call_value(grown_keys)
+                    .map_err(|_| CodegenError::new("realloc did not return Map key storage"))?
+                    .into_pointer_value();
                 let new_val_size = self
                     .builder
                     .build_int_mul(
@@ -3580,12 +3568,11 @@ impl<'ctx> Codegen<'ctx> {
                         &[values_ptr.into(), new_val_size.into()],
                         "grown_vals",
                     )
-                    .unwrap()
-                    .try_as_basic_value();
-                let grown_vals = match grown_vals {
-                    ValueKind::Basic(BasicValueEnum::PointerValue(ptr)) => ptr,
-                    _ => return Err(CodegenError::new("realloc failed for Map value growth")),
-                };
+                    .unwrap();
+                let grown_vals = self
+                    .extract_call_value(grown_vals)
+                    .map_err(|_| CodegenError::new("realloc did not return Map value storage"))?
+                    .into_pointer_value();
                 self.builder.build_store(keys_ptr_ptr, grown_keys).unwrap();
                 self.builder
                     .build_store(values_ptr_ptr, grown_vals)
