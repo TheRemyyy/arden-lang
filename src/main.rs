@@ -5985,6 +5985,7 @@ fn format_targets(path: Option<&Path>, check_only: bool) -> Result<(), String> {
         collect_apex_files(path)?
     } else if let Some(project_root) = find_project_root(&current_dir) {
         let config = ProjectConfig::load(&project_root.join("apex.toml"))?;
+        config.validate(&project_root)?;
         config.get_source_files(&project_root)
     } else {
         collect_apex_files(&current_dir)?
@@ -6045,16 +6046,31 @@ fn format_targets(path: Option<&Path>, check_only: bool) -> Result<(), String> {
 
 fn resolve_default_file(path: Option<&Path>) -> Result<PathBuf, String> {
     if let Some(path) = path {
+        validate_source_file_path(path)?;
         return Ok(path.to_path_buf());
     }
 
     let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
     if let Some(project_root) = find_project_root(&current_dir) {
         let config = ProjectConfig::load(&project_root.join("apex.toml"))?;
+        config.validate(&project_root)?;
         return Ok(config.get_entry_path(&project_root));
     }
 
     Err("No file specified and no apex.toml found in the current directory".to_string())
+}
+
+fn validate_source_file_path(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("Path '{}' does not exist", path.display()));
+    }
+    if !path.is_file() {
+        return Err(format!("Path '{}' is not a file", path.display()));
+    }
+    if path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
+        return Err(format!("Path '{}' is not an .apex file", path.display()));
+    }
+    Ok(())
 }
 
 fn lint_target(path: Option<&Path>) -> Result<(), String> {
@@ -6124,11 +6140,26 @@ fn collect_apex_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<
     for entry in fs::read_dir(dir)
         .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?
     {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let entry = entry.map_err(|e| {
+            format!(
+                "Failed to read directory entry in '{}': {}",
+                dir.display(),
+                e
+            )
+        })?;
+        let file_type = entry.file_type().map_err(|e| {
+            format!(
+                "Failed to inspect directory entry '{}': {}",
+                entry.path().display(),
+                e
+            )
+        })?;
         let path = entry.path();
-        if path.is_dir() {
+        if file_type.is_dir() {
             collect_apex_files_recursive(&path, files)?;
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("apex") {
+        } else if file_type.is_file()
+            && path.extension().and_then(|ext| ext.to_str()) == Some("apex")
+        {
             files.push(path);
         }
     }
@@ -6273,15 +6304,18 @@ fn run_tests(
     // Determine which file(s) to test
     let test_files = if let Some(path) = test_path {
         if path.is_file() {
+            if path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
+                return Err(format!("Path '{}' is not an .apex file", path.display()));
+            }
             vec![path.to_path_buf()]
         } else {
             // Look for test files in directory
             find_test_files(path)?
         }
     } else {
-        // Default: look for test files in current project
+        // Default: use project files when inside a project, otherwise scan cwd.
         let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
-        find_test_files(&current_dir)?
+        default_test_files(&current_dir)?
     };
 
     if test_files.is_empty() {
@@ -6383,6 +6417,24 @@ fn run_tests(
     Ok(())
 }
 
+fn default_test_files(current_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    if let Some(project_root) = find_project_root(current_dir) {
+        let config_path = project_root.join("apex.toml");
+        let config = ProjectConfig::load(&config_path)?;
+        config.validate(&project_root)?;
+
+        let mut files = config
+            .get_source_files(&project_root)
+            .into_iter()
+            .filter(|path| is_test_like_file(path))
+            .collect::<Vec<_>>();
+        files.sort();
+        return Ok(files);
+    }
+
+    find_test_files(current_dir)
+}
+
 /// Find test files in a directory
 fn find_test_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if !dir.exists() {
@@ -6396,6 +6448,16 @@ fn find_test_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     find_test_files_recursive(dir, &mut test_files)?;
     test_files.sort();
     Ok(test_files)
+}
+
+fn is_test_like_file(path: &Path) -> bool {
+    if path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
+        return false;
+    }
+
+    let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let lowercase = file_name.to_ascii_lowercase();
+    lowercase.contains("test") || lowercase.contains("spec")
 }
 
 fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -6423,11 +6485,8 @@ fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Resul
             continue;
         }
 
-        if file_type.is_file() && path.extension().map(|e| e == "apex").unwrap_or(false) {
-            let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-            if file_name.contains("test") || file_name.contains("spec") {
-                test_files.push(path);
-            }
+        if file_type.is_file() && is_test_like_file(&path) {
+            test_files.push(path);
         }
     }
     Ok(())
@@ -6482,16 +6541,16 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
 mod tests {
     use super::{
         api_program_fingerprint, build_file_dependency_graph_incremental, build_project,
-        build_reverse_dependency_graph, check_command, codegen_program_for_unit, compile_source,
-        component_fingerprint, compute_link_fingerprint, compute_namespace_api_fingerprints,
-        compute_rewrite_context_fingerprint_for_unit, escape_response_file_arg, format_targets,
-        parse_project_unit, precompute_all_transitive_dependencies,
-        reusable_component_fingerprints, run_tests, semantic_program_fingerprint,
-        should_skip_final_link, transitive_dependents, typecheck_summary_cache_from_state,
-        typecheck_summary_cache_matches, DependencyGraphCache, DependencyGraphFileEntry,
-        DependencyResolutionContext, LinkConfig, LinkManifestCache, OutputKind, ParsedProjectUnit,
-        RewriteFingerprintContext, RewrittenProjectUnit, DEPENDENCY_GRAPH_CACHE_SCHEMA,
-        LINK_MANIFEST_CACHE_SCHEMA,
+        build_reverse_dependency_graph, check_command, codegen_program_for_unit,
+        collect_apex_files, compile_source, component_fingerprint, compute_link_fingerprint,
+        compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
+        escape_response_file_arg, fix_target, format_targets, lint_target, parse_project_unit,
+        precompute_all_transitive_dependencies, reusable_component_fingerprints, run_tests,
+        semantic_program_fingerprint, should_skip_final_link, transitive_dependents,
+        typecheck_summary_cache_from_state, typecheck_summary_cache_matches, DependencyGraphCache,
+        DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig, LinkManifestCache,
+        OutputKind, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
+        DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
     };
     use crate::ast::{Decl, FunctionDecl, ImportDecl, Program, Spanned, Type, Visibility};
     use crate::borrowck::BorrowChecker;
@@ -10454,6 +10513,25 @@ function main(): None {
     }
 
     #[test]
+    fn cli_run_tests_discovers_mixed_case_test_filenames() {
+        let temp_root = make_temp_project_root("cli-test-mixed-case");
+        let test_file = temp_root.join("MathTest.apex");
+        fs::write(
+            &test_file,
+            r#"
+                @Test
+                function mixedCase(): None { return None; }
+            "#,
+        )
+        .expect("write mixed-case test file");
+
+        run_tests(Some(&temp_root), true, Some("mixedCase"))
+            .expect("mixed-case test discovery should succeed");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn cli_run_tests_errors_for_missing_directory() {
         let temp_root = make_temp_project_root("cli-test-missing-dir");
         let missing_dir = temp_root.join("missing-tests");
@@ -10463,6 +10541,219 @@ function main(): None {
         assert!(
             err.contains("does not exist"),
             "expected missing directory error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_run_tests_rejects_non_apex_file_paths() {
+        let temp_root = make_temp_project_root("cli-test-non-apex");
+        let text_file = temp_root.join("notes.txt");
+        fs::write(
+            &text_file,
+            "@Test\nfunction nope(): None { return None; }\n",
+        )
+        .expect("write non-apex file");
+
+        let err =
+            run_tests(Some(&text_file), true, None).expect_err("non-apex file path should fail");
+        assert!(
+            err.contains("is not an .apex file"),
+            "expected non-apex file error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_run_tests_without_path_uses_project_file_list_only() {
+        let temp_root = make_temp_project_root("cli-test-project-default");
+        let src_dir = temp_root.join("src");
+        let examples_dir = temp_root.join("examples");
+        fs::create_dir_all(&examples_dir).expect("create examples dir");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/math_test.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("math_test.apex"),
+            "@Test\nfunction listedTest(): None { return None; }\n",
+        )
+        .expect("write listed test");
+        fs::write(
+            examples_dir.join("broken_test.apex"),
+            "@Test\nfunction broken(: None { return None; }\n",
+        )
+        .expect("write stray broken test");
+
+        with_current_dir(&temp_root, || {
+            run_tests(None, true, Some("listedTest"))
+                .expect("default project test discovery should ignore non-project files");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_format_targets_rejects_project_files_outside_root() {
+        let temp_root = make_temp_project_root("cli-fmt-outside-root");
+        let outside_file = temp_root.parent().expect("temp root parent").join(format!(
+            "apex-outside-format-{}-{}.apex",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::write(&outside_file, "function stray(): None { return None; }\n")
+            .expect("write outside file");
+        let rel_outside = format!(
+            "../{}",
+            outside_file
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("outside file name")
+        );
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", &rel_outside],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = format_targets(None, true)
+                .expect_err("fmt should reject project files outside the root");
+            assert!(
+                err.contains("resolves outside the project root"),
+                "expected outside-root validation error, got: {err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_file(outside_file);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn collect_apex_files_skips_symlinked_directories() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = make_temp_project_root("collect-apex-symlink-dir");
+        let real_dir = temp_root.join("real");
+        let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
+            "apex-outside-dir-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&real_dir).expect("create real dir");
+        fs::create_dir_all(&outside_dir).expect("create outside dir");
+        let inside_file = real_dir.join("inside.apex");
+        let outside_file = outside_dir.join("outside.apex");
+        fs::write(&inside_file, "function inside(): None { return None; }\n")
+            .expect("write inside file");
+        fs::write(&outside_file, "function outside(): None { return None; }\n")
+            .expect("write outside file");
+        symlink(&outside_dir, temp_root.join("linked-outside")).expect("create dir symlink");
+
+        let files =
+            collect_apex_files(&temp_root).expect("collect_apex_files should skip symlink dirs");
+        assert!(
+            files.contains(&inside_file),
+            "expected real apex file to be discovered: {files:?}"
+        );
+        assert!(
+            !files.contains(&outside_file),
+            "symlinked outside directory should not be traversed: {files:?}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_dir_all(outside_dir);
+    }
+
+    #[test]
+    fn cli_lint_target_rejects_entry_outside_root() {
+        let temp_root = make_temp_project_root("cli-lint-outside-root");
+        let outside_file = temp_root.parent().expect("temp root parent").join(format!(
+            "apex-outside-lint-{}-{}.apex",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::write(&outside_file, "function stray(): None { return None; }\n")
+            .expect("write outside file");
+        let rel_outside = format!(
+            "../{}",
+            outside_file
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("outside file name")
+        );
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", &rel_outside],
+            &rel_outside,
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nfunction helper(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = lint_target(None).expect_err("lint should reject entry outside the root");
+            assert!(
+                err.contains("resolves outside the project root"),
+                "expected outside-root validation error, got: {err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_file(outside_file);
+    }
+
+    #[test]
+    fn cli_lint_target_rejects_directory_paths() {
+        let temp_root = make_temp_project_root("cli-lint-dir-path");
+
+        let err = lint_target(Some(&temp_root)).expect_err("lint should reject directory paths");
+        assert!(
+            err.contains("is not a file"),
+            "expected directory path validation error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_fix_target_rejects_non_apex_file_paths() {
+        let temp_root = make_temp_project_root("cli-fix-non-apex");
+        let text_file = temp_root.join("notes.txt");
+        fs::write(&text_file, "not apex\n").expect("write text file");
+
+        let err = fix_target(Some(&text_file)).expect_err("fix should reject non-apex files");
+        assert!(
+            err.contains("is not an .apex file"),
+            "expected non-apex validation error, got: {err}"
         );
 
         let _ = fs::remove_dir_all(temp_root);

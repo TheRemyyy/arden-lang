@@ -90,9 +90,41 @@ impl NamespaceResolver {
 
     /// Register a module from file path
     pub fn register_file(&mut self, file_path: &Path) -> Result<Module, String> {
-        // Get relative path from src/
-        let relative = file_path
-            .strip_prefix(&self.src_root)
+        if !file_path.exists() {
+            return Err(format!("File {} does not exist", file_path.display()));
+        }
+        if !file_path.is_file() {
+            return Err(format!("Path {} is not a file", file_path.display()));
+        }
+        if file_path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
+            return Err(format!(
+                "File {} is not an .apex source file",
+                file_path.display()
+            ));
+        }
+
+        let canonical_root = self.src_root.canonicalize().map_err(|e| {
+            format!(
+                "Failed to resolve src root '{}': {}",
+                self.src_root.display(),
+                e
+            )
+        })?;
+        let canonical_file = file_path
+            .canonicalize()
+            .map_err(|e| format!("Failed to resolve file '{}': {}", file_path.display(), e))?;
+        if !canonical_file.starts_with(&canonical_root) {
+            return Err(format!(
+                "File {} resolves outside the src directory '{}'",
+                file_path.display(),
+                canonical_root.display()
+            ));
+        }
+
+        // Build the namespace from the normalized on-disk path so inputs like
+        // src/subdir/../main.apex cannot leak `..` into the derived namespace.
+        let relative = canonical_file
+            .strip_prefix(&canonical_root)
             .map_err(|_| format!("File {} is not in src directory", file_path.display()))?;
 
         // Convert path to namespace
@@ -309,5 +341,111 @@ mod tests {
         assert!(parse_import("import 9utils.math;").is_none());
         assert!(parse_import("import utils.9math;").is_none());
         assert!(parse_import("import utils.math as 9alias;").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn register_file_rejects_symlinked_files_outside_src_root() {
+        use std::fs;
+        use std::os::unix::fs::symlink;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let temp_root = std::env::temp_dir().join(format!(
+            "apex-namespace-symlink-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let src_root = temp_root.join("src");
+        fs::create_dir_all(&src_root).expect("create src root");
+
+        let outside_file = temp_root.parent().expect("temp parent").join(format!(
+            "apex-namespace-outside-{}-{}.apex",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::write(&outside_file, "function stray(): None { return None; }\n")
+            .expect("write outside file");
+
+        let linked = src_root.join("linked.apex");
+        symlink(&outside_file, &linked).expect("create file symlink");
+
+        let mut resolver = NamespaceResolver::new(src_root.clone());
+        let err = resolver
+            .register_file(&linked)
+            .expect_err("symlink outside src root should be rejected");
+        assert!(
+            err.contains("resolves outside the src directory"),
+            "expected boundary error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_file(outside_file);
+    }
+
+    #[test]
+    fn register_file_rejects_non_apex_files() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let temp_root = std::env::temp_dir().join(format!(
+            "apex-namespace-non-apex-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let src_root = temp_root.join("src");
+        fs::create_dir_all(&src_root).expect("create src root");
+        let note_path = src_root.join("notes.txt");
+        fs::write(&note_path, "not apex\n").expect("write note file");
+
+        let mut resolver = NamespaceResolver::new(src_root.clone());
+        let err = resolver
+            .register_file(&note_path)
+            .expect_err("non-apex file should be rejected");
+        assert!(
+            err.contains("is not an .apex source file"),
+            "expected non-apex validation error, got: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn register_file_normalizes_dotdot_segments_inside_src_root() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let temp_root = std::env::temp_dir().join(format!(
+            "apex-namespace-dotdot-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let src_root = temp_root.join("src");
+        let nested_dir = src_root.join("nested");
+        fs::create_dir_all(&nested_dir).expect("create nested dir");
+        let main_path = src_root.join("main.apex");
+        fs::write(&main_path, "function main(): None { return None; }\n").expect("write main");
+
+        let odd_path = nested_dir.join("..").join("main.apex");
+        let mut resolver = NamespaceResolver::new(src_root.clone());
+        let module = resolver
+            .register_file(&odd_path)
+            .expect("normalized path inside src root should register");
+
+        assert_eq!(module.namespace, "main");
+        assert_eq!(module.path, PathBuf::from("main.apex"));
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 }

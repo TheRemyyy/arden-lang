@@ -102,9 +102,12 @@ apex test --filter "math"
 | `--filter <pattern>` | `-f` | Filters tests by name pattern. |
 
 Filter note:
+- Without `--path`, `apex test` now uses the current project's `apex.toml` file list when available instead of scanning unrelated files under the working directory.
 - When `--filter` is used, reported totals/ignored counts reflect only the filtered test set.
 - When `--path` points to a directory, discovery now walks nested subdirectories as well.
+- Test-file discovery matches `test/spec` case-insensitively, so names like `MathTest.apex` are included.
 - Missing test directories now fail with a direct CLI error instead of reporting an empty test set.
+- `--path <file>` must point to an `.apex` file; non-Apex files now fail immediately with a CLI error.
 
 ## Examples
 
@@ -151,6 +154,7 @@ Behavior:
   - generic arity mismatch (rejected),
   - unknown explicit type arguments (rejected).
 - Assignment mutability checks now apply to nested targets too (`obj.field = ...`, `arr[i] = ...`), not only direct identifier targets.
+- Invalid `import ... as alias` usages now report an actionable unknown-namespace-alias error instead of a bogus synthetic import suggestion.
 
 ### Formatting Code
 
@@ -167,9 +171,15 @@ apex fmt --check
 
 Notes:
 - When run inside a project without an explicit path, `apex fmt` formats the files listed in `apex.toml`.
+- Those project file paths are now validated against the project root before formatting, so `apex.toml` cannot point `fmt` at files outside the workspace.
+- Recursive directory formatting skips symlinked directories to avoid traversing outside the requested tree.
 - You can point `apex fmt` at either a single `.apex` file or a directory.
 - Formatter output now preserves ambiguous expression statements (`if`/`match`) by emitting them as parenthesized expressions in statement position, so `fmt` round-trips without changing semantics.
 - Formatter now preserves a script shebang line (`#!/usr/bin/env apex`) during rewrite and `--check` runs.
+- Leading comments before a `package ...;` declaration are preserved above the package line instead of being moved below it.
+
+Lint/fix note:
+- `apex lint <path>` and `apex fix <path>` now validate explicit paths up front and reject directories or non-`.apex` files with a direct CLI error.
 
 ### Linting and Safe Fixes
 

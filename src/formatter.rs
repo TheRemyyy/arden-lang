@@ -12,6 +12,7 @@ pub fn format_source(source: &str) -> Result<String, String> {
         .next()
         .filter(|line| line.starts_with("#!"))
         .map(ToString::to_string);
+    let package_offset = find_package_offset(source);
 
     let tokens = lexer::tokenize(source).map_err(|e| format!("Lexer error: {}", e))?;
     let mut parser = Parser::new(tokens);
@@ -19,7 +20,7 @@ pub fn format_source(source: &str) -> Result<String, String> {
         .parse_program()
         .map_err(|e| format!("Parse error: {}", e.message))?;
 
-    let mut formatter = Formatter::with_comments(collect_comments(source));
+    let mut formatter = Formatter::with_comments(collect_comments(source), package_offset);
     formatter.format_program(&program);
     let formatted = formatter.finish();
 
@@ -47,6 +48,7 @@ struct Formatter {
     indent: usize,
     comments: Vec<SourceComment>,
     next_comment: usize,
+    package_offset: Option<usize>,
 }
 
 impl Formatter {
@@ -56,15 +58,17 @@ impl Formatter {
             indent: 0,
             comments: Vec::new(),
             next_comment: 0,
+            package_offset: None,
         }
     }
 
-    fn with_comments(comments: Vec<SourceComment>) -> Self {
+    fn with_comments(comments: Vec<SourceComment>, package_offset: Option<usize>) -> Self {
         Self {
             output: String::new(),
             indent: 0,
             comments,
             next_comment: 0,
+            package_offset,
         }
     }
 
@@ -79,6 +83,9 @@ impl Formatter {
     fn format_program(&mut self, program: &Program) {
         let mut first = true;
         if let Some(package) = &program.package {
+            if let Some(package_offset) = self.package_offset {
+                self.emit_comments_before(package_offset);
+            }
             self.push_line(&format!("package {};", package));
             first = false;
         }
@@ -1059,6 +1066,22 @@ fn collect_comments(source: &str) -> Vec<SourceComment> {
     comments
 }
 
+fn find_package_offset(source: &str) -> Option<usize> {
+    let mut offset = 0;
+    for line in source.split_inclusive('\n') {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("package ") {
+            return Some(offset + (line.len() - trimmed.len()));
+        }
+        offset += line.len();
+    }
+
+    let trimmed = source[offset..].trim_start();
+    trimmed
+        .starts_with("package ")
+        .then_some(offset + (source[offset..].len() - trimmed.len()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::format_source;
@@ -1103,6 +1126,20 @@ function main(): None {mut value: Integer=1+2*3;println("hi {value}");return Non
         let source = "// note\nfunction main(): None { return None; }";
         let formatted = format_source(source).expect("comments should be preserved");
         assert!(formatted.contains("// note"));
+    }
+
+    #[test]
+    fn preserves_leading_comments_before_package() {
+        let source = r#"// banner
+package demo;
+
+function main(): None { return; }
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.starts_with("// banner\npackage demo;\n"),
+            "{formatted}"
+        );
     }
 
     #[test]

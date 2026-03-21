@@ -390,7 +390,7 @@ impl<'a> ImportChecker<'a> {
         if self.invalid_namespace_aliases.contains(name) {
             self.errors.push(ImportError {
                 function_name: name.to_string(),
-                defined_in: "<invalid import alias>".to_string(),
+                defined_in: "<unknown namespace alias>".to_string(),
                 used_in: self.current_namespace.clone(),
                 span,
                 suggestion: None,
@@ -1171,5 +1171,23 @@ function main(): None {
         let errors = check_import_errors(source);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].function_name, "alias");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_direct_call_format_message_is_actionable() {
+        let source = r#"
+import nope.missing as alias;
+function main(): None {
+    alias();
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        let rendered = errors[0].format();
+        assert!(rendered.contains("Unknown namespace alias usage 'alias'"));
+        assert!(rendered.contains("import <namespace> as <alias>;"));
+        assert!(!rendered.contains("<invalid import alias>"));
     }
 }

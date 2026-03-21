@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed `apex fmt` leading-comment ordering for package files:
+  - banner comments that appear before `package ...;` now stay above the package declaration instead of being moved below it during formatting
+
+- Fixed invalid import-alias diagnostics in import checking:
+  - calls through unresolved aliases like `import nope.missing as alias; alias();` now report an actionable unknown-namespace-alias error instead of suggesting impossible imports such as `import <invalid import alias>.alias;`
+
 - Fixed `apex bindgen` C-type normalization for real-world headers:
   - inline `/* ... */` and `// ...` comments now preserve token boundaries instead of merging declarations like `unsigned/*x*/int` into an unparseable pseudo-type
   - `unsigned` integer prototypes now stay typed as integers instead of being corrupted by substring-based qualifier stripping
@@ -17,12 +23,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `entry` and `files` paths that resolve through `..` or symlinks outside the project root are now rejected during config validation instead of silently escaping the workspace
   - directory paths in `entry` / `files` are now rejected as invalid source entries instead of surviving until later file reads
   - project-root discovery now works for concrete source-file paths, including not-yet-created `.apex` files used by editor workflows
+  - project-aware CLI commands now consistently enforce that validation before using config-derived paths, so `apex fmt` and default-entry flows like `apex lint` can no longer follow `apex.toml` paths outside the workspace boundary
 - Fixed LSP cursor/symbol resolution edge cases:
   - UTF-16 position conversion now stays aligned after non-BMP characters, so hover/definition/reference requests no longer drift after emoji or similar code points
   - symbol lookup no longer leaks across whitespace/EOF and same-named function parameters now resolve to the parameter binding instead of the declaration name
 - Fixed namespace/import utility validation:
   - invalid wildcard-alias forms and malformed dotted paths are now rejected instead of being normalized into bogus imports
   - numeric-leading alias/path segments no longer pass validation as if they were legal identifiers
+  - `NamespaceResolver::register_file()` now rejects symlinked source files that resolve outside the configured `src` root instead of trusting only the lexical path prefix
+  - `NamespaceResolver::register_file()` now also rejects non-`.apex` files at the boundary instead of turning arbitrary file stems into fake module namespaces
+  - `NamespaceResolver::register_file()` now normalizes `..` segments inside `src/` before deriving the namespace, so paths like `src/nested/../main.apex` no longer generate bogus module names
 
 - Fixed remaining built-in expression-receiver backend gaps:
   - `Map<K, V>` methods like `length`, `contains`, `get`, and `set` now lower correctly on non-local receivers such as `build().contains(1)` instead of failing to infer the object type
@@ -87,8 +97,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - import-check now rejects invalid namespace alias direct calls like `alias()` during import analysis instead of deferring them into later undefined-variable failures
 - Fixed tooling coverage in `apex test`, bindgen, and LSP:
   - test discovery now includes module-nested `@Test` and lifecycle hooks, preserving their mangled names in generated runners instead of silently skipping them
+  - bare `apex test` now respects the current project's `apex.toml` file list instead of recursively scanning every matching `*_test.apex` file under the working directory
   - directory-based `apex test --path <dir>` discovery now walks nested folders like `tests/unit/*.apex` instead of only scanning the top-level directory
+  - test file discovery now matches mixed-case names like `MathTest.apex` and `USER_SPEC.apex` instead of only lowercase `test/spec` substrings
   - missing test directories now return a direct CLI error instead of being silently reported as `No test files found`
+  - `apex test --path <file>` now rejects non-`.apex` files at the CLI boundary instead of trying to lex arbitrary inputs
   - bindgen now accepts pointer-return C prototypes like `char *strdup(...)` and skips whole function-pointer-param prototypes instead of emitting ABI-wrong partial signatures
   - LSP rename/references/go-to-definition now tracks pattern-bound names and recurses through nested module declarations instead of missing `match` bindings and module-local class/enum definitions
 - Fixed filtered project codegen for direct constructor method receivers:
@@ -142,6 +155,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed Windows CLI smoke coverage by running the canonical `scripts/ci_cli_smoke.sh` through a Windows PowerShell wrapper instead of maintaining a reduced forked smoke script.
 - Fixed the Windows smoke wrapper to normalize paths for Git Bash, `chmod +x` the downloaded compiler/script pair, and return the underlying bash exit code instead of failing opaquely in PowerShell.
 - Fixed Apex CLI wording by tightening help text, command descriptions, scaffold output, and runtime status messages across `new`, `build`, `run`, `check`, `fmt`, `lint`, `fix`, `test`, `bindgen`, `bench`, and `profile`.
+- Fixed CLI input-boundary validation for source-file oriented commands:
+  - recursive `.apex` directory collection for `fmt` no longer follows symlinked directories, avoiding accidental traversal outside the requested tree or symlink-loop recursion
+  - explicit `lint` / `fix` file paths now fail fast on directories, missing paths, and non-`.apex` files instead of deferring into lower-level IO errors
 - Fixed the benchmark suite scope so it now compares Apex only against Rust and Go; legacy C runner paths, generated projects, canned results, and fixture references were removed.
 - Changed internal compiler caches from JSON to bincode-only blobs, dropping legacy fallback parsing in favor of lower cache decode overhead.
 - Changed object emission to reuse thread-local LLVM `TargetMachine` instances and emit object bytes from an in-memory buffer before persisting cache objects.
