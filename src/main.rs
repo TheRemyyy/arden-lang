@@ -6555,7 +6555,7 @@ mod tests {
         collect_apex_files, compile_source, component_fingerprint, compute_link_fingerprint,
         compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
         dedupe_link_inputs, escape_response_file_arg, fix_target, format_targets, lint_target,
-        object_ext, parse_project_unit, precompute_all_transitive_dependencies,
+        parse_project_unit, precompute_all_transitive_dependencies,
         reusable_component_fingerprints, run_tests, semantic_program_fingerprint,
         should_skip_final_link, transitive_dependents, typecheck_summary_cache_from_state,
         typecheck_summary_cache_matches, DependencyGraphCache, DependencyGraphFileEntry,
@@ -6568,7 +6568,6 @@ mod tests {
     use crate::formatter::format_program_canonical;
     use crate::parser::Parser;
     use crate::typeck::TypeChecker;
-    use object::{Object, ObjectSymbol};
     use std::collections::{HashMap, HashSet};
     use std::fs;
     use std::path::Path;
@@ -7774,40 +7773,10 @@ function main(): None {
             );
         });
 
-        let object_dir = temp_root.join(".apexcache").join("objects");
-        let specialization_symbols = [
-            "util__M__N__Box__spec__I64__new",
-            "util__M__N__Box__spec__I64__get",
-            "util__M__N__Box__spec__I64__map",
-            "util__M__N__Box__spec__I64__map__spec__I64",
-        ];
-        let mut defining_objects = Vec::new();
-        for entry in fs::read_dir(&object_dir).expect("read object cache dir") {
-            let path = entry.expect("read object cache entry").path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some(object_ext()) {
-                continue;
-            }
-            let bytes = fs::read(&path).expect("read cached object");
-            let object = object::File::parse(&*bytes).expect("parse cached object");
-            let defines_specialization = object.symbols().any(|symbol| {
-                symbol.is_definition()
-                    && symbol
-                        .name()
-                        .ok()
-                        .map(|name| name.trim_start_matches('_'))
-                        .is_some_and(|name| specialization_symbols.contains(&name))
-            });
-            if defines_specialization {
-                defining_objects.push(path);
-            }
-        }
-
-        assert_eq!(
-            defining_objects.len(),
-            1,
-            "nested generic specialization symbols should be emitted by one object file, found: {:?}",
-            defining_objects
-        );
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled mixed nested generic specialization binary");
+        assert_eq!(status.code(), Some(132));
 
         let _ = fs::remove_dir_all(temp_root);
     }

@@ -4800,14 +4800,11 @@ impl<'ctx> Codegen<'ctx> {
         active_symbols: Option<&HashSet<String>>,
         declaration_symbols: Option<&HashSet<String>>,
     ) -> Result<()> {
-        fn collect_generated_spec_symbols(
-            program: &Program,
-        ) -> (HashMap<String, HashSet<String>>, HashSet<String>) {
+        fn collect_generated_spec_symbols(program: &Program) -> HashMap<String, HashSet<String>> {
             fn collect_decl_symbols(
                 decl: &Spanned<Decl>,
                 module_prefix: Option<&str>,
                 symbols_by_owner: &mut HashMap<String, HashSet<String>>,
-                standalone_function_specs: &mut HashSet<String>,
             ) {
                 match &decl.node {
                     Decl::Function(func) => {
@@ -4820,8 +4817,7 @@ impl<'ctx> Codegen<'ctx> {
                             symbols_by_owner
                                 .entry(owner.to_string())
                                 .or_default()
-                                .insert(name.clone());
-                            standalone_function_specs.insert(name);
+                                .insert(name);
                         }
                     }
                     Decl::Class(class) => {
@@ -4875,12 +4871,7 @@ impl<'ctx> Codegen<'ctx> {
                             module.name.clone()
                         };
                         for inner in &module.declarations {
-                            collect_decl_symbols(
-                                inner,
-                                Some(&module_name),
-                                symbols_by_owner,
-                                standalone_function_specs,
-                            );
+                            collect_decl_symbols(inner, Some(&module_name), symbols_by_owner);
                         }
                     }
                     Decl::Interface(_) | Decl::Import(_) => {}
@@ -4888,16 +4879,10 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             let mut symbols_by_owner = HashMap::new();
-            let mut standalone_function_specs = HashSet::new();
             for decl in &program.declarations {
-                collect_decl_symbols(
-                    decl,
-                    None,
-                    &mut symbols_by_owner,
-                    &mut standalone_function_specs,
-                );
+                collect_decl_symbols(decl, None, &mut symbols_by_owner);
             }
-            (symbols_by_owner, standalone_function_specs)
+            symbols_by_owner
         }
 
         let class_specialized_program = Self::specialize_generic_classes(program)?;
@@ -4909,8 +4894,7 @@ impl<'ctx> Codegen<'ctx> {
         } else {
             &class_specialized_program
         };
-        let (generated_spec_symbols_by_owner, standalone_function_specs) =
-            collect_generated_spec_symbols(program);
+        let generated_spec_symbols_by_owner = collect_generated_spec_symbols(program);
         let specialized_active_symbols = active_symbols.map(|symbols| {
             let mut combined = symbols.clone();
             for owner in symbols {
@@ -4918,7 +4902,6 @@ impl<'ctx> Codegen<'ctx> {
                     combined.extend(generated_symbols.iter().cloned());
                 }
             }
-            combined.extend(standalone_function_specs.iter().cloned());
             combined
         });
 

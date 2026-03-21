@@ -27,9 +27,6 @@ tower-lsp = { version = "0.20.0", features = ["proposed"] }
 tokio = { version = "1.49.0", features = ["full"] }
 twox-hash = "2.1"
 
-[dev-dependencies]
-object = "0.36"
-
 [profile.release]
 opt-level = 3
 lto = true
