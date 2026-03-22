@@ -421,6 +421,43 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         if matches!(ty, Type::String) {
+            let lhs_ptr = lhs.into_pointer_value();
+            let rhs_ptr = rhs.into_pointer_value();
+            let lhs_null = self
+                .builder
+                .build_is_null(lhs_ptr, &format!("{name}_lhs_null"))
+                .unwrap();
+            let rhs_null = self
+                .builder
+                .build_is_null(rhs_ptr, &format!("{name}_rhs_null"))
+                .unwrap();
+            let any_null = self
+                .builder
+                .build_or(lhs_null, rhs_null, &format!("{name}_any_null"))
+                .unwrap();
+            let both_null = self
+                .builder
+                .build_and(lhs_null, rhs_null, &format!("{name}_both_null"))
+                .unwrap();
+
+            let current_fn = self.current_function.unwrap();
+            let strcmp_bb = self
+                .context
+                .append_basic_block(current_fn, &format!("{name}_strcmp_bb"));
+            let merge_bb = self
+                .context
+                .append_basic_block(current_fn, &format!("{name}_strcmp_merge"));
+            let result_ptr = self
+                .builder
+                .build_alloca(self.context.bool_type(), &format!("{name}_string_eq"))
+                .unwrap();
+
+            self.builder.build_store(result_ptr, both_null).unwrap();
+            self.builder
+                .build_conditional_branch(any_null, merge_bb, strcmp_bb)
+                .unwrap();
+
+            self.builder.position_at_end(strcmp_bb);
             let strcmp = self.get_or_declare_strcmp();
             let cmp = self
                 .builder
@@ -430,17 +467,25 @@ impl<'ctx> Codegen<'ctx> {
                 ValueKind::Basic(v) => v.into_int_value(),
                 _ => self.context.i32_type().const_int(1, false),
             };
-            return Ok(self
+            let strcmp_eq = self
                 .builder
                 .build_int_compare(
                     IntPredicate::EQ,
                     cmp_v,
                     self.context.i32_type().const_zero(),
-                    name,
+                    &format!("{name}_strcmp_eq"),
                 )
-                .unwrap());
-        }
+                .unwrap();
+            self.builder.build_store(result_ptr, strcmp_eq).unwrap();
+            self.builder.build_unconditional_branch(merge_bb).unwrap();
 
+            self.builder.position_at_end(merge_bb);
+            return Ok(self
+                .builder
+                .build_load(self.context.bool_type(), result_ptr, name)
+                .unwrap()
+                .into_int_value());
+        }
         if lhs.is_pointer_value() && rhs.is_pointer_value() {
             let lhs_int = self
                 .builder

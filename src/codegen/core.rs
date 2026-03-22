@@ -8239,7 +8239,7 @@ impl<'ctx> Codegen<'ctx> {
 
             Expr::Lambda { params, body } => self.compile_lambda(params, body),
 
-            Expr::Match { expr, arms } => self.compile_match_expr(&expr.node, arms),
+            Expr::Match { expr, arms } => self.compile_match_expr(&expr.node, arms, None),
 
             Expr::Try(inner) => self.compile_try(&inner.node),
 
@@ -8328,7 +8328,7 @@ impl<'ctx> Codegen<'ctx> {
                 condition,
                 then_branch,
                 else_branch,
-            } => self.compile_if_expr(&condition.node, then_branch, else_branch.as_ref()),
+            } => self.compile_if_expr(&condition.node, then_branch, else_branch.as_ref(), None),
 
             Expr::Block(body) => {
                 let mut result = self.context.i8_type().const_int(0, false).into();
@@ -8392,6 +8392,27 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
+        if let Expr::Match {
+            expr: match_expr,
+            arms,
+        } = expr
+        {
+            return self.compile_match_expr(&match_expr.node, arms, Some(expected_ty));
+        }
+        if let Expr::IfExpr {
+            condition,
+            then_branch,
+            else_branch,
+        } = expr
+        {
+            return self.compile_if_expr(
+                &condition.node,
+                then_branch,
+                else_branch.as_ref(),
+                Some(expected_ty),
+            );
+        }
+
         self.compile_expr(expr)
     }
 
@@ -8400,6 +8421,7 @@ impl<'ctx> Codegen<'ctx> {
         condition: &Expr,
         then_branch: &[Spanned<Stmt>],
         else_branch: Option<&Vec<Spanned<Stmt>>>,
+        expected_ty: Option<&Type>,
     ) -> Result<BasicValueEnum<'ctx>> {
         let cond_val = self.compile_expr(condition)?;
         let cond = cond_val.into_int_value();
@@ -8421,7 +8443,11 @@ impl<'ctx> Codegen<'ctx> {
         let mut then_result = self.context.i8_type().const_int(0, false).into();
         for stmt in then_branch {
             if let Stmt::Expr(expr) = &stmt.node {
-                then_result = self.compile_expr(&expr.node)?;
+                then_result = if let Some(expected_ty) = expected_ty {
+                    self.compile_expr_with_expected_type(&expr.node, expected_ty)?
+                } else {
+                    self.compile_expr(&expr.node)?
+                };
             } else {
                 self.compile_stmt(&stmt.node)?;
             }
@@ -8437,7 +8463,11 @@ impl<'ctx> Codegen<'ctx> {
         if let Some(else_stmts) = else_branch {
             for stmt in else_stmts {
                 if let Stmt::Expr(expr) = &stmt.node {
-                    else_result = self.compile_expr(&expr.node)?;
+                    else_result = if let Some(expected_ty) = expected_ty {
+                        self.compile_expr_with_expected_type(&expr.node, expected_ty)?
+                    } else {
+                        self.compile_expr(&expr.node)?
+                    };
                 } else {
                     self.compile_stmt(&stmt.node)?;
                 }
@@ -8488,20 +8518,54 @@ impl<'ctx> Codegen<'ctx> {
         left: &Expr,
         right: &Expr,
     ) -> Result<BasicValueEnum<'ctx>> {
-        let lhs = self.compile_expr(left)?;
-        let rhs = self.compile_expr(right)?;
         let left_ty = self.infer_expr_type(left, &[]);
         let right_ty = self.infer_expr_type(right, &[]);
 
-        if matches!(op, BinOp::Eq | BinOp::NotEq) && left_ty == right_ty {
-            let eq = self.build_value_equality(lhs, rhs, &left_ty, "eq")?;
-            let result = match op {
-                BinOp::Eq => eq,
-                BinOp::NotEq => self.builder.build_not(eq, "ne").unwrap(),
-                _ => unreachable!(),
+        if matches!(op, BinOp::Eq | BinOp::NotEq) {
+            let try_expected_eq = |this: &mut Self,
+                                   expected_ty: &Type,
+                                   expected_expr: &Expr,
+                                   other_expr: &Expr|
+             -> Result<Option<BasicValueEnum<'ctx>>> {
+                match expected_ty {
+                    Type::Option(_) | Type::Result(_, _) => {
+                        let lhs =
+                            this.compile_expr_with_expected_type(expected_expr, expected_ty)?;
+                        let rhs = this.compile_expr_with_expected_type(other_expr, expected_ty)?;
+                        let eq = this.build_value_equality(lhs, rhs, expected_ty, "eq")?;
+                        let result = match op {
+                            BinOp::Eq => eq,
+                            BinOp::NotEq => this.builder.build_not(eq, "ne").unwrap(),
+                            _ => unreachable!(),
+                        };
+                        Ok(Some(result.into()))
+                    }
+                    _ => Ok(None),
+                }
             };
-            return Ok(result.into());
+
+            if left_ty == right_ty {
+                let lhs = self.compile_expr(left)?;
+                let rhs = self.compile_expr(right)?;
+                let eq = self.build_value_equality(lhs, rhs, &left_ty, "eq")?;
+                let result = match op {
+                    BinOp::Eq => eq,
+                    BinOp::NotEq => self.builder.build_not(eq, "ne").unwrap(),
+                    _ => unreachable!(),
+                };
+                return Ok(result.into());
+            }
+
+            if let Some(result) = try_expected_eq(self, &left_ty, left, right)? {
+                return Ok(result);
+            }
+            if let Some(result) = try_expected_eq(self, &right_ty, left, right)? {
+                return Ok(result);
+            }
         }
+
+        let lhs = self.compile_expr(left)?;
+        let rhs = self.compile_expr(right)?;
 
         // Integer operations
         if lhs.is_int_value() && rhs.is_int_value() {

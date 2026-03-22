@@ -954,6 +954,7 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         expr: &Expr,
         arms: &[MatchArm],
+        expected_result_ty: Option<&Type>,
     ) -> Result<BasicValueEnum<'ctx>> {
         fn pattern_variant_leaf(name: &str) -> &str {
             name.rsplit('.').next().unwrap_or(name)
@@ -980,6 +981,17 @@ impl<'ctx> Codegen<'ctx> {
         let mut dispatch_bb = self.builder.get_insert_block().unwrap();
         let mut incoming: Vec<(BasicValueEnum<'ctx>, BasicBlock<'ctx>)> = Vec::new();
         let mut result_ty: Option<BasicTypeEnum<'ctx>> = None;
+        let inferred_match_result_ty = arms
+            .iter()
+            .filter_map(|arm| self.infer_block_tail_type(&arm.body))
+            .reduce(|acc, ty| if acc == ty { acc } else { Type::Integer });
+        let inferred_match_result_ty = inferred_match_result_ty.filter(|ty| {
+            !matches!(ty, Type::Integer)
+                || arms
+                    .iter()
+                    .all(|arm| self.infer_block_tail_type(&arm.body) == Some(Type::Integer))
+        });
+        let expected_match_result_ty = expected_result_ty.or(inferred_match_result_ty.as_ref());
 
         for arm in arms {
             let arm_bb = self.context.append_basic_block(func, "match.expr.arm");
@@ -1209,7 +1221,11 @@ impl<'ctx> Codegen<'ctx> {
             for (idx, stmt) in arm.body.iter().enumerate() {
                 if idx + 1 == arm.body.len() {
                     if let Stmt::Expr(e) = &stmt.node {
-                        arm_result = self.compile_expr(&e.node)?;
+                        arm_result = if let Some(expected_ty) = &expected_match_result_ty {
+                            self.compile_expr_with_expected_type(&e.node, expected_ty)?
+                        } else {
+                            self.compile_expr(&e.node)?
+                        };
                     } else {
                         self.compile_stmt(&stmt.node)?;
                     }
@@ -2037,23 +2053,24 @@ impl<'ctx> Codegen<'ctx> {
                                 }
                             }
                             ("Option", "none") => return Type::Option(Box::new(Type::Integer)),
-                            ("Result", "ok") => {
-                                if let Expr::Call { args, .. } = expr {
-                                    if let Some(first_arg) = args.first() {
-                                        return Type::Result(
-                                            Box::new(self.infer_expr_type(&first_arg.node, params)),
-                                            Box::new(Type::String),
-                                        );
-                                    }
+                            ("Result", "ok") | ("Result", "error") => {
+                                if let Some(expected) = self.infer_object_type(expr) {
+                                    return expected;
                                 }
-                            }
-                            ("Result", "error") => {
                                 if let Expr::Call { args, .. } = expr {
                                     if let Some(first_arg) = args.first() {
-                                        return Type::Result(
-                                            Box::new(Type::Integer),
-                                            Box::new(self.infer_expr_type(&first_arg.node, params)),
-                                        );
+                                        let arg_ty = self.infer_expr_type(&first_arg.node, params);
+                                        return match field.as_str() {
+                                            "ok" => Type::Result(
+                                                Box::new(arg_ty),
+                                                Box::new(Type::String),
+                                            ),
+                                            "error" => Type::Result(
+                                                Box::new(Type::Integer),
+                                                Box::new(arg_ty),
+                                            ),
+                                            _ => unreachable!(),
+                                        };
                                     }
                                 }
                             }

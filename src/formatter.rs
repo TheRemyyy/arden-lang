@@ -694,11 +694,16 @@ impl Formatter {
     }
 
     fn format_match_arm_inline(&mut self, arm: &MatchArm) -> String {
-        format!(
-            "{} => {}",
-            self.format_pattern(&arm.pattern),
+        let body = if arm.body.len() == 1 {
+            if let Stmt::Expr(expr) = &arm.body[0].node {
+                self.format_expr(&expr.node)
+            } else {
+                self.format_inline_block(&arm.body)
+            }
+        } else {
             self.format_inline_block(&arm.body)
-        )
+        };
+        format!("{} => {}", self.format_pattern(&arm.pattern), body)
     }
 
     fn format_else_tail(&mut self, else_block: &Block) {
@@ -1277,7 +1282,7 @@ function main(): None {
 }
 "#;
         let formatted = format_source(source).expect("format succeeds");
-        assert!(formatted.contains("(match (2)"));
+        assert!(formatted.contains("match (2) { 2 => 3, _ => 4 }"), "{formatted}");
         let tokens = tokenize(&formatted).expect("formatted output should lex");
         let mut parser = Parser::new(tokens);
         parser

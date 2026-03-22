@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed null-safe string equality in nested tagged container storage paths:
+  - `Set<Result<Option<T>, String>>` and related nested tagged containers no longer crash after growth/removal when comparing string-backed `Result.error(...)` variants, because string equality now avoids calling `strcmp` on null payload pointers in inactive union slots
+- Fixed expected-type-aware `if` lowering for tagged constructor branches:
+  - `if` expressions such as `if (flag) { Option.some(Boxed(...)) } else { Option.none() }` now lower both branches through the declared container type instead of emitting non-dominating placeholder values and crashing in LLVM verification or Clang IR import
+- Fixed expected-type-aware match lowering for nested `Option` / `Result` tails:
+  - match-expression arms like `Ok(value) => value` and `Error(_) => Option.none()` now lower through the surrounding container type instead of mixing placeholder `Option<Integer>` layouts with nested tagged payload layouts and emitting invalid LLVM IR during ultra-nested unwrap/equality flows
+- Fixed codegen equality for inferred `Result.ok(...)` / `Result.error(...)` operands in nested tagged comparisons:
+  - comparisons against expected `Result<Option<T>, E>` / similar nested tagged values now lower through the expected container layout instead of falling back to placeholder `Result<Integer, _>` / `Result<_, String>` inference and failing with the late backend error `Type mismatch in binary operation`
 - Fixed canonical temp-root handling in tests and CLI smoke:
   - temp-root helpers now canonicalize `std::env::temp_dir()` first, and the smoke script resolves `mktemp -d` through `pwd -P`, so `/var/...` and `/private/var/...` aliases no longer trigger false symlink-traversal failures in project-root, CLI, file-collection, or smoke-path validation
 - Fixed long-working-directory smoke coverage on macOS:

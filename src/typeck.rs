@@ -2610,8 +2610,19 @@ impl TypeChecker {
                 self.check_type_visibility(&declared_type, span.clone());
                 let value_type = self.check_expr(&value.node, value.span.clone());
 
-                // Check type compatibility
-                if !self.types_compatible(&declared_type, &value_type) {
+                // Check type compatibility. If the value is an if-expression that already
+                // produced a branch mismatch diagnostic, avoid cascading a second local
+                // assignment mismatch for the same root cause.
+                let suppress_assignment_mismatch = matches!(&value.node, Expr::IfExpr { .. })
+                    && !self.types_compatible(&declared_type, &value_type)
+                    && self.errors.iter().any(|error| {
+                        error.message.contains("If expression branch type mismatch")
+                            && error.span == value.span
+                    });
+
+                if !self.types_compatible(&declared_type, &value_type)
+                    && !suppress_assignment_mismatch
+                {
                     self.error(
                         format!(
                             "Type mismatch: cannot assign {} to variable of type {}",

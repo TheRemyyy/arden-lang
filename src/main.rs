@@ -8145,6 +8145,50 @@ function classify(result: Result<Option<Integer>, String>): None {
     }
 
     #[test]
+    fn alias_nested_if_match_expression_reports_single_branch_type_mismatch() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function unwrap_opt(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => inner,
+        Empty => 0,
+    };
+}
+
+function classify(result: Result<Option<Integer>, String>, cond: Boolean): Integer {
+    return if (cond) {
+        match (result) {
+            Success(inner) => unwrap_opt(inner),
+            Failure(err) => 0,
+        }
+    } else {
+        "ok"
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("nested alias if-match branch type mismatch should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("Type mismatch")
+                || m.contains("Match expression arm type mismatch")
+                || m.contains("If expression branch type mismatch")
+                || m.contains("expected String")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
     fn alias_match_expression_reports_single_branch_type_mismatch() {
         let source = r#"
 import app.Option.Some as Present;
@@ -8173,6 +8217,3766 @@ function classify(value: Option<Integer>): Integer {
                 || joined.contains("Match expression branch type mismatch"),
             "{joined}"
         );
+    }
+
+    #[test]
+    fn rest_style_alias_heavy_tagged_pipeline_survives_frontend_backend() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+class Request {
+    route: String;
+    constructor(route: String) { this.route = route; }
+}
+
+class Response {
+    code: Integer;
+    body: String;
+    constructor(code: Integer, body: String) {
+        this.code = code;
+        this.body = body;
+    }
+}
+
+function decode(req: Request): Result<Option<Integer>, String> {
+    if (req.route == "/users") {
+        return Result.ok(Option.some(200));
+    }
+    return Result.error("missing");
+}
+
+function handle(req: Request, verbose: Boolean): Response {
+    status: Integer = if (verbose) {
+        match (decode(req)) {
+            Success(inner) => match (inner) {
+                Present(code) => code,
+                Empty => 204,
+            },
+            Failure(err) => 500,
+        }
+    } else {
+        400
+    };
+    return Response(status, "done");
+}
+
+function main(): Integer {
+    return handle(Request("/users"), true).code;
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn data_pipeline_tagged_container_growth_chains_survive_codegen() {
+        let temp_root = make_temp_project_root("data-pipeline-tagged-container-runtime");
+        let source_path = temp_root.join("data_pipeline_tagged_container_runtime.apex");
+        let output_path = temp_root.join("data_pipeline_tagged_container_runtime");
+        let source = r#"
+            class Row {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function bump(): Row { return Row(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, Integer>, Option<Row>> {
+                m: Map<Result<Option<Integer>, Integer>, Option<Row>> = Map<Result<Option<Integer>, Integer>, Option<Row>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    m.set(Result.ok(Option.some(i)), Option.some(Row(i)));
+                    i = i + 1;
+                }
+                if (flag) {
+                    m.set(Result.error(3), Option.some(Row(40)));
+                }
+                return m;
+            }
+
+            function main(): Integer {
+                pipeline: Map<Result<Option<Integer>, Integer>, Option<Row>> = build(true);
+                hit: Option<Row> = pipeline.get(Result.error(3));
+                return hit.unwrap().bump().value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("data pipeline tagged container runtime should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled data pipeline tagged container binary");
+        assert_eq!(status.code(), Some(41));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn batch_style_tagged_container_mutation_chain_survives_codegen() {
+        let temp_root = make_temp_project_root("batch-style-tagged-mutation-runtime");
+        let source_path = temp_root.join("batch_style_tagged_mutation_runtime.apex");
+        let output_path = temp_root.join("batch_style_tagged_mutation_runtime");
+        let source = r#"
+            class Row {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function bump(): Row { return Row(this.value + 1); }
+            }
+
+            function main(): Integer {
+                queue: Map<Result<Option<Integer>, Integer>, Option<Row>> = Map<Result<Option<Integer>, Integer>, Option<Row>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    queue.set(Result.ok(Option.some(i)), Option.some(Row(i)));
+                    i = i + 1;
+                }
+                queue.set(Result.error(3), Option.some(Row(10)));
+                queue.set(Result.error(3), Option.some(Row(20)));
+                had_old: Boolean = queue.contains(Result.ok(Option.some(4)));
+                queue.set(Result.ok(Option.some(4)), Option.some(Row(30)));
+                has_new: Boolean = queue.contains(Result.ok(Option.some(4)));
+                picked: Option<Row> = queue.get(Result.error(3));
+                restored: Option<Row> = queue.get(Result.ok(Option.some(4)));
+                return if (had_old && has_new && queue.length() == 10) { picked.unwrap().bump().value + restored.unwrap().value } else { 0 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("batch-style tagged mutation runtime should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled batch-style tagged mutation binary");
+        assert_eq!(status.code(), Some(51));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn alias_heavy_ultra_edge_tagged_container_method_chain_survives_frontend_backend() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+    function inc(): Boxed { return Boxed(this.value + 1); }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.ok(Option.some(1)), Option.some(Boxed(50)));
+    store.set(Result.ok(Option.none()), Option.none());
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(60)));
+    }
+    return store;
+}
+
+function main(): Integer {
+    value: Option<Boxed> = match (build(true).get(Result.error("missing"))) {
+        Present(row) => Option.some(row.inc()),
+        Empty => Option.some(Boxed(0)),
+    };
+    return value.unwrap().value;
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn alias_heavy_tagged_runtime_pipeline_with_updates_and_chains() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+    function inc(): Boxed { return Boxed(this.value + 1); }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    mut i: Integer = 0;
+    while (i < 9) {
+        store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+        i = i + 1;
+    }
+    store.set(Result.ok(Option.none()), Option.none());
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(70)));
+        store.set(Result.error("missing"), Option.some(Boxed(80)));
+    }
+    return store;
+}
+
+function main(): Integer {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = build(true);
+    fallback: Option<Boxed> = store.get(Result.ok(Option.none()));
+    value: Option<Boxed> = match (store.get(Result.error("missing"))) {
+        Present(row) => Option.some(row.inc()),
+        Empty => fallback,
+    };
+    return value.unwrap().value;
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn unicode_tagged_key_pipeline_survives_frontend_backend() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+    function inc(): Boxed { return Boxed(this.value + 1); }
+}
+
+function build(): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.error("σφάλμα🚀"), Option.some(Boxed(90)));
+    store.set(Result.ok(Option.some(1)), Option.some(Boxed(5)));
+    return store;
+}
+
+function main(): Integer {
+    chosen: Option<Boxed> = match (build().get(Result.error("σφάλμα🚀"))) {
+        Present(row) => Option.some(row.inc()),
+        Empty => Option.some(Boxed(0)),
+    };
+    status: Boolean = build().contains(Result.error("σφάλμα🚀"));
+    return if (status) { chosen.unwrap().value } else { 0 };
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn unicode_tagged_join_and_equality_survives_frontend_backend() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function choose(flag: Boolean): Result<Option<Boxed>, String> {
+    return if (flag) {
+        Result.ok(Option.some(Boxed(91)))
+    } else {
+        Result.error("σφάλμα🚀")
+    };
+}
+
+function main(): Integer {
+    picked: Result<Option<Boxed>, String> = match (true) {
+        true => choose(true),
+        false => choose(false),
+    };
+    if (picked == Result.error("σφάλμα🚀")) {
+        return 0;
+    }
+    value: Option<Boxed> = match (picked) {
+        Success(row) => row,
+        Failure(err) => Option.none(),
+    };
+    return match (value) {
+        Present(row) => row.value,
+        Empty => 0,
+    };
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn unicode_string_keyed_tagged_container_updates_survive_runtime() {
+        let temp_root = make_temp_project_root("unicode-tagged-container-update-runtime");
+        let source_path = temp_root.join("unicode_tagged_container_update_runtime.apex");
+        let output_path = temp_root.join("unicode_tagged_container_update_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function main(): Integer {
+                store: Map<Result<Option<Integer>, String>, Integer> = Map<Result<Option<Integer>, String>, Integer>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), i);
+                    i = i + 1;
+                }
+                store.set(Result.error("σφάλμα🚀"), 100);
+                store.set(Result.error("σφάλμα🚀"), 110);
+                present: Boolean = store.contains(Result.error("σφάλμα🚀"));
+                value: Integer = store.get(Result.error("σφάλμα🚀"));
+                return if (present && value == 110) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unicode tagged container update runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled unicode tagged container update binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn string_keyed_tagged_set_growth_remove_contains_survives_runtime() {
+        let temp_root = make_temp_project_root("string-keyed-tagged-set-runtime");
+        let source_path = temp_root.join("string_keyed_tagged_set_runtime.apex");
+        let output_path = temp_root.join("string_keyed_tagged_set_runtime");
+        let source = r#"
+            function main(): Integer {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    seen.add(Result.ok(Option.some(i)));
+                    i = i + 1;
+                }
+                seen.add(Result.error("missing"));
+                seen.add(Result.error("missing"));
+                removed: Boolean = seen.remove(Result.ok(Option.some(4)));
+                return if (removed && !seen.contains(Result.ok(Option.some(4))) && seen.contains(Result.error("missing")) && seen.length() == 9) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string-keyed tagged set runtime should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string-keyed tagged set binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn mixed_unicode_ascii_string_error_keys_survive_map_runtime() {
+        let temp_root = make_temp_project_root("mixed-unicode-ascii-string-error-map-runtime");
+        let source_path = temp_root.join("mixed_unicode_ascii_string_error_map_runtime.apex");
+        let output_path = temp_root.join("mixed_unicode_ascii_string_error_map_runtime");
+        let source = r#"
+            function main(): Integer {
+                store: Map<Result<Option<Integer>, String>, Integer> = Map<Result<Option<Integer>, String>, Integer>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), i);
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), 40);
+                store.set(Result.error("σφάλμα🚀"), 50);
+                store.set(Result.error("missing"), 41);
+                return if (
+                    store.contains(Result.error("missing"))
+                    && store.contains(Result.error("σφάλμα🚀"))
+                    && store.get(Result.error("missing")) == 41
+                    && store.get(Result.error("σφάλμα🚀")) == 50
+                ) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed unicode/ascii string error map runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled mixed unicode/ascii string error map binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn mixed_ascii_unicode_string_error_object_values_survive_runtime() {
+        let temp_root = make_temp_project_root("mixed-ascii-unicode-string-error-object-runtime");
+        let source_path = temp_root.join("mixed_ascii_unicode_string_error_object_runtime.apex");
+        let output_path = temp_root.join("mixed_ascii_unicode_string_error_object_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function main(): Integer {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(100)));
+                store.set(Result.error("σφάλμα🚀"), Option.some(Boxed(200)));
+                store.set(Result.error("missing"), Option.some(Boxed(110)));
+                first: Option<Boxed> = store.get(Result.error("missing"));
+                second: Option<Boxed> = store.get(Result.error("σφάλμα🚀"));
+                return if (first.unwrap().inc().value == 111 && second.unwrap().inc().value == 201) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed ascii/unicode string error object runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled mixed ascii/unicode string error object binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn alias_patterns_with_explicit_tagged_constructors_survive_frontend_backend() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.ok(Option.some(1)), Option.some(Boxed(5)));
+    store.set(Result.ok(Option.none()), Option.none());
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(95)));
+    }
+    return store;
+}
+
+function main(): Integer {
+    fetched: Result<Option<Integer>, String> = Result.error("missing");
+    value: Option<Boxed> = match (build(true).get(fetched)) {
+        Present(row) => Option.some(Boxed(row.value + 1)),
+        Empty => Option.some(Boxed(0)),
+    };
+    status: Integer = match (fetched) {
+        Success(inner) => match (inner) {
+            Present(code) => code,
+            Empty => 204,
+        },
+        Failure(err) => 500,
+    };
+    return value.unwrap().value + status;
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn nested_tagged_updates_match_values_and_chains_survive_runtime() {
+        let temp_root = make_temp_project_root("nested-tagged-updates-match-values-runtime");
+        let source_path = temp_root.join("nested_tagged_updates_match_values_runtime.apex");
+        let output_path = temp_root.join("nested_tagged_updates_match_values_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(120)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(130)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                chosen: Option<Boxed> = match (build(true).get(Result.error("missing"))) {
+                    Some(row) => Option.some(row.inc()),
+                    None => Option.some(Boxed(0)),
+                };
+                fallback: Option<Boxed> = build(false).get(Result.error("missing"));
+                return if (chosen.unwrap().value == 131 && fallback.unwrap().value == 120) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested tagged updates + match values runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled nested tagged updates + match values binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn alias_tagged_container_valid_and_invalid_pair_reports_cleanly() {
+        let valid = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function classify(value: Result<Option<Integer>, String>): Integer {
+    return match (value) {
+        Success(inner) => match (inner) {
+            Present(code) => code,
+            Empty => 204,
+        },
+        Failure(err) => 500,
+    };
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function classify(value: Result<Option<Integer>, String>, cond: Boolean): Integer {
+    return if (cond) {
+        match (value) {
+            Success(inner) => match (inner) {
+                Present(code) => code,
+                Empty => 204,
+            },
+            Failure(err) => 500,
+        }
+    } else {
+        "oops"
+    };
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid paired source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn nested_tagged_match_get_chain_survives_runtime() {
+        let temp_root = make_temp_project_root("nested-tagged-match-get-chain-runtime");
+        let source_path = temp_root.join("nested_tagged_match_get_chain_runtime.apex");
+        let output_path = temp_root.join("nested_tagged_match_get_chain_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(140)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(150)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                selected: Option<Boxed> = match (build(true).get(Result.error("missing"))) {
+                    Some(row) => Option.some(row.inc()),
+                    None => Option.some(Boxed(0)),
+                };
+                fallback: Option<Boxed> = match (build(false).get(Result.error("missing"))) {
+                    Some(row) => Option.some(row),
+                    None => Option.none(),
+                };
+                return if (selected.unwrap().value == 151 && fallback.unwrap().value == 140) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested tagged match/get chain runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled nested tagged match/get chain binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn paired_nested_tagged_match_get_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.error("missing"), Option.some(Boxed(1)));
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(2)));
+    }
+    return store;
+}
+
+function main(): Integer {
+    chosen: Option<Boxed> = match (build(true).get(Result.error("missing"))) {
+        Some(row) => Option.some(Boxed(row.value + 1)),
+        None => Option.some(Boxed(0)),
+    };
+    return chosen.unwrap().value;
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.error("missing"), Option.some(Boxed(1)));
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(2)));
+    }
+    return store;
+}
+
+function run(flag: Boolean): Integer {
+    return if (flag) {
+        match (build(true).get(Result.error("missing"))) {
+            Some(row) => row.value,
+            None => 0,
+        }
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return run(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid nested tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn repeated_update_tagged_pipeline_match_get_equality_and_chain_survives_runtime() {
+        let temp_root = make_temp_project_root("repeated-update-tagged-pipeline-runtime");
+        let source_path = temp_root.join("repeated_update_tagged_pipeline_runtime.apex");
+        let output_path = temp_root.join("repeated_update_tagged_pipeline_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(160)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(170)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                latest: Option<Boxed> = match (build(true).get(Result.error("missing"))) {
+                    Some(row) => Option.some(row.inc()),
+                    None => Option.some(Boxed(0)),
+                };
+                earlier: Option<Boxed> = build(false).get(Result.error("missing"));
+                latest_key_present: Boolean = build(true).contains(Result.error("missing"));
+                same_value: Boolean = build(true).get(Result.error("missing")).unwrap().value == 170;
+                return if (latest_key_present && same_value && latest.unwrap().value == 171 && earlier.unwrap().value == 160) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("repeated update tagged pipeline runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled repeated update tagged pipeline binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn repeated_update_tagged_match_value_chain_survives_runtime() {
+        let temp_root = make_temp_project_root("repeated-update-tagged-match-value-runtime");
+        let source_path = temp_root.join("repeated_update_tagged_match_value_runtime.apex");
+        let output_path = temp_root.join("repeated_update_tagged_match_value_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(180)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(190)));
+                }
+                return store;
+            }
+
+            function choose(flag: Boolean): Option<Boxed> {
+                picked: Option<Boxed> = match (build(flag).get(Result.error("missing"))) {
+                    Some(row) => Option.some(row.inc()),
+                    None => Option.some(Boxed(0)),
+                };
+                return picked;
+            }
+
+            function main(): Integer {
+                latest: Option<Boxed> = choose(true);
+                earlier: Option<Boxed> = choose(false);
+                return if (latest.unwrap().value == 191 && earlier.unwrap().value == 181) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("repeated update tagged match value runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled repeated update tagged match value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn repeated_update_tagged_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.error("missing"), Option.some(Boxed(1)));
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(2)));
+    }
+    return store;
+}
+
+function main(): Integer {
+    picked: Option<Boxed> = match (build(true).get(Result.error("missing"))) {
+        Some(row) => Option.some(Boxed(row.value + 1)),
+        None => Option.some(Boxed(0)),
+    };
+    return picked.unwrap().value;
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.error("missing"), Option.some(Boxed(1)));
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(2)));
+    }
+    return store;
+}
+
+function run(flag: Boolean): Integer {
+    return if (flag) {
+        match (build(true).get(Result.error("missing"))) {
+            Some(row) => row.value,
+            None => 0,
+        }
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return run(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid repeated-update tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn repeated_update_match_receiver_equality_chain_survives_runtime() {
+        let temp_root = make_temp_project_root("repeated-update-match-receiver-equality-runtime");
+        let source_path = temp_root.join("repeated_update_match_receiver_equality_runtime.apex");
+        let output_path = temp_root.join("repeated_update_match_receiver_equality_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(200)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(210)));
+                }
+                return store;
+            }
+
+            function pick(flag: Boolean): Boxed {
+                chosen: Option<Boxed> = match (build(flag).get(Result.error("missing"))) {
+                    Some(row) => Option.some(row.inc()),
+                    None => Option.some(Boxed(0)),
+                };
+                return chosen.unwrap();
+            }
+
+            function main(): Integer {
+                latest: Boxed = pick(true);
+                earlier: Boxed = pick(false);
+                same: Boolean = build(true).get(Result.error("missing")).unwrap().value == 210;
+                return if (same && latest.value == 211 && earlier.value == 201) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("repeated-update match receiver equality runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled repeated-update match receiver equality binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn repeated_update_boolean_join_match_receiver_survives_runtime() {
+        let temp_root = make_temp_project_root("repeated-update-boolean-join-runtime");
+        let source_path = temp_root.join("repeated_update_boolean_join_runtime.apex");
+        let output_path = temp_root.join("repeated_update_boolean_join_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(220)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(230)));
+                }
+                return store;
+            }
+
+            function select(flag: Boolean): Integer {
+                chosen: Option<Boxed> = match (build(flag).get(Result.error("missing"))) {
+                    Some(row) => Option.some(row.inc()),
+                    None => Option.some(Boxed(0)),
+                };
+                current_ok: Boolean = build(flag).contains(Result.error("missing"));
+                current_val_ok: Boolean = build(flag).get(Result.error("missing")).unwrap().value == if (flag) { 230 } else { 220 };
+                return if (current_ok && current_val_ok && chosen.unwrap().value == if (flag) { 231 } else { 221 }) { 1 } else { 0 };
+            }
+
+            function main(): Integer {
+                return if (select(true) == 1 && select(false) == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("repeated update boolean join runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled repeated update boolean join binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn repeated_update_tagged_set_boolean_join_chain_survives_runtime() {
+        let temp_root = make_temp_project_root("repeated-update-tagged-set-boolean-join-runtime");
+        let source_path = temp_root.join("repeated_update_tagged_set_boolean_join_runtime.apex");
+        let output_path = temp_root.join("repeated_update_tagged_set_boolean_join_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Set<Result<Option<Integer>, String>> {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    seen.add(Result.ok(Option.some(i)));
+                    i = i + 1;
+                }
+                seen.add(Result.error("missing"));
+                if (flag) {
+                    seen.remove(Result.ok(Option.some(4)));
+                }
+                return seen;
+            }
+
+            function select(flag: Boolean): Boxed {
+                return if (build(flag).contains(Result.error("missing")) && !build(flag).contains(Result.ok(Option.some(4)))) {
+                    Boxed(240).inc()
+                } else {
+                    Boxed(0)
+                };
+            }
+
+            function main(): Integer {
+                latest: Boxed = select(true);
+                earlier: Boxed = select(false);
+                return if (latest.value == 241 && earlier.value == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("repeated-update tagged set boolean join runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled repeated-update tagged set boolean join binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn tagged_set_valid_invalid_boolean_join_pair_reports_single_primary_error() {
+        let valid = r#"
+function build(flag: Boolean): Set<Result<Option<Integer>, String>> {
+    seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+    mut i: Integer = 0;
+    while (i < 9) {
+        seen.add(Result.ok(Option.some(i)));
+        i = i + 1;
+    }
+    seen.add(Result.error("missing"));
+    if (flag) {
+        seen.remove(Result.ok(Option.some(4)));
+    }
+    return seen;
+}
+
+function run(flag: Boolean): Integer {
+    return if (build(flag).contains(Result.error("missing")) && !build(flag).contains(Result.ok(Option.some(4)))) {
+        1
+    } else {
+        0
+    };
+}
+
+function main(): Integer {
+    return if (run(true) == 1 && run(false) == 0) { 0 } else { 1 };
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+function build(flag: Boolean): Set<Result<Option<Integer>, String>> {
+    seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+    mut i: Integer = 0;
+    while (i < 9) {
+        seen.add(Result.ok(Option.some(i)));
+        i = i + 1;
+    }
+    seen.add(Result.error("missing"));
+    if (flag) {
+        seen.remove(Result.ok(Option.some(4)));
+    }
+    return seen;
+}
+
+function run(flag: Boolean): Integer {
+    return if (build(flag).contains(Result.error("missing")) && !build(flag).contains(Result.ok(Option.some(4)))) {
+        1
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return run(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid tagged set pair should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn combined_map_set_tagged_pipeline_survives_runtime() {
+        let temp_root = make_temp_project_root("combined-map-set-tagged-runtime");
+        let source_path = temp_root.join("combined_map_set_tagged_runtime.apex");
+        let output_path = temp_root.join("combined_map_set_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(250)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(260)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                seen.add(Result.error("missing"));
+                seen.add(Result.ok(Option.some(1)));
+                picked: Option<Boxed> = match (build(true).get(Result.error("missing"))) {
+                    Some(row) => Option.some(row.inc()),
+                    None => Option.some(Boxed(0)),
+                };
+                return if (
+                    seen.contains(Result.error("missing"))
+                    && seen.contains(Result.ok(Option.some(1)))
+                    && picked.unwrap().value == 261
+                    && build(false).get(Result.error("missing")).unwrap().value == 250
+                ) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("combined map/set tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled combined map/set tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn combined_map_set_repeated_update_equality_chain_survives_runtime() {
+        let temp_root = make_temp_project_root("combined-map-set-repeated-update-equality-runtime");
+        let source_path = temp_root.join("combined_map_set_repeated_update_equality_runtime.apex");
+        let output_path = temp_root.join("combined_map_set_repeated_update_equality_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(300)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(310)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                seen.add(Result.error("missing"));
+                seen.add(Result.ok(Option.some(1)));
+                chosen: Option<Boxed> = match (build(true).get(Result.error("missing"))) {
+                    Some(row) => Option.some(row.inc()),
+                    None => Option.some(Boxed(0)),
+                };
+                same_latest: Boolean = build(true).get(Result.error("missing")).unwrap().value == 310;
+                same_earlier: Boolean = build(false).get(Result.error("missing")).unwrap().value == 300;
+                return if (
+                    seen.contains(Result.error("missing"))
+                    && seen.contains(Result.ok(Option.some(1)))
+                    && same_latest
+                    && same_earlier
+                    && chosen.unwrap().value == 311
+                ) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("combined map/set repeated update equality runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled combined map/set repeated update equality binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn tagged_membership_branch_match_value_equality_survives_runtime() {
+        let temp_root = make_temp_project_root("tagged-membership-branch-match-value-runtime");
+        let source_path = temp_root.join("tagged_membership_branch_match_value_runtime.apex");
+        let output_path = temp_root.join("tagged_membership_branch_match_value_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(320)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(330)));
+                }
+                return store;
+            }
+
+            function choose(flag: Boolean): Option<Boxed> {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                seen.add(Result.error("missing"));
+                return if (seen.contains(Result.error("missing"))) {
+                    match (build(flag).get(Result.error("missing"))) {
+                        Some(row) => Option.some(row.inc()),
+                        None => Option.some(Boxed(0)),
+                    }
+                } else {
+                    Option.some(Boxed(1))
+                };
+            }
+
+            function main(): Integer {
+                latest: Option<Boxed> = choose(true);
+                earlier: Option<Boxed> = choose(false);
+                return if (latest.unwrap().value == 331 && earlier.unwrap().value == 321) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("tagged membership branch match value runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled tagged membership branch match value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn multi_function_tagged_pipeline_returned_values_and_chains_survive_runtime() {
+        let temp_root = make_temp_project_root("multi-function-tagged-pipeline-runtime");
+        let source_path = temp_root.join("multi_function_tagged_pipeline_runtime.apex");
+        let output_path = temp_root.join("multi_function_tagged_pipeline_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(340)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(350)));
+                }
+                return store;
+            }
+
+            function fetch(flag: Boolean): Option<Boxed> {
+                return build(flag).get(Result.error("missing"));
+            }
+
+            function elevate(flag: Boolean): Boxed {
+                chosen: Option<Boxed> = match (fetch(flag)) {
+                    Some(row) => Option.some(row.inc()),
+                    None => Option.some(Boxed(0)),
+                };
+                return chosen.unwrap();
+            }
+
+            function main(): Integer {
+                latest: Boxed = elevate(true);
+                earlier: Boxed = elevate(false);
+                return if (latest.value == 351 && earlier.value == 341) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("multi-function tagged pipeline runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled multi-function tagged pipeline binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn multi_function_tagged_pipeline_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.error("missing"), Option.some(Boxed(1)));
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(2)));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Option<Boxed> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function elevate(flag: Boolean): Boxed {
+    chosen: Option<Boxed> = match (fetch(flag)) {
+        Some(row) => Option.some(Boxed(row.value + 1)),
+        None => Option.some(Boxed(0)),
+    };
+    return chosen.unwrap();
+}
+
+function main(): Integer {
+    return elevate(true).value;
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.error("missing"), Option.some(Boxed(1)));
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(2)));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Option<Boxed> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function run(flag: Boolean): Integer {
+    return if (flag) {
+        match (fetch(flag)) {
+            Some(row) => row.value,
+            None => 0,
+        }
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return run(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid multi-function tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn multi_helper_tagged_runtime_pipeline_survives_codegen() {
+        let temp_root = make_temp_project_root("multi-helper-tagged-runtime");
+        let source_path = temp_root.join("multi_helper_tagged_runtime.apex");
+        let output_path = temp_root.join("multi_helper_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Option.some(Boxed(i)));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Option.some(Boxed(400)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(410)));
+                }
+                return store;
+            }
+
+            function fetch(flag: Boolean): Option<Boxed> {
+                return build(flag).get(Result.error("missing"));
+            }
+
+            function elevate(flag: Boolean): Boxed {
+                return match (fetch(flag)) {
+                    Some(row) => row.inc(),
+                    None => Boxed(0),
+                };
+            }
+
+            function score(flag: Boolean): Integer {
+                current: Boxed = elevate(flag);
+                return if (build(flag).contains(Result.error("missing")) && current.value == if (flag) { 411 } else { 401 }) { 1 } else { 0 };
+            }
+
+            function main(): Integer {
+                return if (score(true) == 1 && score(false) == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("multi-helper tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled multi-helper tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn multi_helper_tagged_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.error("missing"), Option.some(Boxed(1)));
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(2)));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Option<Boxed> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function elevate(flag: Boolean): Boxed {
+    chosen: Option<Boxed> = match (fetch(flag)) {
+        Some(row) => Option.some(Boxed(row.value + 1)),
+        None => Option.some(Boxed(0)),
+    };
+    return chosen.unwrap();
+}
+
+function main(): Integer {
+    return elevate(true).value;
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+    store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+    store.set(Result.error("missing"), Option.some(Boxed(1)));
+    if (flag) {
+        store.set(Result.error("missing"), Option.some(Boxed(2)));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Option<Boxed> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function run(flag: Boolean): Integer {
+    return if (fetch(flag).is_some()) {
+        match (fetch(flag)) {
+            Some(row) => row.value,
+            None => 0,
+        }
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return run(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid multi-helper tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn fresh_nested_tagged_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("fresh-nested-tagged-runtime");
+        let source_path = temp_root.join("fresh_nested_tagged_runtime.apex");
+        let output_path = temp_root.join("fresh_nested_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(500))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(510))));
+                }
+                return store;
+            }
+
+            function lift(flag: Boolean): Boxed {
+                chosen: Result<Option<Boxed>, String> = build(flag).get(Result.error("missing"));
+                payload: Option<Boxed> = match (chosen) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return payload.unwrap().inc();
+            }
+
+            function main(): Integer {
+                latest: Boxed = lift(true);
+                earlier: Boxed = lift(false);
+                return if (latest.value == 511 && earlier.value == 501) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fresh nested tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled fresh nested tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn nested_tagged_value_flow_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function lift(flag: Boolean): Boxed {
+    chosen: Result<Option<Boxed>, String> = build(flag).get(Result.error("missing"));
+    payload: Option<Boxed> = match (chosen) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return payload.unwrap();
+}
+
+function main(): Integer {
+    return lift(true).value;
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function run(flag: Boolean): Integer {
+    chosen: Result<Option<Boxed>, String> = build(flag).get(Result.error("missing"));
+    payload: Option<Boxed> = match (chosen) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        payload.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return run(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid nested tagged value-flow source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn deeper_multi_helper_nested_tagged_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("deeper-multi-helper-nested-tagged-runtime");
+        let source_path = temp_root.join("deeper_multi_helper_nested_tagged_runtime.apex");
+        let output_path = temp_root.join("deeper_multi_helper_nested_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(600))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(610))));
+                }
+                return store;
+            }
+
+            function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+                return build(flag).get(Result.error("missing"));
+            }
+
+            function lift(flag: Boolean): Option<Boxed> {
+                selected: Result<Option<Boxed>, String> = fetch(flag);
+                return match (selected) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+            }
+
+            function score(flag: Boolean): Integer {
+                latest: Option<Boxed> = lift(flag);
+                current: Boxed = latest.unwrap().inc();
+                return if (current.value == if (flag) { 611 } else { 601 }) { 1 } else { 0 };
+            }
+
+            function main(): Integer {
+                return if (score(true) == 1 && score(false) == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("deeper multi-helper nested tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled deeper multi-helper nested tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn deeper_multi_helper_tagged_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function lift(flag: Boolean): Option<Boxed> {
+    selected: Result<Option<Boxed>, String> = fetch(flag);
+    return match (selected) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+}
+
+function main(): Integer {
+    return lift(true).unwrap().value;
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function lift(flag: Boolean): Option<Boxed> {
+    selected: Result<Option<Boxed>, String> = fetch(flag);
+    return match (selected) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+}
+
+function run(flag: Boolean): Integer {
+    return if (flag) {
+        lift(flag).unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return run(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid deeper multi-helper tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn fresh_multi_stage_tagged_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("fresh-multi-stage-tagged-runtime");
+        let source_path = temp_root.join("fresh_multi_stage_tagged_runtime.apex");
+        let output_path = temp_root.join("fresh_multi_stage_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(700))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(710))));
+                }
+                return store;
+            }
+
+            function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+                return build(flag).get(Result.error("missing"));
+            }
+
+            function project(flag: Boolean): Boxed {
+                staged: Option<Boxed> = match (fetch(flag)) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return staged.unwrap().inc();
+            }
+
+            function main(): Integer {
+                latest: Boxed = project(true);
+                earlier: Boxed = project(false);
+                current: Result<Option<Boxed>, String> = build(true).get(Result.error("missing"));
+                same: Boolean = match (current) {
+                    Ok(inner) => match (inner) {
+                        Some(row) => row.value == 710,
+                        None => false,
+                    },
+                    Error(err) => false,
+                };
+                return if (same && latest.value == 711 && earlier.value == 701) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fresh multi-stage tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled fresh multi-stage tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn scalar_observation_nested_tagged_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("scalar-observation-nested-tagged-runtime");
+        let source_path = temp_root.join("scalar_observation_nested_tagged_runtime.apex");
+        let output_path = temp_root.join("scalar_observation_nested_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(800))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(810))));
+                }
+                return store;
+            }
+
+            function fetch_value(flag: Boolean): Integer {
+                current: Result<Option<Boxed>, String> = build(flag).get(Result.error("missing"));
+                boxed: Option<Boxed> = match (current) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return boxed.unwrap().inc().value;
+            }
+
+            function main(): Integer {
+                latest: Integer = fetch_value(true);
+                earlier: Integer = fetch_value(false);
+                still_present: Boolean = build(true).contains(Result.error("missing"));
+                return if (still_present && latest == 811 && earlier == 801) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("scalar observation nested tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled scalar observation nested tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn scalar_only_nested_tagged_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch_value(flag: Boolean): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error("missing"));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return boxed.unwrap().value;
+}
+
+function main(): Integer {
+    return fetch_value(true);
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function run(flag: Boolean): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error("missing"));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        boxed.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return run(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid scalar-only tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn fresh_scalar_join_tagged_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("fresh-scalar-join-tagged-runtime");
+        let source_path = temp_root.join("fresh_scalar_join_tagged_runtime.apex");
+        let output_path = temp_root.join("fresh_scalar_join_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(900))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(910))));
+                }
+                return store;
+            }
+
+            function scalar(flag: Boolean): Integer {
+                current: Result<Option<Boxed>, String> = build(flag).get(Result.error("missing"));
+                boxed: Option<Boxed> = match (current) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                value: Integer = boxed.unwrap().value;
+                present: Boolean = build(flag).contains(Result.error("missing"));
+                return if (present && value == if (flag) { 910 } else { 900 }) { 1 } else { 0 };
+            }
+
+            function main(): Integer {
+                return if (scalar(true) == 1 && scalar(false) == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fresh scalar join tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled fresh scalar join tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn scalar_only_multi_helper_tagged_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch_value(flag: Boolean): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error("missing"));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return boxed.unwrap().value;
+}
+
+function main(): Integer {
+    return fetch_value(true);
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function scalar(flag: Boolean): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error("missing"));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        boxed.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return scalar(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid scalar-only multi-helper tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn three_helper_scalar_tagged_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("three-helper-scalar-tagged-runtime");
+        let source_path = temp_root.join("three_helper_scalar_tagged_runtime.apex");
+        let output_path = temp_root.join("three_helper_scalar_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1000))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1010))));
+                }
+                return store;
+            }
+
+            function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+                return build(flag).get(Result.error("missing"));
+            }
+
+            function extract(flag: Boolean): Integer {
+                current: Result<Option<Boxed>, String> = fetch(flag);
+                boxed: Option<Boxed> = match (current) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return boxed.unwrap().value;
+            }
+
+            function score(flag: Boolean): Integer {
+                value: Integer = extract(flag);
+                return if (value == if (flag) { 1010 } else { 1000 }) { 1 } else { 0 };
+            }
+
+            function main(): Integer {
+                return if (score(true) == 1 && score(false) == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("three-helper scalar tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled three-helper scalar tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn three_helper_scalar_tagged_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function extract(flag: Boolean): Integer {
+    current: Result<Option<Boxed>, String> = fetch(flag);
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return boxed.unwrap().value;
+}
+
+function main(): Integer {
+    return extract(true);
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function run(flag: Boolean): Integer {
+    current: Result<Option<Boxed>, String> = fetch(flag);
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        boxed.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return run(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid three-helper scalar tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn fresh_three_helper_repeated_update_scalar_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("fresh-three-helper-repeated-update-scalar-runtime");
+        let source_path = temp_root.join("fresh_three_helper_repeated_update_scalar_runtime.apex");
+        let output_path = temp_root.join("fresh_three_helper_repeated_update_scalar_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1100))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1110))));
+                }
+                return store;
+            }
+
+            function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+                return build(flag).get(Result.error("missing"));
+            }
+
+            function extract(flag: Boolean): Integer {
+                current: Result<Option<Boxed>, String> = fetch(flag);
+                boxed: Option<Boxed> = match (current) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return boxed.unwrap().value;
+            }
+
+            function score(flag: Boolean): Integer {
+                latest: Integer = extract(flag);
+                present: Boolean = build(flag).contains(Result.error("missing"));
+                return if (present && latest == if (flag) { 1110 } else { 1100 }) { 1 } else { 0 };
+            }
+
+            function main(): Integer {
+                return if (score(true) == 1 && score(false) == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fresh three-helper repeated-update scalar runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled fresh three-helper repeated-update scalar runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn three_helper_repeated_update_scalar_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function extract(flag: Boolean): Integer {
+    current: Result<Option<Boxed>, String> = fetch(flag);
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return boxed.unwrap().value;
+}
+
+function main(): Integer {
+    return extract(true);
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch(flag: Boolean): Result<Option<Boxed>, String> {
+    return build(flag).get(Result.error("missing"));
+}
+
+function extract(flag: Boolean): Integer {
+    current: Result<Option<Boxed>, String> = fetch(flag);
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        boxed.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return extract(true);
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid three-helper repeated-update scalar source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn independent_lookup_nested_tagged_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("independent-lookup-nested-tagged-runtime");
+        let source_path = temp_root.join("independent_lookup_nested_tagged_runtime.apex");
+        let output_path = temp_root.join("independent_lookup_nested_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1200))));
+                store.set(Result.error("other"), Result.ok(Option.some(Boxed(1300))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1210))));
+                }
+                return store;
+            }
+
+            function lookup(flag: Boolean, key: String): Integer {
+                current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+                boxed: Option<Boxed> = match (current) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return boxed.unwrap().value;
+            }
+
+            function main(): Integer {
+                a: Integer = lookup(true, "missing");
+                b: Integer = lookup(false, "missing");
+                c: Integer = lookup(true, "other");
+                d: Boolean = build(true).contains(Result.error("missing"));
+                e: Boolean = build(true).contains(Result.error("other"));
+                return if (a == 1210 && b == 1200 && c == 1300 && d && e) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("independent lookup nested tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled independent lookup nested tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn parameterized_lookup_tagged_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function lookup(flag: Boolean, key: String): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return boxed.unwrap().value;
+}
+
+function main(): Integer {
+    return lookup(true, "missing");
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function lookup(flag: Boolean, key: String): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        boxed.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return lookup(true, "missing");
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid parameterized lookup tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn parameterized_scalar_lookup_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("parameterized-scalar-lookup-runtime");
+        let source_path = temp_root.join("parameterized_scalar_lookup_runtime.apex");
+        let output_path = temp_root.join("parameterized_scalar_lookup_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1400))));
+                store.set(Result.error("other"), Result.ok(Option.some(Boxed(1500))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1410))));
+                }
+                return store;
+            }
+
+            function lookup(flag: Boolean, key: String): Integer {
+                current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+                boxed: Option<Boxed> = match (current) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return boxed.unwrap().value;
+            }
+
+            function main(): Integer {
+                a: Integer = lookup(true, "missing");
+                b: Integer = lookup(false, "missing");
+                c: Integer = lookup(true, "other");
+                d: Boolean = build(true).contains(Result.error("missing"));
+                e: Boolean = build(true).contains(Result.error("other"));
+                return if (a == 1410 && b == 1400 && c == 1500 && d && e) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("parameterized scalar lookup runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled parameterized scalar lookup binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn parameterized_multi_key_tagged_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function lookup(flag: Boolean, key: String): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return boxed.unwrap().value;
+}
+
+function main(): Integer {
+    return lookup(true, "missing");
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function lookup(flag: Boolean, key: String): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        boxed.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return lookup(true, "missing");
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid parameterized multi-key tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn parameterized_multi_key_scalar_join_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("parameterized-multi-key-scalar-join-runtime");
+        let source_path = temp_root.join("parameterized_multi_key_scalar_join_runtime.apex");
+        let output_path = temp_root.join("parameterized_multi_key_scalar_join_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1600))));
+                store.set(Result.error("other"), Result.ok(Option.some(Boxed(1700))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1610))));
+                }
+                return store;
+            }
+
+            function lookup(flag: Boolean, key: String): Integer {
+                current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+                boxed: Option<Boxed> = match (current) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return boxed.unwrap().value;
+            }
+
+            function main(): Integer {
+                latest: Integer = lookup(true, "missing");
+                earlier: Integer = lookup(false, "missing");
+                other: Integer = lookup(true, "other");
+                has_missing: Boolean = build(true).contains(Result.error("missing"));
+                has_other: Boolean = build(true).contains(Result.error("other"));
+                return if (latest == 1610 && earlier == 1600 && other == 1700 && has_missing && has_other) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("parameterized multi-key scalar join runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled parameterized multi-key scalar join binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn parameterized_multi_key_scalar_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function lookup(flag: Boolean, key: String): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return boxed.unwrap().value;
+}
+
+function main(): Integer {
+    return lookup(true, "missing");
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function lookup(flag: Boolean, key: String): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        boxed.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return lookup(true, "missing");
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid parameterized multi-key scalar source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn fresh_multi_key_repeated_update_scalar_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("fresh-multi-key-repeated-update-scalar-runtime");
+        let source_path = temp_root.join("fresh_multi_key_repeated_update_scalar_runtime.apex");
+        let output_path = temp_root.join("fresh_multi_key_repeated_update_scalar_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1800))));
+                store.set(Result.error("other"), Result.ok(Option.some(Boxed(1900))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1810))));
+                }
+                return store;
+            }
+
+            function fetch_value(flag: Boolean, key: String): Integer {
+                current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+                boxed: Option<Boxed> = match (current) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return boxed.unwrap().value;
+            }
+
+            function main(): Integer {
+                latest: Integer = fetch_value(true, "missing");
+                earlier: Integer = fetch_value(false, "missing");
+                other: Integer = fetch_value(true, "other");
+                present_missing: Boolean = build(true).contains(Result.error("missing"));
+                present_other: Boolean = build(true).contains(Result.error("other"));
+                return if (latest == 1810 && earlier == 1800 && other == 1900 && present_missing && present_other) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fresh multi-key repeated-update scalar runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled fresh multi-key repeated-update scalar runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn fresh_multi_key_scalar_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch_value(flag: Boolean, key: String): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return boxed.unwrap().value;
+}
+
+function main(): Integer {
+    return fetch_value(true, "missing");
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function fetch_value(flag: Boolean, key: String): Integer {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    boxed: Option<Boxed> = match (current) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        boxed.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return fetch_value(true, "missing");
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid fresh multi-key scalar source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn new_multi_key_nested_join_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("new-multi-key-nested-join-runtime");
+        let source_path = temp_root.join("new_multi_key_nested_join_runtime.apex");
+        let output_path = temp_root.join("new_multi_key_nested_join_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(2000))));
+                store.set(Result.error("beta"), Result.ok(Option.some(Boxed(3000))));
+                if (flag) {
+                    store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(2010))));
+                }
+                return store;
+            }
+
+            function value_for(flag: Boolean, key: String): Integer {
+                entry: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+                payload: Option<Boxed> = match (entry) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return payload.unwrap().value;
+            }
+
+            function joined(flag: Boolean): Integer {
+                left: Integer = value_for(flag, "alpha");
+                right: Integer = value_for(true, "beta");
+                left_present: Boolean = build(flag).contains(Result.error("alpha"));
+                right_present: Boolean = build(true).contains(Result.error("beta"));
+                return if (left_present && right_present && left == if (flag) { 2010 } else { 2000 } && right == 3000) { 1 } else { 0 };
+            }
+
+            function main(): Integer {
+                return if (joined(true) == 1 && joined(false) == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("new multi-key nested join runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled new multi-key nested join binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn multi_key_joined_tagged_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("beta"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function value_for(flag: Boolean, key: String): Integer {
+    entry: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    payload: Option<Boxed> = match (entry) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return payload.unwrap().value;
+}
+
+function main(): Integer {
+    return value_for(true, "alpha");
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("beta"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function value_for(flag: Boolean, key: String): Integer {
+    entry: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    payload: Option<Boxed> = match (entry) {
+        Ok(inner) => inner,
+        Error(err) => Option.some(Boxed(0)),
+    };
+    return if (flag) {
+        payload.unwrap().value
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return value_for(true, "alpha");
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid multi-key joined tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn static_constructor_comparison_multi_key_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("static-constructor-comparison-multi-key-runtime");
+        let source_path = temp_root.join("static_constructor_comparison_multi_key_runtime.apex");
+        let output_path = temp_root.join("static_constructor_comparison_multi_key_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(1))));
+                store.set(Result.error("beta"), Result.ok(Option.some(Boxed(3))));
+                if (flag) {
+                    store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(2))));
+                }
+                return store;
+            }
+
+            function key_matches(flag: Boolean, key: String, expected: Integer): Boolean {
+                entry: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+                scalar_tag: Result<Option<Integer>, String> = match (entry) {
+                    Ok(inner) => match (inner) {
+                        Some(row) => Result.ok(Option.some(row.value)),
+                        None => Result.ok(Option.none()),
+                    },
+                    Error(err) => Result.error(err),
+                };
+                same_tag: Boolean = scalar_tag == Result.ok(Option.some(expected));
+                payload: Option<Boxed> = match (entry) {
+                    Ok(inner) => inner,
+                    Error(err) => Option.some(Boxed(0)),
+                };
+                return same_tag && payload.unwrap().value == expected;
+            }
+
+            function main(): Integer {
+                return if (key_matches(true, "alpha", 2) && key_matches(false, "alpha", 1) && key_matches(true, "beta", 3)) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("static constructor comparison multi-key runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled static constructor comparison multi-key binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn fresh_scalar_only_tagged_runtime_stressor_survives_codegen() {
+        let temp_root = make_temp_project_root("fresh-scalar-only-tagged-runtime");
+        let source_path = temp_root.join("fresh_scalar_only_tagged_runtime.apex");
+        let output_path = temp_root.join("fresh_scalar_only_tagged_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2100))));
+                store.set(Result.error("other"), Result.ok(Option.some(Boxed(2200))));
+                if (flag) {
+                    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2110))));
+                }
+                return store;
+            }
+
+            function scalar(flag: Boolean, key: String): Result<Option<Integer>, String> {
+                current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+                return match (current) {
+                    Ok(inner) => match (inner) {
+                        Some(row) => Result.ok(Option.some(row.value)),
+                        None => Result.ok(Option.none()),
+                    },
+                    Error(err) => Result.error(err),
+                };
+            }
+
+            function main(): Integer {
+                a: Result<Option<Integer>, String> = scalar(true, "missing");
+                b: Result<Option<Integer>, String> = scalar(false, "missing");
+                c: Result<Option<Integer>, String> = scalar(true, "other");
+                d: Result<Option<Integer>, String> = Result.error("missing");
+                return if (
+                    a == Result.ok(Option.some(2110))
+                    && b == Result.ok(Option.some(2100))
+                    && c == Result.ok(Option.some(2200))
+                    && d == Result.error("missing")
+                ) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fresh scalar-only tagged runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled fresh scalar-only tagged runtime binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn scalarized_nested_tagged_valid_invalid_pair_reports_single_primary_error() {
+        let valid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function scalar(flag: Boolean, key: String): Result<Option<Integer>, String> {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    return match (current) {
+        Ok(inner) => match (inner) {
+            Some(row) => Result.ok(Option.some(row.value)),
+            None => Result.ok(Option.none()),
+        },
+        Error(err) => Result.error(err),
+    };
+}
+
+function main(): Integer {
+    return if (scalar(true, "missing") == Result.ok(Option.some(2))) { 0 } else { 1 };
+}
+"#;
+        assert_frontend_pipeline_ok(valid);
+
+        let invalid = r#"
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+
+function build(flag: Boolean): Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> {
+    store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+    store.set(Result.error("missing"), Result.ok(Option.some(Boxed(1))));
+    store.set(Result.error("other"), Result.ok(Option.some(Boxed(3))));
+    if (flag) {
+        store.set(Result.error("missing"), Result.ok(Option.some(Boxed(2))));
+    }
+    return store;
+}
+
+function scalar(flag: Boolean, key: String): Result<Option<Integer>, String> {
+    current: Result<Option<Boxed>, String> = build(flag).get(Result.error(key));
+    return if (flag) {
+        match (current) {
+            Ok(inner) => match (inner) {
+                Some(row) => Result.ok(Option.some(row.value)),
+                None => Result.ok(Option.none()),
+            },
+            Error(err) => Result.error(err),
+        }
+    } else {
+        "oops"
+    };
+}
+
+function main(): Integer {
+    return if (scalar(true, "missing") == Result.ok(Option.some(2))) { 0 } else { 1 };
+}
+"#;
+        let program = parse_program(invalid);
+        let mut type_checker = TypeChecker::new(invalid.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("invalid scalarized nested tagged source should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn source_driven_nested_tagged_storage_path_survives_runtime() {
+        let temp_root = make_temp_project_root("source-driven-nested-tagged-storage-runtime");
+        let source_path = temp_root.join("source_driven_nested_tagged_storage_runtime.apex");
+        let output_path = temp_root.join("source_driven_nested_tagged_storage_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Boxed>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(Boxed(i))));
+                    i = i + 1;
+                }
+                store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(10))));
+                store.set(Result.error("beta"), Result.ok(Option.some(Boxed(20))));
+                store.set(Result.error("alpha"), Result.ok(Option.some(Boxed(11))));
+
+                has_alpha: Boolean = store.contains(Result.error("alpha"));
+                has_beta: Boolean = store.contains(Result.error("beta"));
+
+                alpha: Result<Option<Boxed>, String> = store.get(Result.error("alpha"));
+                beta: Result<Option<Boxed>, String> = store.get(Result.error("beta"));
+
+                alpha_value: Integer = match (alpha) {
+                    Ok(inner) => match (inner) {
+                        Some(row) => row.value,
+                        None => -1,
+                    },
+                    Error(err) => -2,
+                };
+                beta_value: Integer = match (beta) {
+                    Ok(inner) => match (inner) {
+                        Some(row) => row.value,
+                        None => -3,
+                    },
+                    Error(err) => -4,
+                };
+
+                return if (has_alpha && has_beta && alpha_value == 11 && beta_value == 20 && store.length() == 11) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("source-driven nested tagged storage runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled source-driven nested tagged storage binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn source_driven_set_remove_shift_scalar_observation_survives_runtime() {
+        let temp_root = make_temp_project_root("source-driven-set-remove-shift-runtime");
+        let source_path = temp_root.join("source_driven_set_remove_shift_runtime.apex");
+        let output_path = temp_root.join("source_driven_set_remove_shift_runtime");
+        let source = r#"
+            function main(): Integer {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    seen.add(Result.ok(Option.some(i)));
+                    i = i + 1;
+                }
+                seen.add(Result.error("alpha"));
+                seen.add(Result.error("beta"));
+                removed: Boolean = seen.remove(Result.ok(Option.some(4)));
+                has_alpha: Boolean = seen.contains(Result.error("alpha"));
+                has_beta: Boolean = seen.contains(Result.error("beta"));
+                has_four: Boolean = seen.contains(Result.ok(Option.some(4)));
+                len: Integer = seen.length();
+                return if (removed && has_alpha && has_beta && !has_four && len == 10) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("source-driven set remove shift runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled source-driven set remove shift binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn source_driven_multi_overwrite_tagged_map_runtime_survives_codegen() {
+        let temp_root = make_temp_project_root("source-driven-multi-overwrite-tagged-map-runtime");
+        let source_path = temp_root.join("source_driven_multi_overwrite_tagged_map_runtime.apex");
+        let output_path = temp_root.join("source_driven_multi_overwrite_tagged_map_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                store: Map<Result<Option<Integer>, String>, Result<Option<Integer>, String>> = Map<Result<Option<Integer>, String>, Result<Option<Integer>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    store.set(Result.ok(Option.some(i)), Result.ok(Option.some(i + 100)));
+                    i = i + 1;
+                }
+                store.set(Result.error("alpha"), Result.ok(Option.some(10)));
+                store.set(Result.error("beta"), Result.ok(Option.some(20)));
+                store.set(Result.error("alpha"), Result.ok(Option.some(11)));
+                store.set(Result.error("beta"), Result.ok(Option.some(21)));
+
+                a: Result<Option<Integer>, String> = store.get(Result.error("alpha"));
+                b: Result<Option<Integer>, String> = store.get(Result.error("beta"));
+
+                a_value: Integer = match (a) {
+                    Ok(inner) => match (inner) {
+                        Some(v) => v,
+                        None => -1,
+                    },
+                    Error(err) => -2,
+                };
+                b_value: Integer = match (b) {
+                    Ok(inner) => match (inner) {
+                        Some(v) => v,
+                        None => -3,
+                    },
+                    Error(err) => -4,
+                };
+
+                has_alpha: Boolean = store.contains(Result.error("alpha"));
+                has_beta: Boolean = store.contains(Result.error("beta"));
+                return if (a_value == 11 && b_value == 21 && has_alpha && has_beta && store.length() == 11) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("source-driven multi-overwrite tagged map runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled source-driven multi-overwrite tagged map binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn source_driven_set_add_remove_readd_scalar_observation_survives_runtime() {
+        let temp_root = make_temp_project_root("source-driven-set-readd-runtime");
+        let source_path = temp_root.join("source_driven_set_readd_runtime.apex");
+        let output_path = temp_root.join("source_driven_set_readd_runtime");
+        let source = r#"
+            function main(): Integer {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    seen.add(Result.ok(Option.some(i)));
+                    i = i + 1;
+                }
+                seen.add(Result.error("alpha"));
+                removed: Boolean = seen.remove(Result.ok(Option.some(4)));
+                seen.add(Result.ok(Option.some(4)));
+                has_alpha: Boolean = seen.contains(Result.error("alpha"));
+                has_four: Boolean = seen.contains(Result.ok(Option.some(4)));
+                len: Integer = seen.length();
+                return if (removed && has_alpha && has_four && len == 10) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("source-driven set readd runtime should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled source-driven set readd binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]
@@ -8434,6 +12238,89 @@ function classify(value: Option<Integer>): Integer {
             build_project(false, false, true, false, false)
                 .expect("project build should support nested namespace alias function values");
         });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    #[test]
+    fn project_build_prefers_shadowed_local_over_namespace_alias_for_nested_field_chain_calls() {
+        let temp_root = make_temp_project_root("shadowed-local-over-namespace-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nmodule M { function add1(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nclass Holder { function add1(x: Integer): Integer { return x + 5; } }\nfunction main(): Integer { u: Holder = Holder(); return u.add1(1); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should prefer shadowed local over namespace alias");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled shadowed-local-over-namespace-alias binary");
+        assert_eq!(
+            output.status.code(),
+            Some(6),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_shadowed_local_nested_method_calls_without_alias_leakage() {
+        let temp_root = make_temp_project_root("shadowed-local-nested-method-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nmodule M { class Box { value: Integer; constructor(v: Integer) { this.value = v; } function get(): Integer { return this.value; } } }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nclass Holder { inner: u.M.Box; constructor(v: Integer) { this.inner = u.M.Box(v); } function get(): Integer { return this.inner.get() + 10; } }\nfunction main(): Integer { u: Holder = Holder(2); return u.get(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should keep shadowed local nested method calls local");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled shadowed-local-nested-method binary");
+        assert_eq!(
+            output.status.code(),
+            Some(12),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -10711,6 +14598,75 @@ function classify(value: Option<Integer>): Integer {
     }
 
     #[test]
+    fn compile_source_runs_set_result_error_contains_after_growth() {
+        let temp_root = make_temp_project_root("set-result-error-growth-runtime");
+        let source_path = temp_root.join("set_result_error_growth_runtime.apex");
+        let output_path = temp_root.join("set_result_error_growth_runtime");
+        let source = r#"
+            function main(): Integer {
+                s: Set<Result<Integer, Integer>> = Set<Result<Integer, Integer>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    s.add(Result.error(i));
+                    i = i + 1;
+                }
+                return if (s.contains(Result.error(0)) && s.contains(Result.error(8)) && !s.contains(Result.error(9))) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("set result growth should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled set-result growth binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_nested_result_option_growth_and_updates() {
+        let temp_root = make_temp_project_root("map-nested-result-option-growth-runtime");
+        let source_path = temp_root.join("map_nested_result_option_growth_runtime.apex");
+        let output_path = temp_root.join("map_nested_result_option_growth_runtime");
+        let source = r#"
+            function key(i: Integer): Result<Option<Integer>, Integer> {
+                if (i % 2 == 0) {
+                    return Result.ok(Option.some(i));
+                }
+                return Result.error(i);
+            }
+
+            function main(): Integer {
+                m: Map<Result<Option<Integer>, Integer>, Result<Integer, Integer>> = Map<Result<Option<Integer>, Integer>, Result<Integer, Integer>>();
+                mut i: Integer = 0;
+                while (i < 9) {
+                    m.set(key(i), Result.ok(i + 10));
+                    i = i + 1;
+                }
+                m.set(key(4), Result.error(99));
+                a: Result<Integer, Integer> = m.get(key(0));
+                b: Result<Integer, Integer> = m.get(key(4));
+                c: Result<Integer, Integer> = m.get(key(7));
+                return if (a == Result.ok(10) && b == Result.error(99) && c == Result.ok(17) && m.length() == 9) { 0; } else { 1; };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested result-option map growth should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled nested result-option map binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_result_error_with_non_integer_ok_type() {
         let temp_root = make_temp_project_root("result-error-layout-runtime");
         let source_path = temp_root.join("result_error_layout_runtime.apex");
@@ -12665,6 +16621,198 @@ function classify(value: Option<Integer>): Integer {
             .status()
             .expect("run compiled direct Result.error object equality binary");
         assert_eq!(status.code(), Some(44));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_match_result_error_equality_against_static_constructor() {
+        let temp_root = make_temp_project_root("match-result-error-static-eq-runtime");
+        let source_path = temp_root.join("match_result_error_static_eq_runtime.apex");
+        let output_path = temp_root.join("match_result_error_static_eq_runtime");
+        let source = r#"
+            function choose(flag: Boolean): Result<Integer, Integer> {
+                if (flag) {
+                    return Result.ok(1);
+                }
+                return Result.error(7);
+            }
+
+            function main(): Integer {
+                value: Result<Integer, Integer> = match (false) {
+                    true => choose(true),
+                    false => choose(false),
+                };
+                if (value == Result.error(7)) { return 45; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("match-result static equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled match-result static equality binary");
+        assert_eq!(status.code(), Some(45));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_ultra_nested_option_result_static_equality() {
+        let temp_root = make_temp_project_root("ultra-nested-option-result-static-eq-runtime");
+        let source_path = temp_root.join("ultra_nested_option_result_static_eq_runtime.apex");
+        let output_path = temp_root.join("ultra_nested_option_result_static_eq_runtime");
+        let source = r#"
+            function wrap(flag: Boolean): Option<Result<Option<Result<Integer, Integer>>, Integer>> {
+                if (flag) {
+                    return Option.some(Result.ok(Option.some(Result.error(11))));
+                }
+                return Option.some(Result.error(9));
+            }
+
+            function main(): Integer {
+                outer: Option<Result<Option<Result<Integer, Integer>>, Integer>> = if (true) {
+                    wrap(true)
+                } else {
+                    wrap(false)
+                };
+                inner: Result<Option<Result<Integer, Integer>>, Integer> = outer.unwrap();
+                payload: Option<Result<Integer, Integer>> = match (inner) {
+                    Ok(value) => value,
+                    Error(err) => Option.none(),
+                };
+                value: Result<Integer, Integer> = payload.unwrap();
+                if (value == Result.error(11)) { return 46; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("ultra-nested option/result static equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled ultra-nested option/result static equality binary");
+        assert_eq!(status.code(), Some(46));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_if_merge_option_none_method_chain() {
+        let temp_root = make_temp_project_root("if-merge-option-none-method-runtime");
+        let source_path = temp_root.join("if_merge_option_none_method_runtime.apex");
+        let output_path = temp_root.join("if_merge_option_none_method_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function choose(flag: Boolean): Option<Boxed> {
+                return if (flag) { Option.some(Boxed(47)) } else { Option.none() };
+            }
+
+            function main(): Integer {
+                value: Option<Boxed> = choose(true);
+                return value.unwrap().value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("if-merge option none method chain should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled if-merge option none method binary");
+        assert_eq!(status.code(), Some(47));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_nested_if_match_if_tagged_merge_method_chain() {
+        let temp_root = make_temp_project_root("nested-if-match-if-tagged-merge-runtime");
+        let source_path = temp_root.join("nested_if_match_if_tagged_merge_runtime.apex");
+        let output_path = temp_root.join("nested_if_match_if_tagged_merge_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function choose(flag: Boolean): Result<Option<Boxed>, Integer> {
+                return if (flag) {
+                    match (true) {
+                        true => if (true) { Result.ok(Option.some(Boxed(48))) } else { Result.error(1) },
+                        false => Result.error(2),
+                    }
+                } else {
+                    Result.error(3)
+                };
+            }
+
+            function main(): Integer {
+                value: Result<Option<Boxed>, Integer> = choose(true);
+                return value.unwrap().unwrap().value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested if-match-if tagged merge should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled nested if-match-if tagged merge binary");
+        assert_eq!(status.code(), Some(48));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_chaotic_unreachable_tagged_branch_chain() {
+        let temp_root = make_temp_project_root("chaotic-unreachable-tagged-branch-runtime");
+        let source_path = temp_root.join("chaotic_unreachable_tagged_branch_runtime.apex");
+        let output_path = temp_root.join("chaotic_unreachable_tagged_branch_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function choose(flag: Boolean): Option<Result<Boxed, Integer>> {
+                return if (flag) {
+                    Option.some(if (true) { Result.ok(Boxed(49)) } else { Result.error(1) })
+                } else {
+                    if (false) { Option.none() } else { Option.some(Result.error(2)) }
+                };
+            }
+
+            function main(): Integer {
+                picked: Option<Result<Boxed, Integer>> = match (true) {
+                    true => choose(true),
+                    false => choose(false),
+                };
+                inner: Result<Boxed, Integer> = picked.unwrap();
+                if (inner == Result.error(2)) { return 1; }
+                return inner.unwrap().value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("chaotic unreachable tagged branch chain should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled chaotic unreachable tagged branch binary");
+        assert_eq!(status.code(), Some(49));
 
         let _ = fs::remove_dir_all(temp_root);
     }

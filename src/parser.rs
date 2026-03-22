@@ -1357,14 +1357,15 @@ impl<'src> Parser<'src> {
             let saved = self.pos;
             match self.parse_stmt() {
                 Ok(stmt) => stmts.push(stmt),
-                Err(stmt_err)
-                    if stmt_err.message.starts_with("Expected Semi")
-                        && matches!(self.current(), Some(Token::RBrace)) =>
-                {
+                Err(stmt_err) if stmt_err.message.starts_with("Expected Semi") => {
                     self.pos = saved;
                     let expr = self.parse_expr()?;
-                    let span = expr.span.clone();
-                    stmts.push(Spanned::new(Stmt::Expr(expr), span));
+                    if matches!(self.current(), Some(Token::RBrace)) {
+                        let span = expr.span.clone();
+                        stmts.push(Spanned::new(Stmt::Expr(expr), span));
+                    } else {
+                        return Err(stmt_err);
+                    }
                 }
                 Err(err) => return Err(err),
             }
@@ -3171,6 +3172,415 @@ mod tests {
                 || err
                     .message
                     .contains("Trailing comma is not allowed in generic call type arguments"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parser_reports_rest_style_alias_nested_match_noise_with_single_primary_error() {
+        let source = r#"
+            import app.Option.Some as Present;
+            import app.Option.None as Empty;
+            import app.Result.Ok as Success;
+            import app.Result.Error as Failure;
+
+            class Request {
+                route: String;
+            }
+
+            function handle(req: Request, verbose: Boolean): Integer {
+                return if (verbose) {
+                    match (decode(req)) {
+                        Success(inner) => match (inner) {
+                            Present(code) => code,
+                            Empty => 204,
+                        }.map<Integer,>(x => x)
+                        Failure(err) => 500,
+                    }
+                } else {
+                    400
+                };
+            }
+        "#;
+        let err =
+            parse_source(source).expect_err("rest-style malformed nested generic tail should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parser_reports_batch_style_tagged_map_noise_without_fatarrow_cascade() {
+        let source = r#"
+            class Row {
+                value: Integer;
+            }
+
+            function run(flag: Boolean): Integer {
+                queue: Map<Result<Option<Integer>, Integer>, Option<Row>> = Map<Result<Option<Integer>, Integer>, Option<Row>>();
+                return if (flag) {
+                    match (queue.contains(Result.error(3))) {
+                        true => queue.get(Result.error(3)).unwrap().bump<Integer,>(x => x).value
+                        false => 0,
+                    }
+                } else {
+                    1
+                };
+            }
+        "#;
+        let err = parse_source(source)
+            .expect_err("batch-style malformed generic method tail should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace")
+                || err.message.contains("Expected Semi"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parser_reports_unicode_tagged_pipeline_noise_without_fatarrow_cascade() {
+        let source = r#"
+            import app.Option.Some as Present;
+            import app.Option.None as Empty;
+            import app.Result.Ok as Success;
+            import app.Result.Error as Failure;
+
+            class Boxed {
+                value: Integer;
+            }
+
+            function main(): Integer {
+                return if (true) {
+                    match (build().contains(Result.error("σφάλμα🚀"))) {
+                        true => build().get(Result.error("σφάλμα🚀")).unwrap().inc<Integer,>(x => x).value
+                        false => 0,
+                    }
+                } else {
+                    1
+                };
+            }
+        "#;
+        let err =
+            parse_source(source).expect_err("unicode malformed generic method tail should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace")
+                || err.message.contains("Expected Semi"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parser_reports_repeated_update_tagged_pipeline_noise_without_fatarrow_cascade() {
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                store.set(Result.error("missing"), Option.some(Boxed(160)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(170)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                return if (true) {
+                    match (build(true).get(Result.error("missing"))) {
+                        Some(row) => row.inc().map<Integer,>(x => x).value
+                        None => 0,
+                    }
+                } else {
+                    1
+                };
+            }
+        "#;
+        let err = parse_source(source)
+            .expect_err("repeated-update malformed generic method tail should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace")
+                || err.message.contains("Expected Semi"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parser_reports_repeated_update_receiver_equality_noise_without_fatarrow_cascade() {
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                store.set(Result.error("missing"), Option.some(Boxed(200)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(210)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                return if (true) {
+                    match (build(true).get(Result.error("missing"))) {
+                        Some(row) => row.inc().map<Integer,>(x => x).value == 211,
+                        None => false,
+                    }
+                } else {
+                    false
+                };
+            }
+        "#;
+        let err = parse_source(source)
+            .expect_err("repeated-update receiver/equality malformed generic tail should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace")
+                || err.message.contains("Expected Semi"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parser_reports_boolean_join_tagged_pipeline_noise_without_fatarrow_cascade() {
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                store.set(Result.error("missing"), Option.some(Boxed(220)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(230)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                return if (true) {
+                    match (build(true).get(Result.error("missing"))) {
+                        Some(row) => row.inc().map<Integer,>(x => x).value == 231 && build(true).contains(Result.error("missing")),
+                        None => false,
+                    }
+                } else {
+                    false
+                };
+            }
+        "#;
+        let err =
+            parse_source(source).expect_err("boolean-join malformed generic tail should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace")
+                || err.message.contains("Expected Semi"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parser_reports_combined_map_set_noise_without_fatarrow_cascade() {
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                store.set(Result.error("missing"), Option.some(Boxed(250)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(260)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                seen.add(Result.error("missing"));
+                return if (true) {
+                    match (build(true).get(Result.error("missing"))) {
+                        Some(row) => row.inc().map<Integer,>(x => x).value == 261 && seen.contains(Result.error("missing")),
+                        None => false,
+                    }
+                } else {
+                    false
+                };
+            }
+        "#;
+        let err =
+            parse_source(source).expect_err("combined map/set malformed generic tail should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace")
+                || err.message.contains("Expected Semi"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parser_reports_combined_map_set_equality_noise_without_fatarrow_cascade() {
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                store.set(Result.error("missing"), Option.some(Boxed(300)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(310)));
+                }
+                return store;
+            }
+
+            function main(): Integer {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                seen.add(Result.error("missing"));
+                return if (true) {
+                    match (build(true).get(Result.error("missing"))) {
+                        Some(row) => row.inc().map<Integer,>(x => x).value == 311 && seen.contains(Result.error("missing")),
+                        None => false,
+                    }
+                } else {
+                    false
+                };
+            }
+        "#;
+        let err = parse_source(source)
+            .expect_err("combined map/set equality malformed generic tail should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace")
+                || err.message.contains("Expected Semi"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn parser_reports_membership_branch_tagged_noise_without_fatarrow_cascade() {
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function inc(): Boxed { return Boxed(this.value + 1); }
+            }
+
+            function build(flag: Boolean): Map<Result<Option<Integer>, String>, Option<Boxed>> {
+                store: Map<Result<Option<Integer>, String>, Option<Boxed>> = Map<Result<Option<Integer>, String>, Option<Boxed>>();
+                store.set(Result.error("missing"), Option.some(Boxed(320)));
+                if (flag) {
+                    store.set(Result.error("missing"), Option.some(Boxed(330)));
+                }
+                return store;
+            }
+
+            function choose(flag: Boolean): Option<Boxed> {
+                seen: Set<Result<Option<Integer>, String>> = Set<Result<Option<Integer>, String>>();
+                seen.add(Result.error("missing"));
+                return if (seen.contains(Result.error("missing"))) {
+                    match (build(flag).get(Result.error("missing"))) {
+                        Some(row) => row.inc().map<Integer,>(x => x).value
+                        None => Boxed(0).value,
+                    }
+                } else {
+                    1
+                };
+            }
+        "#;
+        let err =
+            parse_source(source).expect_err("membership-branch malformed generic tail should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace")
+                || err.message.contains("Expected Semi"),
             "{}",
             err.message
         );
