@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed nested match-arm diagnostic recovery after malformed generic tails:
+  - malformed nested arms like `2 => 3 value.map<Integer,>(x => x)` now stop with the structural parser error `Expected pattern` / `Expected RBrace` instead of leaking the stray `<` into the next arm and reporting the misleading follow-up error `Expected FatArrow, found Some(Lt)`
+- Fixed expression-valued `if` branch tail parsing for bare `match` forms:
+  - branch tails like `if (flag) { match (...) { ... } } else { 0 }` now parse and typecheck as real branch values instead of being rejected with `Expected Semi, found Some(RBrace)` and collapsing the branch type to `None`
 - Fixed static enum-variant constructor type-argument diagnostics:
   - calls like `E.A<String>(x)` now fail immediately with the primary enum-variant type-argument error instead of slipping through and later surfacing as misleading match-arm or return-type mismatches
 - Fixed explicit generic-call arity diagnostic cascades:

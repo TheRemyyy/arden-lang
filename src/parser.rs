@@ -1339,6 +1339,40 @@ impl<'src> Parser<'src> {
         Ok(stmts)
     }
 
+    fn parse_expression_block(&mut self) -> ParseResult<Block> {
+        let mut stmts = Vec::new();
+
+        while !self.check(&Token::RBrace) && !self.is_at_end() {
+            if self.check(&Token::Match) {
+                let saved = self.pos;
+                let expr = self.parse_expr()?;
+                if matches!(self.current(), Some(Token::RBrace)) {
+                    let span = expr.span.clone();
+                    stmts.push(Spanned::new(Stmt::Expr(expr), span));
+                    continue;
+                }
+                self.pos = saved;
+            }
+
+            let saved = self.pos;
+            match self.parse_stmt() {
+                Ok(stmt) => stmts.push(stmt),
+                Err(stmt_err)
+                    if stmt_err.message.starts_with("Expected Semi")
+                        && matches!(self.current(), Some(Token::RBrace)) =>
+                {
+                    self.pos = saved;
+                    let expr = self.parse_expr()?;
+                    let span = expr.span.clone();
+                    stmts.push(Spanned::new(Stmt::Expr(expr), span));
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Ok(stmts)
+    }
+
     fn parse_stmt(&mut self) -> ParseResult<Spanned<Stmt>> {
         let start = self.current_span().start;
 
@@ -1569,7 +1603,7 @@ impl<'src> Parser<'src> {
         let condition = self.parse_expr()?;
         self.eat(&Token::RParen)?;
         self.eat(&Token::LBrace)?;
-        let then_branch = self.parse_block()?;
+        let then_branch = self.parse_expression_block()?;
         self.eat(&Token::RBrace)?;
 
         let else_branch = if self.check(&Token::Else) {
@@ -1582,7 +1616,7 @@ impl<'src> Parser<'src> {
                 )])
             } else {
                 self.eat(&Token::LBrace)?;
-                let block = self.parse_block()?;
+                let block = self.parse_expression_block()?;
                 self.eat(&Token::RBrace)?;
                 Some(block)
             }
@@ -1736,6 +1770,11 @@ impl<'src> Parser<'src> {
                     }
                     self.eat(&Token::RParen)?;
                     Ok(Pattern::Variant(name, bindings))
+                } else if self.check(&Token::Lt) {
+                    Err(ParseError::new(
+                        format!("Expected pattern, found {:?}", self.current()),
+                        self.current_span(),
+                    ))
                 } else {
                     Ok(Pattern::Ident(name))
                 }
@@ -3114,6 +3153,35 @@ mod tests {
     }
 
     #[test]
+    fn test_reject_nested_match_generic_tail_before_fatarrow_noise() {
+        let source = r#"
+            function main(): None {
+                value: Integer = match (1) {
+                    1 => match (2) {
+                        2 => 3,
+                    }.map<Integer,>(x => x)
+                };
+                return None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("malformed nested generic tail should fail");
+        assert!(
+            err.message.contains("Expected pattern")
+                || err.message.contains("Expected RBrace")
+                || err
+                    .message
+                    .contains("Trailing comma is not allowed in generic call type arguments"),
+            "{}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("Expected FatArrow"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
     fn test_reject_visibility_modifier_on_constructor() {
         let source = r#"
             class C {
@@ -3385,6 +3453,27 @@ mod tests {
             panic!("Expected if expression");
         };
         assert!(matches!(then_branch[0].node, Stmt::Match { .. }));
+    }
+
+    #[test]
+    fn test_parse_if_expression_branch_tail_expressions_without_semicolons() {
+        let source = r#"
+            function pick(flag: Boolean, value: Result<Option<Integer>, String>): Integer {
+                return if (flag) {
+                    match (value) {
+                        Ok(inner) => match (inner) {
+                            Some(found) => found,
+                            None => 0,
+                        },
+                        Error(err) => 0,
+                    }
+                } else {
+                    0
+                };
+            }
+        "#;
+        parse_source(source)
+            .expect("if-expression branches should accept trailing expressions without semicolons");
     }
 
     #[test]

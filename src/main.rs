@@ -14144,7 +14144,9 @@ function classify(value: Option<Integer>): Integer {
         .expect("rewrite output path after recovery");
 
         with_current_dir(&temp_root, || {
-            check_command(None, false).expect("project check should recover after malformed helper fix and output toggle");
+            check_command(None, false).expect(
+                "project check should recover after malformed helper fix and output toggle",
+            );
             build_project(false, false, true, false, false)
                 .expect("build should recover after malformed helper fix and output toggle");
         });

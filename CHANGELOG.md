@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed nested match-arm diagnostic recovery after malformed generic tails:
+  - malformed nested arms like `2 => 3 value.map<Integer,>(x => x)` now stop with the structural parser error `Expected pattern` / `Expected RBrace` instead of leaking the stray `<` into the next arm and reporting the misleading follow-up error `Expected FatArrow, found Some(Lt)`
+- Fixed expression-valued `if` branch tail parsing for bare `match` forms:
+  - branch tails like `if (flag) { match (...) { ... } } else { 0 }` now parse and typecheck as real branch values instead of being rejected with `Expected Semi, found Some(RBrace)` and collapsing the branch type to `None`
 - Fixed static enum-variant constructor type-argument diagnostics:
   - calls like `E.A<String>(x)` now fail immediately with the primary enum-variant type-argument error instead of slipping through and later surfacing as misleading match-arm or return-type mismatches
 - Fixed explicit generic-call arity diagnostic cascades:
@@ -334,7 +338,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed project-mode handling for namespace-alias generic class constructors and nested module classes, so forms like `u.Box<Integer>(...)` and `u.M.Box<Integer>(...)` now rewrite/typecheck correctly instead of leaking raw alias calls or missing nested type metadata.
 - Fixed nested module class/enum metadata collection and prefixed typechecking, so project graphs, rewrite resolution, and `this.field` checks inside module-scoped classes now use the correct prefixed owner symbols.
 - Fixed function-valued class field calls so `obj.f(...)` is typechecked and lowered as a closure call instead of being misclassified as a method call.
-- Fixed higher-order generic methods returning closures so `obj.mk<Integer>(... )` can return and later invoke function values without method/field dispatch confusion.
+- Fixed higher-order generic methods returning closures so `obj.mk<Integer>(...)` can return and later invoke function values without method/field dispatch confusion.
 - Fixed nested function types inside generic wrappers so `List<(Integer) -> Integer>` and `Option<(Integer) -> Integer>` no longer fail as false type mismatches.
 - Fixed frontend support for `Option.some/none` and `Result.ok/error`, aligning typechecking with the existing backend/static-constructor lowering paths.
 - Fixed project-mode rewrite of bare function references used as values, so multi-file expressions like `return add1;` and `this.f = add1;` now mangle correctly.
