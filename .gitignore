@@ -43,3 +43,6 @@ fuzz/corpus/
 
 # Bug hunting
 CLAUDE.md
+.claude/settings.local.json
+docs/superpowers/
+.worktrees/
