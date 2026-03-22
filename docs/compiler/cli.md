@@ -220,6 +220,7 @@ Lint/fix note:
 - `apex lint <path>` and `apex fix <path>` now validate explicit paths up front and reject directories or non-`.apex` files with a direct CLI error.
 - `apex lex`, `apex parse`, and `apex compile` also validate explicit source paths up front and reject directories or non-`.apex` files with a direct CLI error.
 - `apex check <path>` also validates explicit source paths up front and rejects directories or non-`.apex` files with a direct CLI error.
+- Explicit file-path commands also reject symlinked `.apex` files that resolve outside the requested directory tree instead of following them to external sources.
 
 ### Linting and Safe Fixes
 

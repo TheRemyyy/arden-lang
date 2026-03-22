@@ -29,6 +29,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - directory-based test discovery now skips symlinked directories instead of wandering outside the requested tree and pulling in external test files
 - Fixed silent link-manifest cache I/O fallback:
   - broken `.apexcache/link_manifest/latest.json` paths now report a direct build error instead of being silently downgraded into a cache miss
+- Fixed project output-path validation and nested output directory handling:
+  - `apex.toml` `output` values like `../outside/app` are now rejected during project validation instead of writing build artifacts outside the project root
+  - single-file and project compilation now create missing parent directories for valid nested output paths like `build/bin/app` instead of failing with a raw filesystem error
+- Fixed silent corrupt-cache fallback:
+  - invalid binary payloads in `.apexcache/parsed/`, rewrite, dependency, semantic, typecheck, object, and link cache blobs now report direct decode errors instead of being silently treated as cache misses
+  - unreadable text fingerprint caches such as `.apexcache/build_fingerprint` and `.apexcache/semantic_build_fingerprint` now also report direct I/O errors instead of being silently ignored
+- Fixed explicit symlinked source-path escape handling:
+  - commands that accept an explicit `.apex` file path now reject symlinked files that resolve outside the requested directory tree instead of following them to external sources
+  - the same validation now also rejects paths that pass through symlinked ancestor directories before reaching the final file
+  - safe symlinked `.apex` files that still resolve inside the requested directory tree are accepted again instead of being over-rejected
+- Fixed integer-literal overflow diagnostics:
+  - oversized integer literals now report a direct `Invalid integer literal` lexer error instead of collapsing into a generic `Unknown token`
+- Fixed float-literal overflow diagnostics:
+  - oversized float literals now report a direct `Invalid float literal` lexer error instead of being tokenized as `inf`
+- Fixed parse-error source context for debug/test commands:
+  - `apex parse` and `apex test` now include filename, line, column, and source underline context on parse failures instead of only returning the bare parser message
 
 - Fixed `apex fmt` comment stability inside inline expression blocks:
   - comments inside `async { ... }`, `if (...) { ... } else { ... }`, and `match (...) { ... }` expression bodies are now preserved in place instead of being dropped or moved outside the expression during formatting

@@ -192,7 +192,12 @@ pub enum Token<'src> {
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
     Integer(i64),
 
-    #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse::<f64>().ok())]
+    #[regex(r"[0-9]+\.[0-9]+", |lex| {
+        lex.slice()
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+    })]
     Float(f64),
 
     #[regex(r#""([^"\\]|\\.)*""#, |lex| {
@@ -256,8 +261,26 @@ pub fn tokenize(source: &str) -> Result<Vec<(Token<'_>, std::ops::Range<usize>)>
         match token {
             Ok(t) => tokens.push((t, span)),
             Err(_) => {
-                let snippet: String = source[span.clone()].chars().take(20).collect();
-                return Err(format!("Unknown token at {}: '{}'", span.start, snippet));
+                let snippet = &source[span.clone()];
+                if snippet.chars().all(|ch| ch.is_ascii_digit()) {
+                    return Err(format!(
+                        "Invalid integer literal at {}: '{}'",
+                        span.start, snippet
+                    ));
+                }
+                if snippet.contains('.')
+                    && snippet.chars().all(|ch| ch.is_ascii_digit() || ch == '.')
+                {
+                    return Err(format!(
+                        "Invalid float literal at {}: '{}'",
+                        span.start, snippet
+                    ));
+                }
+                let display_snippet: String = snippet.chars().take(20).collect();
+                return Err(format!(
+                    "Unknown token at {}: '{}'",
+                    span.start, display_snippet
+                ));
             }
         }
     }
@@ -326,6 +349,20 @@ mod tests {
         let err = tokenize("/* unterminated comment")
             .expect_err("unterminated block comment should fail");
         assert!(err.contains("Unknown token"), "{err}");
+    }
+
+    #[test]
+    fn rejects_overflowing_integer_literal_with_specific_error() {
+        let err = tokenize("9999999999999999999999999999999999999999")
+            .expect_err("overflowing integer literal should fail");
+        assert!(err.contains("Invalid integer literal"), "{err}");
+    }
+
+    #[test]
+    fn rejects_overflowing_float_literal_with_specific_error() {
+        let source = format!("{}.0", "9".repeat(500));
+        let err = tokenize(&source).expect_err("overflowing float literal should fail");
+        assert!(err.contains("Invalid float literal"), "{err}");
     }
 
     #[test]

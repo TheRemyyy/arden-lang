@@ -51,10 +51,12 @@ Optimization note:
 - In single-file mode (`apex compile file.apex` / `apex run file.apex`), Apex defaults to `-O3` and uses native tuning when available.
 - Invalid `--opt-level` / `opt_level` values are now rejected up front instead of silently falling back to `-O3`.
 - `apex run` requires project `output_kind = "bin"` and now rejects shared/static library targets before starting a build; use `apex build` for library outputs.
+- Project `output` paths in `apex.toml` must stay inside the project root; traversal paths like `../outside/app` are rejected during validation.
+- Valid nested output paths such as `build/bin/app` now create missing parent directories automatically in both project and single-file compile flows.
 
 Build cache note:
 - `apex build` now writes cache metadata into `.apexcache/` in the project root.
-- Broken cache paths or unreadable cache files now surface as direct build errors instead of being silently treated as cache misses.
+- Broken cache paths, unreadable cache files, unreadable fingerprint-cache files, or corrupt cache payloads now surface as direct build errors instead of being silently treated as cache misses.
 - If no source/config/build-mode inputs changed and output artifact exists, build exits early with `Up to date ... (build cache)`.
 - For changed projects, parser-level cache is reused per unchanged file from `.apexcache/parsed/`, reducing front-end rebuild overhead.
 - Rewritten AST cache is reused per unchanged file from `.apexcache/rewritten/`, reducing project rewrite overhead.
@@ -112,6 +114,7 @@ Filter note:
 - Test-file discovery matches `test/spec` case-insensitively, so names like `MathTest.apex` are included.
 - Missing test directories now fail with a direct CLI error instead of reporting an empty test set.
 - `--path <file>` must point to an `.apex` file; non-Apex files now fail immediately with a CLI error.
+- `--path <file>` also rejects symlinked `.apex` files that resolve outside the requested directory tree.
 - Test execution now uses isolated temporary runner files, so `apex test` no longer overwrites or deletes neighboring `*.test_runner.apex` / `*.test_runner.exe` files in the source tree.
 
 ## Examples
@@ -218,6 +221,7 @@ Lint/fix note:
 - `apex lint <path>` and `apex fix <path>` now validate explicit paths up front and reject directories or non-`.apex` files with a direct CLI error.
 - `apex lex`, `apex parse`, and `apex compile` also validate explicit source paths up front and reject directories or non-`.apex` files with a direct CLI error.
 - `apex check <path>` also validates explicit source paths up front and rejects directories or non-`.apex` files with a direct CLI error.
+- Explicit file-path commands also reject symlinked `.apex` files that resolve outside the requested directory tree instead of following them to external sources.
 
 ### Linting and Safe Fixes
 

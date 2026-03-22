@@ -6217,6 +6217,66 @@ fn validate_source_file_path(path: &Path) -> Result<(), String> {
     if path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
         return Err(format!("Path '{}' is not an .apex file", path.display()));
     }
+
+    let metadata = fs::symlink_metadata(path).map_err(|e| {
+        format!(
+            "{}: Failed to inspect path '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })?;
+    let canonical_parent = path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .canonicalize()
+        .map_err(|e| {
+            format!(
+                "{}: Failed to resolve parent directory for '{}': {}",
+                "error".red().bold(),
+                path.display(),
+                e
+            )
+        })?;
+    if metadata.file_type().is_symlink() {
+        let canonical_path = path.canonicalize().map_err(|e| {
+            format!(
+                "{}: Failed to resolve path '{}': {}",
+                "error".red().bold(),
+                path.display(),
+                e
+            )
+        })?;
+        if !canonical_path.starts_with(&canonical_parent) {
+            return Err(format!(
+                "Path '{}' resolves outside the requested directory tree",
+                path.display()
+            ));
+        }
+    }
+
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        if dir.as_os_str().is_empty() {
+            break;
+        }
+        let ancestor_metadata = fs::symlink_metadata(dir).map_err(|e| {
+            format!(
+                "{}: Failed to inspect path ancestor '{}': {}",
+                "error".red().bold(),
+                dir.display(),
+                e
+            )
+        })?;
+        if ancestor_metadata.file_type().is_symlink() {
+            return Err(format!(
+                "Path '{}' must not traverse symlinked directories",
+                path.display()
+            ));
+        }
+        current = dir.parent();
+    }
+
     Ok(())
 }
 
@@ -6267,10 +6327,8 @@ fn fix_target(path: Option<&Path>) -> Result<(), String> {
 
 fn collect_apex_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     if path.is_file() {
-        if path.extension().and_then(|ext| ext.to_str()) == Some("apex") {
-            return Ok(vec![path.to_path_buf()]);
-        }
-        return Err(format!("Path '{}' is not an .apex file", path.display()));
+        validate_source_file_path(path)?;
+        return Ok(vec![path.to_path_buf()]);
     }
 
     if !path.is_dir() {
@@ -6390,10 +6448,14 @@ fn parse_file(file: &Path) -> Result<(), String> {
     let tokens = lexer::tokenize(&source)
         .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
 
+    let filename = file
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("input.apex");
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
-        .map_err(|e| format!("{}: Parse error: {}", "error".red().bold(), e.message))?;
+        .map_err(|e| format_parse_error(&e, &source, filename))?;
 
     println!("{}", "AST".cyan().bold());
     println!("{:#?}", program);
@@ -6455,9 +6517,7 @@ fn run_tests(
     // Determine which file(s) to test
     let test_files = if let Some(path) = test_path {
         if path.is_file() {
-            if path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
-                return Err(format!("Path '{}' is not an .apex file", path.display()));
-            }
+            validate_source_file_path(path)?;
             vec![path.to_path_buf()]
         } else {
             // Look for test files in directory
@@ -6484,10 +6544,14 @@ fn run_tests(
 
         // Parse the test file
         let tokens = lexer::tokenize(&source).map_err(|e| format!("Lexer error: {}", e))?;
+        let filename = test_file
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("input.apex");
         let mut parser = Parser::new(tokens);
         let program = parser
             .parse_program()
-            .map_err(|e| format!("Parse error: {}", e.message))?;
+            .map_err(|e| format_parse_error(&e, &source, filename))?;
 
         // Discover tests
         let discovery = discover_tests(&program);
@@ -11742,6 +11806,24 @@ function main(): None {
     }
 
     #[test]
+    fn cli_run_tests_reports_source_context_for_parse_errors() {
+        let temp_root = make_temp_project_root("cli-test-parse-source-context");
+        let test_file = temp_root.join("broken_test.apex");
+        fs::write(
+            &test_file,
+            "@Test\nfunction broken(: None { return None; }\n",
+        )
+        .expect("write malformed test source");
+
+        let err = run_tests(Some(&test_file), true, None)
+            .expect_err("test command should report parse source context");
+        assert!(err.contains("broken_test.apex:2:"), "{err}");
+        assert!(err.contains("-->"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn cli_run_tests_without_path_uses_project_file_list_only() {
         let temp_root = make_temp_project_root("cli-test-project-default");
         let src_dir = temp_root.join("src");
@@ -11844,6 +11926,95 @@ function main(): None {
         let _ = fs::remove_dir_all(outside_dir);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn cli_run_tests_rejects_symlinked_file_paths_outside_root() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = make_temp_project_root("cli-test-symlink-file");
+        let outside_file = temp_root.parent().expect("temp root parent").join(format!(
+            "apex-outside-test-file-{}-{}.apex",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let linked_file = temp_root.join("linked_test.apex");
+        fs::write(
+            &outside_file,
+            "@Test\nfunction escaped(): None { return None; }\n",
+        )
+        .expect("write outside test file");
+        symlink(&outside_file, &linked_file).expect("create file symlink");
+
+        let err = run_tests(Some(&linked_file), true, None)
+            .expect_err("test command should reject symlinked files escaping the root");
+        assert!(
+            err.contains("resolves outside the requested directory tree"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_file(outside_file);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_run_tests_accepts_symlinked_file_paths_inside_root() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = make_temp_project_root("cli-test-safe-symlink-file");
+        let real_file = temp_root.join("real_test.apex");
+        let linked_file = temp_root.join("linked_test.apex");
+        fs::write(
+            &real_file,
+            "@Test\nfunction smoke(): None { return None; }\n",
+        )
+        .expect("write real test file");
+        symlink(&real_file, &linked_file).expect("create file symlink");
+
+        run_tests(Some(&linked_file), true, Some("smoke"))
+            .expect("safe in-tree symlinked test file should be accepted");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_run_tests_rejects_paths_through_symlinked_directories() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = make_temp_project_root("cli-test-symlink-ancestor");
+        let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
+            "apex-outside-test-dir-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let linked_dir = temp_root.join("linked-tests");
+        let linked_file = linked_dir.join("escape_test.apex");
+        fs::create_dir_all(&outside_dir).expect("create outside dir");
+        fs::write(
+            outside_dir.join("escape_test.apex"),
+            "@Test\nfunction escaped(): None { return None; }\n",
+        )
+        .expect("write outside test");
+        symlink(&outside_dir, &linked_dir).expect("create dir symlink");
+
+        let err = run_tests(Some(&linked_file), true, None)
+            .expect_err("test command should reject symlinked ancestor directories");
+        assert!(
+            err.contains("must not traverse symlinked directories"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_dir_all(outside_dir);
+    }
+
     #[test]
     fn cli_format_targets_rejects_project_files_outside_root() {
         let temp_root = make_temp_project_root("cli-fmt-outside-root");
@@ -11923,6 +12094,90 @@ function main(): None {
         assert!(
             !files.contains(&outside_file),
             "symlinked outside directory should not be traversed: {files:?}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_dir_all(outside_dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn collect_apex_files_rejects_symlinked_file_paths_outside_root() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = make_temp_project_root("collect-apex-symlink-file");
+        let outside_file = temp_root.parent().expect("temp root parent").join(format!(
+            "apex-outside-format-file-{}-{}.apex",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let linked_file = temp_root.join("linked_format.apex");
+        fs::write(&outside_file, "function escaped(): None { return None; }\n")
+            .expect("write outside file");
+        symlink(&outside_file, &linked_file).expect("create file symlink");
+
+        let err = super::collect_apex_files(&linked_file)
+            .expect_err("fmt file collection should reject symlinked files escaping the root");
+        assert!(
+            err.contains("resolves outside the requested directory tree"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_file(outside_file);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn collect_apex_files_accepts_symlinked_file_paths_inside_root() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = make_temp_project_root("collect-apex-safe-symlink-file");
+        let real_file = temp_root.join("real.apex");
+        let linked_file = temp_root.join("linked.apex");
+        fs::write(&real_file, "function smoke(): None { return None; }\n")
+            .expect("write real apex file");
+        symlink(&real_file, &linked_file).expect("create file symlink");
+
+        let files = super::collect_apex_files(&linked_file)
+            .expect("safe in-tree symlinked apex file should be accepted");
+        assert_eq!(files, vec![linked_file]);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn collect_apex_files_rejects_paths_through_symlinked_directories() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = make_temp_project_root("collect-apex-symlink-ancestor");
+        let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
+            "apex-outside-format-dir-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let linked_dir = temp_root.join("linked-format");
+        let linked_file = linked_dir.join("escape.apex");
+        fs::create_dir_all(&outside_dir).expect("create outside dir");
+        fs::write(
+            outside_dir.join("escape.apex"),
+            "function escaped(): None { return None; }\n",
+        )
+        .expect("write outside file");
+        symlink(&outside_dir, &linked_dir).expect("create dir symlink");
+
+        let err = super::collect_apex_files(&linked_file)
+            .expect_err("fmt file collection should reject symlinked ancestor directories");
+        assert!(
+            err.contains("must not traverse symlinked directories"),
+            "{err}"
         );
 
         let _ = fs::remove_dir_all(temp_root);
@@ -12045,6 +12300,20 @@ function main(): None {
             err.contains("is not a file"),
             "expected directory path validation error, got: {err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_parse_file_reports_source_context_for_parse_errors() {
+        let temp_root = make_temp_project_root("cli-parse-source-context");
+        let source_file = temp_root.join("broken.apex");
+        fs::write(&source_file, "function main(: None { return None; }\n")
+            .expect("write malformed source");
+
+        let err = parse_file(&source_file).expect_err("parse should report syntax error");
+        assert!(err.contains("broken.apex:1:"), "{err}");
+        assert!(err.contains("-->"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
