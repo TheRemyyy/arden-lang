@@ -65,6 +65,7 @@ jobs:
           path: C:\apex-toolchains\llvm-21.1.8
           key: ${{ runner.os }}-llvm-21.1.8-x64
       - uses: ./.github/actions/install-llvm
+      - uses: lukka/get-cmake@latest
       - uses: actions/cache@v4
         with:
           path: |
@@ -119,6 +120,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: ./.github/actions/install-llvm
+      - uses: lukka/get-cmake@latest
       - uses: actions/cache@v4
         with:
           path: |
@@ -139,6 +141,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: ./.github/actions/install-llvm
+      - uses: lukka/get-cmake@latest
       - uses: actions/cache@v4
         with:
           path: |

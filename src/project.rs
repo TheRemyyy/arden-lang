@@ -334,7 +334,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("system time should be after unix epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("{prefix}_{unique}"))
+        let base_temp = std::env::temp_dir()
+            .canonicalize()
+            .unwrap_or_else(|_| std::env::temp_dir());
+        base_temp.join(format!("{prefix}_{unique}"))
     }
 
     #[test]

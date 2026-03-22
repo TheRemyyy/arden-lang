@@ -7107,7 +7107,10 @@ mod tests {
     }
 
     fn make_temp_project_root(tag: &str) -> PathBuf {
-        let temp_root = std::env::temp_dir().join(format!(
+        let base_temp = std::env::temp_dir()
+            .canonicalize()
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let temp_root = base_temp.join(format!(
             "apex-project-smoke-{}-{}-{}",
             tag,
             std::process::id(),
@@ -11963,8 +11966,8 @@ function classify(value: Option<Integer>): Integer {
 
         let mut deep_dir = temp_root.join("cwd-depth-root");
         fs::create_dir_all(&deep_dir).expect("create deep root");
-        let segment = "a".repeat(120);
-        for index in 0..10 {
+        let segment = "a".repeat(80);
+        for index in 0..14 {
             deep_dir = deep_dir.join(format!("{segment}{index}"));
             fs::create_dir_all(&deep_dir).expect("create deep segment");
         }
