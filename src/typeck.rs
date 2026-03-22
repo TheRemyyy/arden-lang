@@ -3336,6 +3336,8 @@ impl TypeChecker {
 
             Expr::Lambda { params, body } => {
                 self.enter_scope();
+                let saved_return_type = self.current_return_type.clone();
+                self.current_return_type = None;
 
                 let param_types: Vec<ResolvedType> = params
                     .iter()
@@ -3348,6 +3350,7 @@ impl TypeChecker {
 
                 let return_type = self.check_expr(&body.node, body.span.clone());
 
+                self.current_return_type = saved_return_type;
                 self.exit_scope();
 
                 ResolvedType::Function(param_types, Box::new(return_type))
@@ -3374,8 +3377,42 @@ impl TypeChecker {
             Expr::Try(inner) => {
                 let inner_type = self.check_expr(&inner.node, inner.span.clone());
                 match inner_type {
-                    ResolvedType::Option(inner) => *inner,
-                    ResolvedType::Result(ok, _) => *ok,
+                    ResolvedType::Option(inner) => {
+                        if !matches!(self.current_return_type, Some(ResolvedType::Option(_))) {
+                            self.error(
+                                "'?' on Option requires the enclosing function to return Option"
+                                    .to_string(),
+                                span,
+                            );
+                            return ResolvedType::Unknown;
+                        }
+                        *inner
+                    }
+                    ResolvedType::Result(ok, err) => {
+                        match &self.current_return_type {
+                            Some(ResolvedType::Result(_, outer_err)) => {
+                                if !self.types_compatible(outer_err, &err) {
+                                    self.error(
+                                        format!(
+                                            "'?' error type mismatch: cannot propagate Result error {} into {}",
+                                            err, outer_err
+                                        ),
+                                        span,
+                                    );
+                                    return ResolvedType::Unknown;
+                                }
+                            }
+                            _ => {
+                                self.error(
+                                    "'?' on Result requires the enclosing function to return Result"
+                                        .to_string(),
+                                    span,
+                                );
+                                return ResolvedType::Unknown;
+                            }
+                        }
+                        *ok
+                    }
                     _ => {
                         self.error(
                             format!(
@@ -7557,6 +7594,81 @@ mod tests {
             .join("\n");
         assert!(
             joined.contains("main() cannot be async; use a synchronous main() entrypoint"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn try_on_result_requires_result_return_context() {
+        let src = r#"
+            function choose(): Result<Integer, String> { return Result.ok(1); }
+            function helper(): Integer {
+                value: Integer = choose()?;
+                return value;
+            }
+            function main(): Integer {
+                return helper();
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("try on Result outside Result return context should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("'?' on Result requires the enclosing function to return Result"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn try_on_option_requires_option_return_context() {
+        let src = r#"
+            function choose(): Option<Integer> { return Option.some(1); }
+            function helper(): Result<Integer, String> {
+                value: Integer = choose()?;
+                return Result.ok(value);
+            }
+            function main(): Integer {
+                return helper().unwrap();
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("try on Option inside Result-returning function should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("'?' on Option requires the enclosing function to return Option"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn try_inside_lambda_does_not_inherit_outer_result_context() {
+        let src = r#"
+            function choose(): Result<Integer, String> { return Result.ok(1); }
+            function wrap(): Result<Integer, String> {
+                f: () -> Integer = () => choose()?;
+                return Result.ok(f());
+            }
+            function main(): Integer {
+                return wrap().unwrap();
+            }
+        "#;
+        let errors = check_source(src)
+            .expect_err("try inside lambda should not inherit outer Result return context");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("'?' on Result requires the enclosing function to return Result"),
             "{joined}"
         );
     }

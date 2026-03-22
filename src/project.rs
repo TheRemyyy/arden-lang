@@ -286,12 +286,18 @@ impl ProjectConfig {
 
 /// Find project root by looking for apex.toml
 pub fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
-    let mut current = if start_dir.is_dir() {
-        Some(start_dir)
-    } else if start_dir.is_file() || start_dir.extension().is_some() {
-        start_dir.parent()
+    let normalized = if start_dir.is_absolute() {
+        start_dir.to_path_buf()
     } else {
-        Some(start_dir)
+        std::env::current_dir().ok()?.join(start_dir)
+    };
+
+    let mut current = if normalized.is_dir() {
+        Some(normalized.as_path())
+    } else if normalized.is_file() || normalized.extension().is_some() {
+        normalized.parent()
+    } else {
+        Some(normalized.as_path())
     };
 
     while let Some(dir) = current {
@@ -315,6 +321,7 @@ pub fn is_in_project(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{OutputKind, ProjectConfig};
+    use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -571,6 +578,27 @@ output = "demo"
         let discovered = super::find_project_root(&project_root);
 
         let _ = std::fs::remove_dir_all(&parent_root);
+
+        assert_eq!(discovered.as_deref(), Some(project_root.as_path()));
+    }
+
+    #[test]
+    fn find_project_root_accepts_relative_existing_directory_inside_project() {
+        let project_root = unique_temp_dir("apex_project_find_root_relative_dir");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            project_root.join("apex.toml"),
+            "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n",
+        )
+        .expect("project config should be written");
+
+        let previous_dir = std::env::current_dir().expect("current dir");
+        std::env::set_current_dir(&project_root).expect("enter project root");
+        let discovered = super::find_project_root(Path::new("src"));
+        let _ = std::env::set_current_dir(previous_dir);
+
+        let _ = std::fs::remove_dir_all(&project_root);
 
         assert_eq!(discovered.as_deref(), Some(project_root.as_path()));
     }

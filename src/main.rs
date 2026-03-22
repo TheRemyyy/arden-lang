@@ -4196,6 +4196,9 @@ fn build_project(
     validate_opt_level(Some(&config.opt_level))?;
 
     let output_path = project_root.join(&config.output);
+    if !check_only {
+        ensure_output_parent_dir(&output_path)?;
+    }
     let fingerprint = compute_project_fingerprint(&project_root, &config, emit_llvm, do_check)?;
     if !check_only {
         if let Some(cached) = load_cached_fingerprint(&project_root)? {
@@ -6226,18 +6229,20 @@ fn validate_source_file_path(path: &Path) -> Result<(), String> {
             e
         )
     })?;
-    let canonical_parent = path
-        .parent()
-        .unwrap_or(Path::new("."))
-        .canonicalize()
-        .map_err(|e| {
-            format!(
-                "{}: Failed to resolve parent directory for '{}': {}",
-                "error".red().bold(),
-                path.display(),
-                e
-            )
-        })?;
+    let parent_dir = path.parent().unwrap_or(Path::new("."));
+    let normalized_parent = if parent_dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent_dir
+    };
+    let canonical_parent = normalized_parent.canonicalize().map_err(|e| {
+        format!(
+            "{}: Failed to resolve parent directory for '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })?;
     if metadata.file_type().is_symlink() {
         let canonical_path = path.canonicalize().map_err(|e| {
             format!(
@@ -6605,19 +6610,38 @@ fn run_tests(
         } else {
             // Generate and run test runner - include original source + test runner main
             let runner_code = generate_test_runner_with_source(&filtered_discovery, &source);
+            if let Some(project_root) = test_file.parent().and_then(find_project_root) {
+                let config_path = project_root.join("apex.toml");
+                let config = ProjectConfig::load(&config_path)?;
+                config.validate(&project_root)?;
+                let (temp_dir, exe_path) = create_project_test_runner_workspace(
+                    &project_root,
+                    &config,
+                    test_file,
+                    &runner_code,
+                )?;
+                let previous_dir = current_dir_checked()?;
+                std::env::set_current_dir(&temp_dir)
+                    .map_err(|e| format!("Failed to enter test runner workspace: {}", e))?;
+                let build_result = build_project(false, false, true, false, false);
+                let _ = std::env::set_current_dir(&previous_dir);
+                let result = build_result.and_then(|_| run_test_executable(&exe_path));
+                let _ = fs::remove_dir_all(&temp_dir);
+                result?;
+            } else {
+                // Create temporary file for test runner without clobbering user files next to the test.
+                let (temp_dir, runner_path, exe_path) = create_test_runner_workspace(test_file)?;
+                fs::write(&runner_path, &runner_code)
+                    .map_err(|e| format!("Failed to write test runner: {}", e))?;
 
-            // Create temporary file for test runner without clobbering user files next to the test.
-            let (temp_dir, runner_path, exe_path) = create_test_runner_workspace(test_file)?;
-            fs::write(&runner_path, &runner_code)
-                .map_err(|e| format!("Failed to write test runner: {}", e))?;
+                // Compile and run the test runner
+                let result = compile_and_run_test(&runner_path, &exe_path);
 
-            // Compile and run the test runner
-            let result = compile_and_run_test(&runner_path, &exe_path);
+                // Clean up temporary files
+                let _ = fs::remove_dir_all(&temp_dir);
 
-            // Clean up temporary files
-            let _ = fs::remove_dir_all(&temp_dir);
-
-            result?;
+                result?;
+            }
         }
     }
 
@@ -6669,6 +6693,89 @@ fn create_test_runner_workspace(test_file: &Path) -> Result<(PathBuf, PathBuf, P
     let runner_path = temp_dir.join("runner.apex");
     let exe_path = temp_dir.join("runner.exe");
     Ok((temp_dir, runner_path, exe_path))
+}
+
+fn create_project_test_runner_workspace(
+    project_root: &Path,
+    config: &ProjectConfig,
+    test_file: &Path,
+    runner_code: &str,
+) -> Result<(PathBuf, PathBuf), String> {
+    let unique = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("Failed to create unique test runner project path: {}", e))?
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!(
+        "apex-project-test-runner-{}-{}",
+        std::process::id(),
+        unique
+    ));
+    fs::create_dir_all(&temp_dir)
+        .map_err(|e| format!("Failed to create test runner project workspace: {}", e))?;
+
+    let normalized_test_file = if test_file.is_absolute() {
+        test_file.to_path_buf()
+    } else {
+        current_dir_checked()?.join(test_file)
+    };
+
+    let test_rel = normalized_test_file.strip_prefix(project_root).map_err(|_| {
+        format!(
+            "Test file '{}' is outside project root '{}'",
+            normalized_test_file.display(),
+            project_root.display()
+        )
+    })?;
+    let test_rel_string = test_rel.to_string_lossy().replace('\\', "/");
+
+    for source_file in config.get_source_files(project_root) {
+        let rel = source_file.strip_prefix(project_root).map_err(|_| {
+            format!(
+                "Project source '{}' is outside project root '{}'",
+                source_file.display(),
+                project_root.display()
+            )
+        })?;
+        let dest = temp_dir.join(rel);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create runner source directory: {}", e))?;
+        }
+        if source_file == normalized_test_file {
+            fs::write(&dest, runner_code)
+                .map_err(|e| format!("Failed to write generated project test runner: {}", e))?;
+        } else {
+            fs::copy(&source_file, &dest)
+                .map_err(|e| format!("Failed to copy project source into test workspace: {}", e))?;
+        }
+    }
+
+    let runner_dest = temp_dir.join(test_rel);
+    if !runner_dest.exists() {
+        if let Some(parent) = runner_dest.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create runner destination directory: {}", e))?;
+        }
+        fs::write(&runner_dest, runner_code)
+            .map_err(|e| format!("Failed to write generated runner source: {}", e))?;
+    }
+
+    let mut temp_config = config.clone();
+    temp_config.entry = test_rel_string.clone();
+    if config.entry != test_rel_string {
+        temp_config.files.retain(|file| file != &config.entry);
+    }
+    if !temp_config.files.iter().any(|file| file == &test_rel_string) {
+        temp_config.files.push(test_rel_string);
+        temp_config.files.sort();
+        temp_config.files.dedup();
+    }
+    temp_config.output = "runner".to_string();
+    temp_config
+        .save(&temp_dir.join("apex.toml"))
+        .map_err(|e| format!("Failed to write test runner project config: {}", e))?;
+
+    Ok((temp_dir.clone(), temp_dir.join("runner")))
 }
 
 /// Find test files in a directory
@@ -6734,15 +6841,18 @@ fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Resul
 
 /// Compile and run a test file
 fn compile_and_run_test(source_path: &Path, exe_path: &Path) -> Result<(), String> {
-    use std::process::Command;
-
     // Compile the test runner
     let source = fs::read_to_string(source_path)
         .map_err(|e| format!("Failed to read test runner: {}", e))?;
 
     compile_source(&source, source_path, exe_path, false, true, None, None)?;
 
-    // Run the compiled test
+    run_test_executable(exe_path)
+}
+
+fn run_test_executable(exe_path: &Path) -> Result<(), String> {
+    use std::process::Command;
+
     println!("\n{}", "Running tests".cyan().bold());
     println!();
 
@@ -6750,11 +6860,9 @@ fn compile_and_run_test(source_path: &Path, exe_path: &Path) -> Result<(), Strin
         .output()
         .map_err(|e| format!("Failed to run test runner: {}", e))?;
 
-    // Print output
     print!("{}", String::from_utf8_lossy(&output.stdout));
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
 
-    // Check exit code
     if !output.status.success() {
         return Err("test run failed".to_string());
     }
@@ -10412,6 +10520,68 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_rejects_try_outside_result_or_option_return_context() {
+        let temp_root = make_temp_project_root("try-invalid-return-context");
+        let source_path = temp_root.join("try_invalid_return_context.apex");
+        let output_path = temp_root.join("try_invalid_return_context");
+        let source = r#"
+            function choose(): Result<Integer, String> {
+                return Result.ok(1);
+            }
+
+            function helper(): Integer {
+                value: Integer = choose()?;
+                return value;
+            }
+
+            function main(): Integer {
+                return helper();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("invalid try return context should fail before codegen");
+        assert!(
+            err.contains("'?' on Result requires the enclosing function to return Result"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_try_inside_lambda_even_with_outer_result_return() {
+        let temp_root = make_temp_project_root("try-invalid-lambda-context");
+        let source_path = temp_root.join("try_invalid_lambda_context.apex");
+        let output_path = temp_root.join("try_invalid_lambda_context");
+        let source = r#"
+            function choose(): Result<Integer, String> {
+                return Result.ok(1);
+            }
+
+            function wrap(): Result<Integer, String> {
+                f: () -> Integer = () => choose()?;
+                return Result.ok(f());
+            }
+
+            function main(): Integer {
+                return wrap().unwrap();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("invalid try inside lambda should fail before codegen");
+        assert!(
+            err.contains("'?' on Result requires the enclosing function to return Result"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_rejects_invalid_opt_level() {
         let temp_root = make_temp_project_root("compile-invalid-opt");
         let source_path = temp_root.join("invalid_opt.apex");
@@ -11921,6 +12091,77 @@ function main(): None {
         let _ = fs::remove_dir_all(temp_root);
     }
 
+    #[test]
+    fn cli_run_tests_executes_project_local_alias_import_tests() {
+        let temp_root = make_temp_project_root("cli-test-project-alias-imports");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex", "src/math_spec.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nmodule Math {\n    class Box<T> { value: T; constructor(value: T) { this.value = value; } function get(): T { return this.value; } }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("math_spec.apex"),
+            "package tests;\nimport lib as l;\n@Test\nfunction aliasImportTest(): None { value: Integer = l.Math.Box<Integer>(3).get(); assert_eq(value, 3); return None; }\n",
+        )
+        .expect("write test");
+
+        with_current_dir(&temp_root, || {
+            run_tests(None, false, Some("aliasImportTest"))
+                .expect("project-local alias imports in tests should run successfully");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_run_tests_accepts_relative_project_file_path() {
+        let temp_root = make_temp_project_root("cli-test-relative-project-file");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\n@Test\nfunction smoke(): None { assert_eq(1, 1); return None; }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main test file");
+
+        with_current_dir(&temp_root, || {
+            run_tests(Some(Path::new("src/main.apex")), false, Some("smoke"))
+                .expect("relative project file path should execute tests");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_run_tests_accepts_relative_single_file_path_in_current_directory() {
+        let temp_root = make_temp_project_root("cli-test-relative-single-file");
+        let test_file = temp_root.join("smoke_test.apex");
+        fs::write(
+            &test_file,
+            "@Test\nfunction smoke(): None { return None; }\n",
+        )
+        .expect("write test file");
+
+        with_current_dir(&temp_root, || {
+            run_tests(Some(Path::new("smoke_test.apex")), false, Some("smoke"))
+                .expect("relative single-file path should execute tests");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
     #[cfg(unix)]
     #[test]
     fn cli_run_tests_skips_symlinked_directories() {
@@ -12512,6 +12753,32 @@ function main(): None {
 
         let _ = fs::remove_dir_all(temp_root);
         let _ = fs::remove_dir_all(outside_dir);
+    }
+
+    #[test]
+    fn project_build_creates_missing_nested_output_parent_directory() {
+        let temp_root = make_temp_project_root("project-output-create-parent");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex"],
+            "src/main.apex",
+            "build/bin/smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "function main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should create missing nested output directories");
+        });
+
+        assert!(temp_root.join("build/bin/smoke").exists());
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]

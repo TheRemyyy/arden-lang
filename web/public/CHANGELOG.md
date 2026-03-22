@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project-mode nested output directory creation:
+  - valid project outputs such as `output = "build/app"` now create missing parent directories before object linking instead of failing late while writing the temporary link response file
+- Fixed late `?` operator validation:
+  - invalid uses like `value = choose()?;` inside functions returning plain `Integer` now fail during semantic checking instead of leaking to backend codegen and crashing there
+  - `Option`/`Result` propagation now also validates that the enclosing function returns the matching propagation container before LLVM lowering starts
+  - lambda bodies no longer inherit the outer function's propagation context, so `() => choose()?` now fails during `apex check` instead of surviving to a late codegen error
 - Fixed compiler panic on list index assignment with expression receivers:
   - assignments like `make()[0] = 7` now lower through the same list-value extraction path as list reads instead of panicking in LLVM lvalue codegen when the receiver is a temporary struct-valued expression
 - Fixed docs-site routing and loading edge cases:
@@ -21,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - commands invoked from project folders like `demo.v1/` now still detect the local `apex.toml` instead of incorrectly treating the directory as if it were a file path
 - Fixed `apex test` temp-runner file clobbering:
   - test execution now uses isolated temporary runner workspaces instead of fixed `*.test_runner.apex` / `*.test_runner.exe` neighbor paths, so existing user files with those names are no longer overwritten and deleted
+- Fixed `apex test` project-mode runner builds:
+  - project-local tests that import project code through package aliases now run inside an isolated temporary project workspace, so test execution keeps project import resolution intact without colliding with the original project entrypoint's `main`
+  - explicit relative paths such as `apex test --path src/main.apex` now resolve against the current project correctly instead of tripping project-root discovery on an empty relative path
+- Fixed relative single-file CLI path validation:
+  - commands like `apex test --path smoke_test.apex` now work from the current directory instead of failing while canonicalizing an empty parent path for the bare relative filename
 - Fixed `apex run` behavior for library projects:
   - project configs with `output_kind = "shared"` or `"static"` now fail fast with a direct CLI error before starting a build instead of building a library and then trying to execute it as a program
 - Fixed `apex info` config validation:

@@ -69,3 +69,8 @@ function computation(): Result<Integer, String> {
     return Result.Ok(val2);
 }
 ```
+
+`apex check` validates `?` at the function boundary:
+- `Option<T>?` requires the enclosing function to return `Option<...>`
+- `Result<T, E>?` requires the enclosing function to return `Result<..., E-compatible>`
+- nested lambda bodies are checked against their own lambda return context, not the outer function's `Option`/`Result` return type

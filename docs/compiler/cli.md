@@ -53,6 +53,7 @@ Optimization note:
 - `apex run` requires project `output_kind = "bin"` and now rejects shared/static library targets before starting a build; use `apex build` for library outputs.
 - Project `output` paths in `apex.toml` must stay inside the project root; traversal paths like `../outside/app` are rejected during validation.
 - Valid nested output paths such as `build/bin/app` now create missing parent directories automatically in both project and single-file compile flows.
+- That same parent-directory creation now happens before the project-mode link-response-file step as well, so `output = "build/app"` no longer fails late during final link setup when `build/` does not already exist.
 
 Build cache note:
 - `apex build` now writes cache metadata into `.apexcache/` in the project root.
@@ -115,6 +116,9 @@ Filter note:
 - Missing test directories now fail with a direct CLI error instead of reporting an empty test set.
 - `--path <file>` must point to an `.apex` file; non-Apex files now fail immediately with a CLI error.
 - Test execution now uses isolated temporary runner files, so `apex test` no longer overwrites or deletes neighboring `*.test_runner.apex` / `*.test_runner.exe` files in the source tree.
+- In project mode, test execution now builds the generated runner inside an isolated temporary copy of the project, so tests can keep using project-local package imports and aliases without colliding with the original entrypoint `main()`.
+- Relative project file paths passed through `--path` now resolve correctly against the current project root, so commands like `apex test --path src/main.apex` work the same as absolute paths.
+- Bare relative filenames passed through `--path` now also validate correctly from the current directory, so commands like `apex test --path smoke_test.apex` no longer fail on parent-directory resolution before test execution starts.
 
 ## Examples
 
