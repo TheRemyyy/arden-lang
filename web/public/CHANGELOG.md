@@ -8,10 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
-- Fixed macOS temp-path canonicalization drift in tests:
-  - temp-root helpers now canonicalize `std::env::temp_dir()` first, so `/var/...` and `/private/var/...` aliases no longer produce false path mismatches or symlink-traversal failures in project-root, CLI, and file-collection tests
+- Fixed canonical temp-root handling in tests and CLI smoke:
+  - temp-root helpers now canonicalize `std::env::temp_dir()` first, and the smoke script resolves `mktemp -d` through `pwd -P`, so `/var/...` and `/private/var/...` aliases no longer trigger false symlink-traversal failures in project-root, CLI, file-collection, or smoke-path validation
 - Fixed long-working-directory smoke coverage on macOS:
-  - the `System.cwd()` runtime test now builds a deep path without exceeding per-segment filename limits, so it still exercises very long cwd handling on APFS instead of failing in test setup
+  - the `System.cwd()` runtime test now builds a deep path with legal per-segment names, so it still exercises very long cwd handling on APFS instead of failing in test setup
 - Fixed nested match-arm diagnostic recovery after malformed generic tails:
   - malformed nested arms like `2 => 3 value.map<Integer,>(x => x)` now stop with the structural parser error `Expected pattern` / `Expected RBrace` instead of leaking the stray `<` into the next arm and reporting the misleading follow-up error `Expected FatArrow, found Some(Lt)`
 - Fixed expression-valued `if` branch tail parsing for bare `match` forms:

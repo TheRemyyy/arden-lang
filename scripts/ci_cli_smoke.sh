@@ -19,8 +19,9 @@ if [[ ! -x "${COMPILER}" ]]; then
   exit 127
 fi
 
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "${TMP_DIR}"' EXIT
+TMP_DIR_RAW="$(mktemp -d)"
+TMP_DIR="$(cd "${TMP_DIR_RAW}" && pwd -P)"
+trap 'rm -rf "${TMP_DIR_RAW}"' EXIT
 
 platform_name() {
   case "$(uname -s)" in

@@ -11966,8 +11966,8 @@ function classify(value: Option<Integer>): Integer {
 
         let mut deep_dir = temp_root.join("cwd-depth-root");
         fs::create_dir_all(&deep_dir).expect("create deep root");
-        let segment = "a".repeat(80);
-        for index in 0..14 {
+        let segment = "a".repeat(60);
+        for index in 0..18 {
             deep_dir = deep_dir.join(format!("{segment}{index}"));
             fs::create_dir_all(&deep_dir).expect("create deep segment");
         }
