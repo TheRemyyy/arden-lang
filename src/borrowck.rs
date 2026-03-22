@@ -431,8 +431,22 @@ impl BorrowChecker {
             }
 
             Stmt::Assign { target, value } => {
+                let borrow_mark = self.borrows.len();
+                let target_scope_depth = match &target.node {
+                    Expr::Ident(name) => self.var_scope_depth(name),
+                    _ => None,
+                };
+
                 // Check value first
                 self.check_expr(&value.node, value.span.clone(), false);
+
+                if matches!(value.node, Expr::AsyncBlock(_) | Expr::Lambda { .. }) {
+                    if let Some(scope_depth) = target_scope_depth {
+                        for borrow in self.borrows.iter_mut().skip(borrow_mark) {
+                            borrow.scope_depth = borrow.scope_depth.min(scope_depth);
+                        }
+                    }
+                }
 
                 // Check target is valid for assignment
                 self.check_assign_target(&target.node, target.span.clone());
@@ -1063,11 +1077,11 @@ impl BorrowChecker {
     fn bind_pattern(&mut self, pattern: &Pattern, span: Span) {
         match pattern {
             Pattern::Ident(name) => {
-                self.declare_var(name, false, span, false, None);
+                self.declare_var(name, false, span, true, None);
             }
             Pattern::Variant(_, bindings) => {
                 for binding in bindings {
-                    self.declare_var(binding, false, span.clone(), false, None);
+                    self.declare_var(binding, false, span.clone(), true, None);
                 }
             }
             _ => {}
@@ -2152,6 +2166,14 @@ impl BorrowChecker {
         None
     }
 
+    fn var_scope_depth(&self, name: &str) -> Option<usize> {
+        self.scopes
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(depth, scope)| scope.contains_key(name).then_some(depth))
+    }
+
     fn enter_scope(&mut self) {
         self.scopes.push(HashMap::new());
         self.drop_queue.push(Vec::new());
@@ -2766,6 +2788,645 @@ mod tests {
         assert!(errors
             .iter()
             .any(|m| m.contains("Cannot mutably borrow 'a' while immutably borrowed")));
+    }
+
+    #[test]
+    fn async_lambda_capture_blocks_nested_mutating_receiver_call() {
+        let source = r#"
+            class B {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function touch(): None { this.v += 1; return None; }
+            }
+            class A {
+                mut b: B;
+                constructor(v: Integer) { this.b = B(v); }
+            }
+            function main(): None {
+                mut a: A = A(1);
+                f: () -> Task<None> = () => async {
+                    a.b.touch();
+                    return None;
+                };
+                r: &A = &a;
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot mutably borrow 'a' while immutably borrowed")));
+    }
+
+    #[test]
+    fn alias_pattern_binding_preserves_borrow_state_through_match_arm() {
+        let source = r#"
+            import app.Result.Ok as Success;
+            import app.Result.Error as Failure;
+            function consume(owned s: String): None { return None; }
+            function main(result: Result<String, String>): None {
+                match (result) {
+                    Success(value) => {
+                        r: &String = &value;
+                        consume(value);
+                    },
+                    Failure(err) => {
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot move 'value' while borrowed")));
+    }
+
+    #[test]
+    fn alias_pattern_binding_preserves_mut_borrow_state_through_match_arm() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                match (value) {
+                    Wrapped(inner) => {
+                        r: &Integer = &inner;
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot assign to 'inner' while borrowed")));
+    }
+
+    #[test]
+    fn alias_pattern_binding_async_capture_blocks_move_in_arm() {
+        let source = r#"
+            import app.Result.Ok as Success;
+            import app.Result.Error as Failure;
+            function consume(owned s: String): None { return None; }
+            function main(result: Result<String, String>): None {
+                match (result) {
+                    Success(value) => {
+                        t: Task<None> = async {
+                            println(value);
+                            return None;
+                        };
+                        consume(value);
+                    },
+                    Failure(err) => {
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot move 'value' while borrowed")));
+    }
+
+    #[test]
+    fn alias_pattern_binding_lambda_capture_blocks_assignment_in_arm() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                match (value) {
+                    Wrapped(inner) => {
+                        f: () -> Integer = () => inner;
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_delayed_capture_blocks_move_before_early_return() {
+        let source = r#"
+            import app.Result.Ok as Success;
+            import app.Result.Error as Failure;
+            function consume(owned s: String): None { return None; }
+            function main(result: Result<String, String>): None {
+                match (result) {
+                    Success(value) => {
+                        f: () -> String = () => value;
+                        consume(value);
+                        return None;
+                    },
+                    Failure(err) => {
+                        return None;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot move 'value' while borrowed")));
+    }
+
+    #[test]
+    fn alias_pattern_binding_async_capture_survives_if_merge_assignment() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                match (value) {
+                    Wrapped(inner) => {
+                        t: Task<None> = async { return None; };
+                        if (true) {
+                            t = async {
+                                println(inner);
+                                return None;
+                            };
+                        } else {
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_lambda_reassignment_survives_if_merge_assignment() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                match (value) {
+                    Wrapped(inner) => {
+                        f: () -> Integer = () => 0;
+                        if (true) {
+                            f = () => inner;
+                        } else {
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_async_capture_survives_else_merge_assignment() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                match (value) {
+                    Wrapped(inner) => {
+                        t: Task<None> = async { return None; };
+                        if (false) {
+                        } else {
+                            t = async {
+                                println(inner);
+                                return None;
+                            };
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_capture_survives_continue_path() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                mut done: Boolean = false;
+                f: () -> Integer = () => 0;
+                match (value) {
+                    Wrapped(inner) => {
+                        while (!done) {
+                            f = () => inner;
+                            done = true;
+                            continue;
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_capture_survives_break_path() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                mut done: Boolean = false;
+                f: () -> Integer = () => 0;
+                match (value) {
+                    Wrapped(inner) => {
+                        while (!done) {
+                            f = () => inner;
+                            done = true;
+                            break;
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_capture_survives_nested_break_return_path() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                f: () -> Integer = () => 0;
+                match (value) {
+                    Wrapped(inner) => {
+                        while (true) {
+                            if (true) {
+                                f = () => inner;
+                                break;
+                            } else {
+                                return None;
+                            }
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_capture_survives_nested_while_branch_merge() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                mut done: Boolean = false;
+                f: () -> Integer = () => 0;
+                match (value) {
+                    Wrapped(inner) => {
+                        while (!done) {
+                            if (true) {
+                                f = () => inner;
+                                done = true;
+                                break;
+                            } else {
+                                done = true;
+                            }
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_lambda_capture_survives_while_return_merge() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                f: () -> Integer = () => 0;
+                match (value) {
+                    Wrapped(inner) => {
+                        while (true) {
+                            if (true) {
+                                f = () => inner;
+                                break;
+                            } else {
+                                return None;
+                            }
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_lambda_reassignment_survives_continue_break_merge() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                mut done: Boolean = false;
+                f: () -> Integer = () => 0;
+                match (value) {
+                    Wrapped(inner) => {
+                        while (!done) {
+                            if (true) {
+                                f = () => inner;
+                                done = true;
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_lambda_reassignment_survives_else_if_merge() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                mut mode: Integer = 0;
+                f: () -> Integer = () => 0;
+                match (value) {
+                    Wrapped(inner) => {
+                        while (mode < 1) {
+                            if (mode == 0) {
+                                f = () => inner;
+                                mode = 1;
+                                continue;
+                            } else if (mode == 1) {
+                                break;
+                            } else {
+                                mode = 1;
+                            }
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_repeated_async_reassignment_stays_borrowed() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                mut i: Integer = 0;
+                t: Task<None> = async { return None; };
+                match (value) {
+                    Wrapped(inner) => {
+                        while (i < 2) {
+                            t = async {
+                                println(inner);
+                                return None;
+                            };
+                            i += 1;
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_async_capture_survives_for_body_merge() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                t: Task<None> = async { return None; };
+                match (value) {
+                    Wrapped(inner) => {
+                        for (i in 2) {
+                            t = async {
+                                println(inner);
+                                return None;
+                            };
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_async_capture_survives_for_break_continue_merge() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                t: Task<None> = async { return None; };
+                match (value) {
+                    Wrapped(inner) => {
+                        for (i in 3) {
+                            if (i == 0) {
+                                t = async {
+                                    println(inner);
+                                    return None;
+                                };
+                                continue;
+                            } else if (i == 1) {
+                                break;
+                            }
+                        }
+                        inner += 1;
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot assign to 'inner' while borrowed")
+                || m.contains("Cannot assign to 'inner' while mutably borrowed")
+        }));
+    }
+
+    #[test]
+    fn alias_pattern_binding_lambda_capture_survives_nested_match_loop_move() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            function consume(owned x: Integer): None { return None; }
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                mut done: Boolean = false;
+                f: () -> Integer = () => 0;
+                match (value) {
+                    Wrapped(inner) => {
+                        while (!done) {
+                            match (1) {
+                                1 => {
+                                    f = () => inner;
+                                    done = true;
+                                },
+                                _ => {
+                                }
+                            }
+                        }
+                        consume(inner);
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot move 'inner' while borrowed")));
+    }
+
+    #[test]
+    fn alias_pattern_binding_capture_survives_composite_control_flow_move() {
+        let source = r#"
+            import app.E.Boxed as Wrapped;
+            function consume(owned x: Integer): None { return None; }
+            enum E {
+                Boxed(value: Integer)
+            }
+            function main(value: E): None {
+                f: () -> Integer = () => 0;
+                mut done: Boolean = false;
+                match (value) {
+                    Wrapped(inner) => {
+                        while (!done) {
+                            if (true) {
+                                match (1) {
+                                    1 => {
+                                        f = () => inner;
+                                        done = true;
+                                    },
+                                    _ => {
+                                    }
+                                }
+                            }
+                        }
+                        consume(inner);
+                    }
+                }
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot move 'inner' while borrowed")));
     }
 
     #[test]

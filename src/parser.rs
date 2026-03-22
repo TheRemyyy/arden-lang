@@ -2941,6 +2941,24 @@ mod tests {
     }
 
     #[test]
+    fn parser_reports_first_error_for_keyword_alias_plus_generic_tail() {
+        let source = r#"
+            import app.Option.None as ;
+            function main(): None {
+                value.map<Integer,>(x => x);
+                return None;
+            }
+        "#;
+        let err =
+            parse_source(source).expect_err("parser should stop at malformed keyword alias import");
+        assert!(
+            err.message.contains("Expected identifier"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
     fn test_reject_import_with_leading_dot() {
         let source = r#"
             import .std.math;
@@ -3073,6 +3091,26 @@ mod tests {
             panic!("Expected integer rhs");
         };
         assert_eq!(rhs, 1);
+    }
+
+    #[test]
+    fn parser_reports_nested_match_error_before_outer_value_flow_noise() {
+        let source = r#"
+            function main(): None {
+                value: Integer = match (1) {
+                    1 => match (2) {
+                        2 => 3,
+                    value.map<Integer,>(x => x)
+                };
+                return None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("nested malformed match should fail");
+        assert!(
+            err.message.contains("Expected RBrace") || err.message.contains("Expected pattern"),
+            "{}",
+            err.message
+        );
     }
 
     #[test]

@@ -3936,9 +3936,9 @@ impl TypeChecker {
         sig: &FuncSig,
         type_args: &[Type],
         span: Span,
-    ) -> (Vec<(String, ResolvedType)>, ResolvedType) {
+    ) -> (Vec<(String, ResolvedType)>, ResolvedType, bool) {
         if type_args.is_empty() {
-            return (sig.params.clone(), sig.return_type.clone());
+            return (sig.params.clone(), sig.return_type.clone(), true);
         }
 
         if sig.generic_type_vars.is_empty() {
@@ -3949,7 +3949,7 @@ impl TypeChecker {
                 ),
                 span,
             );
-            return (sig.params.clone(), sig.return_type.clone());
+            return (sig.params.clone(), ResolvedType::Unknown, false);
         }
 
         if type_args.len() != sig.generic_type_vars.len() {
@@ -3962,7 +3962,7 @@ impl TypeChecker {
                 ),
                 span,
             );
-            return (sig.params.clone(), sig.return_type.clone());
+            return (sig.params.clone(), ResolvedType::Unknown, false);
         }
 
         let mut substitutions: HashMap<usize, ResolvedType> = HashMap::new();
@@ -3978,7 +3978,7 @@ impl TypeChecker {
             .map(|(name, ty)| (name.clone(), Self::substitute_type_vars(ty, &substitutions)))
             .collect::<Vec<_>>();
         let return_type = Self::substitute_type_vars(&sig.return_type, &substitutions);
-        (params, return_type)
+        (params, return_type, true)
     }
 
     /// Check a function/method call
@@ -4072,13 +4072,16 @@ impl TypeChecker {
                             .to_string();
                         if let Some(sig) = self.functions.get(&resolved).cloned() {
                             self.enforce_call_effects(&sig, span.clone(), &resolved);
-                            let (inst_params, inst_return_type) = self
+                            let (inst_params, inst_return_type, valid_explicit_type_args) = self
                                 .instantiate_signature_for_call(
                                     &resolved,
                                     &sig,
                                     type_args,
                                     span.clone(),
                                 );
+                            if !valid_explicit_type_args {
+                                return ResolvedType::Unknown;
+                            }
                             let expected = inst_params.len();
                             let bad_arity = if sig.is_variadic {
                                 args.len() < expected
@@ -4123,12 +4126,16 @@ impl TypeChecker {
                     let mangled = path_parts.join("__");
                     if let Some(sig) = self.functions.get(&mangled).cloned() {
                         self.enforce_call_effects(&sig, span.clone(), &mangled);
-                        let (inst_params, inst_return_type) = self.instantiate_signature_for_call(
-                            &mangled,
-                            &sig,
-                            type_args,
-                            span.clone(),
-                        );
+                        let (inst_params, inst_return_type, valid_explicit_type_args) = self
+                            .instantiate_signature_for_call(
+                                &mangled,
+                                &sig,
+                                type_args,
+                                span.clone(),
+                            );
+                        if !valid_explicit_type_args {
+                            return ResolvedType::Unknown;
+                        }
                         let expected = inst_params.len();
                         let bad_arity = if sig.is_variadic {
                             args.len() < expected
@@ -4277,6 +4284,16 @@ impl TypeChecker {
                 // Enum variant constructor call: `Enum.Variant(...)`
                 if let Some(enum_info) = self.enums.get(&resolved_module).cloned() {
                     if let Some(field_types) = enum_info.variants.get(field) {
+                        if !type_args.is_empty() {
+                            self.error(
+                                format!(
+                                    "Enum variant '{}.{}' does not accept type arguments",
+                                    name, field
+                                ),
+                                span.clone(),
+                            );
+                            return ResolvedType::Unknown;
+                        }
                         if args.len() != field_types.len() {
                             self.error(
                                 format!(
@@ -4310,12 +4327,11 @@ impl TypeChecker {
                 let mangled = format!("{}__{}", resolved_module, field);
                 if let Some(sig) = self.functions.get(&mangled).cloned() {
                     self.enforce_call_effects(&sig, span.clone(), &mangled);
-                    let (inst_params, inst_return_type) = self.instantiate_signature_for_call(
-                        &mangled,
-                        &sig,
-                        type_args,
-                        span.clone(),
-                    );
+                    let (inst_params, inst_return_type, valid_explicit_type_args) = self
+                        .instantiate_signature_for_call(&mangled, &sig, type_args, span.clone());
+                    if !valid_explicit_type_args {
+                        return ResolvedType::Unknown;
+                    }
                     let expected = inst_params.len();
                     let bad_arity = if sig.is_variadic {
                         args.len() < expected
@@ -4410,12 +4426,11 @@ impl TypeChecker {
             let resolved_name = canonical_ident_call.as_deref().unwrap_or(name);
             if let Some(sig) = self.functions.get(resolved_name).cloned() {
                 self.enforce_call_effects(&sig, span.clone(), resolved_name);
-                let (inst_params, inst_return_type) = self.instantiate_signature_for_call(
-                    resolved_name,
-                    &sig,
-                    type_args,
-                    span.clone(),
-                );
+                let (inst_params, inst_return_type, valid_explicit_type_args) = self
+                    .instantiate_signature_for_call(resolved_name, &sig, type_args, span.clone());
+                if !valid_explicit_type_args {
+                    return ResolvedType::Unknown;
+                }
                 let expected = inst_params.len();
                 let bad_arity = if sig.is_variadic {
                     args.len() < expected
@@ -5285,12 +5300,16 @@ impl TypeChecker {
                     );
                     self.enforce_call_effects(&sig, span.clone(), method);
                     let method_name = format!("{}.{}", owner, method);
-                    let (inst_params, inst_return_type) = self.instantiate_signature_for_call(
-                        &method_name,
-                        &sig,
-                        type_args,
-                        span.clone(),
-                    );
+                    let (inst_params, inst_return_type, valid_explicit_type_args) = self
+                        .instantiate_signature_for_call(
+                            &method_name,
+                            &sig,
+                            type_args,
+                            span.clone(),
+                        );
+                    if !valid_explicit_type_args {
+                        return ResolvedType::Unknown;
+                    }
                     if args.len() != inst_params.len() {
                         self.error(
                             format!(
@@ -5418,6 +5437,7 @@ impl TypeChecker {
                 );
                 ResolvedType::Unknown
             }
+            ResolvedType::Unknown => ResolvedType::Unknown,
             _ => {
                 self.error(format!("Cannot access field on type {}", obj_type), span);
                 ResolvedType::Unknown

@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed static enum-variant constructor type-argument diagnostics:
+  - calls like `E.A<String>(x)` now fail immediately with the primary enum-variant type-argument error instead of slipping through and later surfacing as misleading match-arm or return-type mismatches
+- Fixed explicit generic-call arity diagnostic cascades:
+  - calls with the wrong number of explicit type arguments now stop at the primary arity error instead of continuing into misleading downstream argument-mismatch and field-access diagnostics
+- Fixed escaping async/lambda capture borrow propagation across `if` merges:
+  - reassigning an outer closure/task binding inside a branch now preserves captured borrows after branch merge instead of dropping them with the inner scope and incorrectly allowing later moves/assignments of the captured value
+- Fixed project-mode `check` / `build` source-list validation gaps:
+  - when running from `apex.toml`, `apex check` and `apex build` now reject invalid `files[]` entries instead of silently checking only the entrypoint or falling through to late parse errors on non-`.apex` files
+- Fixed borrow-state tracking for match-pattern bindings:
+  - bindings introduced by `match` patterns now preserve move/borrow checks like normal locals instead of being treated like non-dropping values and incorrectly allowing owned moves while still borrowed
+- Fixed `apex info` project source-file validation:
+  - project info now rejects non-`.apex` entry/files paths instead of printing invalid configs as healthy and silently listing unusable sources like `src/main.txt`
 - Fixed keyword import-path segments for built-in variant aliases:
   - imports ending in keyword-named variants like `app.Option.None` now parse correctly instead of stopping at the final dot and reporting the misleading parser error `Import path cannot end with '.'`
 - Fixed built-in `Result` import-alias exhaustiveness checking:

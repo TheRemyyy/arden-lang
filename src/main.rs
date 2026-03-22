@@ -4194,6 +4194,9 @@ fn build_project(
     // Validate project
     config.validate(&project_root)?;
     validate_opt_level(Some(&config.opt_level))?;
+    for source_file in config.get_source_files(&project_root) {
+        validate_source_file_path(&source_file)?;
+    }
 
     let output_path = project_root.join(&config.output);
     if !check_only {
@@ -6024,6 +6027,10 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
 
         let config_path = project_root.join("apex.toml");
         let config = ProjectConfig::load(&config_path)?;
+        config.validate(&project_root)?;
+        for source_file in config.get_source_files(&project_root) {
+            validate_source_file_path(&source_file)?;
+        }
         config.get_entry_path(&project_root)
     };
 
@@ -6112,6 +6119,9 @@ fn show_project_info() -> Result<(), String> {
     let config = ProjectConfig::load(&config_path)?;
     config.validate(&project_root)?;
     validate_opt_level(Some(&config.opt_level))?;
+    for file in config.get_source_files(&project_root) {
+        validate_source_file_path(&file)?;
+    }
 
     println!("{}", "Project".cyan().bold());
     println!("  {}: {}", "name".dimmed(), config.name);
@@ -6231,6 +6241,9 @@ fn resolve_default_file(path: Option<&Path>) -> Result<PathBuf, String> {
     if let Some(project_root) = find_project_root(&current_dir) {
         let config = ProjectConfig::load(&project_root.join("apex.toml"))?;
         config.validate(&project_root)?;
+        for source_file in config.get_source_files(&project_root) {
+            validate_source_file_path(&source_file)?;
+        }
         return Ok(config.get_entry_path(&project_root));
     }
 
@@ -6962,6 +6975,82 @@ mod tests {
         semantic_program_fingerprint(&program)
     }
 
+    fn rewrite_fingerprint_for_test_unit(
+        parsed_files: &[ParsedProjectUnit],
+        target_file: &Path,
+        entry_namespace: &str,
+    ) -> String {
+        let (
+            _namespace_files_map,
+            namespace_function_files,
+            namespace_class_files,
+            namespace_module_files,
+            global_function_map,
+            global_function_file_map,
+            global_class_map,
+            global_class_file_map,
+            global_enum_map,
+            global_enum_file_map,
+            global_module_map,
+            global_module_file_map,
+        ) = collect_project_symbol_maps(parsed_files);
+        let namespace_functions = parsed_files.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.function_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_classes = parsed_files.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.class_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_modules = parsed_files.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.module_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_api_fingerprints = compute_namespace_api_fingerprints(parsed_files);
+        let file_api_fingerprints = parsed_files
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+            .collect::<HashMap<_, _>>();
+        let rewrite_ctx = RewriteFingerprintContext {
+            namespace_functions: &namespace_functions,
+            namespace_function_files: &namespace_function_files,
+            global_function_map: &global_function_map,
+            global_function_file_map: &global_function_file_map,
+            namespace_classes: &namespace_classes,
+            namespace_class_files: &namespace_class_files,
+            global_class_map: &global_class_map,
+            global_class_file_map: &global_class_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
+            namespace_modules: &namespace_modules,
+            namespace_module_files: &namespace_module_files,
+            global_module_map: &global_module_map,
+            global_module_file_map: &global_module_file_map,
+            namespace_api_fingerprints: &namespace_api_fingerprints,
+            file_api_fingerprints: &file_api_fingerprints,
+        };
+        let target_unit = parsed_files
+            .iter()
+            .find(|u| u.file == target_file)
+            .expect("target unit");
+        compute_rewrite_context_fingerprint_for_unit(target_unit, entry_namespace, &rewrite_ctx)
+    }
+
     fn assert_frontend_pipeline_ok(source: &str) {
         let program = parse_program(source);
 
@@ -7398,6 +7487,689 @@ function classify(value: Option<Integer>): Integer {
         type_checker
             .check(&program)
             .expect("alias-based Some/None Option match should be exhaustive");
+    }
+
+    #[test]
+    fn ultra_edge_nested_generics_alias_match_builtins() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function collapse_opt(value: Option<List<Map<String, Integer>>>): Integer {
+    return match (value) {
+        Present(items) => 1,
+        Empty => 0,
+    };
+}
+
+function collapse_result(value: Result<Option<List<Map<String, Integer>>>, String>): Integer {
+    return match (value) {
+        Success(v) => collapse_opt(v),
+        Failure(err) => 0,
+    };
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn alias_builtins_nested_match_if_expression_branch_typing() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function unwrap_opt(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => inner,
+        Empty => 0,
+    };
+}
+
+function pick(flag: Boolean, value: Result<Option<Integer>, String>): Integer {
+    return if (flag) {
+        match (value) {
+            Success(inner) => unwrap_opt(inner),
+            Failure(err) => 0,
+        }
+    } else {
+        0
+    };
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn flat_alias_builtins_helper_result_value_flow() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function make(flag: Boolean): Result<Option<Integer>, String> {
+    if (flag) {
+        return Result<Option<Integer>, String>();
+    }
+    return Result<Option<Integer>, String>();
+}
+
+function unwrap_opt(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => inner,
+        Empty => 0,
+    };
+}
+
+function run(flag: Boolean): Integer {
+    result: Result<Option<Integer>, String> = make(flag);
+    value: Option<Integer> = match (result) {
+        Success(inner) => inner,
+        Failure(err) => Option<Integer>(),
+    };
+    return unwrap_opt(value);
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn parser_typeck_accepts_exact_import_keyword_alias_generic_chain() {
+        let source = r#"
+import app.Option.None as Empty;
+
+class Box<T> {
+    value: T;
+    function get(): T { return this.value; }
+}
+
+function run(value: Option<Integer>): Integer {
+    b: Box<Integer> = Box<Integer>(1);
+    return match (value) {
+        Empty => b.get(),
+        _ => 0,
+    };
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn alias_builtins_match_expression_branch_join_stays_typed() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+function classify(value: Option<Integer>): Integer {
+    result: Integer = match (value) {
+        Present(inner) => inner,
+        Empty => 0,
+    };
+    return result;
+}
+"#;
+
+        assert_frontend_pipeline_ok(source);
+    }
+
+    #[test]
+    fn alias_builtins_generic_helper_local_type_mismatch_reports_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function make<T>(flag: Boolean, value: T): Result<Option<T>, String> {
+    if (flag) {
+        return Result<Option<T>, String>();
+    }
+    return Result<Option<T>, String>();
+}
+
+function classify(flag: Boolean): Integer {
+    result: Result<Option<Integer>, String> = make<Integer>(flag, 1);
+    wrong: String = match (result) {
+        Success(inner) => match (inner) {
+            Present(value) => value,
+            Empty => 0,
+        },
+        Failure(err) => 0,
+    };
+    return 0;
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("local type mismatch should fail");
+        let joined = errors
+            .into_iter()
+            .map(|e| e.message)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Type mismatch") || joined.contains("expected String"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn alias_builtins_generic_call_arity_mismatch_reports_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+class Box<T> {
+    value: T;
+    function map<U>(f: (T) -> U): Box<U> { return Box<U>(); }
+}
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => Box<Integer>().map<Integer, String>(inner).value,
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("generic arity mismatch should fail");
+        let joined = errors
+            .into_iter()
+            .map(|e| e.message)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("expects 1 type arguments, got 2")
+                || joined.contains("Explicit type argument arity mismatch")
+                || joined.contains("arity mismatch"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn alias_builtins_constructor_like_generic_misuse_reports_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => List<Integer, String>(),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("constructor-like generic misuse should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("Unknown type: List<Integer, String>"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_valid_type_generic_misuse_reports_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+class Box<T> {
+    value: T;
+    function map<U>(f: (T) -> U): Box<U> { return Box<U>(); }
+}
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => Box<Integer>().map<Integer, String>(inner).value,
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("valid-type generic misuse should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("expects 1 type arguments, got 2"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_free_function_generic_misuse_reports_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+function id<T>(value: T): T { return value; }
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => id<Integer, String>(inner),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("free-function generic misuse should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("expects 1 type arguments, got 2"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_chained_generic_misuse_stays_primary() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+class Box<T> {
+    value: T;
+    function map<U>(f: (T) -> U): Box<U> { return Box<U>(); }
+}
+
+function id<T>(value: T): T { return value; }
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => id<Integer, String>(Box<Integer>().map<Integer, String>(inner).value),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("chained generic misuse should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("expects 1 type arguments, got 2"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_module_free_generic_misuse_stays_primary() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+module Math {
+    function id<T>(value: T): T { return value; }
+}
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => Math.id<Integer, String>(inner),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("module generic misuse should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("expects 1 type arguments, got 2"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_non_generic_method_type_args_report_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+class Box<T> {
+    value: T;
+    function get(): T { return this.value; }
+}
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => Box<Integer>(inner).get<String>(),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("non-generic method type args should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("is not generic")
+                || joined.contains("does not accept explicit type arguments"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_function_field_type_args_report_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+class Holder {
+    func: (Integer) -> Integer;
+}
+
+function classify(value: Option<Integer>, holder: Holder): Integer {
+    return match (value) {
+        Present(inner) => holder.func<String>(inner),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("function-valued field type args should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("does not accept explicit type arguments"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_interface_method_type_args_report_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+interface Counter {
+    function next(): Integer;
+}
+
+function classify(value: Option<Integer>, counter: Counter): Integer {
+    return match (value) {
+        Present(inner) => counter.next<String>(),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("interface method type args should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("is not generic")
+                || joined.contains("does not accept explicit type arguments"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_interface_field_nested_type_args_report_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+interface Holder {
+    function get(): (Integer) -> Integer;
+}
+
+function classify(value: Option<Integer>, holder: Holder): Integer {
+    return match (value) {
+        Present(inner) => holder.get()<String>(inner),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("interface field nested type args should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("Explicit type arguments are only supported on named function calls")
+                || joined.contains("does not accept explicit type arguments")
+                || joined.contains("not generic"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_nested_module_free_generic_misuse_stays_primary() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+module Math {
+    function id<T>(value: T): T { return value; }
+}
+
+module Util {
+    function call(value: Integer): Integer {
+        return Math.id<Integer, String>(value);
+    }
+}
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => Util.call(inner),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("nested module generic misuse should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("expects 1 type arguments, got 2"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_nested_module_method_generic_misuse_stays_primary() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+class Box<T> {
+    value: T;
+    function map<U>(f: (T) -> U): Box<U> { return Box<U>(); }
+}
+
+module Util {
+    function build(value: Integer): Box<Integer> { return Box<Integer>(value); }
+}
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => Util.build(inner).map<Integer, String>(inner).value,
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("nested module method generic misuse should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("expects 1 type arguments, got 2"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_static_path_type_args_report_cleanly() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+enum E {
+    A(Integer)
+}
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => E.A<String>(inner),
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("static path type args should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        let joined = messages.join("\n");
+        assert!(
+            joined.contains("does not accept type arguments")
+                || joined.contains("expects 1 argument")
+                || joined.contains("Enum variant"),
+            "{joined}"
+        );
+        assert_eq!(messages.len(), 1, "{joined}");
+    }
+
+    #[test]
+    fn alias_builtins_nested_match_local_type_mismatch_stays_single_error() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function unwrap_opt(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => inner,
+        Empty => 0,
+    };
+}
+
+function classify(result: Result<Option<Integer>, String>): None {
+    wrong: String = match (result) {
+        Success(inner) => unwrap_opt(inner),
+        Failure(err) => 0,
+    };
+    return None;
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("local type mismatch should fail");
+        let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("Type mismatch") || m.contains("expected String")),
+            "{}",
+            messages.join("\n")
+        );
+        assert_eq!(messages.len(), 1, "{}", messages.join("\n"));
+    }
+
+    #[test]
+    fn alias_match_expression_reports_single_branch_type_mismatch() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => inner,
+        Empty => "oops",
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("branch type mismatch should fail");
+        let joined = errors
+            .into_iter()
+            .map(|e| e.message)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Match expression arm type mismatch")
+                || joined.contains("Match expression branch type mismatch"),
+            "{joined}"
+        );
     }
 
     #[test]
@@ -12699,6 +13471,72 @@ function classify(value: Option<Integer>): Integer {
     }
 
     #[test]
+    fn cli_info_rejects_non_apex_entry_path() {
+        let temp_root = make_temp_project_root("cli-info-non-apex-entry");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.txt\"\nfiles = [\"src/main.txt\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(temp_root.join("src/main.txt"), "not apex\n").expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = show_project_info().expect_err("info should reject non-apex entry");
+            assert!(err.contains("is not an .apex file"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_info_rejects_directory_entry_path() {
+        let temp_root = make_temp_project_root("cli-info-directory-entry");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = show_project_info().expect_err("info should reject directory entry path");
+            assert!(
+                err.contains("must resolve to a file") || err.contains("is not a file"),
+                "{err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_info_rejects_non_apex_secondary_file_path() {
+        let temp_root = make_temp_project_root("cli-info-non-apex-secondary-file");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.txt\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write main");
+        fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            let err = show_project_info().expect_err("info should reject non-apex secondary file");
+            assert!(err.contains("is not an .apex file"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn cli_fix_target_rejects_non_apex_file_paths() {
         let temp_root = make_temp_project_root("cli-fix-non-apex");
         let text_file = temp_root.join("notes.txt");
@@ -12765,6 +13603,595 @@ function classify(value: Option<Integer>): Integer {
             err.contains("is not an .apex file"),
             "expected non-apex validation error, got: {err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_commands_consistently_reject_invalid_files_before_output_processing() {
+        let temp_root = make_temp_project_root("cli-invalid-file-before-output");
+        let text_file = temp_root.join("notes.txt");
+        let output_path = temp_root.join("nested/bin/app");
+        fs::write(&text_file, "not apex\n").expect("write text file");
+
+        let err = compile_file(&text_file, Some(&output_path), false, true, None, None)
+            .expect_err("compile should reject invalid source before touching output path");
+        assert!(err.contains("is not an .apex file"), "{err}");
+        assert!(
+            !output_path.exists(),
+            "output path should not be created on source validation failure"
+        );
+        assert!(
+            !output_path.parent().expect("parent").exists(),
+            "output parent should not be created on source validation failure"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_project_commands_consistently_report_invalid_file_list_entries() {
+        let temp_root = make_temp_project_root("cli-project-invalid-files-list-order");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/helper.txt\", \"src/main.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write main");
+        fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            let info_err =
+                show_project_info().expect_err("info should reject invalid files list entry");
+            let check_err =
+                check_file(None).expect_err("check should reject invalid files list entry");
+            let lint_err =
+                lint_target(None).expect_err("lint should reject invalid files list entry");
+            let build_err = build_project(false, false, true, true, false)
+                .expect_err("build should reject invalid files list entry");
+
+            for err in [info_err, check_err, lint_err, build_err] {
+                assert!(
+                    err.contains("src/helper.txt") || err.contains("is not an .apex file"),
+                    "{err}"
+                );
+            }
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
+        let temp_root = make_temp_project_root("project-check-invalid-files-list-fix");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/helper.txt\", \"src/main.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write invalid apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write main");
+        fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            let err = check_file(None).expect_err("check should reject invalid files list entry");
+            assert!(
+                err.contains("src/helper.txt") || err.contains("is not an .apex file"),
+                "{err}"
+            );
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("rewrite valid apex.toml");
+
+        with_current_dir(&temp_root, || {
+            check_file(None).expect("check should recover cleanly after fixing files list");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_commands_recover_after_repeated_helper_validity_toggles() {
+        let temp_root = make_temp_project_root("project-commands-helper-validity-toggles");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+
+        let invalid_helper = "package lib;\nfunction add(: Integer { return 1; }\n";
+        let valid_helper = "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n";
+
+        fs::write(temp_root.join("src/helper.apex"), invalid_helper).expect("write invalid helper");
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect_err("check should fail on first invalid helper");
+            build_project(false, false, true, false, false)
+                .expect_err("build should fail on first invalid helper");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(temp_root.join("src/helper.apex"), valid_helper).expect("write valid helper");
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("check should pass on first valid helper");
+            build_project(false, false, true, false, false)
+                .expect("build should pass on first valid helper");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(temp_root.join("src/helper.apex"), invalid_helper)
+            .expect("rewrite invalid helper");
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect_err("check should fail on second invalid helper");
+            build_project(false, false, true, false, false)
+                .expect_err("build should fail on second invalid helper");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(temp_root.join("src/helper.apex"), valid_helper)
+            .expect("rewrite valid helper again");
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("check should pass after repeated validity toggles");
+            build_project(false, false, true, false, false)
+                .expect("build should pass after repeated validity toggles");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_commands_ignore_metadata_only_touch_after_recovery() {
+        let temp_root = make_temp_project_root("project-commands-metadata-touch-after-recovery");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(: Integer { return 1; }\n",
+        )
+        .expect("write malformed helper");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect_err("project check should fail on malformed helper");
+            build_project(false, false, true, false, false)
+                .expect_err("build should fail on malformed helper");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let fixed_helper = "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n";
+        fs::write(temp_root.join("src/helper.apex"), fixed_helper).expect("rewrite valid helper");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("project check should recover after helper fix");
+            build_project(false, false, true, false, false)
+                .expect("build should recover after helper fix");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(temp_root.join("src/helper.apex"), fixed_helper)
+            .expect("rewrite identical helper for metadata touch");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false)
+                .expect("project check should ignore metadata-only touch after recovery");
+            build_project(false, false, true, false, false)
+                .expect("build should ignore metadata-only touch after recovery");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_commands_recover_cleanly_after_metadata_only_config_edit() {
+        let temp_root = make_temp_project_root("project-commands-metadata-config-edit");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("project check should pass initially");
+            build_project(false, false, true, false, false).expect("build should pass initially");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.1\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke2\"\n",
+        )
+        .expect("rewrite metadata-only apex.toml");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false)
+                .expect("project check should recover after metadata-only config edit");
+            build_project(false, false, true, false, false)
+                .expect("build should recover after metadata-only config edit");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_commands_recover_cleanly_after_output_only_config_edit() {
+        let temp_root = make_temp_project_root("project-commands-output-only-config-edit");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("project check should pass initially");
+            build_project(false, false, true, false, false).expect("build should pass initially");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-renamed\"\n",
+        )
+        .expect("rewrite output-only apex.toml");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false)
+                .expect("project check should ignore output-only config edit");
+            build_project(false, false, true, false, false)
+                .expect("build should rebuild cleanly after output-only config edit");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_commands_recover_after_repeated_output_path_toggles() {
+        let temp_root = make_temp_project_root("project-commands-repeated-output-toggles");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect("initial build should pass");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-a\"\n",
+        )
+        .expect("rewrite output path a");
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("build should pass after first output toggle");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-b\"\n",
+        )
+        .expect("rewrite output path b");
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("build should pass after second output toggle");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_commands_recover_after_repeated_output_and_version_toggles() {
+        let temp_root = make_temp_project_root("project-commands-output-version-toggles");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect("initial build should pass");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.1\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-a\"\n",
+        )
+        .expect("rewrite output/version a");
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("build should pass after first metadata toggle");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.2\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-b\"\n",
+        )
+        .expect("rewrite output/version b");
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("build should pass after second metadata toggle");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_commands_ignore_files_order_only_toggles() {
+        let temp_root = make_temp_project_root("project-commands-files-order-toggles");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("initial check should pass");
+            build_project(false, false, true, false, false).expect("initial build should pass");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/helper.apex\", \"src/main.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("rewrite file order");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("check should ignore files-order-only toggle");
+            build_project(false, false, true, false, false)
+                .expect("build should ignore files-order-only toggle");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_recovers_cleanly_after_invalid_files_list_fix() {
+        let temp_root = make_temp_project_root("project-build-invalid-files-list-fix");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/helper.txt\", \"src/main.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write invalid apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write main");
+        fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should reject invalid files list entry");
+            assert!(
+                err.contains("src/helper.txt") || err.contains("is not an .apex file"),
+                "{err}"
+            );
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("rewrite valid apex.toml");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("build should recover cleanly after fixing files list");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_commands_recover_cleanly_after_malformed_helper_fix() {
+        let temp_root = make_temp_project_root("project-commands-recover-malformed-helper");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(: Integer { return 1; }\n",
+        )
+        .expect("write malformed helper");
+
+        with_current_dir(&temp_root, || {
+            let check_err = check_command(None, false)
+                .expect_err("project check should fail on malformed helper");
+            assert!(check_err.contains("Parse error"), "{check_err}");
+            let build_err = build_project(false, false, true, false, false)
+                .expect_err("build should fail on malformed helper");
+            assert!(build_err.contains("Parse error"), "{build_err}");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("rewrite valid helper");
+
+        with_current_dir(&temp_root, || {
+            show_project_info().expect("info should recover after helper fix");
+            check_command(None, false).expect("project check should recover after helper fix");
+            build_project(false, false, true, false, false)
+                .expect("build should recover after helper fix");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_commands_recover_after_malformed_source_then_output_toggle() {
+        let temp_root = make_temp_project_root("project-commands-malformed-then-output-toggle");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(: Integer { return 1; }\n",
+        )
+        .expect("write malformed helper");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect_err("project check should fail on malformed helper");
+            build_project(false, false, true, false, false)
+                .expect_err("build should fail on malformed helper");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("rewrite valid helper");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-renamed\"\n",
+        )
+        .expect("rewrite output path after recovery");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("project check should recover after malformed helper fix and output toggle");
+            build_project(false, false, true, false, false)
+                .expect("build should recover after malformed helper fix and output toggle");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_recovers_after_malformed_helper_fix_with_cache_history() {
+        let temp_root = make_temp_project_root("project-build-recover-malformed-helper");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(: Integer { return 1; }\n",
+        )
+        .expect("write malformed helper");
+
+        with_current_dir(&temp_root, || {
+            let check_err = check_command(None, false)
+                .expect_err("project check should fail on malformed helper");
+            assert!(check_err.contains("Parse error"), "{check_err}");
+            let build_err = build_project(false, false, true, false, false)
+                .expect_err("build should fail on malformed helper");
+            assert!(build_err.contains("Parse error"), "{build_err}");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("rewrite valid helper");
+
+        with_current_dir(&temp_root, || {
+            check_command(None, false).expect("project check should recover after helper fix");
+            build_project(false, false, true, false, false)
+                .expect("build should recover after helper fix");
+        });
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -13342,6 +14769,293 @@ function classify(value: Option<Integer>): Integer {
             compute_rewrite_context_fingerprint_for_unit(main_unit, "app", &rewrite_ctx);
 
         assert_ne!(rewrite_fp_before, rewrite_fp_after);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
+        let temp_root = make_temp_project_root("rewrite-fp-keyword-alias-change");
+        let src_dir = temp_root.join("src");
+        let main_file = src_dir.join("main.apex");
+        let helper_file = src_dir.join("helper.apex");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            &main_file,
+            "package app;\nimport lib.Maybe.Empty as Empty;\nfunction main(x: Maybe): None { match (x) { Empty => { return None; }, _ => { return None; } } }\n",
+        )
+        .expect("write main");
+        fs::write(
+            &helper_file,
+            "package lib;\nenum Maybe { Empty, Filled(value: Integer) }\n",
+        )
+        .expect("write helper before");
+
+        let parsed_before = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main before"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        ];
+        let (
+            _namespace_files_map_before,
+            namespace_function_files_before,
+            namespace_class_files_before,
+            namespace_module_files_before,
+            global_function_map_before,
+            global_function_file_map_before,
+            global_class_map_before,
+            global_class_file_map_before,
+            global_enum_map_before,
+            global_enum_file_map_before,
+            global_module_map_before,
+            global_module_file_map_before,
+        ) = collect_project_symbol_maps(&parsed_before);
+        let namespace_functions_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.function_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_classes_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.class_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_modules_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.module_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_api_fingerprints_before = compute_namespace_api_fingerprints(&parsed_before);
+        let file_api_fingerprints_before = parsed_before
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+            .collect::<HashMap<_, _>>();
+        let rewrite_ctx_before = RewriteFingerprintContext {
+            namespace_functions: &namespace_functions_before,
+            namespace_function_files: &namespace_function_files_before,
+            global_function_map: &global_function_map_before,
+            global_function_file_map: &global_function_file_map_before,
+            namespace_classes: &namespace_classes_before,
+            namespace_class_files: &namespace_class_files_before,
+            global_class_map: &global_class_map_before,
+            global_class_file_map: &global_class_file_map_before,
+            global_enum_map: &global_enum_map_before,
+            global_enum_file_map: &global_enum_file_map_before,
+            namespace_modules: &namespace_modules_before,
+            namespace_module_files: &namespace_module_files_before,
+            global_module_map: &global_module_map_before,
+            global_module_file_map: &global_module_file_map_before,
+            namespace_api_fingerprints: &namespace_api_fingerprints_before,
+            file_api_fingerprints: &file_api_fingerprints_before,
+        };
+        let main_before = parsed_before
+            .iter()
+            .find(|u| u.file == main_file)
+            .expect("main before");
+        let rewrite_fp_before =
+            compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
+
+        thread::sleep(Duration::from_millis(5));
+
+        fs::write(&helper_file, "package lib;\nenum Maybe { Empty }\n")
+            .expect("write helper after");
+
+        let parsed_after = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main after"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+        ];
+        let (
+            _namespace_files_map_after,
+            namespace_function_files_after,
+            namespace_class_files_after,
+            namespace_module_files_after,
+            global_function_map_after,
+            global_function_file_map_after,
+            global_class_map_after,
+            global_class_file_map_after,
+            global_enum_map_after,
+            global_enum_file_map_after,
+            global_module_map_after,
+            global_module_file_map_after,
+        ) = collect_project_symbol_maps(&parsed_after);
+        let namespace_functions_after = parsed_after.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.function_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_classes_after = parsed_after.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.class_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_modules_after = parsed_after.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.module_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_api_fingerprints_after = compute_namespace_api_fingerprints(&parsed_after);
+        let file_api_fingerprints_after = parsed_after
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+            .collect::<HashMap<_, _>>();
+        let rewrite_ctx_after = RewriteFingerprintContext {
+            namespace_functions: &namespace_functions_after,
+            namespace_function_files: &namespace_function_files_after,
+            global_function_map: &global_function_map_after,
+            global_function_file_map: &global_function_file_map_after,
+            namespace_classes: &namespace_classes_after,
+            namespace_class_files: &namespace_class_files_after,
+            global_class_map: &global_class_map_after,
+            global_class_file_map: &global_class_file_map_after,
+            global_enum_map: &global_enum_map_after,
+            global_enum_file_map: &global_enum_file_map_after,
+            namespace_modules: &namespace_modules_after,
+            namespace_module_files: &namespace_module_files_after,
+            global_module_map: &global_module_map_after,
+            global_module_file_map: &global_module_file_map_after,
+            namespace_api_fingerprints: &namespace_api_fingerprints_after,
+            file_api_fingerprints: &file_api_fingerprints_after,
+        };
+        let main_after = parsed_after
+            .iter()
+            .find(|u| u.file == main_file)
+            .expect("main after");
+        let rewrite_fp_after =
+            compute_rewrite_context_fingerprint_for_unit(main_after, "app", &rewrite_ctx_after);
+
+        assert_ne!(rewrite_fp_before, rewrite_fp_after);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_rewrite_fingerprint_ignores_body_only_alias_target_change() {
+        let temp_root = make_temp_project_root("rewrite-fp-alias-body-only");
+        let src_dir = temp_root.join("src");
+        let main_file = src_dir.join("main.apex");
+        let helper_file = src_dir.join("helper.apex");
+        let helper_impl_file = src_dir.join("helper_impl.apex");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex", "src/helper_impl.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            &main_file,
+            "package app;\nimport lib.Maybe.Empty as Empty;\nfunction main(x: Maybe): None { match (x) { Empty => { return None; }, _ => { return None; } } }\n",
+        )
+        .expect("write main");
+        fs::write(
+            &helper_file,
+            "package lib;\nenum Maybe { Empty, Filled(value: Integer) }\nfunction make(): Integer { return helper_value(); }\n",
+        )
+        .expect("write helper before");
+        fs::write(
+            &helper_impl_file,
+            "package lib;\nfunction helper_value(): Integer { return 1; }\n",
+        )
+        .expect("write helper impl before");
+
+        let parsed_before = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main before"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+            parse_project_unit(&temp_root, &helper_impl_file).expect("parse helper impl before"),
+        ];
+        let rewrite_fp_before =
+            rewrite_fingerprint_for_test_unit(&parsed_before, &main_file, "app");
+
+        thread::sleep(Duration::from_millis(5));
+        fs::write(
+            &helper_impl_file,
+            "package lib;\nfunction helper_value(): Integer { return 99; }\n",
+        )
+        .expect("write helper impl after");
+
+        let parsed_after = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main after"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+            parse_project_unit(&temp_root, &helper_impl_file).expect("parse helper impl after"),
+        ];
+        let rewrite_fp_after = rewrite_fingerprint_for_test_unit(&parsed_after, &main_file, "app");
+
+        assert_eq!(rewrite_fp_before, rewrite_fp_after);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_rewrite_fingerprint_ignores_body_only_change_for_alias_heavy_builtin_consumer() {
+        let temp_root = make_temp_project_root("rewrite-fp-alias-heavy-builtin-body-only");
+        let src_dir = temp_root.join("src");
+        let main_file = src_dir.join("main.apex");
+        let helper_file = src_dir.join("helper.apex");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            &main_file,
+            "package app;\nimport app.Option.Some as Present;\nimport app.Option.None as Empty;\nimport app.Result.Ok as Success;\nimport app.Result.Error as Failure;\nfunction unwrap_opt(value: Option<Integer>): Integer { return match (value) { Present(inner) => inner, Empty => 0, }; }\nfunction run(flag: Boolean): Integer { result: Result<Option<Integer>, String> = make(flag); value: Option<Integer> = match (result) { Success(inner) => inner, Failure(err) => Option<Integer>(), }; return unwrap_opt(value); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            &helper_file,
+            "package app;\nfunction make(flag: Boolean): Result<Option<Integer>, String> { if (flag) { return Result<Option<Integer>, String>(); } return Result<Option<Integer>, String>(); }\n",
+        )
+        .expect("write helper before");
+
+        let parsed_before = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main before"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        ];
+        let rewrite_fp_before =
+            rewrite_fingerprint_for_test_unit(&parsed_before, &main_file, "app");
+
+        thread::sleep(Duration::from_millis(5));
+        fs::write(
+            &helper_file,
+            "package app;\nfunction make(flag: Boolean): Result<Option<Integer>, String> { if (flag) { return Result<Option<Integer>, String>(); } return Result<Option<Integer>, String>(); }\n// body-only comment perturbation\n",
+        )
+        .expect("write helper after");
+
+        let parsed_after = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main after"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+        ];
+        let rewrite_fp_after = rewrite_fingerprint_for_test_unit(&parsed_after, &main_file, "app");
+
+        assert_eq!(rewrite_fp_before, rewrite_fp_after);
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -14360,6 +16074,49 @@ function classify(value: Option<Integer>): Integer {
                 PathBuf::from("c.obj")
             ]
         );
+    }
+
+    #[test]
+    fn project_parse_cache_recovers_cleanly_after_invalid_sibling_fix() {
+        let temp_root = make_temp_project_root("parse-cache-invalid-sibling-fix");
+        let src_dir = temp_root.join("src");
+        let main_file = src_dir.join("main.apex");
+        let helper_file = src_dir.join("helper.apex");
+
+        fs::write(
+            &main_file,
+            "package app;\nimport lib.math;\nfunction main(): None { value: Integer = add(1); return None; }\n",
+        )
+        .expect("write main file");
+        fs::write(
+            &helper_file,
+            "package lib;\nfunction add(: Integer { return 1; }\n",
+        )
+        .expect("write invalid helper file");
+
+        let first_main = parse_project_unit(&temp_root, &main_file).expect("first main parse");
+        let first_helper_err = parse_project_unit(&temp_root, &helper_file)
+            .expect_err("invalid helper should fail parsing");
+        assert!(
+            first_helper_err.contains("Parse error"),
+            "{first_helper_err}"
+        );
+        assert!(!first_main.from_parse_cache);
+
+        thread::sleep(Duration::from_millis(5));
+        fs::write(
+            &helper_file,
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("rewrite helper file");
+
+        let second_main = parse_project_unit(&temp_root, &main_file).expect("second main parse");
+        let second_helper =
+            parse_project_unit(&temp_root, &helper_file).expect("second helper parse");
+        assert!(second_main.from_parse_cache);
+        assert!(!second_helper.from_parse_cache);
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]
