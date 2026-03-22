@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed compiler panic on list index assignment with expression receivers:
+  - assignments like `make()[0] = 7` now lower through the same list-value extraction path as list reads instead of panicking in LLVM lvalue codegen when the receiver is a temporary struct-valued expression
 - Fixed docs-site routing and loading edge cases:
   - nested trailing-slash routes like `/docs/features/projects/` now normalize to the real markdown path instead of fetching `/docs/features/projects/.md` and showing a false 404
   - navigating between docs now clears stale content and aborts the previous fetch, so old pages can no longer flash or overwrite the newly selected page during slow responses

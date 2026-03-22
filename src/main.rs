@@ -10120,6 +10120,36 @@ function main(): None {
     }
 
     #[test]
+    fn compile_source_runs_list_index_assignment_on_function_returned_list() {
+        let temp_root = make_temp_project_root("list-index-assign-call-runtime");
+        let source_path = temp_root.join("list_index_assign_call_runtime.apex");
+        let output_path = temp_root.join("list_index_assign_call_runtime");
+        let source = r#"
+            function make(): List<Integer> {
+                xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                return xs;
+            }
+
+            function main(): Integer {
+                make()[0] = 7;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("list index assignment on function-returned list should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled list assignment call binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_fails_fast_on_out_of_bounds_list_index_assignment() {
         let temp_root = make_temp_project_root("list-index-assign-oob-runtime");
         let source_path = temp_root.join("list_index_assign_oob_runtime.apex");

@@ -247,6 +247,7 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
 - Direct string indexing now also goes through an explicit bounds check before loading a `Char`, so `"abc"[i]` no longer relies on unchecked pointer arithmetic when `i` is out of range.
 - Map index assignment now desugars cleanly at codegen time into the same typed update path as `Map.set(...)`, so `m[key] = value` no longer falls through a list-only lvalue implementation.
 - List index assignment now shares the same bounds checks as list reads, so `xs[i] = value` no longer bypasses runtime safety guards on negative or out-of-range indices.
+- List index assignment now also accepts temporary/expression receivers such as `make()[0] = 7`, so list lvalue lowering no longer assumes that every receiver is a pointer-backed local/field.
 - Backend binary equality now has a dedicated `String` path using `strcmp`, so string comparisons no longer depend on integer/float-only binary lowering.
 - Exact imported enum aliases now also rewrite in type positions, so declarations like `e: Enum` stay consistent with `Enum.A(...)` constructor paths during project-mode typechecking.
 - Local enum type annotations and local enum variant constructor expressions inside function bodies now rewrite too, so body-local declarations like `e: E = E.A(1)` and lambda params typed as `E` stay consistent with the mangled project enum name.

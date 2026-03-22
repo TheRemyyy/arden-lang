@@ -1300,24 +1300,35 @@ impl<'ctx> Codegen<'ctx> {
 
                 // Prefer typed list element pointer for List<T> index assignment.
                 if let Some(Type::List(inner)) = self.infer_object_type(&object.node) {
-                    let list_ptr = match &object.node {
-                        Expr::Ident(name) => self.variables.get(name).map(|v| v.ptr),
-                        Expr::Field { object: obj, field } => {
-                            self.compile_field_ptr(&obj.node, field).ok()
-                        }
-                        Expr::This => self.variables.get("this").map(|v| v.ptr),
-                        _ => None,
-                    };
-                    if let Some(list_ptr) = list_ptr {
-                        let elem_ty = self.llvm_type(&inner);
-                        let list_type = self.context.struct_type(
-                            &[
-                                self.context.i64_type().into(),
-                                self.context.i64_type().into(),
-                                self.context.ptr_type(AddressSpace::default()).into(),
-                            ],
-                            false,
-                        );
+                    let elem_ty = self.llvm_type(&inner);
+                    let list_type = self.context.struct_type(
+                        &[
+                            self.context.i64_type().into(),
+                            self.context.i64_type().into(),
+                            self.context.ptr_type(AddressSpace::default()).into(),
+                        ],
+                        false,
+                    );
+                    let obj_val = self.compile_expr(&object.node)?;
+                    let (length, data_ptr) = if let BasicValueEnum::StructValue(list_struct) = obj_val
+                    {
+                        let length = self
+                            .builder
+                            .build_extract_value(list_struct, 1, "list_len")
+                            .map_err(|_| {
+                                CodegenError::new("Invalid list value for index assignment")
+                            })?
+                            .into_int_value();
+                        let data_ptr = self
+                            .builder
+                            .build_extract_value(list_struct, 2, "list_data")
+                            .map_err(|_| {
+                                CodegenError::new("Invalid list value for index assignment")
+                            })?
+                            .into_pointer_value();
+                        (length, data_ptr)
+                    } else {
+                        let list_ptr = obj_val.into_pointer_value();
                         let i32_type = self.context.i32_type();
                         let len_ptr = unsafe {
                             self.builder
@@ -1344,46 +1355,6 @@ impl<'ctx> Codegen<'ctx> {
                             .build_load(self.context.i64_type(), len_ptr, "list_len")
                             .unwrap()
                             .into_int_value();
-                        let non_negative = self
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::SGE,
-                                idx_val,
-                                self.context.i64_type().const_zero(),
-                                "list_assign_non_negative",
-                            )
-                            .unwrap();
-                        let in_bounds = self
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::SLT,
-                                idx_val,
-                                length,
-                                "list_assign_in_bounds",
-                            )
-                            .unwrap();
-                        let valid = self
-                            .builder
-                            .build_and(non_negative, in_bounds, "list_assign_valid")
-                            .unwrap();
-                        let current_fn = self.current_function.unwrap();
-                        let ok_bb = self
-                            .context
-                            .append_basic_block(current_fn, "list_assign_ok");
-                        let fail_bb = self
-                            .context
-                            .append_basic_block(current_fn, "list_assign_fail");
-                        self.builder
-                            .build_conditional_branch(valid, ok_bb, fail_bb)
-                            .unwrap();
-
-                        self.builder.position_at_end(fail_bb);
-                        self.emit_runtime_error(
-                            "List assignment index out of bounds",
-                            "list_assign_index_oob",
-                        )?;
-
-                        self.builder.position_at_end(ok_bb);
                         let data_ptr = self
                             .builder
                             .build_load(
@@ -1393,21 +1364,62 @@ impl<'ctx> Codegen<'ctx> {
                             )
                             .unwrap()
                             .into_pointer_value();
-                        let typed_data_ptr = self
-                            .builder
-                            .build_pointer_cast(
-                                data_ptr,
-                                self.context.ptr_type(AddressSpace::default()),
-                                "list_data_typed",
-                            )
-                            .unwrap();
-                        let elem_ptr = unsafe {
-                            self.builder
-                                .build_gep(elem_ty, typed_data_ptr, &[idx_val], "idx_elem_ptr")
-                                .unwrap()
-                        };
-                        return Ok(elem_ptr);
-                    }
+                        (length, data_ptr)
+                    };
+                    let non_negative = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::SGE,
+                            idx_val,
+                            self.context.i64_type().const_zero(),
+                            "list_assign_non_negative",
+                        )
+                        .unwrap();
+                    let in_bounds = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::SLT,
+                            idx_val,
+                            length,
+                            "list_assign_in_bounds",
+                        )
+                        .unwrap();
+                    let valid = self
+                        .builder
+                        .build_and(non_negative, in_bounds, "list_assign_valid")
+                        .unwrap();
+                    let current_fn = self.current_function.unwrap();
+                    let ok_bb = self
+                        .context
+                        .append_basic_block(current_fn, "list_assign_ok");
+                    let fail_bb = self
+                        .context
+                        .append_basic_block(current_fn, "list_assign_fail");
+                    self.builder
+                        .build_conditional_branch(valid, ok_bb, fail_bb)
+                        .unwrap();
+
+                    self.builder.position_at_end(fail_bb);
+                    self.emit_runtime_error(
+                        "List assignment index out of bounds",
+                        "list_assign_index_oob",
+                    )?;
+
+                    self.builder.position_at_end(ok_bb);
+                    let typed_data_ptr = self
+                        .builder
+                        .build_pointer_cast(
+                            data_ptr,
+                            self.context.ptr_type(AddressSpace::default()),
+                            "list_data_typed",
+                        )
+                        .unwrap();
+                    let elem_ptr = unsafe {
+                        self.builder
+                            .build_gep(elem_ty, typed_data_ptr, &[idx_val], "idx_elem_ptr")
+                            .unwrap()
+                    };
+                    return Ok(elem_ptr);
                 }
 
                 let obj_ptr = self.compile_expr(&object.node)?.into_pointer_value();
