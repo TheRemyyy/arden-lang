@@ -303,7 +303,16 @@ fn read_cache_blob<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Opti
             e
         )
     })?;
-    Ok(bincode::deserialize(&raw).ok())
+    let value = bincode::deserialize(&raw).map_err(|e| {
+        format!(
+            "{}: Failed to decode {} '{}': {}",
+            "error".red().bold(),
+            label,
+            path.display(),
+            e
+        )
+    })?;
+    Ok(Some(value))
 }
 
 fn write_cache_blob<T: Serialize>(path: &Path, label: &str, value: &T) -> Result<(), String> {
@@ -333,6 +342,25 @@ fn project_build_artifact_exists(output_path: &Path, emit_llvm: bool) -> bool {
     } else {
         output_path.exists()
     }
+}
+
+fn ensure_output_parent_dir(output_path: &Path) -> Result<(), String> {
+    let Some(parent) = output_path.parent() else {
+        return Ok(());
+    };
+
+    if parent.as_os_str().is_empty() || parent == Path::new(".") {
+        return Ok(());
+    }
+
+    fs::create_dir_all(parent).map_err(|e| {
+        format!(
+            "{}: Failed to create output directory '{}': {}",
+            "error".red().bold(),
+            parent.display(),
+            e
+        )
+    })
 }
 
 fn compute_project_fingerprint(
@@ -397,18 +425,46 @@ fn compute_project_fingerprint(
     Ok(format!("{:016x}", hasher.finish()))
 }
 
-fn load_cached_fingerprint(project_root: &Path) -> Option<String> {
-    fs::read_to_string(project_cache_file(project_root))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+fn load_cached_fingerprint(project_root: &Path) -> Result<Option<String>, String> {
+    let cache_file = project_cache_file(project_root);
+    if !cache_file.exists() {
+        return Ok(None);
+    }
+
+    let fingerprint = fs::read_to_string(&cache_file).map_err(|e| {
+        format!(
+            "{}: Failed to read build cache '{}': {}",
+            "error".red().bold(),
+            cache_file.display(),
+            e
+        )
+    })?;
+    let fingerprint = fingerprint.trim().to_string();
+    if fingerprint.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(fingerprint))
 }
 
-fn load_semantic_cached_fingerprint(project_root: &Path) -> Option<String> {
-    fs::read_to_string(semantic_project_cache_file(project_root))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+fn load_semantic_cached_fingerprint(project_root: &Path) -> Result<Option<String>, String> {
+    let cache_file = semantic_project_cache_file(project_root);
+    if !cache_file.exists() {
+        return Ok(None);
+    }
+
+    let fingerprint = fs::read_to_string(&cache_file).map_err(|e| {
+        format!(
+            "{}: Failed to read semantic build cache '{}': {}",
+            "error".red().bold(),
+            cache_file.display(),
+            e
+        )
+    })?;
+    let fingerprint = fingerprint.trim().to_string();
+    if fingerprint.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(fingerprint))
 }
 
 fn save_cached_fingerprint(project_root: &Path, fingerprint: &str) -> Result<(), String> {
@@ -4142,7 +4198,7 @@ fn build_project(
     let output_path = project_root.join(&config.output);
     let fingerprint = compute_project_fingerprint(&project_root, &config, emit_llvm, do_check)?;
     if !check_only {
-        if let Some(cached) = load_cached_fingerprint(&project_root) {
+        if let Some(cached) = load_cached_fingerprint(&project_root)? {
             if cached == fingerprint && project_build_artifact_exists(&output_path, emit_llvm) {
                 println!(
                     "{} {}",
@@ -4407,7 +4463,7 @@ fn build_project(
             let semantic_fingerprint =
                 compute_semantic_project_fingerprint(&config, &parsed_files, emit_llvm, do_check);
             let semantic_cache_hit = if !check_only {
-                load_semantic_cached_fingerprint(&project_root).is_some_and(|cached| {
+                load_semantic_cached_fingerprint(&project_root)?.is_some_and(|cached| {
                     cached == semantic_fingerprint
                         && project_build_artifact_exists(&output_path, emit_llvm)
                 })
@@ -5213,6 +5269,8 @@ fn compile_program_ast(
     emit_llvm: bool,
     link: &LinkConfig<'_>,
 ) -> Result<(), String> {
+    ensure_output_parent_dir(output_path)?;
+
     let context = Context::create();
     let module_name = source_path
         .file_stem()
@@ -5410,6 +5468,8 @@ fn compile_file(
             file.with_extension("")
         }
     });
+
+    ensure_output_parent_dir(&output_path)?;
 
     compile_source(
         &source,
@@ -6661,13 +6721,14 @@ mod tests {
         compile_file, compile_source, component_fingerprint, compute_link_fingerprint,
         compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
         dedupe_link_inputs, escape_response_file_arg, find_test_files, fix_target, format_targets,
-        lex_file, lint_target, load_link_manifest_cache, new_project, parse_file,
-        parse_project_unit, precompute_all_transitive_dependencies,
-        reusable_component_fingerprints, run_project, run_tests, semantic_program_fingerprint,
-        should_skip_final_link, show_project_info, transitive_dependents,
-        typecheck_summary_cache_from_state, typecheck_summary_cache_matches, DependencyGraphCache,
-        DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig, LinkManifestCache,
-        OutputKind, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
+        lex_file, lint_target, load_cached_fingerprint, load_link_manifest_cache,
+        load_semantic_cached_fingerprint, new_project, parse_file, parse_project_unit,
+        precompute_all_transitive_dependencies, read_cache_blob, reusable_component_fingerprints,
+        run_project, run_tests, semantic_program_fingerprint, should_skip_final_link,
+        show_project_info, transitive_dependents, typecheck_summary_cache_from_state,
+        typecheck_summary_cache_matches, DependencyGraphCache, DependencyGraphFileEntry,
+        DependencyResolutionContext, LinkConfig, LinkManifestCache, OutputKind,
+        ParsedFileCacheEntry, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
         DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
     };
     use crate::ast::{Decl, FunctionDecl, ImportDecl, Program, Spanned, Type, Visibility};
@@ -12005,6 +12066,21 @@ function main(): None {
     }
 
     #[test]
+    fn cli_compile_creates_missing_output_parent_directory() {
+        let temp_root = make_temp_project_root("cli-compile-create-parent");
+        let source_file = temp_root.join("main.apex");
+        let output_path = temp_root.join("nested/bin/app");
+        fs::write(&source_file, "function main(): None { return None; }\n").expect("write source");
+
+        compile_file(&source_file, Some(&output_path), true, true, None, None)
+            .expect("compile should create missing output directories");
+
+        assert!(output_path.with_extension("ll").exists());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn cli_check_file_rejects_directory_paths() {
         let temp_root = make_temp_project_root("cli-check-dir-path");
 
@@ -12094,6 +12170,49 @@ function main(): None {
         assert!(!err.contains("Directory '"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_rejects_output_paths_outside_project_root() {
+        let temp_root = make_temp_project_root("project-output-escape");
+        let outside_dir = temp_root
+            .parent()
+            .expect("temp dir should have parent")
+            .join("apex-output-escape-target");
+        let rel_outside = format!(
+            "../{}/smoke",
+            outside_dir
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("outside dir name")
+        );
+        fs::write(
+            temp_root.join("apex.toml"),
+            format!(
+                "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"{}\"\n",
+                rel_outside
+            ),
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, true, true, false, false)
+                .expect_err("build should reject output paths outside the project root");
+            assert!(err.contains("outside the project root"), "{err}");
+        });
+
+        assert!(
+            !outside_dir.exists(),
+            "rejected output path should not create directories outside the project root"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_dir_all(outside_dir);
     }
 
     #[test]
@@ -13439,6 +13558,56 @@ function main(): None {
         let err = load_link_manifest_cache(&temp_root)
             .expect_err("directory-shaped manifest path should surface an io error");
         assert!(err.contains("link manifest cache"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn read_cache_blob_reports_decode_errors_instead_of_silent_cache_miss() {
+        let temp_root = make_temp_project_root("cache-decode-error");
+        let cache_path = temp_root
+            .join(".apexcache")
+            .join("parsed")
+            .join("broken.bin");
+        fs::create_dir_all(
+            cache_path
+                .parent()
+                .expect("cache path should have parent directory"),
+        )
+        .expect("create cache dir");
+        fs::write(&cache_path, b"not valid bincode").expect("write invalid cache payload");
+
+        let err = read_cache_blob::<ParsedFileCacheEntry>(&cache_path, "parse cache")
+            .expect_err("invalid cache payload should surface a decode error");
+        assert!(err.contains("Failed to decode parse cache"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn load_cached_fingerprint_reports_io_errors_instead_of_silent_cache_miss() {
+        let temp_root = make_temp_project_root("build-fingerprint-io-error");
+        let cache_path = temp_root.join(".apexcache").join("build_fingerprint");
+        fs::create_dir_all(&cache_path).expect("create directory-shaped build cache path");
+
+        let err = load_cached_fingerprint(&temp_root)
+            .expect_err("directory-shaped build fingerprint path should surface an io error");
+        assert!(err.contains("Failed to read build cache"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn load_semantic_cached_fingerprint_reports_io_errors_instead_of_silent_cache_miss() {
+        let temp_root = make_temp_project_root("semantic-fingerprint-io-error");
+        let cache_path = temp_root
+            .join(".apexcache")
+            .join("semantic_build_fingerprint");
+        fs::create_dir_all(&cache_path).expect("create directory-shaped semantic cache path");
+
+        let err = load_semantic_cached_fingerprint(&temp_root)
+            .expect_err("directory-shaped semantic fingerprint path should surface an io error");
+        assert!(err.contains("Failed to read semantic build cache"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }

@@ -51,10 +51,12 @@ Optimization note:
 - In single-file mode (`apex compile file.apex` / `apex run file.apex`), Apex defaults to `-O3` and uses native tuning when available.
 - Invalid `--opt-level` / `opt_level` values are now rejected up front instead of silently falling back to `-O3`.
 - `apex run` requires project `output_kind = "bin"` and now rejects shared/static library targets before starting a build; use `apex build` for library outputs.
+- Project `output` paths in `apex.toml` must stay inside the project root; traversal paths like `../outside/app` are rejected during validation.
+- Valid nested output paths such as `build/bin/app` now create missing parent directories automatically in both project and single-file compile flows.
 
 Build cache note:
 - `apex build` now writes cache metadata into `.apexcache/` in the project root.
-- Broken cache paths or unreadable cache files now surface as direct build errors instead of being silently treated as cache misses.
+- Broken cache paths, unreadable cache files, unreadable fingerprint-cache files, or corrupt cache payloads now surface as direct build errors instead of being silently treated as cache misses.
 - If no source/config/build-mode inputs changed and output artifact exists, build exits early with `Up to date ... (build cache)`.
 - For changed projects, parser-level cache is reused per unchanged file from `.apexcache/parsed/`, reducing front-end rebuild overhead.
 - Rewritten AST cache is reused per unchanged file from `.apexcache/rewritten/`, reducing project rewrite overhead.

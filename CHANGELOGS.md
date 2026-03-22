@@ -29,6 +29,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - directory-based test discovery now skips symlinked directories instead of wandering outside the requested tree and pulling in external test files
 - Fixed silent link-manifest cache I/O fallback:
   - broken `.apexcache/link_manifest/latest.json` paths now report a direct build error instead of being silently downgraded into a cache miss
+- Fixed project output-path validation and nested output directory handling:
+  - `apex.toml` `output` values like `../outside/app` are now rejected during project validation instead of writing build artifacts outside the project root
+  - single-file and project compilation now create missing parent directories for valid nested output paths like `build/bin/app` instead of failing with a raw filesystem error
+- Fixed silent corrupt-cache fallback:
+  - invalid binary payloads in `.apexcache/parsed/`, rewrite, dependency, semantic, typecheck, object, and link cache blobs now report direct decode errors instead of being silently treated as cache misses
+  - unreadable text fingerprint caches such as `.apexcache/build_fingerprint` and `.apexcache/semantic_build_fingerprint` now also report direct I/O errors instead of being silently ignored
 
 - Fixed `apex fmt` comment stability inside inline expression blocks:
   - comments inside `async { ... }`, `if (...) { ... } else { ... }`, and `match (...) { ... }` expression bodies are now preserved in place instead of being dropped or moved outside the expression during formatting

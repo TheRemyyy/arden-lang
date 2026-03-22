@@ -126,6 +126,66 @@ fn validate_project_path(
     Ok(())
 }
 
+fn validate_output_path(project_root: &Path, relative_path: &str) -> Result<(), String> {
+    if relative_path.trim().is_empty() {
+        return Err("Output path must not be empty".to_string());
+    }
+
+    let output_path = Path::new(relative_path);
+    if output_path.is_absolute() {
+        return Err(format!(
+            "Output path '{}' must be relative to the project root",
+            relative_path
+        ));
+    }
+
+    let canonical_root = project_root.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve project root '{}': {}",
+            project_root.display(),
+            e
+        )
+    })?;
+    let resolved_path = project_root.join(output_path);
+
+    let existing_parent = resolved_path
+        .ancestors()
+        .find(|path| path.exists())
+        .ok_or_else(|| {
+            format!(
+                "Failed to resolve output path '{}' relative to project root '{}'",
+                relative_path,
+                canonical_root.display()
+            )
+        })?;
+
+    let canonical_parent = existing_parent.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve output path '{}' at '{}': {}",
+            relative_path,
+            existing_parent.display(),
+            e
+        )
+    })?;
+
+    if !canonical_parent.starts_with(&canonical_root) {
+        return Err(format!(
+            "Output path '{}' resolves outside the project root '{}'",
+            relative_path,
+            canonical_root.display()
+        ));
+    }
+
+    if resolved_path.exists() && resolved_path.is_dir() {
+        return Err(format!(
+            "Output path '{}' must not point to a directory",
+            relative_path
+        ));
+    }
+
+    Ok(())
+}
+
 impl Default for ProjectConfig {
     fn default() -> Self {
         Self {
@@ -205,6 +265,7 @@ impl ProjectConfig {
     /// Validate project configuration
     pub fn validate(&self, project_root: &Path) -> Result<(), String> {
         validate_project_path(project_root, &self.entry, "Entry point")?;
+        validate_output_path(project_root, &self.output)?;
 
         // Check all source files exist
         for file in &self.files {
@@ -419,6 +480,29 @@ output = "demo"
         let _ = std::fs::remove_dir_all(&project_root);
 
         assert!(error.contains("must resolve to a file"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_output_path_outside_project_root() {
+        let project_root = unique_temp_dir("apex_project_validate_output_escape");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("entry file should be written");
+
+        let mut config = ProjectConfig::new("demo");
+        config.output = "../escaped-output/demo".to_string();
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("output outside project root should be rejected");
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("outside the project root"), "{error}");
     }
 
     #[test]
