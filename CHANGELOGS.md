@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed duplicate `apex.toml` source-file entries validation:
+  - project configs now reject repeated paths in `files` instead of parsing the same source multiple times and risking duplicate declarations, false symbol collisions, or unstable project analysis
+- Fixed project-mode enum collision validation:
+  - project builds now reject duplicate top-level enum names across different namespaces instead of silently letting the later enum overwrite the earlier global enum owner map
+  - this keeps enum resolution/collision policy aligned with the existing function/class/module collision checks in multi-file projects
 - Fixed project-mode nested output directory creation:
   - valid project outputs such as `output = "build/app"` now create missing parent directories before object linking instead of failing late while writing the temporary link response file
 - Fixed late `?` operator validation:

@@ -3,7 +3,7 @@
 //! Supports multi-file projects with apex.toml configuration
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -267,9 +267,14 @@ impl ProjectConfig {
         validate_project_path(project_root, &self.entry, "Entry point")?;
         validate_output_path(project_root, &self.output)?;
 
+        let mut seen_files = HashSet::new();
+
         // Check all source files exist
         for file in &self.files {
             validate_project_path(project_root, file, "Source file")?;
+            if !seen_files.insert(file.as_str()) {
+                return Err(format!("Duplicate source file '{}' listed in files", file));
+            }
         }
 
         // Check entry is in files list
@@ -510,6 +515,29 @@ output = "demo"
         let _ = std::fs::remove_dir_all(&project_root);
 
         assert!(error.contains("outside the project root"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_source_files() {
+        let project_root = unique_temp_dir("apex_project_validate_duplicate_files");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("entry file should be written");
+
+        let mut config = ProjectConfig::new("demo");
+        config.files = vec!["src/main.apex".to_string(), "src/main.apex".to_string()];
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("duplicate source file should be rejected");
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("Duplicate source file"), "{error}");
     }
 
     #[test]

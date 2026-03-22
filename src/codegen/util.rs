@@ -1310,7 +1310,8 @@ impl<'ctx> Codegen<'ctx> {
                         false,
                     );
                     let obj_val = self.compile_expr(&object.node)?;
-                    let (length, data_ptr) = if let BasicValueEnum::StructValue(list_struct) = obj_val
+                    let (length, data_ptr) = if let BasicValueEnum::StructValue(list_struct) =
+                        obj_val
                     {
                         let length = self
                             .builder

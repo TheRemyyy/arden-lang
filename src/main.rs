@@ -4237,6 +4237,7 @@ fn build_project(
     let mut namespace_module_map: HashMap<String, HashSet<String>> = HashMap::new();
     let mut function_collisions: Vec<(String, String, String)> = Vec::new();
     let mut class_collisions: Vec<(String, String, String)> = Vec::new();
+    let mut enum_collisions: Vec<(String, String, String)> = Vec::new();
     let mut module_collisions: Vec<(String, String, String)> = Vec::new();
     let mut parse_cache_hits: usize = 0;
 
@@ -4296,8 +4297,18 @@ fn build_project(
         }
         for enum_name in &unit.enum_names {
             enum_entry.insert(enum_name.clone());
-            global_enum_map.insert(enum_name.clone(), unit.namespace.clone());
-            global_enum_file_map.insert(enum_name.clone(), unit.file.clone());
+            if let Some(existing_ns) = global_enum_map.get(enum_name) {
+                if existing_ns != &unit.namespace {
+                    enum_collisions.push((
+                        enum_name.clone(),
+                        existing_ns.clone(),
+                        unit.namespace.clone(),
+                    ));
+                }
+            } else {
+                global_enum_map.insert(enum_name.clone(), unit.namespace.clone());
+                global_enum_file_map.insert(enum_name.clone(), unit.file.clone());
+            }
         }
         for module_name in &unit.module_names {
             module_entry.insert(module_name.clone());
@@ -4525,6 +4536,22 @@ fn build_project(
         }
         return Err(
             "Project contains colliding top-level class names. Use unique class names per project."
+                .to_string(),
+        );
+    }
+    if !enum_collisions.is_empty() {
+        eprintln!(
+            "{} Enum name collisions detected across namespaces:",
+            "error".red().bold()
+        );
+        for (name, ns_a, ns_b) in enum_collisions {
+            eprintln!(
+                "  → '{}' is defined in both '{}' and '{}'",
+                name, ns_a, ns_b
+            );
+        }
+        return Err(
+            "Project contains colliding top-level enum names. Use unique enum names per project."
                 .to_string(),
         );
     }
@@ -6719,13 +6746,15 @@ fn create_project_test_runner_workspace(
         current_dir_checked()?.join(test_file)
     };
 
-    let test_rel = normalized_test_file.strip_prefix(project_root).map_err(|_| {
-        format!(
-            "Test file '{}' is outside project root '{}'",
-            normalized_test_file.display(),
-            project_root.display()
-        )
-    })?;
+    let test_rel = normalized_test_file
+        .strip_prefix(project_root)
+        .map_err(|_| {
+            format!(
+                "Test file '{}' is outside project root '{}'",
+                normalized_test_file.display(),
+                project_root.display()
+            )
+        })?;
     let test_rel_string = test_rel.to_string_lossy().replace('\\', "/");
 
     for source_file in config.get_source_files(project_root) {
@@ -6765,7 +6794,11 @@ fn create_project_test_runner_workspace(
     if config.entry != test_rel_string {
         temp_config.files.retain(|file| file != &config.entry);
     }
-    if !temp_config.files.iter().any(|file| file == &test_rel_string) {
+    if !temp_config
+        .files
+        .iter()
+        .any(|file| file == &test_rel_string)
+    {
         temp_config.files.push(test_rel_string);
         temp_config.files.sort();
         temp_config.files.dedup();
@@ -7632,6 +7665,48 @@ function main(): None {
         with_current_dir(&temp_root, || {
             build_project(false, false, true, false, false)
                 .expect("project build should support exact imported enum variant aliases");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_rejects_colliding_top_level_enum_names_across_namespaces() {
+        let temp_root = make_temp_project_root("colliding-enum-project");
+        let src_dir = temp_root.join("src");
+        let left_dir = src_dir.join("left");
+        let right_dir = src_dir.join("right");
+        fs::create_dir_all(&left_dir).expect("create left namespace dir");
+        fs::create_dir_all(&right_dir).expect("create right namespace dir");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/left/util.apex", "src/right/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            left_dir.join("util.apex"),
+            "package left;\nenum Shared { A }\n",
+        )
+        .expect("write left enum");
+        fs::write(
+            right_dir.join("util.apex"),
+            "package right;\nenum Shared { B }\n",
+        )
+        .expect("write right enum");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build should reject colliding enum names");
+            assert!(
+                err.contains("colliding top-level enum names"),
+                "unexpected error: {err}"
+            );
         });
 
         let _ = fs::remove_dir_all(temp_root);

@@ -118,6 +118,7 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
   - Multi-file project parsing now runs in parallel workers (file read + lex + parse/cache lookup).
   - Import checks and rewrite/cache resolution run in parallel per file.
   - Symbol map/collision resolution and final declaration merge still run deterministically.
+  - Top-level collision validation now treats enums the same way as functions, classes, and modules, so duplicate enum names across namespaces fail fast before later semantic/rewrite stages can observe an overwritten global owner map.
 - **Codegen relevant-file pruning**:
   - Per-file object rebuilds now feed LLVM only the files reached by the declaration closure walk, not the full transitive dependency file closure.
   - This keeps object-miss program assembly closer to the set of declarations actually needed for the rebuilt unit.

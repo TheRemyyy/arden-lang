@@ -7635,8 +7635,8 @@ mod tests {
                 return helper().unwrap();
             }
         "#;
-        let errors =
-            check_source(src).expect_err("try on Option inside Result-returning function should fail");
+        let errors = check_source(src)
+            .expect_err("try on Option inside Result-returning function should fail");
         let joined = errors
             .iter()
             .map(|e| e.message.as_str())

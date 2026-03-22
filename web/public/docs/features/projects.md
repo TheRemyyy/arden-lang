@@ -129,6 +129,7 @@ Source Files:
 ## How It Works
 
 1. **AST Build Pipeline**: All files listed in `files` are parsed and combined as declarations in one project AST.
+   - Each path in `files` must be unique; duplicate entries are rejected during project validation.
 2. **Import Checking**: Cross-file calls are validated by the import checker. Use explicit `import` statements when calling functions from other namespaces/modules.
 3. **Deterministic Symbol Mangling**: Top-level function/class/module symbols are rewritten to namespace-qualified internal names during project build.
 4. **Scope-Aware Rewrite**: Local bindings (parameters, `let` variables, loop vars, lambda params, match bindings) are never rewritten as imported/global symbols.
