@@ -7312,6 +7312,95 @@ function main(): None {
     }
 
     #[test]
+    fn type_checker_accepts_exhaustive_result_match_expression_with_error_pattern() {
+        let source = r#"
+function classify(result: Result<Integer, String>): Integer {
+    return match (result) {
+        Ok(value) => value,
+        Error(err) => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        type_checker
+            .check(&program)
+            .expect("Ok/Error Result match should be exhaustive");
+    }
+
+    #[test]
+    fn type_checker_rejects_err_pattern_for_result_match_expression() {
+        let source = r#"
+function classify(result: Result<Integer, String>): Integer {
+    return match (result) {
+        Ok(value) => value,
+        Err(err) => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        let errors = type_checker
+            .check(&program)
+            .expect_err("Err pattern should be rejected");
+        let joined = errors
+            .into_iter()
+            .map(|e| e.message)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Invalid Result pattern: Err")
+                || joined
+                    .contains("Non-exhaustive match expression for type Result<Integer, String>"),
+            "unexpected error: {joined}"
+        );
+    }
+
+    #[test]
+    fn type_checker_accepts_exhaustive_result_match_expression_with_imported_variant_aliases() {
+        let source = r#"
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function classify(result: Result<Integer, String>): Integer {
+    return match (result) {
+        Success(value) => value,
+        Failure(err) => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        type_checker
+            .check(&program)
+            .expect("alias-based Ok/Error Result match should be exhaustive");
+    }
+
+    #[test]
+    fn type_checker_accepts_exhaustive_option_match_expression_with_imported_variant_aliases() {
+        let source = r#"
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => inner,
+        Empty => 0,
+    };
+}
+"#;
+
+        let program = parse_program(source);
+        let mut type_checker = TypeChecker::new(source.to_string());
+        type_checker
+            .check(&program)
+            .expect("alias-based Some/None Option match should be exhaustive");
+    }
+
+    #[test]
     fn project_parse_cache_reuses_only_unchanged_files() {
         let temp_root = make_temp_project_root("parse-cache-selective");
         let src_dir = temp_root.join("src");

@@ -1133,7 +1133,7 @@ impl<'src> Parser<'src> {
         }
 
         // Parse qualified path: utils.math.* or utils.math.factorial
-        let mut path_parts = vec![self.parse_ident()?];
+        let mut path_parts = vec![self.parse_import_path_segment()?];
 
         // Handle dots for qualified names
         while self.check(&Token::Dot) || self.check(&Token::DotDot) {
@@ -1152,13 +1152,13 @@ impl<'src> Parser<'src> {
                 break;
             }
 
-            if !matches!(self.current(), Some(Token::Ident(_))) {
+            if !matches!(self.current(), Some(Token::Ident(_)) | Some(Token::None)) {
                 return Err(ParseError::new(
                     "Import path cannot end with '.'",
                     self.current_span(),
                 ));
             }
-            path_parts.push(self.parse_ident()?);
+            path_parts.push(self.parse_import_path_segment()?);
         }
 
         let alias = if self.check(&Token::As) {
@@ -1181,6 +1181,24 @@ impl<'src> Parser<'src> {
             path: path_parts.join("."),
             alias,
         })
+    }
+
+    fn parse_import_path_segment(&mut self) -> ParseResult<String> {
+        match self.current() {
+            Some(Token::Ident(name)) => {
+                let name = name.to_string();
+                self.advance();
+                Ok(name)
+            }
+            Some(Token::None) => {
+                self.advance();
+                Ok("None".to_string())
+            }
+            _ => Err(ParseError::new(
+                format!("Expected import path segment, found {:?}", self.current()),
+                self.current_span(),
+            )),
+        }
     }
 
     fn parse_params(&mut self) -> ParseResult<Vec<Parameter>> {
@@ -1765,7 +1783,14 @@ impl<'src> Parser<'src> {
             }
             // Handle None keyword as pattern (for Option::None)
             Some(Token::None) => {
+                let span = self.current_span();
                 self.advance();
+                if self.check(&Token::LParen) {
+                    return Err(ParseError::new(
+                        "`None` pattern must not use an empty binding list",
+                        span,
+                    ));
+                }
                 Ok(Pattern::Variant("None".to_string(), vec![]))
             }
             _ => Err(ParseError::new(
@@ -2002,7 +2027,24 @@ impl<'src> Parser<'src> {
                 Some(Token::Dot) => {
                     self.advance();
                     let field = self.parse_ident()?;
-                    let type_args = self.parse_call_type_args()?;
+                    let type_args = if self.check(&Token::Lt) {
+                        let saved = self.pos;
+                        self.advance();
+                        let type_args = self.parse_type_list(
+                            "Generic call type argument list cannot be empty",
+                            "Trailing comma is not allowed in generic call type arguments",
+                            &Token::Gt,
+                        )?;
+                        self.eat(&Token::Gt)?;
+                        if self.check(&Token::LParen) {
+                            type_args
+                        } else {
+                            self.pos = saved;
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    };
 
                     if self.check(&Token::LParen) {
                         // Method call
@@ -3509,6 +3551,25 @@ mod tests {
     }
 
     #[test]
+    fn test_reject_explicit_generic_method_call_with_trailing_comma() {
+        let source = r#"
+            function main(): None {
+                value: Box<Integer> = Box<Integer>(1);
+                value.map<Integer,>(x => x);
+                return None;
+            }
+        "#;
+        let err =
+            parse_source(source).expect_err("method generic call with trailing comma should fail");
+        assert!(
+            err.message
+                .contains("Trailing comma is not allowed in generic call type arguments"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
     fn test_reject_explicit_generic_module_call_with_trailing_comma() {
         let source = r#"
             module A {
@@ -3797,6 +3858,47 @@ mod tests {
                 .contains("Trailing comma is not allowed in pattern binding lists"),
             "{}",
             err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_none_pattern_with_empty_binding_list() {
+        let source = r#"
+            function main(): None {
+                match (None) {
+                    None() => { return None; },
+                    _ => { return None; }
+                }
+            }
+        "#;
+        let err = parse_source(source).expect_err("None() pattern should fail");
+        assert!(
+            err.message
+                .contains("`None` pattern must not use an empty binding list"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_parse_none_pattern_without_binding_list() {
+        let source = r#"
+            function main(): None {
+                match (None) {
+                    None => { return None; },
+                    _ => { return None; }
+                }
+            }
+        "#;
+        let program = parse_source(source).expect("None pattern should parse without ()");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Match { arms, .. } = &func.body[0].node else {
+            panic!("Expected match statement");
+        };
+        assert!(
+            matches!(&arms[0].pattern, Pattern::Variant(name, bindings) if name == "None" && bindings.is_empty())
         );
     }
 

@@ -1226,15 +1226,34 @@ fn rewrite_pattern_for_project(
                     }
                 }
             } else if let Some((module_alias, rest)) = name.split_once('.') {
+                let member_parts = rest
+                    .split('.')
+                    .map(|part| part.to_string())
+                    .collect::<Vec<_>>();
                 if local_modules.contains(module_alias) {
-                    let member_parts = rest
-                        .split('.')
-                        .map(|part| part.to_string())
-                        .collect::<Vec<_>>();
                     if let Some((owner_ns, enum_name, variant_name)) =
                         resolve_module_alias_enum_candidate(
                             current_namespace,
                             module_alias,
+                            &member_parts,
+                            global_enum_map,
+                        )
+                    {
+                        return ast::Pattern::Variant(
+                            format!(
+                                "{}.{}",
+                                mangle_project_symbol(&owner_ns, entry_namespace, &enum_name),
+                                variant_name
+                            ),
+                            bindings.clone(),
+                        );
+                    }
+                }
+                if let Some((ns, symbol_name)) = imported_modules.get(module_alias) {
+                    if let Some((owner_ns, enum_name, variant_name)) =
+                        resolve_module_alias_enum_candidate(
+                            ns,
+                            symbol_name,
                             &member_parts,
                             global_enum_map,
                         )
@@ -6028,6 +6047,82 @@ mod tests {
             &arms[0].pattern,
             ast::Pattern::Variant(name, bindings)
                 if name == "util__E.B" && bindings == &vec!["v".to_string()]
+        ));
+    }
+
+    #[test]
+    fn rewrites_namespace_alias_enum_variant_patterns() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Function(ast::FunctionDecl {
+                    name: "main".to_string(),
+                    generic_params: vec![],
+                    params: vec![ast::Parameter {
+                        name: "e".to_string(),
+                        ty: ast::Type::Named("E".to_string()),
+                        mutable: false,
+                        mode: ast::ParamMode::Owned,
+                    }],
+                    is_variadic: false,
+                    extern_abi: None,
+                    extern_link_name: None,
+                    return_type: ast::Type::None,
+                    body: vec![sp(Stmt::Match {
+                        expr: sp(Expr::Ident("e".to_string())),
+                        arms: vec![ast::MatchArm {
+                            pattern: ast::Pattern::Variant(
+                                "u.E.A".to_string(),
+                                vec!["v".to_string()],
+                            ),
+                            body: vec![sp(Stmt::Expr(sp(Expr::Ident("v".to_string()))))],
+                        }],
+                    })],
+                    is_async: false,
+                    is_extern: false,
+                    visibility: ast::Visibility::Private,
+                    attributes: vec![],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::from([("app".to_string(), HashSet::from(["main".to_string()]))]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["E".to_string()]))]),
+            &HashMap::from([("E".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let func = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Function(func) if func.name == "main" => Some(func),
+                _ => None,
+            })
+            .expect("expected main function declaration");
+        let Stmt::Match { arms, .. } = &func.body[0].node else {
+            panic!("expected match statement");
+        };
+        assert!(matches!(
+            &arms[0].pattern,
+            ast::Pattern::Variant(name, bindings)
+                if name == "util__E.A" && bindings == &vec!["v".to_string()]
         ));
     }
 

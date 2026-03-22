@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed keyword import-path segments for built-in variant aliases:
+  - imports ending in keyword-named variants like `app.Option.None` now parse correctly instead of stopping at the final dot and reporting the misleading parser error `Import path cannot end with '.'`
+- Fixed built-in `Result` import-alias exhaustiveness checking:
+  - alias-based matches like `Success(value)` / `Failure(err)` for `import app.Result.Ok as Success` and `import app.Result.Error as Failure` now count as exhaustive instead of being rejected as invalid patterns and then misreported as non-exhaustive
+- Fixed method generic-call trailing-comma diagnostics:
+  - invalid calls like `value.map<Integer,>(x => x)` now fail with the direct generic-call parser error instead of masking it and later reporting the unrelated follow-up error `Expected Semi, found Some(Lt)`
+- Fixed `None()` pattern diagnostics:
+  - invalid `None()` match patterns now fail immediately with a direct parser error instead of leaking the stray `(` into arm parsing and reporting the unrelated follow-up error `Expected FatArrow, found Some(LParen)`
+- Fixed namespace-alias enum variant pattern rewriting:
+  - match patterns like `u.E.A(v)` now rewrite through imported module aliases to the mangled enum path instead of staying partially unresolved while the equivalent expression form was already rewritten correctly
 - Fixed duplicate `apex.toml` source-file entries validation:
   - project configs now reject repeated paths in `files` instead of parsing the same source multiple times and risking duplicate declarations, false symbol collisions, or unstable project analysis
 - Fixed project-mode enum collision validation:

@@ -355,6 +355,9 @@ impl TypeChecker {
             .map_or((String::new(), enum_path.to_string()), |(ns, name)| {
                 (ns.to_string(), name.to_string())
             });
+        if matches!(enum_name.as_str(), "Option" | "Result") {
+            return Some((enum_name, variant_name.to_string()));
+        }
         if self.enums.contains_key(&enum_name) {
             return Some((enum_name, variant_name.to_string()));
         }
@@ -2924,20 +2927,44 @@ impl TypeChecker {
                 has_true && has_false
             }
             ResolvedType::Option(_) => {
-                let has_some = arms.iter().any(|arm| {
-                    matches!(&arm.pattern, Pattern::Variant(n, _) if n.rsplit('.').next().is_some_and(|leaf| leaf == "Some"))
+                let has_some = arms.iter().any(|arm| match &arm.pattern {
+                    Pattern::Variant(name, _) => {
+                        name.rsplit('.').next().is_some_and(|leaf| leaf == "Some")
+                            || self
+                                .resolve_import_alias_variant(name)
+                                .is_some_and(|(owner_enum, variant)| owner_enum == "Option" && variant == "Some")
+                    }
+                    _ => false,
                 });
-                let has_none = arms.iter().any(|arm| {
-                    matches!(&arm.pattern, Pattern::Variant(n, _) if n.rsplit('.').next().is_some_and(|leaf| leaf == "None"))
+                let has_none = arms.iter().any(|arm| match &arm.pattern {
+                    Pattern::Variant(name, _) => {
+                        name.rsplit('.').next().is_some_and(|leaf| leaf == "None")
+                            || self
+                                .resolve_import_alias_variant(name)
+                                .is_some_and(|(owner_enum, variant)| owner_enum == "Option" && variant == "None")
+                    }
+                    _ => false,
                 });
                 has_some && has_none
             }
             ResolvedType::Result(_, _) => {
-                let has_ok = arms.iter().any(|arm| {
-                    matches!(&arm.pattern, Pattern::Variant(n, _) if n.rsplit('.').next().is_some_and(|leaf| leaf == "Ok"))
+                let has_ok = arms.iter().any(|arm| match &arm.pattern {
+                    Pattern::Variant(name, _) => {
+                        name.rsplit('.').next().is_some_and(|leaf| leaf == "Ok")
+                            || self
+                                .resolve_import_alias_variant(name)
+                                .is_some_and(|(owner_enum, variant)| owner_enum == "Result" && variant == "Ok")
+                    }
+                    _ => false,
                 });
-                let has_err = arms.iter().any(|arm| {
-                    matches!(&arm.pattern, Pattern::Variant(n, _) if n.rsplit('.').next().is_some_and(|leaf| leaf == "Error"))
+                let has_err = arms.iter().any(|arm| match &arm.pattern {
+                    Pattern::Variant(name, _) => {
+                        name.rsplit('.').next().is_some_and(|leaf| leaf == "Error")
+                            || self
+                                .resolve_import_alias_variant(name)
+                                .is_some_and(|(owner_enum, variant)| owner_enum == "Result" && variant == "Error")
+                    }
+                    _ => false,
                 });
                 has_ok && has_err
             }
