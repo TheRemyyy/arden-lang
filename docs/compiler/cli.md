@@ -50,9 +50,11 @@ Optimization note:
 - In project mode, `target` in `apex.toml` is passed to Clang as `--target <triple>` when set.
 - In single-file mode (`apex compile file.apex` / `apex run file.apex`), Apex defaults to `-O3` and uses native tuning when available.
 - Invalid `--opt-level` / `opt_level` values are now rejected up front instead of silently falling back to `-O3`.
+- `apex run` requires project `output_kind = "bin"` and now rejects shared/static library targets before starting a build; use `apex build` for library outputs.
 
 Build cache note:
 - `apex build` now writes cache metadata into `.apexcache/` in the project root.
+- Broken cache paths or unreadable cache files now surface as direct build errors instead of being silently treated as cache misses.
 - If no source/config/build-mode inputs changed and output artifact exists, build exits early with `Up to date ... (build cache)`.
 - For changed projects, parser-level cache is reused per unchanged file from `.apexcache/parsed/`, reducing front-end rebuild overhead.
 - Rewritten AST cache is reused per unchanged file from `.apexcache/rewritten/`, reducing project rewrite overhead.
@@ -106,9 +108,11 @@ Filter note:
 - Without `--path`, `apex test` now uses the current project's `apex.toml` file list when available instead of scanning unrelated files under the working directory.
 - When `--filter` is used, reported totals/ignored counts reflect only the filtered test set.
 - When `--path` points to a directory, discovery now walks nested subdirectories as well.
+- Directory discovery skips symlinked directories to avoid traversing outside the requested test tree.
 - Test-file discovery matches `test/spec` case-insensitively, so names like `MathTest.apex` are included.
 - Missing test directories now fail with a direct CLI error instead of reporting an empty test set.
 - `--path <file>` must point to an `.apex` file; non-Apex files now fail immediately with a CLI error.
+- Test execution now uses isolated temporary runner files, so `apex test` no longer overwrites or deletes neighboring `*.test_runner.apex` / `*.test_runner.exe` files in the source tree.
 
 ## Examples
 
@@ -119,6 +123,9 @@ apex new my_project
 cd my_project
 apex run
 ```
+
+Project-name note:
+- `apex new <name>` now rejects names containing quotes, spaces, path separators, or other special characters that would generate invalid `apex.toml`, invalid Apex source, or unsafe output filenames.
 
 ### Building a Release Binary
 

@@ -17,6 +17,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - invalid `--opt-level` values in single-file mode and invalid `opt_level` values in `apex.toml` now fail fast with a direct validation error instead of silently compiling at `-O3`
 - Fixed project-root discovery for existing directories with dots in their names:
   - commands invoked from project folders like `demo.v1/` now still detect the local `apex.toml` instead of incorrectly treating the directory as if it were a file path
+- Fixed `apex test` temp-runner file clobbering:
+  - test execution now uses isolated temporary runner workspaces instead of fixed `*.test_runner.apex` / `*.test_runner.exe` neighbor paths, so existing user files with those names are no longer overwritten and deleted
+- Fixed `apex run` behavior for library projects:
+  - project configs with `output_kind = "shared"` or `"static"` now fail fast with a direct CLI error before starting a build instead of building a library and then trying to execute it as a program
+- Fixed `apex info` config validation:
+  - project info now validates `apex.toml` paths and `opt_level` before printing, so broken configs no longer look healthy in the info output
+- Fixed `apex new` project-name validation:
+  - scaffold creation now rejects names with special characters that would otherwise generate invalid `apex.toml`, invalid Apex source literals, or unsafe output filenames
+- Fixed `apex test --path <dir>` symlink traversal:
+  - directory-based test discovery now skips symlinked directories instead of wandering outside the requested tree and pulling in external test files
+- Fixed silent link-manifest cache I/O fallback:
+  - broken `.apexcache/link_manifest/latest.json` paths now report a direct build error instead of being silently downgraded into a cache miss
 
 - Fixed `apex fmt` comment stability inside inline expression blocks:
   - comments inside `async { ... }`, `if (...) { ... } else { ... }`, and `match (...) { ... }` expression bodies are now preserved in place instead of being dropped or moved outside the expression during formatting

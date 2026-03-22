@@ -3175,15 +3175,18 @@ fn dedupe_link_inputs(link_inputs: Vec<PathBuf>) -> Vec<PathBuf> {
     deduped
 }
 
-fn load_link_manifest_cache(project_root: &Path) -> Option<LinkManifestCache> {
+fn load_link_manifest_cache(project_root: &Path) -> Result<Option<LinkManifestCache>, String> {
     let path = link_manifest_cache_path(project_root);
-    let cache: LinkManifestCache = read_cache_blob(&path, "link manifest cache").ok()??;
+    let cache: LinkManifestCache = match read_cache_blob(&path, "link manifest cache")? {
+        Some(cache) => cache,
+        None => return Ok(None),
+    };
     if cache.schema != LINK_MANIFEST_CACHE_SCHEMA
         || cache.compiler_version != env!("CARGO_PKG_VERSION")
     {
-        return None;
+        return Ok(None);
     }
-    Some(cache)
+    Ok(Some(cache))
 }
 
 fn save_link_manifest_cache(project_root: &Path, cache: &LinkManifestCache) -> Result<(), String> {
@@ -3965,14 +3968,22 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
 
 /// Create a new project
 fn new_project(name: &str, path: Option<&Path>) -> Result<(), String> {
+    validate_new_project_name(name)?;
+
     let project_path = path
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(name));
 
     if project_path.exists() {
+        let kind = if project_path.is_dir() {
+            "Directory"
+        } else {
+            "Path"
+        };
         return Err(format!(
-            "{}: Directory '{}' already exists",
+            "{}: {} '{}' already exists",
             "error".red().bold(),
+            kind,
             project_path.display()
         ));
     }
@@ -4083,6 +4094,28 @@ output_kind = "bin"
     println!("  apex run");
 
     Ok(())
+}
+
+fn validate_new_project_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err(format!(
+            "{}: Project name cannot be empty",
+            "error".red().bold()
+        ));
+    }
+
+    let is_valid = name
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-');
+    if is_valid {
+        return Ok(());
+    }
+
+    Err(format!(
+        "{}: Invalid project name '{}'. Use only ASCII letters, digits, '_' or '-'.",
+        "error".red().bold(),
+        name
+    ))
 }
 
 /// Build the current project with proper namespace checking
@@ -4957,7 +4990,7 @@ fn build_project(
         build_timings.record_counts("full codegen", &[("files", rewritten_files.len())]);
     } else {
         let object_build_fingerprint = compute_object_build_fingerprint(&link);
-        let previous_link_manifest = load_link_manifest_cache(&project_root);
+        let previous_link_manifest = load_link_manifest_cache(&project_root)?;
         let rewritten_file_indices: HashMap<PathBuf, usize> = rewritten_files
             .iter()
             .enumerate()
@@ -5253,14 +5286,18 @@ fn run_project(
     do_check: bool,
     show_timings: bool,
 ) -> Result<(), String> {
-    build_project(release, false, do_check, false, show_timings)?;
-
     let cwd = current_dir_checked()?;
     let project_root = find_project_root(&cwd)
         .ok_or_else(|| format!("{}: No apex.toml found", "error".red().bold()))?;
 
     let config_path = project_root.join("apex.toml");
     let config = ProjectConfig::load(&config_path)?;
+    config.validate(&project_root)?;
+    validate_opt_level(Some(&config.opt_level))?;
+    ensure_project_is_runnable(&config.output_kind)?;
+
+    build_project(release, false, do_check, false, show_timings)?;
+
     let output_path = project_root.join(&config.output);
 
     println!("{} {}", "Running".cyan().bold(), output_path.display());
@@ -5280,6 +5317,18 @@ fn run_project(
     }
 
     Ok(())
+}
+
+fn ensure_project_is_runnable(output_kind: &OutputKind) -> Result<(), String> {
+    if *output_kind == OutputKind::Bin {
+        return Ok(());
+    }
+
+    Err(format!(
+        "{}: `apex run` requires `output_kind = \"bin\"`, found {:?}. Use `apex build` for library targets.",
+        "error".red().bold(),
+        output_kind
+    ))
 }
 
 /// Run a single file (legacy mode)
@@ -5971,6 +6020,8 @@ fn show_project_info() -> Result<(), String> {
 
     let config_path = project_root.join("apex.toml");
     let config = ProjectConfig::load(&config_path)?;
+    config.validate(&project_root)?;
+    validate_opt_level(Some(&config.opt_level))?;
 
     println!("{}", "Project".cyan().bold());
     println!("  {}: {}", "name".dimmed(), config.name);
@@ -6431,18 +6482,16 @@ fn run_tests(
             // Generate and run test runner - include original source + test runner main
             let runner_code = generate_test_runner_with_source(&filtered_discovery, &source);
 
-            // Create temporary file for test runner
-            let runner_path = test_file.with_extension("test_runner.apex");
+            // Create temporary file for test runner without clobbering user files next to the test.
+            let (temp_dir, runner_path, exe_path) = create_test_runner_workspace(test_file)?;
             fs::write(&runner_path, &runner_code)
                 .map_err(|e| format!("Failed to write test runner: {}", e))?;
 
             // Compile and run the test runner
-            let exe_path = test_file.with_extension("test_runner.exe");
             let result = compile_and_run_test(&runner_path, &exe_path);
 
             // Clean up temporary files
-            let _ = fs::remove_file(&runner_path);
-            let _ = fs::remove_file(&exe_path);
+            let _ = fs::remove_dir_all(&temp_dir);
 
             result?;
         }
@@ -6473,6 +6522,29 @@ fn default_test_files(current_dir: &Path) -> Result<Vec<PathBuf>, String> {
     }
 
     find_test_files(current_dir)
+}
+
+fn create_test_runner_workspace(test_file: &Path) -> Result<(PathBuf, PathBuf, PathBuf), String> {
+    let unique = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("Failed to create unique test runner path: {}", e))?
+        .as_nanos();
+    let stem = test_file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("apex_test");
+    let temp_dir = std::env::temp_dir().join(format!(
+        "apex-test-runner-{}-{}-{}",
+        stem,
+        std::process::id(),
+        unique
+    ));
+    fs::create_dir_all(&temp_dir)
+        .map_err(|e| format!("Failed to create test runner workspace: {}", e))?;
+
+    let runner_path = temp_dir.join("runner.apex");
+    let exe_path = temp_dir.join("runner.exe");
+    Ok((temp_dir, runner_path, exe_path))
 }
 
 /// Find test files in a directory
@@ -6519,6 +6591,10 @@ fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Resul
             )
         })?;
         let path = entry.path();
+
+        if file_type.is_symlink() {
+            continue;
+        }
 
         if file_type.is_dir() {
             find_test_files_recursive(&path, test_files)?;
@@ -6584,14 +6660,15 @@ mod tests {
         build_reverse_dependency_graph, check_command, check_file, codegen_program_for_unit,
         compile_file, compile_source, component_fingerprint, compute_link_fingerprint,
         compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
-        dedupe_link_inputs, escape_response_file_arg, fix_target, format_targets, lex_file,
-        lint_target, parse_file, parse_project_unit, precompute_all_transitive_dependencies,
-        reusable_component_fingerprints, run_tests, semantic_program_fingerprint,
-        should_skip_final_link, transitive_dependents, typecheck_summary_cache_from_state,
-        typecheck_summary_cache_matches, DependencyGraphCache, DependencyGraphFileEntry,
-        DependencyResolutionContext, LinkConfig, LinkManifestCache, OutputKind, ParsedProjectUnit,
-        RewriteFingerprintContext, RewrittenProjectUnit, DEPENDENCY_GRAPH_CACHE_SCHEMA,
-        LINK_MANIFEST_CACHE_SCHEMA,
+        dedupe_link_inputs, escape_response_file_arg, find_test_files, fix_target, format_targets,
+        lex_file, lint_target, load_link_manifest_cache, new_project, parse_file,
+        parse_project_unit, precompute_all_transitive_dependencies,
+        reusable_component_fingerprints, run_project, run_tests, semantic_program_fingerprint,
+        should_skip_final_link, show_project_info, transitive_dependents,
+        typecheck_summary_cache_from_state, typecheck_summary_cache_matches, DependencyGraphCache,
+        DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig, LinkManifestCache,
+        OutputKind, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
+        DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
     };
     use crate::ast::{Decl, FunctionDecl, ImportDecl, Program, Spanned, Type, Visibility};
     use crate::borrowck::BorrowChecker;
@@ -11116,6 +11193,34 @@ function main(): None {
     }
 
     #[test]
+    fn project_run_rejects_non_binary_output_kind() {
+        let temp_root = make_temp_project_root("run-non-binary-project");
+        let src_dir = temp_root.join("src");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\noutput_kind = \"static\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err =
+                run_project(&[], false, true, false).expect_err("run should reject library output");
+            assert!(err.contains("requires `output_kind = \"bin\"`"), "{err}");
+        });
+        assert!(
+            !temp_root.join("smoke").exists(),
+            "run should fail before creating a library artifact"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_run_supports_local_qualified_nested_enum_match_expressions() {
         let temp_root = make_temp_project_root("local-nested-enum-match-project");
         let src_dir = temp_root.join("src");
@@ -11612,6 +11717,73 @@ function main(): None {
     }
 
     #[test]
+    fn cli_run_tests_does_not_delete_existing_test_runner_neighbor_files() {
+        let temp_root = make_temp_project_root("cli-test-runner-neighbor-files");
+        let test_file = temp_root.join("smoke_test.apex");
+        let existing_runner = temp_root.join("smoke_test.test_runner.apex");
+        let existing_exe = temp_root.join("smoke_test.test_runner.exe");
+        fs::write(
+            &test_file,
+            r#"
+                @Test
+                function smoke(): None { return None; }
+            "#,
+        )
+        .expect("write test file");
+        fs::write(&existing_runner, "keep me\n").expect("write neighboring runner file");
+        fs::write(&existing_exe, "keep me too\n").expect("write neighboring exe file");
+
+        run_tests(Some(&test_file), false, Some("smoke"))
+            .expect("test execution should succeed without touching neighboring files");
+
+        assert_eq!(
+            fs::read_to_string(&existing_runner).expect("read neighboring runner"),
+            "keep me\n"
+        );
+        assert_eq!(
+            fs::read_to_string(&existing_exe).expect("read neighboring exe"),
+            "keep me too\n"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cli_run_tests_skips_symlinked_directories() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = make_temp_project_root("cli-test-symlink-dir");
+        let tests_dir = temp_root.join("tests");
+        let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
+            "apex-outside-tests-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&tests_dir).expect("create tests dir");
+        fs::create_dir_all(&outside_dir).expect("create outside dir");
+        fs::write(
+            outside_dir.join("escape_test.apex"),
+            "@Test\nfunction escaped(): None { return None; }\n",
+        )
+        .expect("write outside test");
+        symlink(&outside_dir, tests_dir.join("linked-outside")).expect("create dir symlink");
+
+        let files =
+            find_test_files(&tests_dir).expect("test discovery should skip symlink directories");
+        assert!(
+            files.is_empty(),
+            "symlinked outside directory should not be traversed: {files:?}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+        let _ = fs::remove_dir_all(outside_dir);
+    }
+
+    #[test]
     fn cli_format_targets_rejects_project_files_outside_root() {
         let temp_root = make_temp_project_root("cli-fmt-outside-root");
         let outside_file = temp_root.parent().expect("temp root parent").join(format!(
@@ -11754,6 +11926,28 @@ function main(): None {
     }
 
     #[test]
+    fn cli_info_rejects_invalid_project_opt_level() {
+        let temp_root = make_temp_project_root("cli-info-invalid-opt-level");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\nopt_level = \"turbo\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = show_project_info().expect_err("info should reject invalid opt level");
+            assert!(err.contains("Invalid optimization level"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn cli_fix_target_rejects_non_apex_file_paths() {
         let temp_root = make_temp_project_root("cli-fix-non-apex");
         let text_file = temp_root.join("notes.txt");
@@ -11868,6 +12062,36 @@ function main(): None {
                 "{err}"
             );
         });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn new_project_rejects_names_that_would_generate_invalid_scaffolding() {
+        let temp_root = make_temp_project_root("new-project-invalid-name-parent");
+        let project_path = temp_root.join("target");
+
+        let err = new_project("bad\"name", Some(&project_path))
+            .expect_err("invalid project name should be rejected");
+        assert!(err.contains("Invalid project name"), "{err}");
+        assert!(
+            !project_path.exists(),
+            "invalid project name should not create scaffold directories"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn new_project_reports_existing_file_paths_without_claiming_they_are_directories() {
+        let temp_root = make_temp_project_root("new-project-existing-file");
+        let project_path = temp_root.join("existing-file");
+        fs::write(&project_path, "occupied\n").expect("write existing file");
+
+        let err = new_project("demo", Some(&project_path))
+            .expect_err("existing file path should block scaffold creation");
+        assert!(err.contains("Path '"), "{err}");
+        assert!(!err.contains("Directory '"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -13201,6 +13425,22 @@ function main(): None {
         assert!(should_skip_final_link(Some(&current), &current, &temp, 0));
 
         let _ = fs::remove_file(temp);
+    }
+
+    #[test]
+    fn load_link_manifest_cache_reports_io_errors_instead_of_silent_cache_miss() {
+        let temp_root = make_temp_project_root("link-manifest-io-error");
+        let manifest_path = temp_root
+            .join(".apexcache")
+            .join("link")
+            .join("latest.json");
+        fs::create_dir_all(&manifest_path).expect("create manifest path as directory");
+
+        let err = load_link_manifest_cache(&temp_root)
+            .expect_err("directory-shaped manifest path should surface an io error");
+        assert!(err.contains("link manifest cache"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]
