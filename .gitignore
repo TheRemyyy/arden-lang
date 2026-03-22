@@ -40,3 +40,6 @@ examples/.apexcache/
 fuzz/artifacts/
 fuzz/coverage/
 fuzz/corpus/
+
+# Bug hunting
+CLAUDE.md
