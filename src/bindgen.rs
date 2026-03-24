@@ -33,8 +33,13 @@ fn strip_comments(input: &str) -> String {
 }
 
 fn normalize_c_type(raw: &str) -> String {
-    raw.trim()
-        .replace('\t', " ")
+    let mut normalized = raw.trim().replace('\t', " ");
+    for qualifier in ["restrict", "__restrict", "__restrict__"] {
+        normalized = normalized.replace(&format!("*{qualifier}"), "*");
+        normalized = normalized.replace(&format!("{qualifier}*"), "*");
+    }
+
+    normalized
         .split_whitespace()
         .filter(|token| {
             !matches!(
@@ -45,6 +50,9 @@ fn normalize_c_type(raw: &str) -> String {
                     | "extern"
                     | "static"
                     | "inline"
+                    | "restrict"
+                    | "__restrict"
+                    | "__restrict__"
                     | "__inline"
                     | "__inline__"
             )
@@ -55,6 +63,7 @@ fn normalize_c_type(raw: &str) -> String {
 
 fn map_c_type_to_apex(c_type: &str) -> Option<String> {
     let t = normalize_c_type(c_type);
+    let tokens: Vec<&str> = t.split_whitespace().collect();
     let compact = t.replace(' ', "");
     if compact.is_empty() {
         return None;
@@ -67,6 +76,22 @@ fn map_c_type_to_apex(c_type: &str) -> Option<String> {
             return Some("String".to_string());
         }
         return Some("Ptr<None>".to_string());
+    }
+
+    if compact == "signed" {
+        return Some("Integer".to_string());
+    }
+
+    if !tokens.is_empty()
+        && tokens.iter().all(|token| {
+            matches!(
+                *token,
+                "signed" | "unsigned" | "short" | "long" | "int" | "char"
+            )
+        })
+        && !(tokens.len() == 1 && tokens[0] == "char")
+    {
+        return Some("Integer".to_string());
     }
 
     match compact.as_str() {
@@ -298,6 +323,48 @@ mod tests {
         assert_eq!(
             generated,
             "extern(c) function checksum(value: Integer): Integer;"
+        );
+    }
+
+    #[test]
+    fn preserves_reordered_unsigned_type_normalization() {
+        let generated =
+            generate_from_prototype("long unsigned int checksum(long unsigned int value)")
+                .expect("reordered unsigned integer types should normalize correctly");
+        assert_eq!(
+            generated,
+            "extern(c) function checksum(value: Integer): Integer;"
+        );
+    }
+
+    #[test]
+    fn preserves_plain_signed_type_normalization() {
+        let generated = generate_from_prototype("signed negate(signed value)")
+            .expect("plain signed integer types should normalize correctly");
+        assert_eq!(
+            generated,
+            "extern(c) function negate(value: Integer): Integer;"
+        );
+    }
+
+    #[test]
+    fn strips_restrict_qualifiers_from_pointer_params() {
+        let generated =
+            generate_from_prototype("void copy(char *restrict dst, char *restrict src)")
+                .expect("restrict-qualified pointers should parse");
+        assert_eq!(
+            generated,
+            "extern(c) function copy(dst: String, src: String): None;"
+        );
+    }
+
+    #[test]
+    fn preserves_double_pointer_depth_with_restrict_qualifiers() {
+        let generated = generate_from_prototype("void main_like(int argc, char **restrict argv)")
+            .expect("restrict-qualified double pointers should parse");
+        assert_eq!(
+            generated,
+            "extern(c) function main_like(argc: Integer, argv: Ptr<None>): None;"
         );
     }
 

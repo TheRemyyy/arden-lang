@@ -316,7 +316,10 @@ mod tests {
         let (token, span) = tokens.first().expect("function token should exist");
         assert!(matches!(token, Token::Function));
         assert_eq!(&source[span.clone()], "function");
-        assert_eq!(span.start, source.find("function").expect("function keyword"));
+        assert_eq!(
+            span.start,
+            source.find("function").expect("function keyword")
+        );
     }
 
     #[test]

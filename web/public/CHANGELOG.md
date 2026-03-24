@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed bindgen `restrict`-qualified pointer lowering:
+  - C prototypes like `void copy(char *restrict dst, char *restrict src)` now parse into valid Apex bindings instead of being dropped because `*restrict` was treated as an unknown pseudo-type token
+  - `char **restrict argv` style parameters now keep their real pointer depth instead of collapsing into Apex `String`
+- Fixed bindgen integer normalization for reordered and bare signed C declarations:
+  - prototypes like `long unsigned int checksum(...)` and `signed negate(signed value)` now map to Apex `Integer` instead of failing bindgen generation
+- Fixed import parser keyword validation gaps:
+  - `import utils.math as class;` and keyword path segments like `import class.tools.helper;` / `import util.module.helper;` are now rejected directly instead of being accepted as syntactically valid imports
+  - terminal built-in variant imports like `import app.Option.None;` remain accepted
+- Fixed project-mode default `apex test` file selection:
+  - bare `apex test` inside a project now considers every source file listed in `apex.toml`, so `@Test` functions inside regular files like `src/main.apex` are no longer skipped just because the filename does not contain `test` or `spec`
+- Fixed project output collision validation:
+  - `apex.toml` `output` values that resolve to `apex.toml`, the entry file, or any other listed source file are now rejected during validation instead of allowing builds/info flows to target and potentially overwrite project inputs
 - Fixed invalid string escape acceptance:
   - string literals like `"bad \q escape"` now fail during parsing instead of silently preserving unsupported escapes and diverging from documented string semantics
 - Fixed invalid char escape acceptance:

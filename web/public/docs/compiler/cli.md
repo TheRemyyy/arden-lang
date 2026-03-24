@@ -108,7 +108,7 @@ apex test --filter "math"
 | `--filter <pattern>` | `-f` | Filters tests by name pattern. |
 
 Filter note:
-- Without `--path`, `apex test` now uses the current project's `apex.toml` file list when available instead of scanning unrelated files under the working directory.
+- Without `--path`, `apex test` now uses every source file from the current project's `apex.toml` file list when available instead of scanning unrelated files under the working directory or skipping valid tests in non-`*test*` filenames.
 - When `--filter` is used, reported totals/ignored counts reflect only the filtered test set.
 - When `--path` points to a directory, discovery now walks nested subdirectories as well.
 - Directory discovery skips symlinked directories to avoid traversing outside the requested test tree.
@@ -296,3 +296,5 @@ Notes:
 - Current generator targets C function prototypes and variadic `...` declarations.
 - Inline C comments in prototypes are normalized safely, so headers like `unsigned/*abi*/int fn(void);` no longer collapse into invalid pseudo-types.
 - Array parameters are normalized into valid Apex names and pointer-decay types, and `inline` prototypes are no longer skipped.
+- `restrict` / `__restrict__` qualifiers are normalized correctly even when attached to pointer stars like `char *restrict dst`.
+- Reordered integer spellings like `long unsigned int` and bare `signed` now lower to Apex `Integer` instead of being skipped.

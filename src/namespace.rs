@@ -206,67 +206,71 @@ impl NamespaceResolver {
     }
 }
 
+fn is_reserved_namespace_segment(name: &str) -> bool {
+    matches!(
+        name,
+        "function"
+            | "class"
+            | "interface"
+            | "enum"
+            | "if"
+            | "else"
+            | "while"
+            | "for"
+            | "in"
+            | "return"
+            | "break"
+            | "continue"
+            | "match"
+            | "mut"
+            | "let"
+            | "import"
+            | "package"
+            | "extern"
+            | "true"
+            | "false"
+            | "None"
+            | "this"
+            | "constructor"
+            | "destructor"
+            | "public"
+            | "private"
+            | "protected"
+            | "async"
+            | "await"
+            | "module"
+            | "extends"
+            | "implements"
+            | "require"
+            | "owned"
+            | "borrow"
+            | "static"
+            | "super"
+            | "Self"
+            | "as"
+            | "is"
+            | "typeof"
+            | "Integer"
+            | "Float"
+            | "Boolean"
+            | "String"
+            | "Char"
+    )
+}
+
+fn is_allowed_terminal_import_keyword(name: &str) -> bool {
+    matches!(name, "None")
+}
+
+fn is_valid_namespace_segment(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 /// Convert file path to namespace
 /// src/utils/math.apex → utils.math
 fn path_to_namespace(path: &Path) -> Result<String, String> {
-    fn is_reserved_namespace_segment(name: &str) -> bool {
-        matches!(
-            name,
-            "function"
-                | "class"
-                | "interface"
-                | "enum"
-                | "if"
-                | "else"
-                | "while"
-                | "for"
-                | "in"
-                | "return"
-                | "break"
-                | "continue"
-                | "match"
-                | "mut"
-                | "let"
-                | "import"
-                | "package"
-                | "extern"
-                | "true"
-                | "false"
-                | "None"
-                | "this"
-                | "constructor"
-                | "destructor"
-                | "public"
-                | "private"
-                | "protected"
-                | "async"
-                | "await"
-                | "module"
-                | "extends"
-                | "implements"
-                | "require"
-                | "owned"
-                | "borrow"
-                | "static"
-                | "super"
-                | "Self"
-                | "as"
-                | "is"
-                | "typeof"
-                | "Integer"
-                | "Float"
-                | "Boolean"
-                | "String"
-                | "Char"
-        )
-    }
-
-    fn is_valid_namespace_segment(name: &str) -> bool {
-        let mut chars = name.chars();
-        matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
-            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-    }
-
     let mut parts: Vec<String> = vec![];
 
     for component in path.parent().unwrap_or(Path::new("")).components() {
@@ -279,7 +283,10 @@ fn path_to_namespace(path: &Path) -> Result<String, String> {
                 return Err(format!("Invalid namespace segment '{}'", name));
             }
             if is_reserved_namespace_segment(name) {
-                return Err(format!("Reserved keyword cannot be used as namespace segment '{}'", name));
+                return Err(format!(
+                    "Reserved keyword cannot be used as namespace segment '{}'",
+                    name
+                ));
             }
             parts.push(name.to_string());
         }
@@ -292,7 +299,10 @@ fn path_to_namespace(path: &Path) -> Result<String, String> {
             return Err(format!("Invalid namespace segment '{}'", name));
         }
         if is_reserved_namespace_segment(name) {
-            return Err(format!("Reserved keyword cannot be used as namespace segment '{}'", name));
+            return Err(format!(
+                "Reserved keyword cannot be used as namespace segment '{}'",
+                name
+            ));
         }
         parts.push(name.to_string());
     }
@@ -319,14 +329,19 @@ pub fn parse_import(line: &str) -> Option<Import> {
         !path.is_empty()
             && !path.starts_with('.')
             && !path.ends_with('.')
-            && path.split('.').all(|segment| {
-                !segment.is_empty()
-                    && {
-                        let mut chars = segment.chars();
-                        matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
-                            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-                    }
-            })
+            && {
+                let parts: Vec<&str> = path.split('.').collect();
+                parts.iter().enumerate().all(|(index, segment)| {
+                    !segment.is_empty()
+                        && {
+                            let mut chars = segment.chars();
+                            matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+                                && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        }
+                        && (!is_reserved_namespace_segment(segment)
+                            || (index + 1 == parts.len() && is_allowed_terminal_import_keyword(segment)))
+                })
+            }
     };
 
     // Check for wildcard
@@ -346,11 +361,15 @@ pub fn parse_import(line: &str) -> Option<Import> {
     if let Some(pos) = rest.find(" as ") {
         let path_str = &rest[..pos];
         let alias_str = &rest[pos + 4..];
-        if !is_valid_import_path(path_str) || alias_str.is_empty() || {
-            let mut chars = alias_str.chars();
-            !matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
-                || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-        } {
+        if !is_valid_import_path(path_str)
+            || alias_str.is_empty()
+            || {
+                let mut chars = alias_str.chars();
+                !matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+                    || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+            }
+            || is_reserved_namespace_segment(alias_str)
+        {
             return None;
         }
         let path = QualifiedName::from_string(path_str);
@@ -411,6 +430,16 @@ mod tests {
         assert!(parse_import("import 9utils.math;").is_none());
         assert!(parse_import("import utils.9math;").is_none());
         assert!(parse_import("import utils.math as 9alias;").is_none());
+        assert!(parse_import("import utils.math as class;").is_none());
+        assert!(parse_import("import class.tools.helper;").is_none());
+        assert!(parse_import("import util.module.helper;").is_none());
+    }
+
+    #[test]
+    fn test_allows_terminal_builtin_keyword_import_segment() {
+        let import =
+            parse_import("import app.Option.None;").expect("terminal None import should parse");
+        assert_eq!(import.path.to_string(), "app.Option.None");
     }
 
     #[cfg(unix)]

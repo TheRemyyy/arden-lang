@@ -890,7 +890,10 @@ function helper(): None { return None; }
 "#;
         let generated = generate_test_runner_with_source(&discovery, source);
         assert!(!generated.contains("@Test"), "{generated}");
-        assert!(!generated.contains("@Ignore(\"not a real test\")"), "{generated}");
+        assert!(
+            !generated.contains("@Ignore(\"not a real test\")"),
+            "{generated}"
+        );
         assert!(generated.contains("function helper(): None"), "{generated}");
     }
 }

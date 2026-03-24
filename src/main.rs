@@ -6718,11 +6718,7 @@ fn default_test_files(current_dir: &Path) -> Result<Vec<PathBuf>, String> {
         let config = ProjectConfig::load(&config_path)?;
         config.validate(&project_root)?;
 
-        let mut files = config
-            .get_source_files(&project_root)
-            .into_iter()
-            .filter(|path| is_test_like_file(path))
-            .collect::<Vec<_>>();
+        let mut files = config.get_source_files(&project_root);
         files.sort();
         return Ok(files);
     }
@@ -17304,6 +17300,26 @@ function main(): Integer {
     }
 
     #[test]
+    fn cli_run_tests_without_path_executes_tests_in_non_test_named_project_files() {
+        let temp_root = make_temp_project_root("cli-test-project-non-test-filename");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "@Test\nfunction smokeFromMain(): None { assert_eq(2 + 2, 4); return None; }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main with test");
+
+        with_current_dir(&temp_root, || {
+            run_tests(None, false, Some("smokeFromMain")).expect(
+                "project default test discovery should execute tests from non-test-named files",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn cli_run_tests_does_not_delete_existing_test_runner_neighbor_files() {
         let temp_root = make_temp_project_root("cli-test-runner-neighbor-files");
         let test_file = temp_root.join("smoke_test.apex");
@@ -18724,6 +18740,57 @@ function main(): Integer {
 
         let _ = fs::remove_dir_all(temp_root);
         let _ = fs::remove_dir_all(outside_dir);
+    }
+
+    #[test]
+    fn cli_info_rejects_output_path_matching_project_config() {
+        let temp_root = make_temp_project_root("cli-info-output-config-collision");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"apex.toml\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = show_project_info()
+                .expect_err("info should reject output path matching project config");
+            assert!(err.contains("project config"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_rejects_output_path_matching_source_file() {
+        let temp_root = make_temp_project_root("project-output-source-collision");
+        fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"src/helper.apex\"\n",
+        )
+        .expect("write apex.toml");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.helper;\nfunction main(): Integer { return helper(); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction helper(): Integer { return 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should reject output path matching a source file");
+            assert!(err.contains("overwrite source file"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]

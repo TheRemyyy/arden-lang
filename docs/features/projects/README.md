@@ -66,8 +66,10 @@ link_args = ["-Wl,--as-needed"]
 Path safety:
 - `entry` and every path in `files` must resolve inside the project root.
 - Paths that escape through `..` segments or symlinks are rejected during validation.
+- `output` must also stay inside the project root and must not collide with `apex.toml`, the configured entry file, or any file listed in `files`.
 - Project auto-discovery only treats a real `apex.toml` file as the project marker; a directory named `apex.toml` is ignored.
 - Source-derived namespaces also reject invalid or keyword-named path segments, so file and folder names must stay valid Apex identifiers.
+- Import aliases and namespace segments also reject reserved keywords, except terminal built-in variants such as `app.Option.None`.
 
 ## Project Commands
 

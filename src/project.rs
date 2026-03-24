@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -193,6 +193,44 @@ fn validate_output_path(project_root: &Path, relative_path: &str) -> Result<(), 
     Ok(())
 }
 
+fn normalize_project_relative_path(
+    project_root: &Path,
+    relative_path: &Path,
+) -> Result<PathBuf, String> {
+    let canonical_root = project_root.canonicalize().map_err(|e| {
+        format!(
+            "Failed to resolve project root '{}': {}",
+            project_root.display(),
+            e
+        )
+    })?;
+    let mut normalized = canonical_root.clone();
+
+    for component in relative_path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(part) => normalized.push(part),
+            Component::ParentDir => {
+                if !normalized.pop() || !normalized.starts_with(&canonical_root) {
+                    return Err(format!(
+                        "Path '{}' resolves outside the project root '{}'",
+                        relative_path.display(),
+                        canonical_root.display()
+                    ));
+                }
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!(
+                    "Path '{}' must be relative to the project root",
+                    relative_path.display()
+                ));
+            }
+        }
+    }
+
+    Ok(normalized)
+}
+
 impl Default for ProjectConfig {
     fn default() -> Self {
         Self {
@@ -274,6 +312,15 @@ impl ProjectConfig {
         validate_project_path(project_root, &self.entry, "Entry point")?;
         validate_output_path(project_root, &self.output)?;
 
+        let output_path = normalize_project_relative_path(project_root, Path::new(&self.output))?;
+        let config_path = normalize_project_relative_path(project_root, Path::new("apex.toml"))?;
+        if output_path == config_path {
+            return Err(format!(
+                "Output path '{}' must not overwrite the project config",
+                self.output
+            ));
+        }
+
         let mut seen_files = HashSet::new();
 
         // Check all source files exist
@@ -281,6 +328,19 @@ impl ProjectConfig {
             validate_project_path(project_root, file, "Source file")?;
             if !seen_files.insert(file.as_str()) {
                 return Err(format!("Duplicate source file '{}' listed in files", file));
+            }
+            let source_path = project_root.join(file).canonicalize().map_err(|e| {
+                format!(
+                    "Failed to resolve source file '{}': {}",
+                    project_root.join(file).display(),
+                    e
+                )
+            })?;
+            if output_path == source_path {
+                return Err(format!(
+                    "Output path '{}' must not overwrite source file '{}'",
+                    self.output, file
+                ));
             }
         }
 
@@ -509,7 +569,8 @@ output = "demo"
         let project_root = unique_temp_dir("apex_project_validate_entry_non_apex");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
-        std::fs::write(src_dir.join("main.txt"), "not apex\n").expect("entry file should be written");
+        std::fs::write(src_dir.join("main.txt"), "not apex\n")
+            .expect("entry file should be written");
 
         let mut config = ProjectConfig::new("demo");
         config.entry = "src/main.txt".to_string();
@@ -521,7 +582,10 @@ output = "demo"
 
         let _ = std::fs::remove_dir_all(&project_root);
 
-        assert!(error.contains("must resolve to an .apex source file"), "{error}");
+        assert!(
+            error.contains("must resolve to an .apex source file"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -534,7 +598,8 @@ output = "demo"
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
-        std::fs::write(src_dir.join("helper.txt"), "not apex\n").expect("helper file should be written");
+        std::fs::write(src_dir.join("helper.txt"), "not apex\n")
+            .expect("helper file should be written");
 
         let mut config = ProjectConfig::new("demo");
         config.files.push("src/helper.txt".to_string());
@@ -545,7 +610,10 @@ output = "demo"
 
         let _ = std::fs::remove_dir_all(&project_root);
 
-        assert!(error.contains("must resolve to an .apex source file"), "{error}");
+        assert!(
+            error.contains("must resolve to an .apex source file"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -569,6 +637,81 @@ output = "demo"
         let _ = std::fs::remove_dir_all(&project_root);
 
         assert!(error.contains("outside the project root"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_output_path_matching_project_config() {
+        let project_root = unique_temp_dir("apex_project_validate_output_config_collision");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("entry file should be written");
+
+        let mut config = ProjectConfig::new("demo");
+        config.output = "apex.toml".to_string();
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("output matching apex.toml should be rejected");
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("project config"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_output_path_matching_entry_file() {
+        let project_root = unique_temp_dir("apex_project_validate_output_entry_collision");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("entry file should be written");
+
+        let mut config = ProjectConfig::new("demo");
+        config.output = "src/main.apex".to_string();
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("output matching entry should be rejected");
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("overwrite source file"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_output_path_matching_secondary_source_file() {
+        let project_root = unique_temp_dir("apex_project_validate_output_source_collision");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("entry file should be written");
+        std::fs::write(
+            src_dir.join("helper.apex"),
+            "function helper(): None { return None; }\n",
+        )
+        .expect("helper file should be written");
+
+        let mut config = ProjectConfig::new("demo");
+        config.files.push("src/helper.apex".to_string());
+        config.output = "src/helper.apex".to_string();
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("output matching secondary source should be rejected");
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("overwrite source file"), "{error}");
     }
 
     #[test]

@@ -149,7 +149,7 @@ apex test --filter "math"
 ```
 
 Notes:
-- Without `--path`, `apex test` uses the current project's `apex.toml` file list when available, so unrelated `*_test.apex` files elsewhere under the working directory are ignored.
+- Without `--path`, `apex test` uses every source file listed in the current project's `apex.toml` when available, so `@Test` functions in regular files like `src/main.apex` are discovered and unrelated `*_test.apex` files outside the project list are ignored.
 - The test runner auto-injects `import std.io.*;` when needed.
 - Existing user `main(...)` entrypoints are removed from runner input before generation (including `public function main(...)`) so the generated test entrypoint remains unique.
 - Main stripping is signature-aware and avoids stripping comment text that only mentions `function main(...)`.
@@ -158,6 +158,7 @@ Notes:
 - Discovery matches `test/spec` case-insensitively, so names like `MathTest.apex` and `USER_SPEC.apex` are picked up too.
 - Missing test directories now fail fast with a CLI error instead of being treated as an empty test set.
 - Explicit file paths must target `.apex` files; passing a non-Apex file now fails before lex/parse.
+- In project mode, generated runners are built from an isolated temporary copy of the project, so tests can still import project-local packages and aliases while safely replacing the original entrypoint.
 - Bare `@Ignore` and `@Ignore("reason")` are both skipped correctly by `apex test`.
 - Ignored tests do not run `@Before` or `@After` hooks.
 - Final summary `Total` counts all discovered tests, including ignored ones.
