@@ -50,7 +50,9 @@ Optimization note:
 - In project mode, `target` in `apex.toml` is passed to Clang as `--target <triple>` when set.
 - In single-file mode (`apex compile file.apex` / `apex run file.apex`), Apex defaults to `-O3` and uses native tuning when available.
 - Project-mode rewrite now rewrites alias-qualified and nested module-qualified nominal parents in `extends`, `implements`, and `interface ... extends ...`, so imported parents like `u.Base`, `u.Printable`, and `u.Api.Named` survive symbol mangling consistently across build/check/test flows.
+- Seeded project semantic reuse now preserves those alias-qualified interface parents too, so incremental `apex build` / `apex check` runs no longer fail on valid imported interface chains like `interface Child extends u.Named` or `interface Child extends u.Api.Named`.
 - The same project rewrite pass now also rewrites module-local interface parents such as `implements Named` and `extends Api.Named` inside nested modules, so local interface inheritance stays aligned with the rest of project symbol rewriting.
+- Qualified nominal references inside type positions and inheritance clauses now participate in dependency tracking as dotted symbol paths instead of raw strings only, preventing incremental project builds from splitting dependent interface files into separate semantic components.
 - Direct module enums now also rewrite their variant field types through the same project rewrite pass, including alias-qualified, nested-module-qualified, and generic payload types inside `module { enum ... }` declarations.
 - Invalid `--opt-level` / `opt_level` values are now rejected up front instead of silently falling back to `-O3`.
 - `apex run` requires project `output_kind = "bin"` and now rejects shared/static library targets before starting a build; use `apex build` for library outputs.

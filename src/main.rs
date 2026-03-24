@@ -537,6 +537,8 @@ struct ParsedFileCacheEntry {
     imports: Vec<ImportDecl>,
     function_names: Vec<String>,
     class_names: Vec<String>,
+    #[serde(default)]
+    interface_names: Vec<String>,
     enum_names: Vec<String>,
     module_names: Vec<String>,
     referenced_symbols: Vec<String>,
@@ -555,6 +557,7 @@ struct ParsedProjectUnit {
     import_check_fingerprint: String,
     function_names: Vec<String>,
     class_names: Vec<String>,
+    interface_names: Vec<String>,
     enum_names: Vec<String>,
     module_names: Vec<String>,
     referenced_symbols: Vec<String>,
@@ -1085,6 +1088,8 @@ fn resolve_exact_imported_symbol_owner<'a>(
     global_function_file_map: &'a HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &'a HashMap<String, PathBuf>,
+    global_interface_map: &HashMap<String, String>,
+    global_interface_file_map: &'a HashMap<String, PathBuf>,
     global_enum_map: &HashMap<String, String>,
     global_enum_file_map: &'a HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
@@ -1102,6 +1107,14 @@ fn resolve_exact_imported_symbol_owner<'a>(
             symbol_name,
             global_class_map,
             global_class_file_map,
+        )
+    })
+    .or_else(|| {
+        resolve_exact_imported_symbol_file(
+            namespace_path,
+            symbol_name,
+            global_interface_map,
+            global_interface_file_map,
         )
     })
     .or_else(|| {
@@ -1133,6 +1146,8 @@ fn extend_declaration_symbols_for_exact_import(
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &HashMap<String, PathBuf>,
+    global_interface_map: &HashMap<String, String>,
+    global_interface_file_map: &HashMap<String, PathBuf>,
     global_enum_map: &HashMap<String, String>,
     global_enum_file_map: &HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
@@ -1149,6 +1164,8 @@ fn extend_declaration_symbols_for_exact_import(
         global_function_file_map,
         global_class_map,
         global_class_file_map,
+        global_interface_map,
+        global_interface_file_map,
         global_enum_map,
         global_enum_file_map,
         global_module_map,
@@ -1208,6 +1225,12 @@ fn extend_declaration_symbols_for_exact_import(
         push_owner(owner_ns, owner_file);
     }
     if let (Some(owner_ns), Some(owner_file)) = (
+        global_interface_map.get(symbol),
+        global_interface_file_map.get(symbol),
+    ) {
+        push_owner(owner_ns, owner_file);
+    }
+    if let (Some(owner_ns), Some(owner_file)) = (
         global_enum_map.get(symbol),
         global_enum_file_map.get(symbol),
     ) {
@@ -1238,6 +1261,8 @@ fn declaration_symbols_for_unit(
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &HashMap<String, PathBuf>,
+    global_interface_map: &HashMap<String, String>,
+    global_interface_file_map: &HashMap<String, PathBuf>,
     global_enum_map: &HashMap<String, String>,
     global_enum_file_map: &HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
@@ -1270,6 +1295,8 @@ fn declaration_symbols_for_unit(
                 global_function_file_map,
                 global_class_map,
                 global_class_file_map,
+                global_interface_map,
+                global_interface_file_map,
                 global_enum_map,
                 global_enum_file_map,
                 global_module_map,
@@ -1285,12 +1312,14 @@ fn declaration_symbols_for_unit(
                         rest,
                         global_function_map,
                         global_class_map,
+                        global_interface_map,
                         global_enum_map,
                         global_module_map,
                     ) {
                         let owner_file = global_function_file_map
                             .get(&candidate)
                             .or_else(|| global_class_file_map.get(&candidate))
+                            .or_else(|| global_interface_file_map.get(&candidate))
                             .or_else(|| global_enum_file_map.get(&candidate))
                             .or_else(|| global_module_file_map.get(&candidate));
                         if let Some(owner_file) = owner_file {
@@ -1828,6 +1857,8 @@ fn import_path_owner_file<'a>(
     global_function_file_map: &'a HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &'a HashMap<String, PathBuf>,
+    global_interface_map: &HashMap<String, String>,
+    global_interface_file_map: &'a HashMap<String, PathBuf>,
     global_enum_map: &HashMap<String, String>,
     global_enum_file_map: &'a HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
@@ -1842,6 +1873,8 @@ fn import_path_owner_file<'a>(
         global_function_file_map,
         global_class_map,
         global_class_file_map,
+        global_interface_map,
+        global_interface_file_map,
         global_enum_map,
         global_enum_file_map,
         global_module_map,
@@ -1879,6 +1912,12 @@ fn import_path_owner_file<'a>(
     {
         return global_enum_file_map.get(symbol);
     }
+    if global_interface_map
+        .get(symbol)
+        .is_some_and(|owner_ns| owner_ns == namespace)
+    {
+        return global_interface_file_map.get(symbol);
+    }
     if global_module_map
         .get(symbol)
         .is_some_and(|owner_ns| owner_ns == namespace)
@@ -1898,6 +1937,9 @@ struct RewriteFingerprintContext<'a> {
     namespace_class_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     global_class_map: &'a HashMap<String, String>,
     global_class_file_map: &'a HashMap<String, PathBuf>,
+    namespace_interface_files: &'a HashMap<String, HashMap<String, PathBuf>>,
+    global_interface_map: &'a HashMap<String, String>,
+    global_interface_file_map: &'a HashMap<String, PathBuf>,
     global_enum_map: &'a HashMap<String, String>,
     global_enum_file_map: &'a HashMap<String, PathBuf>,
     namespace_modules: &'a HashMap<String, HashSet<String>>,
@@ -1912,11 +1954,14 @@ struct DependencyResolutionContext<'a> {
     namespace_files_map: &'a HashMap<String, Vec<PathBuf>>,
     namespace_function_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     namespace_class_files: &'a HashMap<String, HashMap<String, PathBuf>>,
+    namespace_interface_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     namespace_module_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     global_function_map: &'a HashMap<String, String>,
     global_function_file_map: &'a HashMap<String, PathBuf>,
     global_class_map: &'a HashMap<String, String>,
     global_class_file_map: &'a HashMap<String, PathBuf>,
+    global_interface_map: &'a HashMap<String, String>,
+    global_interface_file_map: &'a HashMap<String, PathBuf>,
     global_enum_map: &'a HashMap<String, String>,
     global_enum_file_map: &'a HashMap<String, PathBuf>,
     global_module_map: &'a HashMap<String, String>,
@@ -2039,6 +2084,7 @@ fn resolve_symbol_in_namespace_path(
     member_parts: &[String],
     global_function_map: &HashMap<String, String>,
     global_class_map: &HashMap<String, String>,
+    global_interface_map: &HashMap<String, String>,
     global_enum_map: &HashMap<String, String>,
     global_module_map: &HashMap<String, String>,
 ) -> Option<(String, String)> {
@@ -2054,6 +2100,11 @@ fn resolve_symbol_in_namespace_path(
 
     let candidate = member_parts.join("__");
     if let Some(owner_ns) = global_class_map.get(&candidate) {
+        if owner_ns == namespace_path {
+            return Some((owner_ns.clone(), candidate));
+        }
+    }
+    if let Some(owner_ns) = global_interface_map.get(&candidate) {
         if owner_ns == namespace_path {
             return Some((owner_ns.clone(), candidate));
         }
@@ -2080,6 +2131,8 @@ fn resolve_owner_file_in_namespace_path(
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &HashMap<String, PathBuf>,
+    global_interface_map: &HashMap<String, String>,
+    global_interface_file_map: &HashMap<String, PathBuf>,
     global_enum_map: &HashMap<String, String>,
     global_enum_file_map: &HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
@@ -2104,6 +2157,12 @@ fn resolve_owner_file_in_namespace_path(
         .is_some_and(|owner_ns| owner_ns == namespace_path)
     {
         return global_class_file_map.get(&candidate).cloned();
+    }
+    if global_interface_map
+        .get(&candidate)
+        .is_some_and(|owner_ns| owner_ns == namespace_path)
+    {
+        return global_interface_file_map.get(&candidate).cloned();
     }
     if global_enum_map
         .get(&candidate)
@@ -2149,6 +2208,15 @@ fn resolve_symbol_owner_files_in_namespace(
             }
         }
         if ctx
+            .global_interface_map
+            .get(symbol)
+            .is_some_and(|owner_ns| owner_ns == namespace)
+        {
+            if let Some(file) = ctx.global_interface_file_map.get(symbol) {
+                deps.insert(file.clone());
+            }
+        }
+        if ctx
             .global_enum_map
             .get(symbol)
             .is_some_and(|owner_ns| owner_ns == namespace)
@@ -2176,6 +2244,8 @@ fn resolve_symbol_owner_files_in_namespace(
             ctx.global_function_file_map,
             ctx.global_class_map,
             ctx.global_class_file_map,
+            ctx.global_interface_map,
+            ctx.global_interface_file_map,
             ctx.global_enum_map,
             ctx.global_enum_file_map,
             ctx.global_module_map,
@@ -2213,6 +2283,8 @@ fn resolve_import_dependency_files(
         ctx.global_function_file_map,
         ctx.global_class_map,
         ctx.global_class_file_map,
+        ctx.global_interface_map,
+        ctx.global_interface_file_map,
         ctx.global_enum_map,
         ctx.global_enum_file_map,
         ctx.global_module_map,
@@ -2239,6 +2311,8 @@ fn resolve_import_dependency_files(
                     ctx.global_function_file_map,
                     ctx.global_class_map,
                     ctx.global_class_file_map,
+                    ctx.global_interface_map,
+                    ctx.global_interface_file_map,
                     ctx.global_enum_map,
                     ctx.global_enum_file_map,
                     ctx.global_module_map,
@@ -2282,6 +2356,15 @@ fn resolve_direct_dependencies_for_unit(
         }
         if let Some(owner_file) = ctx
             .namespace_class_files
+            .get(&unit.namespace)
+            .and_then(|map| map.get(symbol))
+        {
+            if owner_file != &unit.file {
+                deps.insert(owner_file.clone());
+            }
+        }
+        if let Some(owner_file) = ctx
+            .namespace_interface_files
             .get(&unit.namespace)
             .and_then(|map| map.get(symbol))
         {
@@ -2913,6 +2996,15 @@ fn compute_rewrite_context_fingerprint_for_unit(
             }
         }
         if let Some(owner_file) = ctx
+            .namespace_interface_files
+            .get(&unit.namespace)
+            .and_then(|map| map.get(symbol))
+        {
+            if owner_file != &unit.file {
+                hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+            }
+        }
+        if let Some(owner_file) = ctx
             .namespace_module_files
             .get(&unit.namespace)
             .and_then(|map| map.get(symbol))
@@ -2925,16 +3017,20 @@ fn compute_rewrite_context_fingerprint_for_unit(
     let empty_namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
     let empty_namespace_function_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let empty_namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let empty_namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let empty_namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let dependency_ctx = DependencyResolutionContext {
         namespace_files_map: &empty_namespace_files_map,
         namespace_function_files: &empty_namespace_function_files,
         namespace_class_files: &empty_namespace_class_files,
+        namespace_interface_files: &empty_namespace_interface_files,
         namespace_module_files: &empty_namespace_module_files,
         global_function_map: ctx.global_function_map,
         global_function_file_map: ctx.global_function_file_map,
         global_class_map: ctx.global_class_map,
         global_class_file_map: ctx.global_class_file_map,
+        global_interface_map: ctx.global_interface_map,
+        global_interface_file_map: ctx.global_interface_file_map,
         global_enum_map: ctx.global_enum_map,
         global_enum_file_map: ctx.global_enum_file_map,
         global_module_map: ctx.global_module_map,
@@ -2971,11 +3067,19 @@ fn compute_rewrite_context_fingerprint_for_unit(
             for path in &unit.qualified_symbol_refs {
                 if path.first().is_some_and(|part| part == &import_key) {
                     let rest = &path[1..];
-                    if let Some(owner_file) = resolve_function_file_in_namespace_path(
+                    if let Some(owner_file) = resolve_owner_file_in_namespace_path(
                         &import.path,
                         rest,
                         ctx.global_function_map,
                         ctx.global_function_file_map,
+                        ctx.global_class_map,
+                        ctx.global_class_file_map,
+                        ctx.global_interface_map,
+                        ctx.global_interface_file_map,
+                        ctx.global_enum_map,
+                        ctx.global_enum_file_map,
+                        ctx.global_module_map,
+                        ctx.global_module_file_map,
                     ) {
                         matched_owner_files.insert(owner_file);
                     }
@@ -3002,6 +3106,8 @@ fn compute_rewrite_context_fingerprint_for_unit(
             ctx.global_function_file_map,
             ctx.global_class_map,
             ctx.global_class_file_map,
+            ctx.global_interface_map,
+            ctx.global_interface_file_map,
             ctx.global_enum_map,
             ctx.global_enum_file_map,
             ctx.global_module_map,
@@ -3503,6 +3609,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
 
     let mut function_names = Vec::new();
     let mut class_names = Vec::new();
+    let mut interface_names = Vec::new();
     let mut enum_names = Vec::new();
     let mut module_names = Vec::new();
     let mut referenced_symbols = HashSet::new();
@@ -3577,6 +3684,29 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         }
     }
 
+    fn collect_interface_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
+        match decl {
+            Decl::Interface(interface) => {
+                if let Some(module_name) = module_prefix {
+                    out.push(format!("{}__{}", module_name, interface.name));
+                } else {
+                    out.push(interface.name.clone());
+                }
+            }
+            Decl::Module(module) => {
+                let next_prefix = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, module.name)
+                } else {
+                    module.name.clone()
+                };
+                for inner in &module.declarations {
+                    collect_interface_names(&inner.node, Some(next_prefix.clone()), out);
+                }
+            }
+            Decl::Function(_) | Decl::Class(_) | Decl::Enum(_) | Decl::Import(_) => {}
+        }
+    }
+
     fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
         match expr {
             Expr::Ident(name) => Some(vec![name.clone()]),
@@ -3589,69 +3719,88 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         }
     }
 
-    fn collect_type_refs(ty: &ast::Type, out: &mut HashSet<String>) {
+    fn collect_qualified_name_ref(
+        name: &str,
+        out: &mut HashSet<String>,
+        qualified_out: &mut HashSet<Vec<String>>,
+    ) {
+        if let Some((root, _)) = name.split_once('.') {
+            out.insert(root.to_string());
+            qualified_out.insert(name.split('.').map(|part| part.to_string()).collect());
+        } else {
+            out.insert(name.to_string());
+        }
+    }
+
+    fn collect_type_refs(
+        ty: &ast::Type,
+        out: &mut HashSet<String>,
+        qualified_out: &mut HashSet<Vec<String>>,
+    ) {
         match ty {
             ast::Type::Named(name) => {
-                out.insert(name.clone());
+                collect_qualified_name_ref(name, out, qualified_out);
             }
             ast::Type::Generic(name, args) => {
-                out.insert(name.clone());
+                collect_qualified_name_ref(name, out, qualified_out);
                 for arg in args {
-                    collect_type_refs(arg, out);
+                    collect_type_refs(arg, out, qualified_out);
                 }
             }
             ast::Type::Function(params, ret) => {
                 for param in params {
-                    collect_type_refs(param, out);
+                    collect_type_refs(param, out, qualified_out);
                 }
-                collect_type_refs(ret, out);
+                collect_type_refs(ret, out, qualified_out);
             }
             ast::Type::Option(inner) => {
                 out.insert("Option".to_string());
-                collect_type_refs(inner, out);
+                collect_type_refs(inner, out, qualified_out);
             }
             ast::Type::List(inner) => {
                 out.insert("List".to_string());
-                collect_type_refs(inner, out);
+                collect_type_refs(inner, out, qualified_out);
             }
             ast::Type::Set(inner) => {
                 out.insert("Set".to_string());
-                collect_type_refs(inner, out);
+                collect_type_refs(inner, out, qualified_out);
             }
             ast::Type::Box(inner) => {
                 out.insert("Box".to_string());
-                collect_type_refs(inner, out);
+                collect_type_refs(inner, out, qualified_out);
             }
             ast::Type::Rc(inner) => {
                 out.insert("Rc".to_string());
-                collect_type_refs(inner, out);
+                collect_type_refs(inner, out, qualified_out);
             }
             ast::Type::Arc(inner) => {
                 out.insert("Arc".to_string());
-                collect_type_refs(inner, out);
+                collect_type_refs(inner, out, qualified_out);
             }
             ast::Type::Ptr(inner) => {
                 out.insert("Ptr".to_string());
-                collect_type_refs(inner, out);
+                collect_type_refs(inner, out, qualified_out);
             }
             ast::Type::Task(inner) => {
                 out.insert("Task".to_string());
-                collect_type_refs(inner, out);
+                collect_type_refs(inner, out, qualified_out);
             }
             ast::Type::Range(inner) => {
                 out.insert("Range".to_string());
-                collect_type_refs(inner, out);
+                collect_type_refs(inner, out, qualified_out);
             }
-            ast::Type::Ref(inner) | ast::Type::MutRef(inner) => collect_type_refs(inner, out),
+            ast::Type::Ref(inner) | ast::Type::MutRef(inner) => {
+                collect_type_refs(inner, out, qualified_out)
+            }
             ast::Type::Result(ok, err) => {
                 out.insert("Result".to_string());
-                collect_type_refs(ok, out);
-                collect_type_refs(err, out);
+                collect_type_refs(ok, out, qualified_out);
+                collect_type_refs(err, out, qualified_out);
             }
             ast::Type::Map(ok, err) => {
                 out.insert("Map".to_string());
-                collect_type_refs(ok, out);
-                collect_type_refs(err, out);
+                collect_type_refs(ok, out, qualified_out);
+                collect_type_refs(err, out, qualified_out);
             }
             ast::Type::Integer
             | ast::Type::Float
@@ -3705,7 +3854,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                     collect_expr_refs(&arg.node, out, qualified_out);
                 }
                 for ty in type_args {
-                    collect_type_refs(ty, out);
+                    collect_type_refs(ty, out, qualified_out);
                 }
             }
             Expr::Field { object, .. } => {
@@ -3729,7 +3878,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
             }
             Expr::Lambda { params, body } => {
                 for param in params {
-                    collect_type_refs(&param.ty, out);
+                    collect_type_refs(&param.ty, out, qualified_out);
                 }
                 collect_expr_refs(&body.node, out, qualified_out);
             }
@@ -3791,7 +3940,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
     ) {
         match stmt {
             Stmt::Let { ty, value, .. } => {
-                collect_type_refs(ty, out);
+                collect_type_refs(ty, out, qualified_out);
                 collect_expr_refs(&value.node, out, qualified_out);
             }
             Stmt::Assign { target, value } => {
@@ -3826,7 +3975,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 ..
             } => {
                 if let Some(var_type) = var_type {
-                    collect_type_refs(var_type, out);
+                    collect_type_refs(var_type, out, qualified_out);
                 }
                 collect_expr_refs(&iterable.node, out, qualified_out);
                 collect_block_refs(body, out, qualified_out);
@@ -3860,22 +4009,24 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         match decl {
             Decl::Function(func) => {
                 for param in &func.params {
-                    collect_type_refs(&param.ty, out);
+                    collect_type_refs(&param.ty, out, qualified_out);
                 }
-                collect_type_refs(&func.return_type, out);
+                collect_type_refs(&func.return_type, out, qualified_out);
                 collect_block_refs(&func.body, out, qualified_out);
             }
             Decl::Class(class) => {
                 if let Some(parent) = &class.extends {
-                    out.insert(parent.clone());
+                    collect_qualified_name_ref(parent, out, qualified_out);
                 }
-                out.extend(class.implements.iter().cloned());
+                for implemented in &class.implements {
+                    collect_qualified_name_ref(implemented, out, qualified_out);
+                }
                 for field in &class.fields {
-                    collect_type_refs(&field.ty, out);
+                    collect_type_refs(&field.ty, out, qualified_out);
                 }
                 if let Some(ctor) = &class.constructor {
                     for param in &ctor.params {
-                        collect_type_refs(&param.ty, out);
+                        collect_type_refs(&param.ty, out, qualified_out);
                     }
                     collect_block_refs(&ctor.body, out, qualified_out);
                 }
@@ -3884,26 +4035,28 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 }
                 for method in &class.methods {
                     for param in &method.params {
-                        collect_type_refs(&param.ty, out);
+                        collect_type_refs(&param.ty, out, qualified_out);
                     }
-                    collect_type_refs(&method.return_type, out);
+                    collect_type_refs(&method.return_type, out, qualified_out);
                     collect_block_refs(&method.body, out, qualified_out);
                 }
             }
             Decl::Enum(en) => {
                 for variant in &en.variants {
                     for field in &variant.fields {
-                        collect_type_refs(&field.ty, out);
+                        collect_type_refs(&field.ty, out, qualified_out);
                     }
                 }
             }
             Decl::Interface(interface) => {
-                out.extend(interface.extends.iter().cloned());
+                for extended in &interface.extends {
+                    collect_qualified_name_ref(extended, out, qualified_out);
+                }
                 for method in &interface.methods {
                     for param in &method.params {
-                        collect_type_refs(&param.ty, out);
+                        collect_type_refs(&param.ty, out, qualified_out);
                     }
-                    collect_type_refs(&method.return_type, out);
+                    collect_type_refs(&method.return_type, out, qualified_out);
                     if let Some(body) = &method.default_impl {
                         collect_block_refs(body, out, qualified_out);
                     }
@@ -3922,6 +4075,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
     let (
         function_names,
         class_names,
+        interface_names,
         enum_names,
         module_names,
         referenced_symbols,
@@ -3935,6 +4089,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         (
             cache.function_names.clone(),
             cache.class_names.clone(),
+            cache.interface_names.clone(),
             cache.enum_names.clone(),
             cache.module_names.clone(),
             cache.referenced_symbols.clone(),
@@ -3950,9 +4105,11 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                     module_names.push(module.name.clone());
                     collect_function_names(&decl.node, None, &mut function_names);
                     collect_class_names(&decl.node, None, &mut class_names);
+                    collect_interface_names(&decl.node, None, &mut interface_names);
                     collect_enum_names(&decl.node, None, &mut enum_names);
                 }
                 Decl::Class(class) => class_names.push(class.name.clone()),
+                Decl::Interface(interface) => interface_names.push(interface.name.clone()),
                 Decl::Enum(en) => enum_names.push(en.name.clone()),
                 _ => {}
             }
@@ -3979,6 +4136,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         qualified_symbol_refs.sort();
         let mut api_referenced_symbols = api_referenced_symbols.into_iter().collect::<Vec<_>>();
         api_referenced_symbols.sort();
+        interface_names.sort();
         enum_names.sort();
         let import_check_fingerprint = compute_import_check_fingerprint(
             &namespace,
@@ -4001,6 +4159,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
             imports: imports.clone(),
             function_names: function_names.clone(),
             class_names: class_names.clone(),
+            interface_names: interface_names.clone(),
             enum_names: enum_names.clone(),
             module_names: module_names.clone(),
             referenced_symbols: referenced_symbols.clone(),
@@ -4012,6 +4171,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         (
             function_names,
             class_names,
+            interface_names,
             enum_names,
             module_names,
             referenced_symbols,
@@ -4031,6 +4191,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         import_check_fingerprint,
         function_names,
         class_names,
+        interface_names,
         enum_names,
         module_names,
         referenced_symbols,
@@ -4249,15 +4410,19 @@ fn build_project(
     let mut global_function_file_map: HashMap<String, PathBuf> = HashMap::new(); // func_name -> owner file
     let mut global_class_map: HashMap<String, String> = HashMap::new(); // class_name -> namespace
     let mut global_class_file_map: HashMap<String, PathBuf> = HashMap::new(); // class_name -> owner file
+    let mut global_interface_map: HashMap<String, String> = HashMap::new(); // interface_name -> namespace
+    let mut global_interface_file_map: HashMap<String, PathBuf> = HashMap::new(); // interface_name -> owner file
     let mut global_enum_map: HashMap<String, String> = HashMap::new(); // enum_name -> namespace
     let mut global_enum_file_map: HashMap<String, PathBuf> = HashMap::new(); // enum_name -> owner file
     let mut global_module_map: HashMap<String, String> = HashMap::new(); // module_name -> namespace
     let mut global_module_file_map: HashMap<String, PathBuf> = HashMap::new(); // module_name -> owner file
     let mut namespace_class_map: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut namespace_interface_map: HashMap<String, HashSet<String>> = HashMap::new();
     let mut namespace_enum_map: HashMap<String, HashSet<String>> = HashMap::new();
     let mut namespace_module_map: HashMap<String, HashSet<String>> = HashMap::new();
     let mut function_collisions: Vec<(String, String, String)> = Vec::new();
     let mut class_collisions: Vec<(String, String, String)> = Vec::new();
+    let mut interface_collisions: Vec<(String, String, String)> = Vec::new();
     let mut enum_collisions: Vec<(String, String, String)> = Vec::new();
     let mut module_collisions: Vec<(String, String, String)> = Vec::new();
     let mut parse_cache_hits: usize = 0;
@@ -4278,6 +4443,9 @@ fn build_project(
 
         // Extract symbol definitions for global maps
         let class_entry = namespace_class_map
+            .entry(unit.namespace.clone())
+            .or_default();
+        let interface_entry = namespace_interface_map
             .entry(unit.namespace.clone())
             .or_default();
         let enum_entry = namespace_enum_map
@@ -4314,6 +4482,21 @@ fn build_project(
             } else {
                 global_class_map.insert(class_name.clone(), unit.namespace.clone());
                 global_class_file_map.insert(class_name.clone(), unit.file.clone());
+            }
+        }
+        for interface_name in &unit.interface_names {
+            interface_entry.insert(interface_name.clone());
+            if let Some(existing_ns) = global_interface_map.get(interface_name) {
+                if existing_ns != &unit.namespace {
+                    interface_collisions.push((
+                        interface_name.clone(),
+                        existing_ns.clone(),
+                        unit.namespace.clone(),
+                    ));
+                }
+            } else {
+                global_interface_map.insert(interface_name.clone(), unit.namespace.clone());
+                global_interface_file_map.insert(interface_name.clone(), unit.file.clone());
             }
         }
         for enum_name in &unit.enum_names {
@@ -4371,6 +4554,7 @@ fn build_project(
     let mut namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
     let mut namespace_function_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let mut namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let mut namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let mut namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     for unit in &parsed_files {
         namespace_files_map
@@ -4389,6 +4573,12 @@ fn build_project(
         for name in &unit.class_names {
             class_entry.insert(name.clone(), unit.file.clone());
         }
+        let interface_entry = namespace_interface_files
+            .entry(unit.namespace.clone())
+            .or_default();
+        for name in &unit.interface_names {
+            interface_entry.insert(name.clone(), unit.file.clone());
+        }
         let module_entry = namespace_module_files
             .entry(unit.namespace.clone())
             .or_default();
@@ -4404,11 +4594,14 @@ fn build_project(
         namespace_files_map: &namespace_files_map,
         namespace_function_files: &namespace_function_files,
         namespace_class_files: &namespace_class_files,
+        namespace_interface_files: &namespace_interface_files,
         namespace_module_files: &namespace_module_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
+        global_interface_map: &global_interface_map,
+        global_interface_file_map: &global_interface_file_map,
         global_enum_map: &global_enum_map,
         global_enum_file_map: &global_enum_file_map,
         global_module_map: &global_module_map,
@@ -4576,6 +4769,22 @@ fn build_project(
                 .to_string(),
         );
     }
+    if !interface_collisions.is_empty() {
+        eprintln!(
+            "{} Interface name collisions detected across namespaces:",
+            "error".red().bold()
+        );
+        for (name, ns_a, ns_b) in interface_collisions {
+            eprintln!(
+                "  → '{}' is defined in both '{}' and '{}'",
+                name, ns_a, ns_b
+            );
+        }
+        return Err(
+            "Project contains colliding top-level interface names. Use unique interface names per project."
+                .to_string(),
+        );
+    }
     if !module_collisions.is_empty() {
         eprintln!(
             "{} Module name collisions detected across namespaces:",
@@ -4623,8 +4832,11 @@ fn build_project(
         global_function_file_map: &global_function_file_map,
         namespace_classes: &namespace_class_map,
         namespace_class_files: &namespace_class_files,
+        namespace_interface_files: &namespace_interface_files,
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
+        global_interface_map: &global_interface_map,
+        global_interface_file_map: &global_interface_file_map,
         global_enum_map: &global_enum_map,
         global_enum_file_map: &global_enum_file_map,
         namespace_modules: &namespace_module_map,
@@ -4775,6 +4987,8 @@ fn build_project(
                             &global_function_map,
                             &namespace_class_map,
                             &global_class_map,
+                            &namespace_interface_map,
+                            &global_interface_map,
                             &namespace_enum_map,
                             &global_enum_map,
                             &namespace_module_map,
@@ -5199,6 +5413,8 @@ fn build_project(
                             &global_function_file_map,
                             &global_class_map,
                             &global_class_file_map,
+                            &global_interface_map,
+                            &global_interface_file_map,
                             &global_enum_map,
                             &global_enum_file_map,
                             &global_module_map,
@@ -7040,6 +7256,9 @@ mod tests {
             .iter()
             .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
             .collect::<HashMap<_, _>>();
+        let namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+        let global_interface_map: HashMap<String, String> = HashMap::new();
+        let global_interface_file_map: HashMap<String, PathBuf> = HashMap::new();
         let rewrite_ctx = RewriteFingerprintContext {
             namespace_functions: &namespace_functions,
             namespace_function_files: &namespace_function_files,
@@ -7049,6 +7268,9 @@ mod tests {
             namespace_class_files: &namespace_class_files,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            namespace_interface_files: &namespace_interface_files,
+            global_interface_map: &global_interface_map,
+            global_interface_file_map: &global_interface_file_map,
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
@@ -12256,11 +12478,14 @@ function main(): Integer {
             namespace_files_map: &namespace_files_map,
             namespace_function_files: &namespace_function_files,
             namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
             namespace_module_files: &namespace_module_files,
             global_function_map: &global_function_map,
             global_function_file_map: &global_function_file_map,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
@@ -13497,9 +13722,8 @@ function main(): Integer {
         .expect("write main");
 
         with_current_dir(&temp_root, || {
-            build_project(false, false, true, false, false).expect(
-                "project build should support module-local nested interface implements",
-            );
+            build_project(false, false, true, false, false)
+                .expect("project build should support module-local nested interface implements");
         });
 
         let _ = fs::remove_dir_all(temp_root);
@@ -13536,8 +13760,66 @@ function main(): Integer {
         .expect("write main");
 
         with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support module-local nested interface extends");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_namespace_alias_interface_extends_on_seeded_semantic_path() {
+        let temp_root = make_temp_project_root("seeded-alias-interface-extends-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\ninterface Named { function name(): Integer; }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib as u;\ninterface Printable extends u.Named { function print_me(): Integer; }\nclass Report implements Printable {\n    constructor() {}\n    function name(): Integer { return 1; }\n    function print_me(): Integer { return 2; }\n}\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support aliased interface extends on seeded path");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_nested_namespace_alias_interface_extends_on_seeded_semantic_path() {
+        let temp_root = make_temp_project_root("seeded-nested-alias-interface-extends-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nmodule Api {\n    interface Named { function name(): Integer; }\n    interface Printable { function print_me(): Integer; }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib as u;\ninterface Reportable extends u.Api.Named, u.Api.Printable {}\nclass Report implements Reportable {\n    constructor() {}\n    function name(): Integer { return 1; }\n    function print_me(): Integer { return 2; }\n}\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
             build_project(false, false, true, false, false).expect(
-                "project build should support module-local nested interface extends",
+                "project build should support nested aliased interface extends on seeded path",
             );
         });
 
@@ -19008,8 +19290,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map_before,
             namespace_classes: &namespace_classes_before,
             namespace_class_files: &namespace_class_files_before,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map_before,
             global_class_file_map: &global_class_file_map_before,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map_before,
             global_enum_file_map: &global_enum_file_map_before,
             namespace_modules: &namespace_modules_before,
@@ -19090,8 +19375,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map,
             namespace_classes: &namespace_classes,
             namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
@@ -19193,8 +19481,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map_before,
             namespace_classes: &namespace_classes_before,
             namespace_class_files: &namespace_class_files_before,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map_before,
             global_class_file_map: &global_class_file_map_before,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map_before,
             global_enum_file_map: &global_enum_file_map_before,
             namespace_modules: &namespace_modules_before,
@@ -19275,8 +19566,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map,
             namespace_classes: &namespace_classes,
             namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
@@ -19378,8 +19672,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map_before,
             namespace_classes: &namespace_classes_before,
             namespace_class_files: &namespace_class_files_before,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map_before,
             global_class_file_map: &global_class_file_map_before,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map_before,
             global_enum_file_map: &global_enum_file_map_before,
             namespace_modules: &namespace_modules_before,
@@ -19458,8 +19755,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map_after,
             namespace_classes: &namespace_classes_after,
             namespace_class_files: &namespace_class_files_after,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map_after,
             global_class_file_map: &global_class_file_map_after,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map_after,
             global_enum_file_map: &global_enum_file_map_after,
             namespace_modules: &namespace_modules_after,
@@ -19676,8 +19976,11 @@ function main(): Integer {
                 global_function_file_map: &global_function_file_map_before,
                 namespace_classes: &namespace_classes_before,
                 namespace_class_files: &namespace_class_files_before,
+                namespace_interface_files: empty_namespace_interface_files(),
                 global_class_map: &global_class_map_before,
                 global_class_file_map: &global_class_file_map_before,
+                global_interface_map: empty_global_interface_map(),
+                global_interface_file_map: empty_global_interface_file_map(),
                 global_enum_map: &global_enum_map_before,
                 global_enum_file_map: &global_enum_file_map_before,
                 namespace_modules: &namespace_modules_before,
@@ -19756,8 +20059,11 @@ function main(): Integer {
                 global_function_file_map: &global_function_file_map_after,
                 namespace_classes: &namespace_classes_after,
                 namespace_class_files: &namespace_class_files_after,
+                namespace_interface_files: empty_namespace_interface_files(),
                 global_class_map: &global_class_map_after,
                 global_class_file_map: &global_class_file_map_after,
+                global_interface_map: empty_global_interface_map(),
+                global_interface_file_map: empty_global_interface_file_map(),
                 global_enum_map: &global_enum_map_after,
                 global_enum_file_map: &global_enum_file_map_after,
                 namespace_modules: &namespace_modules_after,
@@ -19858,8 +20164,11 @@ function main(): Integer {
                 global_function_file_map: &global_function_file_map_before,
                 namespace_classes: &namespace_classes_before,
                 namespace_class_files: &namespace_class_files_before,
+                namespace_interface_files: empty_namespace_interface_files(),
                 global_class_map: &global_class_map_before,
                 global_class_file_map: &global_class_file_map_before,
+                global_interface_map: empty_global_interface_map(),
+                global_interface_file_map: empty_global_interface_file_map(),
                 global_enum_map: &global_enum_map_before,
                 global_enum_file_map: &global_enum_file_map_before,
                 namespace_modules: &namespace_modules_before,
@@ -19938,8 +20247,11 @@ function main(): Integer {
                 global_function_file_map: &global_function_file_map_after,
                 namespace_classes: &namespace_classes_after,
                 namespace_class_files: &namespace_class_files_after,
+                namespace_interface_files: empty_namespace_interface_files(),
                 global_class_map: &global_class_map_after,
                 global_class_file_map: &global_class_file_map_after,
+                global_interface_map: empty_global_interface_map(),
+                global_interface_file_map: empty_global_interface_file_map(),
                 global_enum_map: &global_enum_map_after,
                 global_enum_file_map: &global_enum_file_map_after,
                 namespace_modules: &namespace_modules_after,
@@ -19981,6 +20293,7 @@ function main(): Integer {
             import_check_fingerprint: "import".to_string(),
             function_names: Vec::new(),
             class_names: Vec::new(),
+            interface_names: Vec::new(),
             enum_names: Vec::new(),
             module_names: Vec::new(),
             referenced_symbols: Vec::new(),
@@ -19988,6 +20301,21 @@ function main(): Integer {
             api_referenced_symbols: Vec::new(),
             from_parse_cache: false,
         }
+    }
+
+    fn empty_namespace_interface_files() -> &'static HashMap<String, HashMap<String, PathBuf>> {
+        static EMPTY: OnceLock<HashMap<String, HashMap<String, PathBuf>>> = OnceLock::new();
+        EMPTY.get_or_init(HashMap::new)
+    }
+
+    fn empty_global_interface_map() -> &'static HashMap<String, String> {
+        static EMPTY: OnceLock<HashMap<String, String>> = OnceLock::new();
+        EMPTY.get_or_init(HashMap::new)
+    }
+
+    fn empty_global_interface_file_map() -> &'static HashMap<String, PathBuf> {
+        static EMPTY: OnceLock<HashMap<String, PathBuf>> = OnceLock::new();
+        EMPTY.get_or_init(HashMap::new)
     }
 
     #[test]
@@ -20035,8 +20363,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map,
             namespace_classes: &namespace_classes,
             namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
@@ -20061,8 +20392,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map,
             namespace_classes: &namespace_classes,
             namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
@@ -20119,8 +20453,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map,
             namespace_classes: &namespace_classes,
             namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
@@ -20140,8 +20477,11 @@ function main(): Integer {
             global_function_file_map: &global_function_file_map,
             namespace_classes: &namespace_classes,
             namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             namespace_modules: &namespace_modules,
@@ -20200,11 +20540,14 @@ function main(): Integer {
             namespace_files_map: &namespace_files_map,
             namespace_function_files: &namespace_function_files,
             namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
             namespace_module_files: &namespace_module_files,
             global_function_map: &global_function_map,
             global_function_file_map: &global_function_file_map,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
@@ -20251,11 +20594,14 @@ function main(): Integer {
             namespace_files_map: &namespace_files_map,
             namespace_function_files: &namespace_function_files,
             namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
             namespace_module_files: &namespace_module_files,
             global_function_map: &global_function_map,
             global_function_file_map: &global_function_file_map,
             global_class_map: &global_class_map,
             global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &global_enum_map,
             global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
@@ -20305,6 +20651,7 @@ function main(): Integer {
             namespace_files_map: &namespace_files_map,
             namespace_function_files: &namespace_function_files,
             namespace_class_files: &HashMap::new(),
+            namespace_interface_files: empty_namespace_interface_files(),
             namespace_module_files: &HashMap::new(),
             global_function_map: &HashMap::from([
                 ("foo".to_string(), "lib".to_string()),
@@ -20316,6 +20663,8 @@ function main(): Integer {
             ]),
             global_class_map: &HashMap::new(),
             global_class_file_map: &HashMap::new(),
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &HashMap::new(),
             global_enum_file_map: &HashMap::new(),
             global_module_map: &HashMap::new(),
@@ -20371,6 +20720,7 @@ function main(): Integer {
             namespace_files_map: &namespace_files_map,
             namespace_function_files: &namespace_function_files,
             namespace_class_files: &HashMap::new(),
+            namespace_interface_files: empty_namespace_interface_files(),
             namespace_module_files: &HashMap::new(),
             global_function_map: &HashMap::from([("foo".to_string(), "lib".to_string())]),
             global_function_file_map: &HashMap::from([(
@@ -20379,6 +20729,8 @@ function main(): Integer {
             )]),
             global_class_map: &HashMap::new(),
             global_class_file_map: &HashMap::new(),
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
             global_enum_map: &HashMap::new(),
             global_enum_file_map: &HashMap::new(),
             global_module_map: &HashMap::new(),

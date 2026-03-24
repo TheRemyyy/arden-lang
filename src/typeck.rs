@@ -643,6 +643,7 @@ impl TypeChecker {
     ) -> Result<(), Vec<TypeError>> {
         self.populate_import_aliases(program);
         self.collect_declarations(program);
+        self.normalize_inheritance_references();
         self.apply_effect_seeds(function_effects, class_method_effects);
         for (name, iface) in self.interfaces.clone() {
             for parent in iface.extends {
@@ -8142,6 +8143,144 @@ mod tests {
             joined.contains("'?' on Result requires the enclosing function to return Result"),
             "{joined}"
         );
+    }
+
+    #[test]
+    fn seeded_check_supports_interface_extending_namespace_aliased_interface() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                interface Named {
+                    function name(): Integer;
+                }
+            }
+            interface Printable extends u.Named {
+                function print_me(): Integer;
+            }
+            class Report implements Printable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                r: Report = Report();
+                return r.name() + r.print_me();
+            }
+        "#;
+        let tokens = tokenize(src).expect("tokenize seeded alias interface source");
+        let mut parser = Parser::new(tokens);
+        let program = parser
+            .parse_program()
+            .expect("parse seeded alias interface source");
+        let mut type_checker = TypeChecker::new(src.to_string());
+        type_checker
+            .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
+            .expect("seeded check should support aliased parent interface");
+    }
+
+    #[test]
+    fn seeded_check_supports_interface_extending_nested_namespace_aliased_interface() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                module Api {
+                    interface Named {
+                        function name(): Integer;
+                    }
+                }
+            }
+            interface Printable extends u.Api.Named {
+                function print_me(): Integer;
+            }
+            class Report implements Printable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                r: Report = Report();
+                return r.name() + r.print_me();
+            }
+        "#;
+        let tokens = tokenize(src).expect("tokenize seeded nested alias source");
+        let mut parser = Parser::new(tokens);
+        let program = parser
+            .parse_program()
+            .expect("parse seeded nested alias source");
+        let mut type_checker = TypeChecker::new(src.to_string());
+        type_checker
+            .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
+            .expect("seeded check should support nested aliased parent interface");
+    }
+
+    #[test]
+    fn seeded_check_supports_interface_extending_multiple_namespace_aliased_interfaces() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                interface Named {
+                    function name(): Integer;
+                }
+                interface Printable {
+                    function print_me(): Integer;
+                }
+            }
+            interface Reportable extends u.Named, u.Printable {}
+            class Report implements Reportable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                r: Report = Report();
+                return r.name() + r.print_me();
+            }
+        "#;
+        let tokens = tokenize(src).expect("tokenize seeded multi alias interface source");
+        let mut parser = Parser::new(tokens);
+        let program = parser
+            .parse_program()
+            .expect("parse seeded multi alias interface source");
+        let mut type_checker = TypeChecker::new(src.to_string());
+        type_checker
+            .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
+            .expect("seeded check should support multiple aliased parent interfaces");
+    }
+
+    #[test]
+    fn seeded_check_supports_interface_extending_multiple_nested_namespace_aliased_interfaces() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                module Api {
+                    interface Named {
+                        function name(): Integer;
+                    }
+                    interface Printable {
+                        function print_me(): Integer;
+                    }
+                }
+            }
+            interface Reportable extends u.Api.Named, u.Api.Printable {}
+            class Report implements Reportable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                r: Report = Report();
+                return r.name() + r.print_me();
+            }
+        "#;
+        let tokens = tokenize(src).expect("tokenize seeded multi nested alias interface source");
+        let mut parser = Parser::new(tokens);
+        let program = parser
+            .parse_program()
+            .expect("parse seeded multi nested alias interface source");
+        let mut type_checker = TypeChecker::new(src.to_string());
+        type_checker
+            .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
+            .expect("seeded check should support multiple nested aliased parent interfaces");
     }
 }
 

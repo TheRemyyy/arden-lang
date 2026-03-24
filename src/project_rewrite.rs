@@ -165,6 +165,8 @@ pub fn rewrite_program_for_project(
     global_function_map: &HashMap<String, String>,
     namespace_classes: &HashMap<String, HashSet<String>>,
     global_class_map: &HashMap<String, String>,
+    namespace_interfaces: &HashMap<String, HashSet<String>>,
+    global_interface_map: &HashMap<String, String>,
     namespace_enums: &HashMap<String, HashSet<String>>,
     global_enum_map: &HashMap<String, String>,
     namespace_modules: &HashMap<String, HashSet<String>>,
@@ -179,6 +181,10 @@ pub fn rewrite_program_for_project(
         .get(current_namespace)
         .cloned()
         .unwrap_or_default();
+    let local_interfaces = namespace_interfaces
+        .get(current_namespace)
+        .cloned()
+        .unwrap_or_default();
     let local_enums = namespace_enums
         .get(current_namespace)
         .cloned()
@@ -190,6 +196,7 @@ pub fn rewrite_program_for_project(
 
     let mut imported_map: ImportedMap = HashMap::new();
     let mut imported_classes: ImportedMap = HashMap::new();
+    let mut imported_interfaces: ImportedMap = HashMap::new();
     let mut imported_enums: ImportedMap = HashMap::new();
     let mut imported_modules: ImportedMap = HashMap::new();
     for import in imports {
@@ -208,6 +215,11 @@ pub fn rewrite_program_for_project(
             if let Some(classes) = namespace_classes.get(ns) {
                 for name in classes {
                     imported_classes.insert(name.clone(), (ns.to_string(), name.clone()));
+                }
+            }
+            if let Some(interfaces) = namespace_interfaces.get(ns) {
+                for name in interfaces {
+                    imported_interfaces.insert(name.clone(), (ns.to_string(), name.clone()));
                 }
             }
             if let Some(enums) = namespace_enums.get(ns) {
@@ -242,6 +254,17 @@ pub fn rewrite_program_for_project(
                 {
                     imported_classes.insert(import_key.clone(), (owner_ns, class_name));
                 }
+                if global_interface_map
+                    .get(source_name)
+                    .is_some_and(|owner_ns| owner_ns == &ns)
+                {
+                    imported_interfaces
+                        .insert(import_key.clone(), (ns.clone(), source_name.to_string()));
+                } else if let Some((owner_ns, interface_name)) =
+                    resolve_exact_imported_symbol_path(&ns, source_name, global_interface_map)
+                {
+                    imported_interfaces.insert(import_key.clone(), (owner_ns, interface_name));
+                }
                 if global_enum_map
                     .get(source_name)
                     .is_some_and(|owner_ns| owner_ns == &ns)
@@ -257,6 +280,7 @@ pub fn rewrite_program_for_project(
             }
         } else if namespace_functions.contains_key(&import.path)
             || namespace_classes.contains_key(&import.path)
+            || namespace_interfaces.contains_key(&import.path)
             || namespace_enums.contains_key(&import.path)
             || namespace_modules.contains_key(&import.path)
         {
@@ -266,6 +290,14 @@ pub fn rewrite_program_for_project(
             for (symbol_name, owner_ns) in global_class_map {
                 if owner_ns == &import.path {
                     imported_classes.insert(
+                        alias_qualified_symbol_name(&import_key, symbol_name),
+                        (import.path.clone(), symbol_name.clone()),
+                    );
+                }
+            }
+            for (symbol_name, owner_ns) in global_interface_map {
+                if owner_ns == &import.path {
+                    imported_interfaces.insert(
                         alias_qualified_symbol_name(&import_key, symbol_name),
                         (import.path.clone(), symbol_name.clone()),
                     );
@@ -370,9 +402,9 @@ pub fn rewrite_program_for_project(
                                 rewrite_interface_reference_for_project(
                                     implemented,
                                     current_namespace,
-                                    &local_modules,
-                                    &imported_modules,
-                                    global_module_map,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    global_interface_map,
                                     entry_namespace,
                                 )
                             })
@@ -1009,9 +1041,9 @@ pub fn rewrite_program_for_project(
                                 rewrite_interface_reference_for_project(
                                     extended,
                                     current_namespace,
-                                    &local_modules,
-                                    &imported_modules,
-                                    global_module_map,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    global_interface_map,
                                     entry_namespace,
                                 )
                             })
@@ -5907,6 +5939,38 @@ mod tests {
 
     fn sp<T>(node: T) -> ast::Spanned<T> {
         ast::Spanned::new(node, 0..0)
+    }
+
+    fn rewrite_program_for_project(
+        program: &Program,
+        current_namespace: &str,
+        entry_namespace: &str,
+        namespace_functions: &HashMap<String, HashSet<String>>,
+        global_function_map: &HashMap<String, String>,
+        namespace_classes: &HashMap<String, HashSet<String>>,
+        global_class_map: &HashMap<String, String>,
+        namespace_enums: &HashMap<String, HashSet<String>>,
+        global_enum_map: &HashMap<String, String>,
+        namespace_modules: &HashMap<String, HashSet<String>>,
+        global_module_map: &HashMap<String, String>,
+        imports: &[ImportDecl],
+    ) -> Program {
+        super::rewrite_program_for_project(
+            program,
+            current_namespace,
+            entry_namespace,
+            namespace_functions,
+            global_function_map,
+            namespace_classes,
+            global_class_map,
+            namespace_modules,
+            global_module_map,
+            namespace_enums,
+            global_enum_map,
+            namespace_modules,
+            global_module_map,
+            imports,
+        )
     }
 
     #[test]

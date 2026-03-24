@@ -57,6 +57,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - enums declared directly inside a module now rewrite imported alias-qualified field types like `u.Box`, `u.Api.Box`, and `u.Result` instead of leaving raw alias names behind in project-mode output
   - the same enum rewrite now covers module-local nested type paths such as `Api.Box` / `Api.Result`, generic payloads like `List<u.Box>`, named enum fields, and multiple variants in the same enum
   - recursive nested-module enums were already handled; this closes the remaining gap for direct `module { enum ... }` declarations that previously fell through clone-only handling
+- Fixed seeded semantic checks for aliased interface inheritance:
+  - `TypeChecker::check_with_effect_seeds(...)` now normalizes inheritance references before validating interfaces, so seeded reuse accepts alias-qualified parents like `u.Named` and `u.Api.Named` the same way as the non-seeded path
+- Fixed project build/runtime dependency tracking for qualified nominal references:
+  - parse metadata now records interface declarations alongside functions/classes/enums/modules, allowing project rewrite to resolve imported interface parents with real interface ownership maps instead of abusing module maps
+  - qualified type and inheritance references such as `u.Named`, `u.Api.Named`, and other dotted nominal paths now feed both `referenced_symbols` and `qualified_symbol_refs`, so dependency graph partitioning no longer splits interface-dependent files into false independent semantic components
+  - project builds now correctly handle aliased and nested namespace interface parents during seeded semantic reuse, including `interface ... extends u.Named`, `interface ... extends u.Api.Named`, and matching `implements` chains
 - Fixed `apex test` runner import injection and `main(...)` stripping edge cases:
   - generated runners now still inject `import std.io.*;` when the source only mentions that import inside block comments, instead of treating commented text as a real import and emitting uncompilable runner code
   - shebang-based scripts now keep `#!/...` as the first line and receive the injected stdio import after the shebang instead of before it
