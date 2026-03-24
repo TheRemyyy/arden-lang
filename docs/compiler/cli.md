@@ -53,7 +53,10 @@ Optimization note:
 - Seeded project semantic reuse now preserves those alias-qualified interface parents too, so incremental `apex build` / `apex check` runs no longer fail on valid imported interface chains like `interface Child extends u.Named` or `interface Child extends u.Api.Named`.
 - The same project rewrite pass now also rewrites module-local interface parents such as `implements Named` and `extends Api.Named` inside nested modules, so local interface inheritance stays aligned with the rest of project symbol rewriting.
 - Qualified nominal references inside type positions and inheritance clauses now participate in dependency tracking as dotted symbol paths instead of raw strings only, preventing incremental project builds from splitting dependent interface files into separate semantic components.
+- The same dependency tracking now also covers qualified constructor expressions and qualified enum patterns such as `u.Api.Box(...)` and `u.Result.Value.Ok(v)`, so project builds keep constructor-only and match-only dependencies in the same semantic component.
+- Project import checking now recognizes nested namespace aliases like `import util.Api as u;` even when the imported module path only exposes classes/enums/interfaces and no functions.
 - Direct module enums now also rewrite their variant field types through the same project rewrite pass, including alias-qualified, nested-module-qualified, and generic payload types inside `module { enum ... }` declarations.
+- Match codegen now distinguishes built-in `Option` / `Result` from user enums with variant leaves like `Ok` and `Error`, preventing backend crashes on custom enum matches that happen to reuse those names.
 - Invalid `--opt-level` / `opt_level` values are now rejected up front instead of silently falling back to `-O3`.
 - `apex run` requires project `output_kind = "bin"` and now rejects shared/static library targets before starting a build; use `apex build` for library outputs.
 - Project `output` paths in `apex.toml` must stay inside the project root; traversal paths like `../outside/app` are rejected during validation.

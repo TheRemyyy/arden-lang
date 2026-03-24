@@ -63,6 +63,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - parse metadata now records interface declarations alongside functions/classes/enums/modules, allowing project rewrite to resolve imported interface parents with real interface ownership maps instead of abusing module maps
   - qualified type and inheritance references such as `u.Named`, `u.Api.Named`, and other dotted nominal paths now feed both `referenced_symbols` and `qualified_symbol_refs`, so dependency graph partitioning no longer splits interface-dependent files into false independent semantic components
   - project builds now correctly handle aliased and nested namespace interface parents during seeded semantic reuse, including `interface ... extends u.Named`, `interface ... extends u.Api.Named`, and matching `implements` chains
+- Fixed project dependency tracking for qualified constructors and variant patterns:
+  - qualified constructor refs like `u.Api.Box(...)` now contribute dotted owner paths during parse/dependency analysis instead of being recorded only as opaque raw type strings
+  - qualified pattern refs like `u.Result.Value.Ok(v)` now also feed `qualified_symbol_refs`, preventing cross-file enum matches from being split into separate semantic components during project builds
+- Fixed project import checking for nested namespace aliases without functions:
+  - imports such as `import util.Api as u;` now resolve in project mode even when `Api` contains only classes/enums/interfaces, because the import checker now learns nested module namespace paths from parsed project units instead of inferring them only from function symbols
+- Fixed codegen match lowering collisions between built-in and user enum variant names:
+  - custom enums using variant leaves like `Ok` / `Error` no longer get lowered through the built-in `Result` match path, avoiding backend crashes like `ExtractOutOfRange` during payload extraction
+  - that built-in fast path now runs only when the matched expression is actually `Option` or `Result`
 - Fixed `apex test` runner import injection and `main(...)` stripping edge cases:
   - generated runners now still inject `import std.io.*;` when the source only mentions that import inside block comments, instead of treating commented text as a real import and emitting uncompilable runner code
   - shebang-based scripts now keep `#!/...` as the first line and receive the injected stdio import after the shebang instead of before it

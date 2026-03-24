@@ -1823,6 +1823,18 @@ fn compute_namespace_api_fingerprints(
     result
 }
 
+fn collect_known_namespace_paths_for_units(parsed_files: &[ParsedProjectUnit]) -> HashSet<String> {
+    let mut paths = HashSet::new();
+    for unit in parsed_files {
+        paths.insert(unit.namespace.clone());
+        for module_name in &unit.module_names {
+            let module_path = module_name.replace("__", ".");
+            paths.insert(format!("{}.{}", unit.namespace, module_path));
+        }
+    }
+    paths
+}
+
 fn hash_namespace_api_fingerprints(
     map: &HashMap<String, String>,
     relevant_namespaces: &HashSet<String>,
@@ -3871,7 +3883,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 collect_expr_refs(&index.node, out, qualified_out);
             }
             Expr::Construct { ty, args } => {
-                out.insert(ty.clone());
+                collect_qualified_name_ref(ty, out, qualified_out);
                 for arg in args {
                     collect_expr_refs(&arg.node, out, qualified_out);
                 }
@@ -3885,7 +3897,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
             Expr::Match { expr, arms } => {
                 collect_expr_refs(&expr.node, out, qualified_out);
                 for arm in arms {
-                    collect_pattern_refs(&arm.pattern, out);
+                    collect_pattern_refs(&arm.pattern, out, qualified_out);
                     collect_block_refs(&arm.body, out, qualified_out);
                 }
             }
@@ -3927,9 +3939,13 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         }
     }
 
-    fn collect_pattern_refs(pattern: &Pattern, out: &mut HashSet<String>) {
+    fn collect_pattern_refs(
+        pattern: &Pattern,
+        out: &mut HashSet<String>,
+        qualified_out: &mut HashSet<Vec<String>>,
+    ) {
         if let Pattern::Variant(name, _) = pattern {
-            out.insert(name.clone());
+            collect_qualified_name_ref(name, out, qualified_out);
         }
     }
 
@@ -3983,7 +3999,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
             Stmt::Match { expr, arms } => {
                 collect_expr_refs(&expr.node, out, qualified_out);
                 for arm in arms {
-                    collect_pattern_refs(&arm.pattern, out);
+                    collect_pattern_refs(&arm.pattern, out, qualified_out);
                     collect_block_refs(&arm.body, out, qualified_out);
                 }
             }
@@ -4851,12 +4867,8 @@ fn build_project(
     if do_check {
         println!("{} Checking imports...", "→".cyan());
         let shared_function_map = Arc::new(global_function_map.clone());
-        let shared_known_namespace_paths = Arc::new(
-            namespace_files_map
-                .keys()
-                .cloned()
-                .collect::<HashSet<String>>(),
-        );
+        let shared_known_namespace_paths =
+            Arc::new(collect_known_namespace_paths_for_units(&parsed_files));
         let import_check_cache_hits = std::sync::atomic::AtomicUsize::new(0);
 
         let import_results: Vec<Result<(), String>> =
@@ -12733,6 +12745,67 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_supports_namespace_alias_nested_module_class_constructors() {
+        let temp_root =
+            make_temp_project_root("nested-class-constructor-namespace-alias-build-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nmodule Api {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n    }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nfunction main(): None { u.Api.Box(2); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support namespace alias nested-module class constructors",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_nested_module_namespace_aliases_without_functions() {
+        let temp_root = make_temp_project_root("nested-module-namespace-alias-build-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nmodule Api {\n    class Box {\n        constructor() {}\n    }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.Api as u;\nfunction main(): None { u.Box(); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support nested module namespace aliases without functions",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_supports_if_expression_function_value_callees() {
         let temp_root = make_temp_project_root("ifexpr-function-callee-project");
         let src_dir = temp_root.join("src");
@@ -12865,6 +12938,36 @@ function main(): Integer {
         with_current_dir(&temp_root, || {
             build_project(false, false, true, false, false)
                 .expect("project build should support exact imported enum variant alias patterns");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_namespace_alias_nested_enum_variant_patterns() {
+        let temp_root = make_temp_project_root("namespace-alias-nested-enum-pattern-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package util;\nmodule Result {\n    enum Value { Ok(Integer) Error(Integer) }\n}\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nfunction main(): None { value: u.Result.Value = u.Result.Value.Ok(2); match (value) { u.Result.Value.Ok(v) => { require(v == 2); } u.Result.Value.Error(err) => { require(false); } } return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support namespace alias nested enum variant patterns",
+            );
         });
 
         let _ = fs::remove_dir_all(temp_root);

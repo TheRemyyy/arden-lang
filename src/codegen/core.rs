@@ -7553,10 +7553,12 @@ impl<'ctx> Codegen<'ctx> {
             Type::Option(inner) => Some((**inner).clone()),
             _ => None,
         };
+        let is_option_match = option_inner_ty.is_some();
         let result_inner_tys = match &match_ty {
             Type::Result(ok, err) => Some(((**ok).clone(), (**err).clone())),
             _ => None,
         };
+        let is_result_match = result_inner_tys.is_some();
         let enum_match_name = match &match_ty {
             Type::Named(name) if self.enums.contains_key(name) => Some(name.clone()),
             _ => None,
@@ -7629,7 +7631,9 @@ impl<'ctx> Codegen<'ctx> {
                 Pattern::Variant(variant_name, _) => {
                     let variant_leaf = pattern_variant_leaf(variant_name);
                     // Built-in Option / Result matching
-                    if matches!(variant_leaf, "Some" | "None" | "Ok" | "Error") {
+                    if (is_option_match && matches!(variant_leaf, "Some" | "None"))
+                        || (is_result_match && matches!(variant_leaf, "Ok" | "Error"))
+                    {
                         let expected_tag = match variant_leaf {
                             "Some" | "Ok" => 1u64,
                             _ => 0u64,
@@ -7700,7 +7704,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Pattern::Variant(variant_name, bindings) => {
                     let variant_leaf = pattern_variant_leaf(variant_name);
-                    if variant_leaf == "Some" && !bindings.is_empty() {
+                    if is_option_match && variant_leaf == "Some" && !bindings.is_empty() {
                         let inner = self
                             .builder
                             .build_extract_value(val.into_struct_value(), 1, "some_inner")
@@ -7717,7 +7721,7 @@ impl<'ctx> Codegen<'ctx> {
                                 ty: option_inner_ty.clone().unwrap_or(Type::Integer),
                             },
                         );
-                    } else if variant_leaf == "Ok" && !bindings.is_empty() {
+                    } else if is_result_match && variant_leaf == "Ok" && !bindings.is_empty() {
                         let inner = self
                             .builder
                             .build_extract_value(val.into_struct_value(), 1, "ok_inner")
@@ -7737,7 +7741,7 @@ impl<'ctx> Codegen<'ctx> {
                                     .unwrap_or(Type::Integer),
                             },
                         );
-                    } else if variant_leaf == "Error" && !bindings.is_empty() {
+                    } else if is_result_match && variant_leaf == "Error" && !bindings.is_empty() {
                         let inner = self
                             .builder
                             .build_extract_value(val.into_struct_value(), 2, "err_inner")
