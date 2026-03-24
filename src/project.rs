@@ -114,6 +114,13 @@ fn validate_project_path(
         ));
     }
 
+    if canonical_path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
+        return Err(format!(
+            "{} '{}' must resolve to an .apex source file",
+            label, relative_path
+        ));
+    }
+
     if !canonical_path.starts_with(&canonical_root) {
         return Err(format!(
             "{} '{}' resolves outside the project root '{}'",
@@ -495,6 +502,50 @@ output = "demo"
         let _ = std::fs::remove_dir_all(&project_root);
 
         assert!(error.contains("must resolve to a file"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_non_apex_entry_path() {
+        let project_root = unique_temp_dir("apex_project_validate_entry_non_apex");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(src_dir.join("main.txt"), "not apex\n").expect("entry file should be written");
+
+        let mut config = ProjectConfig::new("demo");
+        config.entry = "src/main.txt".to_string();
+        config.files = vec!["src/main.txt".to_string()];
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("non-apex entry path should be rejected");
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("must resolve to an .apex source file"), "{error}");
+    }
+
+    #[test]
+    fn validate_rejects_non_apex_source_path() {
+        let project_root = unique_temp_dir("apex_project_validate_source_non_apex");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+        std::fs::write(
+            src_dir.join("main.apex"),
+            "function main(): None { return None; }\n",
+        )
+        .expect("entry file should be written");
+        std::fs::write(src_dir.join("helper.txt"), "not apex\n").expect("helper file should be written");
+
+        let mut config = ProjectConfig::new("demo");
+        config.files.push("src/helper.txt".to_string());
+
+        let error = config
+            .validate(&project_root)
+            .expect_err("non-apex source path should be rejected");
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(error.contains("must resolve to an .apex source file"), "{error}");
     }
 
     #[test]

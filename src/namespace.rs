@@ -209,6 +209,64 @@ impl NamespaceResolver {
 /// Convert file path to namespace
 /// src/utils/math.apex → utils.math
 fn path_to_namespace(path: &Path) -> Result<String, String> {
+    fn is_reserved_namespace_segment(name: &str) -> bool {
+        matches!(
+            name,
+            "function"
+                | "class"
+                | "interface"
+                | "enum"
+                | "if"
+                | "else"
+                | "while"
+                | "for"
+                | "in"
+                | "return"
+                | "break"
+                | "continue"
+                | "match"
+                | "mut"
+                | "let"
+                | "import"
+                | "package"
+                | "extern"
+                | "true"
+                | "false"
+                | "None"
+                | "this"
+                | "constructor"
+                | "destructor"
+                | "public"
+                | "private"
+                | "protected"
+                | "async"
+                | "await"
+                | "module"
+                | "extends"
+                | "implements"
+                | "require"
+                | "owned"
+                | "borrow"
+                | "static"
+                | "super"
+                | "Self"
+                | "as"
+                | "is"
+                | "typeof"
+                | "Integer"
+                | "Float"
+                | "Boolean"
+                | "String"
+                | "Char"
+        )
+    }
+
+    fn is_valid_namespace_segment(name: &str) -> bool {
+        let mut chars = name.chars();
+        matches!(chars.next(), Some(first) if first.is_ascii_alphabetic() || first == '_')
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+
     let mut parts: Vec<String> = vec![];
 
     for component in path.parent().unwrap_or(Path::new("")).components() {
@@ -217,6 +275,12 @@ fn path_to_namespace(path: &Path) -> Result<String, String> {
             .to_str()
             .ok_or("Invalid path component")?;
         if name != "." && name != "src" {
+            if !is_valid_namespace_segment(name) {
+                return Err(format!("Invalid namespace segment '{}'", name));
+            }
+            if is_reserved_namespace_segment(name) {
+                return Err(format!("Reserved keyword cannot be used as namespace segment '{}'", name));
+            }
             parts.push(name.to_string());
         }
     }
@@ -224,6 +288,12 @@ fn path_to_namespace(path: &Path) -> Result<String, String> {
     // Add filename without extension
     if let Some(stem) = path.file_stem() {
         let name = stem.to_str().ok_or("Invalid filename")?;
+        if !is_valid_namespace_segment(name) {
+            return Err(format!("Invalid namespace segment '{}'", name));
+        }
+        if is_reserved_namespace_segment(name) {
+            return Err(format!("Reserved keyword cannot be used as namespace segment '{}'", name));
+        }
         parts.push(name.to_string());
     }
 
@@ -414,6 +484,116 @@ mod tests {
             err.contains("is not an .apex source file"),
             "expected non-apex validation error, got: {err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn register_file_rejects_invalid_filename_namespace_segment() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let temp_root = std::env::temp_dir().join(format!(
+            "apex-namespace-invalid-file-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let src_root = temp_root.join("src");
+        fs::create_dir_all(&src_root).expect("create src root");
+        let bad_path = src_root.join("9bad.apex");
+        fs::write(&bad_path, "function main(): None { return None; }\n").expect("write bad file");
+
+        let mut resolver = NamespaceResolver::new(src_root.clone());
+        let err = resolver
+            .register_file(&bad_path)
+            .expect_err("invalid namespace filename should be rejected");
+        assert!(err.contains("Invalid namespace segment"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn register_file_rejects_invalid_directory_namespace_segment() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let temp_root = std::env::temp_dir().join(format!(
+            "apex-namespace-invalid-dir-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let src_root = temp_root.join("src");
+        let bad_dir = src_root.join("bad-dir");
+        fs::create_dir_all(&bad_dir).expect("create bad dir");
+        let bad_path = bad_dir.join("main.apex");
+        fs::write(&bad_path, "function main(): None { return None; }\n").expect("write main");
+
+        let mut resolver = NamespaceResolver::new(src_root.clone());
+        let err = resolver
+            .register_file(&bad_path)
+            .expect_err("invalid namespace directory should be rejected");
+        assert!(err.contains("Invalid namespace segment"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn register_file_rejects_keyword_filename_namespace_segment() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let temp_root = std::env::temp_dir().join(format!(
+            "apex-namespace-keyword-file-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let src_root = temp_root.join("src");
+        fs::create_dir_all(&src_root).expect("create src root");
+        let bad_path = src_root.join("class.apex");
+        fs::write(&bad_path, "function main(): None { return None; }\n").expect("write bad file");
+
+        let mut resolver = NamespaceResolver::new(src_root.clone());
+        let err = resolver
+            .register_file(&bad_path)
+            .expect_err("keyword namespace filename should be rejected");
+        assert!(err.contains("Reserved keyword"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn register_file_rejects_keyword_directory_namespace_segment() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let temp_root = std::env::temp_dir().join(format!(
+            "apex-namespace-keyword-dir-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let src_root = temp_root.join("src");
+        let bad_dir = src_root.join("module");
+        fs::create_dir_all(&bad_dir).expect("create bad dir");
+        let bad_path = bad_dir.join("main.apex");
+        fs::write(&bad_path, "function main(): None { return None; }\n").expect("write main");
+
+        let mut resolver = NamespaceResolver::new(src_root.clone());
+        let err = resolver
+            .register_file(&bad_path)
+            .expect_err("keyword namespace directory should be rejected");
+        assert!(err.contains("Reserved keyword"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }

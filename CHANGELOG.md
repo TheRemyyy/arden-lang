@@ -8,6 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed invalid string escape acceptance:
+  - string literals like `"bad \q escape"` now fail during parsing instead of silently preserving unsupported escapes and diverging from documented string semantics
+- Fixed invalid char escape acceptance:
+  - char literals like `'\q'` now fail during lexing instead of silently decoding to the wrong character
+- Fixed formatter brace escaping for literal strings:
+  - formatting plain string literals that contain literal `{` / `}` now preserves them as `\{` / `\}` instead of rewriting the source into accidental string interpolation
+- Fixed formatter brace escaping for `@Ignore(...)` reasons:
+  - ignored-test reasons with literal braces now round-trip through `apex fmt` without changing meaning or producing broken runner source
+- Fixed test-runner ignore-reason escaping for literal braces:
+  - `apex test` now accepts ignore reasons like `@Ignore("\{todo\}")` end-to-end instead of generating runner strings that re-enter interpolation parsing
+- Fixed ignored-test lifecycle execution:
+  - skipped tests no longer run `@Before` or `@After` hooks, so ignore markers cannot accidentally trigger setup/teardown side effects or failures
+- Fixed test-runner main stripping with attached attributes:
+  - attributes immediately above a user-defined `main(...)` are now removed together with that entrypoint instead of being left behind as orphaned annotations in generated runner input
+- Fixed core project validation for non-`.apex` entry paths:
+  - `ProjectConfig::validate` now rejects entries like `src/main.txt` directly instead of accepting them until later CLI-specific checks
+- Fixed core project validation for non-`.apex` secondary source paths:
+  - `ProjectConfig::validate` now rejects invalid `files[]` entries like `src/helper.txt` consistently across callers
+- Fixed namespace registration for invalid filename identifiers:
+  - source files like `src/9bad.apex` now fail namespace registration instead of silently producing unusable module names
+- Fixed namespace registration for invalid directory identifiers:
+  - namespace paths with invalid segments like `src/bad-dir/main.apex` are now rejected before they leak malformed names into module resolution
+- Fixed bindgen `char**` return-type lowering:
+  - C prototypes like `char **make_argv(void)` no longer collapse to Apex `String` and now stay pointer-shaped instead of silently changing ABI semantics
+- Fixed bindgen `char**` parameter lowering:
+  - C prototypes like `void main_like(int argc, char **argv)` no longer rewrite `argv` to Apex `String`, avoiding incorrect generated bindings for argv/envp-style APIs
+- Fixed namespace registration for keyword-named files:
+  - files like `src/class.apex` are now rejected instead of registering unusable module names that conflict with Apex syntax
+- Fixed namespace registration for keyword-named directories:
+  - paths like `src/module/main.apex` are now rejected before they produce namespaces that cannot be expressed safely in imports/package paths
 - Fixed lexer span preservation after Unix shebang stripping:
   - files that start with `#!/...` now keep absolute token offsets after lexing instead of shifting every downstream parser/LSP/diagnostic span to line 1
 - Fixed LSP identifier lookup at end-of-file:

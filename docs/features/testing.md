@@ -159,9 +159,10 @@ Notes:
 - Missing test directories now fail fast with a CLI error instead of being treated as an empty test set.
 - Explicit file paths must target `.apex` files; passing a non-Apex file now fails before lex/parse.
 - Bare `@Ignore` and `@Ignore("reason")` are both skipped correctly by `apex test`.
+- Ignored tests do not run `@Before` or `@After` hooks.
 - Final summary `Total` counts all discovered tests, including ignored ones.
 - String escapes inside tests follow normal Apex string semantics, so `\n`, `\t`, `\"`, `\\`, `\{`, and `\}` are decoded before execution.
-- Ignore reasons containing backslashes or control characters are rendered safely by the generated runner instead of being reinterpreted as escape sequences.
+- Ignore reasons containing backslashes, control characters, or literal braces are rendered safely by the generated runner instead of being reinterpreted as escape sequences.
 - `apex test --list` also escapes control characters inside ignore reasons so discovery output stays single-line per test.
 
 ## Complete Example

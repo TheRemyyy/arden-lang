@@ -61,8 +61,9 @@ fn map_c_type_to_apex(c_type: &str) -> Option<String> {
     }
 
     if compact.ends_with('*') {
+        let pointer_depth = compact.chars().rev().take_while(|c| *c == '*').count();
         let base = compact.trim_end_matches('*');
-        if base == "char" {
+        if base == "char" && pointer_depth == 1 {
             return Some("String".to_string());
         }
         return Some("Ptr<None>".to_string());
@@ -270,6 +271,13 @@ mod tests {
     }
 
     #[test]
+    fn does_not_collapse_double_char_pointer_return_into_string() {
+        let generated = generate_from_prototype("char **make_argv(void)")
+            .expect("double char pointer return prototype should parse");
+        assert_eq!(generated, "extern(c) function make_argv(): Ptr<None>;");
+    }
+
+    #[test]
     fn skips_function_pointer_param_prototypes_entirely() {
         let generated = generate_from_prototype(
             "void qsort(void *base, size_t n, size_t sz, int (*cmp)(const void*, const void*))",
@@ -323,6 +331,16 @@ mod tests {
         assert_eq!(
             generated,
             "extern(c) function fill(name: String, values: Ptr<None>): None;"
+        );
+    }
+
+    #[test]
+    fn does_not_collapse_double_char_pointer_params_into_string() {
+        let generated = generate_from_prototype("void main_like(int argc, char **argv)")
+            .expect("double char pointer params should parse");
+        assert_eq!(
+            generated,
+            "extern(c) function main_like(argc: Integer, argv: Ptr<None>): None;"
         );
     }
 

@@ -67,6 +67,7 @@ Path safety:
 - `entry` and every path in `files` must resolve inside the project root.
 - Paths that escape through `..` segments or symlinks are rejected during validation.
 - Project auto-discovery only treats a real `apex.toml` file as the project marker; a directory named `apex.toml` is ignored.
+- Source-derived namespaces also reject invalid or keyword-named path segments, so file and folder names must stay valid Apex identifiers.
 
 ## Project Commands
 

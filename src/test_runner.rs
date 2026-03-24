@@ -264,6 +264,8 @@ fn escape_apex_string_literal(value: &str) -> String {
         match ch {
             '\\' => escaped.push_str("\\\\"),
             '"' => escaped.push_str("\\\""),
+            '{' => escaped.push_str("\\{"),
+            '}' => escaped.push_str("\\}"),
             '\n' => escaped.push_str("\\\\n"),
             '\r' => escaped.push_str("\\\\r"),
             '\t' => escaped.push_str("\\\\t"),
@@ -425,6 +427,7 @@ fn ensure_test_runner_imports(source: &str) -> String {
 /// Simple filter to remove existing main function from source
 fn filter_out_main_function(source: &str) -> String {
     let mut result = String::new();
+    let mut pending_attributes: Vec<&str> = Vec::new();
     let mut in_main = false;
     let mut brace_depth = 0;
     let mut seen_main_open_brace = false;
@@ -459,8 +462,14 @@ fn filter_out_main_function(source: &str) -> String {
             continue;
         }
 
+        if !in_main && trimmed.starts_with('@') {
+            pending_attributes.push(line);
+            continue;
+        }
+
         // Detect main function start
         if is_main_signature(trimmed) && !in_main {
+            pending_attributes.clear();
             in_main = true;
             brace_depth = brace_delta(trimmed);
             seen_main_open_brace = trimmed.contains('{');
@@ -481,8 +490,22 @@ fn filter_out_main_function(source: &str) -> String {
             continue;
         }
 
+        if !pending_attributes.is_empty() {
+            for attr_line in pending_attributes.drain(..) {
+                result.push_str(attr_line);
+                result.push('\n');
+            }
+        }
+
         result.push_str(line);
         result.push('\n');
+    }
+
+    if !pending_attributes.is_empty() {
+        for attr_line in pending_attributes {
+            result.push_str(attr_line);
+            result.push('\n');
+        }
     }
 
     result
@@ -806,6 +829,70 @@ function helper(): None { return None; }
         );
         assert!(generated.contains("function helper(): None"), "{generated}");
     }
+
+    #[test]
+    fn generated_runner_escapes_ignore_reason_braces() {
+        let source =
+            "@Test\n@Ignore(\"\\{danger\\}\")\nfunction skipped(): None { return None; }\n";
+        let tokens = tokenize(source).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().expect("parse");
+        let discovery = discover_tests(&program);
+
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(generated.contains("Reason: \\{danger\\}"), "{generated}");
+    }
+
+    #[test]
+    fn ignored_tests_do_not_run_before_or_after_hooks() {
+        let source = r#"
+@Before
+function setup(): None { return None; }
+
+@After
+function teardown(): None { return None; }
+
+@Test
+@Ignore("later")
+function skipped(): None { return None; }
+"#;
+        let tokens = tokenize(source).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().expect("parse");
+        let discovery = discover_tests(&program);
+
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(
+            !generated.contains("tests_total = tests_total + 1;\n    // @Before: setup\n    setup();\n    // @Test: skipped"),
+            "{generated}"
+        );
+        assert!(
+            !generated.contains("println(\"[IGNORE] skipped\");\n    println(\"\");\n\n    // @After: teardown\n    teardown();"),
+            "{generated}"
+        );
+    }
+
+    #[test]
+    fn strips_attributes_attached_to_main_function() {
+        let discovery = TestDiscovery {
+            suites: vec![],
+            total_tests: 0,
+            ignored_tests: 0,
+        };
+        let source = r#"
+@Test
+@Ignore("not a real test")
+function main(): Integer {
+    return 0;
+}
+
+function helper(): None { return None; }
+"#;
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(!generated.contains("@Test"), "{generated}");
+        assert!(!generated.contains("@Ignore(\"not a real test\")"), "{generated}");
+        assert!(generated.contains("function helper(): None"), "{generated}");
+    }
 }
 
 /// Generate runner code with mutable counters
@@ -825,17 +912,9 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
     for test in &suite.tests {
         code.push_str("    tests_total = tests_total + 1;\n");
 
-        // BeforeEach
-        if let Some(ref before_each_fn) = suite.before_each {
-            code.push_str(&format!("    // @Before: {}\n", before_each_fn.name));
-            code.push_str(&format!("    {}();\n", before_each_fn.name));
-        }
-
-        // Test itself
-        code.push_str(&format!("    // @Test: {}\n", test.name));
-
         if test.ignored {
             // Report ignore inline
+            code.push_str(&format!("    // @Test: {}\n", test.name));
             code.push_str("    tests_ignored = tests_ignored + 1;\n");
             code.push_str(&format!("    println(\"[IGNORE] {}\");\n", test.name));
             if let Some(reason) = test
@@ -849,20 +928,29 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
                 ));
             }
         } else {
+            // BeforeEach
+            if let Some(ref before_each_fn) = suite.before_each {
+                code.push_str(&format!("    // @Before: {}\n", before_each_fn.name));
+                code.push_str(&format!("    {}();\n", before_each_fn.name));
+            }
+
+            // Test itself
+            code.push_str(&format!("    // @Test: {}\n", test.name));
             // Run the test
             code.push_str(&format!("    print(\"Running: {}... \");\n", test.name));
             code.push_str(&format!("    {}();\n", test.name));
             code.push_str("    tests_passed = tests_passed + 1;\n");
             code.push_str("    println(\"[PASS]\");\n");
+            code.push_str("    println(\"\");\n\n");
+
+            // AfterEach
+            if let Some(ref after_each_fn) = suite.after_each {
+                code.push_str(&format!("    // @After: {}\n", after_each_fn.name));
+                code.push_str(&format!("    {}();\n", after_each_fn.name));
+                code.push_str("    println(\"\");\n\n");
+            }
         }
         code.push_str("    println(\"\");\n\n");
-
-        // AfterEach
-        if let Some(ref after_each_fn) = suite.after_each {
-            code.push_str(&format!("    // @After: {}\n", after_each_fn.name));
-            code.push_str(&format!("    {}();\n", after_each_fn.name));
-            code.push_str("    println(\"\");\n\n");
-        }
     }
 
     // AfterAll
@@ -891,17 +979,9 @@ fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
     for test in &suite.tests {
         code.push_str("    tests_total = tests_total + 1;\n");
 
-        // BeforeEach
-        if let Some(ref before_each_fn) = suite.before_each {
-            code.push_str(&format!("    // @Before: {}\n", before_each_fn.name));
-            code.push_str(&format!("    {}();\n", before_each_fn.name));
-        }
-
-        // Test itself
-        code.push_str(&format!("    // @Test: {}\n", test.name));
-
         if test.ignored {
             // Report ignore inline
+            code.push_str(&format!("    // @Test: {}\n", test.name));
             code.push_str("    tests_ignored = tests_ignored + 1;\n");
             code.push_str(&format!("    println(\"[IGNORE] {}\");\n", test.name));
             if let Some(reason) = test
@@ -915,20 +995,29 @@ fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
                 ));
             }
         } else {
+            // BeforeEach
+            if let Some(ref before_each_fn) = suite.before_each {
+                code.push_str(&format!("    // @Before: {}\n", before_each_fn.name));
+                code.push_str(&format!("    {}();\n", before_each_fn.name));
+            }
+
+            // Test itself
+            code.push_str(&format!("    // @Test: {}\n", test.name));
             // Run the test
             code.push_str(&format!("    print(\"Running: {}... \");\n", test.name));
             code.push_str(&format!("    {}();\n", test.name));
             code.push_str("    tests_passed = tests_passed + 1;\n");
             code.push_str("    println(\"[PASS]\");\n");
+            code.push_str("    println(\"\");\n\n");
+
+            // AfterEach
+            if let Some(ref after_each_fn) = suite.after_each {
+                code.push_str(&format!("    // @After: {}\n", after_each_fn.name));
+                code.push_str(&format!("    {}();\n", after_each_fn.name));
+                code.push_str("    println(\"\");\n\n");
+            }
         }
         code.push_str("    println(\"\");\n\n");
-
-        // AfterEach
-        if let Some(ref after_each_fn) = suite.after_each {
-            code.push_str(&format!("    // @After: {}\n", after_each_fn.name));
-            code.push_str(&format!("    {}();\n", after_each_fn.name));
-            code.push_str("    println(\"\");\n\n");
-        }
     }
 
     // AfterAll

@@ -17406,6 +17406,68 @@ function main(): Integer {
         let _ = fs::remove_dir_all(temp_root);
     }
 
+    #[test]
+    fn cli_run_tests_skips_before_hooks_for_ignored_tests() {
+        let temp_root = make_temp_project_root("cli-test-ignore-skips-before");
+        let test_file = temp_root.join("ignored_before_test.apex");
+        fs::write(
+            &test_file,
+            r#"
+                @Before
+                function setup(): None { fail("before hook should not run for ignored test"); }
+
+                @Test
+                @Ignore("later")
+                function skipped(): None { return None; }
+            "#,
+        )
+        .expect("write ignored before test");
+
+        run_tests(Some(&test_file), false, Some("skipped"))
+            .expect("ignored test should skip before hook execution");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_run_tests_skips_after_hooks_for_ignored_tests() {
+        let temp_root = make_temp_project_root("cli-test-ignore-skips-after");
+        let test_file = temp_root.join("ignored_after_test.apex");
+        fs::write(
+            &test_file,
+            r#"
+                @After
+                function teardown(): None { fail("after hook should not run for ignored test"); }
+
+                @Test
+                @Ignore("later")
+                function skipped(): None { return None; }
+            "#,
+        )
+        .expect("write ignored after test");
+
+        run_tests(Some(&test_file), false, Some("skipped"))
+            .expect("ignored test should skip after hook execution");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn cli_run_tests_accepts_ignore_reasons_with_literal_braces() {
+        let temp_root = make_temp_project_root("cli-test-ignore-reason-braces");
+        let test_file = temp_root.join("ignored_braces_test.apex");
+        fs::write(
+            &test_file,
+            "@Test\n@Ignore(\"\\{danger\\}\")\nfunction skipped(): None { return None; }\n",
+        )
+        .expect("write ignored braces test");
+
+        run_tests(Some(&test_file), false, Some("skipped"))
+            .expect("ignored test reason with literal braces should execute cleanly");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
     #[cfg(unix)]
     #[test]
     fn cli_run_tests_skips_symlinked_directories() {
@@ -17790,7 +17852,11 @@ function main(): Integer {
 
         with_current_dir(&temp_root, || {
             let err = show_project_info().expect_err("info should reject non-apex entry");
-            assert!(err.contains("is not an .apex file"), "{err}");
+            assert!(
+                err.contains("must resolve to an .apex source file")
+                    || err.contains("is not an .apex file"),
+                "{err}"
+            );
         });
 
         let _ = fs::remove_dir_all(temp_root);
@@ -17838,7 +17904,11 @@ function main(): Integer {
 
         with_current_dir(&temp_root, || {
             let err = show_project_info().expect_err("info should reject non-apex secondary file");
-            assert!(err.contains("is not an .apex file"), "{err}");
+            assert!(
+                err.contains("must resolve to an .apex source file")
+                    || err.contains("is not an .apex file"),
+                "{err}"
+            );
         });
 
         let _ = fs::remove_dir_all(temp_root);

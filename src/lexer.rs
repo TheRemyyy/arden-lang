@@ -210,13 +210,14 @@ pub enum Token<'src> {
         let s = lex.slice();
         let inner = &s[1..s.len() - 1];
         if let Some(escaped) = inner.strip_prefix('\\') {
-            escaped.chars().next().map(|ch| match ch {
+            let ch = escaped.chars().next()?;
+            Some(match ch {
                 'n' => '\n',
                 't' => '\t',
                 'r' => '\r',
                 '\\' => '\\',
                 '\'' => '\'',
-                other => other,
+                _ => return None,
             })
         } else {
             inner.chars().next()
@@ -352,6 +353,12 @@ mod tests {
     #[test]
     fn rejects_unterminated_string_literal() {
         let err = tokenize("\"unterminated").expect_err("unterminated string should fail");
+        assert!(err.contains("Unknown token"), "{err}");
+    }
+
+    #[test]
+    fn rejects_invalid_char_escape_sequence() {
+        let err = tokenize("'\\q'").expect_err("invalid char escape should fail");
         assert!(err.contains("Unknown token"), "{err}");
     }
 

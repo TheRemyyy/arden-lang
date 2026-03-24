@@ -1095,6 +1095,8 @@ fn escape_string_contents(value: &str) -> String {
         .flat_map(|ch| match ch {
             '\\' => "\\\\".chars().collect::<Vec<_>>(),
             '"' => "\\\"".chars().collect(),
+            '{' => "\\{".chars().collect(),
+            '}' => "\\}".chars().collect(),
             '\n' => "\\n".chars().collect(),
             '\r' => "\\r".chars().collect(),
             '\t' => "\\t".chars().collect(),
@@ -1268,6 +1270,39 @@ function main(): None { return; }
             formatted.starts_with("// banner\npackage demo;\n"),
             "{formatted}"
         );
+    }
+
+    #[test]
+    fn preserves_literal_braces_in_plain_strings() {
+        let source = r#"
+function main(): None {
+    s: String = "\{literal\}";
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("\"\\{literal\\}\""), "{formatted}");
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should preserve literal braces");
+    }
+
+    #[test]
+    fn preserves_literal_braces_in_ignore_reasons() {
+        let source = r#"
+@Test
+@Ignore("\{skip\}")
+function skipped(): None { return None; }
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(formatted.contains("@Ignore(\"\\{skip\\}\")"), "{formatted}");
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted output should preserve ignore reason braces");
     }
 
     #[test]

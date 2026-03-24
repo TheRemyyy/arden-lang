@@ -2242,8 +2242,9 @@ impl<'src> Parser<'src> {
             }
             Some(Token::String(s)) => {
                 let s = s.to_string();
+                let span = self.current_span();
                 self.advance();
-                self.parse_string_interp(s)?
+                self.parse_string_interp(s, span)?
             }
             Some(Token::Char(c)) => {
                 let c = *c;
@@ -2601,7 +2602,7 @@ impl<'src> Parser<'src> {
         Ok(Spanned::new(expr, start..end))
     }
 
-    fn parse_string_interp(&self, s: String) -> ParseResult<Expr> {
+    fn parse_string_interp(&self, s: String, span: Span) -> ParseResult<Expr> {
         // Parse string interpolation: "Hello, {name}!"
         let mut parts = Vec::new();
         let mut current = String::new();
@@ -2620,12 +2621,17 @@ impl<'src> Parser<'src> {
                         '{' => current.push('{'),
                         '}' => current.push('}'),
                         other => {
-                            current.push('\\');
-                            current.push(other);
+                            return Err(ParseError::new(
+                                format!("Invalid escape sequence '\\{}' in string literal", other),
+                                span,
+                            ));
                         }
                     }
                 } else {
-                    current.push('\\');
+                    return Err(ParseError::new(
+                        "String literal cannot end with a trailing backslash",
+                        span,
+                    ));
                 }
             } else if c == '{' {
                 if !current.is_empty() {
@@ -4631,6 +4637,18 @@ mod tests {
             panic!("Expected string literal");
         };
         assert_eq!(s, "line1\nline2\t\"ok\"\\");
+    }
+
+    #[test]
+    fn test_string_literal_rejects_invalid_escape_sequences() {
+        let source = r#"
+            function main(): None {
+                s: String = "bad \q escape";
+                return None;
+            }
+        "#;
+        let err = parse_source(source).expect_err("invalid string escape should fail");
+        assert!(err.message.contains("Invalid escape sequence"), "{err:?}");
     }
 
     #[test]
