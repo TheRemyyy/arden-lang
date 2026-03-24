@@ -42,6 +42,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed lint `L003` false unused-import reports for generic bounds:
   - imports referenced only from generic bounds like `function f<T extends Comparable>(...)`, `class Box<T extends Cmp>`, `enum Maybe<T extends Comparable>`, and `interface Sorter<T extends Cmp>` now count as used instead of being ignored
   - the same bound-only usage now also works for class method generic parameters, so method-local bounds no longer trigger false unused-import warnings
+- Fixed qualified inheritance/implementation names:
+  - parser now accepts dotted names in `class ... extends ...`, `class ... implements ...`, and `interface ... extends ...`, so aliases and module-qualified bases like `u.Base` / `u.Api.Named` no longer fail with `Expected LBrace, found Some(Dot)`
+  - lint `L003` now treats namespace aliases used only from those inheritance/implementation clauses as real usage instead of falsely reporting imports like `import app as u;` as unused
+  - typechecking now resolves those alias-qualified and nested module-qualified inheritance references to the real class/interface definitions, so valid code like `class Child extends u.Base` and `interface Child extends u.Api.Named` no longer fails later with `extends unknown class` / `implements unknown interface`
 - Fixed `apex test` runner import injection and `main(...)` stripping edge cases:
   - generated runners now still inject `import std.io.*;` when the source only mentions that import inside block comments, instead of treating commented text as a real import and emitting uncompilable runner code
   - shebang-based scripts now keep `#!/...` as the first line and receive the injected stdio import after the shebang instead of before it

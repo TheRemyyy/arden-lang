@@ -552,6 +552,28 @@ impl TypeChecker {
         (matches.len() == 1).then(|| matches[0].clone())
     }
 
+    fn resolve_nominal_reference_name(&self, name: &str) -> Option<String> {
+        if let Some(resolved) = self.resolve_known_type_name(name) {
+            return Some(resolved);
+        }
+
+        if let Some(path) = self.import_aliases.get(name) {
+            if !path.ends_with(".*") {
+                if let Some(resolved) = self.resolve_known_type_name(path) {
+                    return Some(resolved);
+                }
+            }
+        }
+
+        let (alias, rest) = name.split_once('.')?;
+        let member_parts = rest
+            .split('.')
+            .map(|part| part.to_string())
+            .collect::<Vec<_>>();
+        let candidate = self.resolve_import_alias_module_candidate(alias, &member_parts)?;
+        self.known_type_exists(&candidate).then_some(candidate)
+    }
+
     fn resolve_user_defined_generic_type(
         &self,
         name: &str,
@@ -1693,6 +1715,7 @@ impl TypeChecker {
         self.populate_import_aliases(program);
         // First pass: collect all declarations
         self.collect_declarations(program);
+        self.normalize_inheritance_references();
         for (name, iface) in self.interfaces.clone() {
             for parent in iface.extends {
                 if !self.interfaces.contains_key(&parent) {
@@ -1741,6 +1764,57 @@ impl TypeChecker {
                 Decl::Module(module) => {
                     self.collect_module_declarations(module, &module.name, decl.span.clone());
                 }
+            }
+        }
+    }
+
+    fn normalize_inheritance_references(&mut self) {
+        let class_updates = self
+            .classes
+            .iter()
+            .map(|(name, info)| {
+                (
+                    name.clone(),
+                    info.extends.as_ref().map(|parent| {
+                        self.resolve_nominal_reference_name(parent)
+                            .unwrap_or_else(|| parent.clone())
+                    }),
+                    info.implements
+                        .iter()
+                        .map(|interface_name| {
+                            self.resolve_nominal_reference_name(interface_name)
+                                .unwrap_or_else(|| interface_name.clone())
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (name, extends, implements) in class_updates {
+            if let Some(class) = self.classes.get_mut(&name) {
+                class.extends = extends;
+                class.implements = implements;
+            }
+        }
+
+        let interface_updates = self
+            .interfaces
+            .iter()
+            .map(|(name, info)| {
+                (
+                    name.clone(),
+                    info.extends
+                        .iter()
+                        .map(|parent| {
+                            self.resolve_nominal_reference_name(parent)
+                                .unwrap_or_else(|| parent.clone())
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (name, extends) in interface_updates {
+            if let Some(interface) = self.interfaces.get_mut(&name) {
+                interface.extends = extends;
             }
         }
     }
@@ -2395,17 +2469,20 @@ impl TypeChecker {
         self.current_generic_type_bindings = self.make_generic_type_bindings(&class.generic_params);
         self.current_class = Some(class_key.to_string());
         if let Some(parent) = &class.extends {
-            if self.interfaces.contains_key(parent) {
+            let resolved_parent = self
+                .resolve_nominal_reference_name(parent)
+                .unwrap_or_else(|| parent.clone());
+            if self.interfaces.contains_key(&resolved_parent) {
                 self.error(
                     format!("Class '{}' cannot extend interface '{}'", class_key, parent),
                     span.clone(),
                 );
-            } else if !self.classes.contains_key(parent) {
+            } else if !self.classes.contains_key(&resolved_parent) {
                 self.error(
                     format!("Class '{}' extends unknown class '{}'", class_key, parent),
                     span.clone(),
                 );
-            } else if self.is_same_or_subclass_of(parent, class_key) {
+            } else if self.is_same_or_subclass_of(&resolved_parent, class_key) {
                 self.error(
                     format!(
                         "Inheritance cycle detected: '{}' cannot extend '{}'",
@@ -2414,7 +2491,7 @@ impl TypeChecker {
                     span.clone(),
                 );
             } else {
-                self.check_class_visibility(parent, span.clone());
+                self.check_class_visibility(&resolved_parent, span.clone());
             }
         }
 
@@ -2424,7 +2501,10 @@ impl TypeChecker {
         }
 
         for interface_name in &class.implements {
-            if !self.interfaces.contains_key(interface_name) {
+            let resolved_interface = self
+                .resolve_nominal_reference_name(interface_name)
+                .unwrap_or_else(|| interface_name.clone());
+            if !self.interfaces.contains_key(&resolved_interface) {
                 self.error(
                     format!(
                         "Class '{}' implements unknown interface '{}'",
@@ -2438,7 +2518,14 @@ impl TypeChecker {
         let mut required_methods: HashMap<String, FuncSig> = HashMap::new();
         let mut visited = std::collections::HashSet::new();
         for interface_name in &class.implements {
-            self.collect_interface_methods(interface_name, &mut required_methods, &mut visited);
+            let resolved_interface = self
+                .resolve_nominal_reference_name(interface_name)
+                .unwrap_or_else(|| interface_name.clone());
+            self.collect_interface_methods(
+                &resolved_interface,
+                &mut required_methods,
+                &mut visited,
+            );
         }
         for (method_name, required_sig) in required_methods {
             let Some((owner, actual_sig, _)) = self.lookup_class_method(class_key, &method_name)
@@ -6202,6 +6289,252 @@ mod tests {
             }
         "#;
         check_source(src).expect("inherited method should typecheck");
+    }
+
+    #[test]
+    fn supports_extending_namespace_aliased_module_class() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                class Base {
+                    constructor() {}
+                    public function greet(): Integer { return 7; }
+                }
+            }
+            class Child extends u.Base {
+                constructor() {}
+            }
+            function main(): Integer {
+                c: Child = Child();
+                return c.greet();
+            }
+        "#;
+        check_source(src).expect("aliased base class should typecheck");
+    }
+
+    #[test]
+    fn supports_extending_nested_namespace_aliased_module_class() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                module Models {
+                    class Base {
+                        constructor() {}
+                        public function greet(): Integer { return 7; }
+                    }
+                }
+            }
+            class Child extends u.Models.Base {
+                constructor() {}
+            }
+            function main(): Integer {
+                c: Child = Child();
+                return c.greet();
+            }
+        "#;
+        check_source(src).expect("nested aliased base class should typecheck");
+    }
+
+    #[test]
+    fn supports_implementing_namespace_aliased_module_interface() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                interface Printable {
+                    function print_me(): Integer;
+                }
+            }
+            class Book implements u.Printable {
+                constructor() {}
+                function print_me(): Integer { return 7; }
+            }
+            function main(): Integer {
+                b: Book = Book();
+                return b.print_me();
+            }
+        "#;
+        check_source(src).expect("aliased interface should typecheck");
+    }
+
+    #[test]
+    fn supports_implementing_nested_namespace_aliased_module_interface() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                module Api {
+                    interface Printable {
+                        function print_me(): Integer;
+                    }
+                }
+            }
+            class Book implements u.Api.Printable {
+                constructor() {}
+                function print_me(): Integer { return 7; }
+            }
+            function main(): Integer {
+                b: Book = Book();
+                return b.print_me();
+            }
+        "#;
+        check_source(src).expect("nested aliased interface should typecheck");
+    }
+
+    #[test]
+    fn supports_implementing_multiple_namespace_aliased_interfaces() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                interface Named {
+                    function name(): Integer;
+                }
+                interface Printable {
+                    function print_me(): Integer;
+                }
+            }
+            class Book implements u.Named, u.Printable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                b: Book = Book();
+                return b.name() + b.print_me();
+            }
+        "#;
+        check_source(src).expect("multiple aliased interfaces should typecheck");
+    }
+
+    #[test]
+    fn supports_implementing_multiple_nested_namespace_aliased_interfaces() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                module Api {
+                    interface Named {
+                        function name(): Integer;
+                    }
+                    interface Printable {
+                        function print_me(): Integer;
+                    }
+                }
+            }
+            class Book implements u.Api.Named, u.Api.Printable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                b: Book = Book();
+                return b.name() + b.print_me();
+            }
+        "#;
+        check_source(src).expect("multiple nested aliased interfaces should typecheck");
+    }
+
+    #[test]
+    fn supports_interface_extending_namespace_aliased_interface() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                interface Named {
+                    function name(): Integer;
+                }
+            }
+            interface Printable extends u.Named {
+                function print_me(): Integer;
+            }
+            class Report implements Printable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                r: Report = Report();
+                return r.name() + r.print_me();
+            }
+        "#;
+        check_source(src).expect("aliased parent interface should typecheck");
+    }
+
+    #[test]
+    fn supports_interface_extending_nested_namespace_aliased_interface() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                module Api {
+                    interface Named {
+                        function name(): Integer;
+                    }
+                }
+            }
+            interface Printable extends u.Api.Named {
+                function print_me(): Integer;
+            }
+            class Report implements Printable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                r: Report = Report();
+                return r.name() + r.print_me();
+            }
+        "#;
+        check_source(src).expect("nested aliased parent interface should typecheck");
+    }
+
+    #[test]
+    fn supports_interface_extending_multiple_namespace_aliased_interfaces() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                interface Named {
+                    function name(): Integer;
+                }
+                interface Printable {
+                    function print_me(): Integer;
+                }
+            }
+            interface Reportable extends u.Named, u.Printable {}
+            class Report implements Reportable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                r: Report = Report();
+                return r.name() + r.print_me();
+            }
+        "#;
+        check_source(src).expect("multiple aliased parent interfaces should typecheck");
+    }
+
+    #[test]
+    fn supports_interface_extending_multiple_nested_namespace_aliased_interfaces() {
+        let src = r#"
+            import Lib as u;
+            module Lib {
+                module Api {
+                    interface Named {
+                        function name(): Integer;
+                    }
+                    interface Printable {
+                        function print_me(): Integer;
+                    }
+                }
+            }
+            interface Reportable extends u.Api.Named, u.Api.Printable {}
+            class Report implements Reportable {
+                constructor() {}
+                function name(): Integer { return 1; }
+                function print_me(): Integer { return 2; }
+            }
+            function main(): Integer {
+                r: Report = Report();
+                return r.name() + r.print_me();
+            }
+        "#;
+        check_source(src).expect("multiple nested aliased parent interfaces should typecheck");
     }
 
     #[test]

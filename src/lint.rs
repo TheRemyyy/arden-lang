@@ -818,10 +818,10 @@ fn collect_used_names(program: &Program, used: &mut HashSet<String>) {
             Decl::Class(class) => {
                 collect_generic_param_bound_names(&class.generic_params, used);
                 if let Some(base) = &class.extends {
-                    used.insert(base.clone());
+                    collect_qualified_name(base, used);
                 }
                 for name in &class.implements {
-                    used.insert(name.clone());
+                    collect_qualified_name(name, used);
                 }
                 for field in &class.fields {
                     collect_type_names(&field.ty, used);
@@ -861,7 +861,7 @@ fn collect_used_names(program: &Program, used: &mut HashSet<String>) {
             Decl::Interface(interface) => {
                 collect_generic_param_bound_names(&interface.generic_params, used);
                 for name in &interface.extends {
-                    used.insert(name.clone());
+                    collect_qualified_name(name, used);
                 }
                 for method in &interface.methods {
                     for param in &method.params {
@@ -893,11 +893,15 @@ fn collect_generic_param_bound_names(
 ) {
     for param in generic_params {
         for bound in &param.bounds {
-            used.insert(bound.clone());
-            if let Some((prefix, _)) = bound.split_once('.') {
-                used.insert(prefix.to_string());
-            }
+            collect_qualified_name(bound, used);
         }
+    }
+}
+
+fn collect_qualified_name(name: &str, used: &mut HashSet<String>) {
+    used.insert(name.to_string());
+    if let Some((prefix, _)) = name.split_once('.') {
+        used.insert(prefix.to_string());
     }
 }
 
@@ -2449,6 +2453,146 @@ interface Sorter<T extends Comparable> {
             f.code == "L003"
                 && f.message
                     .contains("import 'util.Comparable' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_extends_namespace_alias_marks_import_as_used() {
+        let source = r#"import app as u;
+
+class Child extends u.Base {
+    value: Integer;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_extends_nested_namespace_alias_marks_import_as_used() {
+        let source = r#"import app as u;
+
+class Child extends u.Models.Base {
+    value: Integer;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_implements_namespace_alias_marks_import_as_used() {
+        let source = r#"import app as u;
+
+class Child implements u.Serializable {
+    value: Integer;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_implements_nested_namespace_alias_marks_import_as_used() {
+        let source = r#"import app as u;
+
+class Child implements u.Api.Serializable {
+    value: Integer;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_implements_multiple_namespace_aliases_marks_import_as_used() {
+        let source = r#"import app as u;
+
+class Child implements u.Serializable, u.Named {
+    value: Integer;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_implements_multiple_nested_namespace_aliases_marks_import_as_used() {
+        let source = r#"import app as u;
+
+class Child implements u.Api.Serializable, u.Api.Named {
+    value: Integer;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn interface_extends_namespace_alias_marks_import_as_used() {
+        let source = r#"import app as u;
+
+interface Child extends u.Base {
+    function run(): None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn interface_extends_nested_namespace_alias_marks_import_as_used() {
+        let source = r#"import app as u;
+
+interface Child extends u.Api.Base {
+    function run(): None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn interface_extends_multiple_namespace_aliases_marks_import_as_used() {
+        let source = r#"import app as u;
+
+interface Child extends u.Base, u.Named {
+    function run(): None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn interface_extends_multiple_nested_namespace_aliases_marks_import_as_used() {
+        let source = r#"import app as u;
+
+interface Child extends u.Api.Base, u.Api.Named {
+    function run(): None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
         }));
     }
 }

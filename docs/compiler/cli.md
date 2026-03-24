@@ -232,6 +232,9 @@ Lint/fix note:
 - `apex lint` `L003` now also treats imports as used when they only appear inside explicit generic call arguments (`List<Boxed>()`, `List<u.Box>()`) or inside interface default method bodies.
 - `apex lint` now also applies `L004` and `L005` inside interface default method bodies, including locals, loop variables, lambda parameters, and match bindings.
 - `apex lint` `L003` now also treats imports as used when they appear only in generic bounds on functions, classes, enums, interfaces, or class methods.
+- Qualified names are now accepted in inheritance/implementation clauses too, so `class Child extends u.Base`, `class Child implements u.Api.Named`, and `interface Child extends u.Base` parse correctly instead of stopping at the first dot.
+- `apex lint` `L003` now also treats namespace aliases used only in `extends` / `implements` clauses as used.
+- Typechecking now also resolves those qualified inheritance references through aliases and module paths, so valid forms like `class Child extends u.Base` and `class Book implements u.Api.Printable` no longer fail later as unknown classes/interfaces.
 
 ### Linting and Safe Fixes
 

@@ -777,7 +777,7 @@ impl<'src> Parser<'src> {
                     self.current_span(),
                 ));
             }
-            let parent = self.parse_ident()?;
+            let parent = self.parse_qualified_name()?;
             if self.check(&Token::Comma) {
                 return Err(ParseError::new(
                     "Class extends clause accepts exactly one base class",
@@ -799,7 +799,7 @@ impl<'src> Parser<'src> {
                     self.current_span(),
                 ));
             }
-            implements.push(self.parse_ident()?);
+            implements.push(self.parse_qualified_name()?);
             while self.check(&Token::Comma) {
                 self.advance();
                 if self.check(&Token::LBrace) {
@@ -808,7 +808,7 @@ impl<'src> Parser<'src> {
                         self.current_span(),
                     ));
                 }
-                implements.push(self.parse_ident()?);
+                implements.push(self.parse_qualified_name()?);
             }
         }
 
@@ -1035,6 +1035,22 @@ impl<'src> Parser<'src> {
         }
     }
 
+    fn parse_qualified_name(&mut self) -> ParseResult<String> {
+        let mut qualified_name = self.parse_ident()?;
+        while self.check(&Token::Dot) || self.check(&Token::DotDot) {
+            if self.check(&Token::DotDot) {
+                return Err(ParseError::new(
+                    "Qualified name cannot contain '..'",
+                    self.current_span(),
+                ));
+            }
+            self.advance();
+            qualified_name.push('.');
+            qualified_name.push_str(&self.parse_ident()?);
+        }
+        Ok(qualified_name)
+    }
+
     fn parse_interface(&mut self, _attributes: Vec<Attribute>) -> ParseResult<InterfaceDecl> {
         let visibility = self.parse_visibility();
 
@@ -1052,7 +1068,7 @@ impl<'src> Parser<'src> {
                     self.current_span(),
                 ));
             }
-            extends.push(self.parse_ident()?);
+            extends.push(self.parse_qualified_name()?);
             while self.check(&Token::Comma) {
                 self.advance();
                 if self.check(&Token::LBrace) {
@@ -1061,7 +1077,7 @@ impl<'src> Parser<'src> {
                         self.current_span(),
                     ));
                 }
-                extends.push(self.parse_ident()?);
+                extends.push(self.parse_qualified_name()?);
             }
         }
 
