@@ -517,6 +517,7 @@ pub fn rewrite_program_for_project(
                         let (
                             module_local_functions,
                             module_local_classes,
+                            module_local_interfaces,
                             module_local_enums,
                             module_local_modules,
                         ) = collect_direct_module_symbol_names(&module.declarations);
@@ -622,6 +623,7 @@ pub fn rewrite_program_for_project(
                                                     &module_prefix,
                                                     current_namespace,
                                                     entry_namespace,
+                                                    &module_local_interfaces,
                                                     &module_local_modules,
                                                     &imported_modules,
                                                     global_module_map,
@@ -795,6 +797,7 @@ pub fn rewrite_program_for_project(
                                         let (
                                             nested_local_functions,
                                             nested_local_classes,
+                                            nested_local_interfaces,
                                             nested_local_enums,
                                             nested_local_modules,
                                         ) = collect_direct_module_symbol_names(
@@ -807,6 +810,7 @@ pub fn rewrite_program_for_project(
                                             entry_namespace,
                                             &nested_local_functions,
                                             &nested_local_classes,
+                                            &nested_local_interfaces,
                                             &nested_local_enums,
                                             &nested_local_modules,
                                             &imported_map,
@@ -831,6 +835,7 @@ pub fn rewrite_program_for_project(
                                                     &module_prefix,
                                                     current_namespace,
                                                     entry_namespace,
+                                                    &module_local_interfaces,
                                                     &module_local_modules,
                                                     &imported_modules,
                                                     global_module_map,
@@ -1375,6 +1380,7 @@ fn rewrite_interface_reference_for_module(
     current_namespace: &str,
     entry_namespace: &str,
     local_interfaces: &HashSet<String>,
+    local_modules: &HashSet<String>,
     imported_interfaces: &ImportedMap,
     global_interface_map: &HashMap<String, String>,
 ) -> String {
@@ -1384,6 +1390,16 @@ fn rewrite_interface_reference_for_module(
             entry_namespace,
             &module_prefixed_symbol(module_prefix, name),
         );
+    }
+
+    if let Some((head, _tail)) = name.split_once('.') {
+        if local_modules.contains(head) {
+            return mangle_project_symbol(
+                current_namespace,
+                entry_namespace,
+                &module_prefixed_symbol(module_prefix, &name.replace('.', "__")),
+            );
+        }
     }
 
     rewrite_interface_reference_for_project(
@@ -1651,9 +1667,11 @@ fn collect_direct_module_symbol_names(
     HashSet<String>,
     HashSet<String>,
     HashSet<String>,
+    HashSet<String>,
 ) {
     let mut functions = HashSet::new();
     let mut classes = HashSet::new();
+    let mut interfaces = HashSet::new();
     let mut enums = HashSet::new();
     let mut modules = HashSet::new();
 
@@ -1665,17 +1683,20 @@ fn collect_direct_module_symbol_names(
             Decl::Class(class) => {
                 classes.insert(class.name.clone());
             }
+            Decl::Interface(interface) => {
+                interfaces.insert(interface.name.clone());
+            }
             Decl::Enum(en) => {
                 enums.insert(en.name.clone());
             }
             Decl::Module(module) => {
                 modules.insert(module.name.clone());
             }
-            Decl::Interface(_) | Decl::Import(_) => {}
+            Decl::Import(_) => {}
         }
     }
 
-    (functions, classes, enums, modules)
+    (functions, classes, interfaces, enums, modules)
 }
 
 fn module_prefixed_symbol(module_prefix: &str, name: &str) -> String {
@@ -1690,6 +1711,7 @@ fn rewrite_nested_module_decl_for_project(
     entry_namespace: &str,
     module_local_functions: &HashSet<String>,
     module_local_classes: &HashSet<String>,
+    module_local_interfaces: &HashSet<String>,
     module_local_enums: &HashSet<String>,
     module_local_modules: &HashSet<String>,
     imported_map: &ImportedMap,
@@ -1798,6 +1820,7 @@ fn rewrite_nested_module_decl_for_project(
                         module_prefix,
                         current_namespace,
                         entry_namespace,
+                        module_local_interfaces,
                         module_local_modules,
                         imported_modules,
                         global_module_map,
@@ -1995,6 +2018,7 @@ fn rewrite_nested_module_decl_for_project(
             let (
                 nested_local_functions,
                 nested_local_classes,
+                nested_local_interfaces,
                 nested_local_enums,
                 nested_local_modules,
             ) = collect_direct_module_symbol_names(&module.declarations);
@@ -2016,6 +2040,7 @@ fn rewrite_nested_module_decl_for_project(
                         entry_namespace,
                         &nested_local_functions,
                         &nested_local_classes,
+                        &nested_local_interfaces,
                         &nested_local_enums,
                         &nested_local_modules,
                         imported_map,
@@ -2042,6 +2067,7 @@ fn rewrite_nested_module_decl_for_project(
                         module_prefix,
                         current_namespace,
                         entry_namespace,
+                        module_local_interfaces,
                         module_local_modules,
                         imported_modules,
                         global_module_map,
@@ -8785,5 +8811,873 @@ mod tests {
             panic!("expected nested interface declaration");
         };
         assert_eq!(interface.extends, vec!["util__Named".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_module_class_implements_local_interface_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "M".to_string(),
+                declarations: vec![
+                    sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Named".to_string(),
+                        generic_params: vec![],
+                        extends: vec![],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                    sp(Decl::Class(ast::ClassDecl {
+                        name: "Child".to_string(),
+                        generic_params: vec![],
+                        extends: None,
+                        implements: vec!["Named".to_string()],
+                        fields: vec![],
+                        constructor: None,
+                        destructor: None,
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                ],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let class = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(class.implements, vec!["app__M__Named".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_module_interface_extends_local_interface_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "M".to_string(),
+                declarations: vec![
+                    sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Named".to_string(),
+                        generic_params: vec![],
+                        extends: vec![],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                    sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Child".to_string(),
+                        generic_params: vec![],
+                        extends: vec!["Named".to_string()],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                ],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let interface = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) if interface.name == "Child" => Some(interface),
+                _ => None,
+            })
+            .expect("expected child interface declaration");
+        assert_eq!(interface.extends, vec!["app__M__Named".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_module_class_implements_local_nested_interface_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "M".to_string(),
+                declarations: vec![
+                    sp(Decl::Module(ast::ModuleDecl {
+                        name: "Api".to_string(),
+                        declarations: vec![sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Named".to_string(),
+                            generic_params: vec![],
+                            extends: vec![],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        }))],
+                    })),
+                    sp(Decl::Class(ast::ClassDecl {
+                        name: "Child".to_string(),
+                        generic_params: vec![],
+                        extends: None,
+                        implements: vec!["Api.Named".to_string()],
+                        fields: vec![],
+                        constructor: None,
+                        destructor: None,
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                ],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let class = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(class.implements, vec!["app__M__Api__Named".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_module_interface_extends_local_nested_interface_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "M".to_string(),
+                declarations: vec![
+                    sp(Decl::Module(ast::ModuleDecl {
+                        name: "Api".to_string(),
+                        declarations: vec![sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Named".to_string(),
+                            generic_params: vec![],
+                            extends: vec![],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        }))],
+                    })),
+                    sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Child".to_string(),
+                        generic_params: vec![],
+                        extends: vec!["Api.Named".to_string()],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                ],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let interface = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) if interface.name == "Child" => Some(interface),
+                _ => None,
+            })
+            .expect("expected child interface declaration");
+        assert_eq!(interface.extends, vec!["app__M__Api__Named".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_module_class_implements_multiple_local_interfaces() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "M".to_string(),
+                declarations: vec![
+                    sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Named".to_string(),
+                        generic_params: vec![],
+                        extends: vec![],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                    sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Printable".to_string(),
+                        generic_params: vec![],
+                        extends: vec![],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                    sp(Decl::Class(ast::ClassDecl {
+                        name: "Child".to_string(),
+                        generic_params: vec![],
+                        extends: None,
+                        implements: vec!["Named".to_string(), "Printable".to_string()],
+                        fields: vec![],
+                        constructor: None,
+                        destructor: None,
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                ],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let class = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(
+            class.implements,
+            vec!["app__M__Named".to_string(), "app__M__Printable".to_string()]
+        );
+    }
+
+    #[test]
+    fn rewrites_module_interface_extends_multiple_local_interfaces() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "M".to_string(),
+                declarations: vec![
+                    sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Named".to_string(),
+                        generic_params: vec![],
+                        extends: vec![],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                    sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Printable".to_string(),
+                        generic_params: vec![],
+                        extends: vec![],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                    sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Child".to_string(),
+                        generic_params: vec![],
+                        extends: vec!["Named".to_string(), "Printable".to_string()],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    })),
+                ],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let interface = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) if interface.name == "Child" => Some(interface),
+                _ => None,
+            })
+            .expect("expected child interface declaration");
+        assert_eq!(
+            interface.extends,
+            vec!["app__M__Named".to_string(), "app__M__Printable".to_string()]
+        );
+    }
+
+    #[test]
+    fn rewrites_nested_module_class_implements_local_interface_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "Outer".to_string(),
+                declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                    name: "Inner".to_string(),
+                    declarations: vec![
+                        sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Named".to_string(),
+                            generic_params: vec![],
+                            extends: vec![],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                        sp(Decl::Class(ast::ClassDecl {
+                            name: "Child".to_string(),
+                            generic_params: vec![],
+                            extends: None,
+                            implements: vec!["Named".to_string()],
+                            fields: vec![],
+                            constructor: None,
+                            destructor: None,
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                    ],
+                }))],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let outer = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected outer module declaration");
+        let inner = outer
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected inner module declaration");
+        let class = inner
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(
+            class.implements,
+            vec!["app__Outer__Inner__Named".to_string()]
+        );
+    }
+
+    #[test]
+    fn rewrites_nested_module_interface_extends_local_interface_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "Outer".to_string(),
+                declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                    name: "Inner".to_string(),
+                    declarations: vec![
+                        sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Named".to_string(),
+                            generic_params: vec![],
+                            extends: vec![],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                        sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Child".to_string(),
+                            generic_params: vec![],
+                            extends: vec!["Named".to_string()],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                    ],
+                }))],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let outer = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected outer module declaration");
+        let inner = outer
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected inner module declaration");
+        let interface = inner
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) if interface.name == "Child" => Some(interface),
+                _ => None,
+            })
+            .expect("expected child interface declaration");
+        assert_eq!(
+            interface.extends,
+            vec!["app__Outer__Inner__Named".to_string()]
+        );
+    }
+
+    #[test]
+    fn rewrites_nested_module_class_implements_local_nested_interface_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "Outer".to_string(),
+                declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                    name: "Inner".to_string(),
+                    declarations: vec![
+                        sp(Decl::Module(ast::ModuleDecl {
+                            name: "Api".to_string(),
+                            declarations: vec![sp(Decl::Interface(ast::InterfaceDecl {
+                                name: "Named".to_string(),
+                                generic_params: vec![],
+                                extends: vec![],
+                                methods: vec![],
+                                visibility: ast::Visibility::Private,
+                            }))],
+                        })),
+                        sp(Decl::Class(ast::ClassDecl {
+                            name: "Child".to_string(),
+                            generic_params: vec![],
+                            extends: None,
+                            implements: vec!["Api.Named".to_string()],
+                            fields: vec![],
+                            constructor: None,
+                            destructor: None,
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                    ],
+                }))],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let outer = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected outer module declaration");
+        let inner = outer
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected inner module declaration");
+        let class = inner
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(
+            class.implements,
+            vec!["app__Outer__Inner__Api__Named".to_string()]
+        );
+    }
+
+    #[test]
+    fn rewrites_nested_module_interface_extends_local_nested_interface_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "Outer".to_string(),
+                declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                    name: "Inner".to_string(),
+                    declarations: vec![
+                        sp(Decl::Module(ast::ModuleDecl {
+                            name: "Api".to_string(),
+                            declarations: vec![sp(Decl::Interface(ast::InterfaceDecl {
+                                name: "Named".to_string(),
+                                generic_params: vec![],
+                                extends: vec![],
+                                methods: vec![],
+                                visibility: ast::Visibility::Private,
+                            }))],
+                        })),
+                        sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Child".to_string(),
+                            generic_params: vec![],
+                            extends: vec!["Api.Named".to_string()],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                    ],
+                }))],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let outer = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected outer module declaration");
+        let inner = outer
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected inner module declaration");
+        let interface = inner
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) if interface.name == "Child" => Some(interface),
+                _ => None,
+            })
+            .expect("expected child interface declaration");
+        assert_eq!(
+            interface.extends,
+            vec!["app__Outer__Inner__Api__Named".to_string()]
+        );
+    }
+
+    #[test]
+    fn rewrites_nested_module_class_implements_multiple_local_interfaces() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "Outer".to_string(),
+                declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                    name: "Inner".to_string(),
+                    declarations: vec![
+                        sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Named".to_string(),
+                            generic_params: vec![],
+                            extends: vec![],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                        sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Printable".to_string(),
+                            generic_params: vec![],
+                            extends: vec![],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                        sp(Decl::Class(ast::ClassDecl {
+                            name: "Child".to_string(),
+                            generic_params: vec![],
+                            extends: None,
+                            implements: vec!["Named".to_string(), "Printable".to_string()],
+                            fields: vec![],
+                            constructor: None,
+                            destructor: None,
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                    ],
+                }))],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let outer = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected outer module declaration");
+        let inner = outer
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected inner module declaration");
+        let class = inner
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(
+            class.implements,
+            vec![
+                "app__Outer__Inner__Named".to_string(),
+                "app__Outer__Inner__Printable".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn rewrites_nested_module_interface_extends_multiple_local_interfaces() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "Outer".to_string(),
+                declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                    name: "Inner".to_string(),
+                    declarations: vec![
+                        sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Named".to_string(),
+                            generic_params: vec![],
+                            extends: vec![],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                        sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Printable".to_string(),
+                            generic_params: vec![],
+                            extends: vec![],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                        sp(Decl::Interface(ast::InterfaceDecl {
+                            name: "Child".to_string(),
+                            generic_params: vec![],
+                            extends: vec!["Named".to_string(), "Printable".to_string()],
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        })),
+                    ],
+                }))],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let outer = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected outer module declaration");
+        let inner = outer
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected inner module declaration");
+        let interface = inner
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) if interface.name == "Child" => Some(interface),
+                _ => None,
+            })
+            .expect("expected child interface declaration");
+        assert_eq!(
+            interface.extends,
+            vec![
+                "app__Outer__Inner__Named".to_string(),
+                "app__Outer__Inner__Printable".to_string()
+            ]
+        );
     }
 }

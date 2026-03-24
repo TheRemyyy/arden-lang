@@ -50,6 +50,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - project-mode AST rewriting now rewrites alias-qualified and nested module-qualified class parents in `extends`, so inherited bases like `u.Base` and `u.Api.Base` no longer stay unresolved after project symbol mangling
   - the same rewrite now also covers `implements` lists and `interface ... extends ...` clauses, so imported interfaces like `u.Printable`, `u.Api.Named`, and mixed multi-parent lists stay aligned with parser/typecheck resolution during project builds and tests
   - nested module declarations now receive the same parent/interface rewrite pass, preventing direct module-local `class` / `interface` declarations from keeping stale alias-qualified parent names while the rest of their signatures are rewritten
+- Fixed project rewrite for module-local interface parents and nested declaration mangling:
+  - classes and interfaces declared inside modules now rewrite plain local interface refs like `implements Named` / `extends Named` to the mangled module-local symbol instead of leaving them unresolved during project builds
+  - the same rewrite now handles local nested-module interface refs like `Api.Named` and multi-parent local interface lists in both direct module declarations and recursively nested modules
 - Fixed `apex test` runner import injection and `main(...)` stripping edge cases:
   - generated runners now still inject `import std.io.*;` when the source only mentions that import inside block comments, instead of treating commented text as a real import and emitting uncompilable runner code
   - shebang-based scripts now keep `#!/...` as the first line and receive the injected stdio import after the shebang instead of before it
