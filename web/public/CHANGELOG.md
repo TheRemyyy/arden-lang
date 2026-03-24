@@ -32,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - exact variant aliases used only in `match` patterns, such as `import app.Option.None as Empty; match (value) { Empty => ... }`, now count as real usage instead of being misreported as unused
   - enum aliases used only in pattern paths, such as `import app.Result as Res; match (value) { Res.Ok(v) => ... }`, now count as real usage
   - namespace aliases and nested enum aliases used only in pattern paths, such as `core.Result.Ok(v)` or `Enum.A(v)`, now also count as real usage in both statement and expression matches
+- Fixed more lint `L003` false unused-import reports in type-driven expression paths:
+  - imports used only through explicit generic call arguments like `List<Boxed>()`, `List<u.Box>()`, and `List<Res>()` now count as used instead of being missed because the linter skipped `Expr::Call.type_args`
+  - namespace aliases and exact imported aliases used only inside constructor type strings like `List<u.M.Box>()` / `List<Boxed>()` now also count as used instead of being missed by raw construct-type scanning
+  - imports referenced only inside interface default method bodies now count as used instead of being ignored because `default_impl` statements were skipped during usage collection
 - Fixed `apex test` runner import injection and `main(...)` stripping edge cases:
   - generated runners now still inject `import std.io.*;` when the source only mentions that import inside block comments, instead of treating commented text as a real import and emitting uncompilable runner code
   - shebang-based scripts now keep `#!/...` as the first line and receive the injected stdio import after the shebang instead of before it

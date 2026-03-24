@@ -845,6 +845,11 @@ fn collect_used_names(program: &Program, used: &mut HashSet<String>) {
                         collect_type_names(&param.ty, used);
                     }
                     collect_type_names(&method.return_type, used);
+                    if let Some(default_impl) = &method.default_impl {
+                        for stmt in default_impl {
+                            collect_stmt_names(&stmt.node, used);
+                        }
+                    }
                 }
             }
             Decl::Module(module) => {
@@ -928,10 +933,17 @@ fn collect_expr_names(expr: &Expr, used: &mut HashSet<String>) {
         Expr::Ident(name) => {
             used.insert(name.clone());
         }
-        Expr::Call { callee, args, .. } => {
+        Expr::Call {
+            callee,
+            args,
+            type_args,
+        } => {
             collect_expr_names(&callee.node, used);
             for arg in args {
                 collect_expr_names(&arg.node, used);
+            }
+            for ty in type_args {
+                collect_type_names(ty, used);
             }
         }
         Expr::Binary { left, right, .. } => {
@@ -953,7 +965,7 @@ fn collect_expr_names(expr: &Expr, used: &mut HashSet<String>) {
             collect_expr_names(&index.node, used);
         }
         Expr::Construct { ty, args } => {
-            used.insert(ty.clone());
+            collect_construct_type_names(ty, used);
             for arg in args {
                 collect_expr_names(&arg.node, used);
             }
@@ -1016,6 +1028,29 @@ fn collect_expr_names(expr: &Expr, used: &mut HashSet<String>) {
         }
         Expr::Literal(_) | Expr::This => {}
     }
+}
+
+fn collect_construct_type_names(ty: &str, used: &mut HashSet<String>) {
+    let mut token = String::new();
+    for ch in ty.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' {
+            token.push(ch);
+            continue;
+        }
+        flush_construct_type_token(&mut token, used);
+    }
+    flush_construct_type_token(&mut token, used);
+}
+
+fn flush_construct_type_token(token: &mut String, used: &mut HashSet<String>) {
+    if token.is_empty() {
+        return;
+    }
+    used.insert(token.clone());
+    if let Some((prefix, _)) = token.split_once('.') {
+        used.insert(prefix.to_string());
+    }
+    token.clear();
 }
 
 fn collect_pattern_names(pattern: &crate::ast::Pattern, used: &mut HashSet<String>) {
@@ -1430,6 +1465,197 @@ function main(): None {
             ),
             "{fixed}"
         );
+    }
+
+    #[test]
+    fn exact_class_alias_usage_in_call_type_args_marks_import_as_used() {
+        let source = r#"import util.Box as Boxed;
+
+function main(): None {
+    List<Boxed>();
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Box as Boxed' appears unused")
+        }));
+    }
+
+    #[test]
+    fn namespace_alias_usage_in_call_type_args_marks_import_as_used() {
+        let source = r#"import util as u;
+
+function main(): None {
+    List<u.Box>();
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'util as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn nested_exact_class_alias_usage_in_call_type_args_marks_import_as_used() {
+        let source = r#"import app.M.Box as Boxed;
+
+function main(): None {
+    List<Boxed>();
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'app.M.Box as Boxed' appears unused")
+        }));
+    }
+
+    #[test]
+    fn nested_namespace_alias_usage_in_call_type_args_marks_import_as_used() {
+        let source = r#"import app as u;
+
+function main(): None {
+    List<u.M.Box>();
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn exact_enum_alias_usage_in_call_type_args_marks_import_as_used() {
+        let source = r#"import app.Result as Res;
+
+function main(): None {
+    List<Res>();
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'app.Result as Res' appears unused")
+        }));
+    }
+
+    #[test]
+    fn namespace_alias_usage_in_construct_type_marks_import_as_used() {
+        let source = r#"import util as u;
+
+function main(): None {
+    u.Box(1);
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'util as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn nested_namespace_alias_usage_in_construct_type_marks_import_as_used() {
+        let source = r#"import app as u;
+
+function main(): None {
+    u.M.Box(1);
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn namespace_alias_usage_in_generic_construct_type_marks_import_as_used() {
+        let source = r#"import util as u;
+
+function main(): None {
+    List<u.Box>();
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'util as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn nested_namespace_alias_usage_in_generic_construct_type_marks_import_as_used() {
+        let source = r#"import app as u;
+
+function main(): None {
+    List<u.M.Box>();
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'app as u' appears unused")
+        }));
+    }
+
+    #[test]
+    fn exact_class_alias_usage_in_generic_construct_type_marks_import_as_used() {
+        let source = r#"import util.Box as Boxed;
+
+function main(): None {
+    List<Boxed>();
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Box as Boxed' appears unused")
+        }));
+    }
+
+    #[test]
+    fn specific_import_usage_in_interface_default_impl_marks_import_as_used() {
+        let source = r#"import util.helper;
+
+interface Runner {
+    function run(): Integer {
+        return helper();
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'util.helper' appears unused")
+        }));
+    }
+
+    #[test]
+    fn namespace_alias_usage_in_interface_default_impl_marks_import_as_used() {
+        let source = r#"import std.io as io;
+
+interface Runner {
+    function run(): None {
+        io.println("ok");
+        return None;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003" && f.message.contains("import 'std.io as io' appears unused")
+        }));
     }
 
     #[test]

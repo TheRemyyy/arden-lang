@@ -229,6 +229,7 @@ Lint/fix note:
 - Explicit file-path commands also reject symlinked `.apex` files that resolve outside the requested directory tree instead of following them to external sources.
 - `apex fix` now preserves leading file-header comments and comments between `package ...;` and the import block while sorting/deduplicating imports, instead of moving those comments below the imports.
 - Block-commented import-like text now stays inside its original block comment during `apex fix`; only real top-level imports are rewritten.
+- `apex lint` `L003` now also treats imports as used when they only appear inside explicit generic call arguments (`List<Boxed>()`, `List<u.Box>()`) or inside interface default method bodies.
 
 ### Linting and Safe Fixes
 

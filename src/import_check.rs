@@ -1242,4 +1242,57 @@ function main(): None {
         let errors = check_import_errors(source);
         assert!(errors.is_empty(), "{errors:?}");
     }
+
+    #[test]
+    fn exact_imported_stdlib_function_alias_call_is_treated_as_imported() {
+        let source = r#"
+import std.math.Math__abs as abs_fn;
+
+function main(): None {
+    value: Float = abs_fn(-1.0);
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn exact_imported_user_function_alias_call_is_treated_as_imported() {
+        let source = r#"
+package app;
+import util.math.add_one as inc;
+
+function main(): Integer {
+    return inc(1);
+}
+"#;
+        let function_namespaces = Arc::new(HashMap::from([(
+            "add_one".to_string(),
+            "util.math".to_string(),
+        )]));
+        let known_namespace_paths = Arc::new(HashSet::from(["util.math".to_string()]));
+        let tokens = tokenize(source).expect("tokenize");
+        let mut parser = Parser::new(tokens);
+        let program = parser.parse_program().expect("parse");
+        let imports = program
+            .declarations
+            .iter()
+            .filter_map(|d| match &d.node {
+                Decl::Import(i) => Some(i.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        let mut checker = ImportChecker::new(
+            function_namespaces,
+            known_namespace_paths,
+            "app".to_string(),
+            imports,
+            stdlib_registry(),
+        );
+
+        let errors = checker.check_program(&program).err().unwrap_or_default();
+        assert!(errors.is_empty(), "{errors:?}");
+    }
 }
