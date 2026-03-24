@@ -679,14 +679,19 @@ fn apply_safe_import_fixes(source: &str, program: &Program) -> String {
         .map(ToString::to_string);
 
     let mut imports = Vec::new();
+    let mut header_lines = Vec::new();
+    let mut package_prelude_lines = Vec::new();
     let mut body_lines = Vec::new();
     let mut in_block_comment = false;
+    let mut package_seen = false;
+    let mut import_seen = false;
 
     for line in source.lines() {
         if shebang.as_ref().is_some_and(|s| s == line) {
             continue;
         }
         let trimmed = line.trim();
+        let was_in_block_comment = in_block_comment;
         let starts_block_comment = trimmed.contains("/*");
         let ends_block_comment = trimmed.contains("*/");
         let can_extract_import =
@@ -700,10 +705,23 @@ fn apply_safe_import_fixes(source: &str, program: &Program) -> String {
 
         if can_extract_import && trimmed.starts_with("import ") && trimmed.ends_with(';') {
             imports.push(trimmed.to_string());
+            import_seen = true;
         } else if is_package_line {
-            continue;
+            package_seen = true;
         } else {
-            body_lines.push(line);
+            let is_trivia = trimmed.is_empty()
+                || trimmed.starts_with("//")
+                || trimmed.starts_with("/*")
+                || trimmed.starts_with('*')
+                || trimmed.starts_with("*/")
+                || was_in_block_comment;
+            if !package_seen && !import_seen && is_trivia {
+                header_lines.push(line);
+            } else if package_seen && !import_seen && is_trivia {
+                package_prelude_lines.push(line);
+            } else {
+                body_lines.push(line);
+            }
         }
 
         if starts_block_comment && !ends_block_comment {
@@ -729,13 +747,18 @@ fn apply_safe_import_fixes(source: &str, program: &Program) -> String {
     if let Some(shebang) = shebang {
         output.push_str(&shebang);
         output.push('\n');
-        if !imports.is_empty() || package_line.is_some() {
-            output.push('\n');
-        }
+    }
+    if !header_lines.is_empty() {
+        output.push_str(header_lines.join("\n").trim_end_matches('\n'));
+        output.push('\n');
     }
     if let Some(package_line) = package_line {
         output.push_str(&package_line);
         output.push_str("\n\n");
+    }
+    if !package_prelude_lines.is_empty() {
+        output.push_str(package_prelude_lines.join("\n").trim_matches('\n'));
+        output.push('\n');
     }
 
     for import in &imports {
@@ -1317,8 +1340,96 @@ function main(): None {
 "#;
         let result = lint_source(source, true).expect("lint succeeds");
         let fixed = result.fixed_source.expect("fixed source");
-        assert!(fixed.starts_with("import std.io.*;\n\n"), "{fixed}");
         assert!(fixed.contains("/*\nimport evil.pkg;\n*/"), "{fixed}");
+        assert_eq!(fixed.matches("import std.io.*;").count(), 1, "{fixed}");
+    }
+
+    #[test]
+    fn fix_preserves_line_comments_before_package() {
+        let source = r#"// generated file
+package demo;
+import std.string.*;
+import std.io.*;
+
+function main(): None {
+    println("ok");
+    return None;
+}
+"#;
+        let result = lint_source(source, true).expect("lint succeeds");
+        let fixed = result.fixed_source.expect("fixed source");
+        assert!(
+            fixed.starts_with(
+                "// generated file\npackage demo;\n\nimport std.io.*;\nimport std.string.*;"
+            ),
+            "{fixed}"
+        );
+    }
+
+    #[test]
+    fn fix_preserves_block_comments_before_package() {
+        let source = r#"/*
+ * generated file
+ */
+package demo;
+import std.string.*;
+import std.io.*;
+
+function main(): None {
+    println("ok");
+    return None;
+}
+"#;
+        let result = lint_source(source, true).expect("lint succeeds");
+        let fixed = result.fixed_source.expect("fixed source");
+        assert!(
+            fixed.starts_with("/*\n * generated file\n */\npackage demo;\n\nimport std.io.*;\nimport std.string.*;"),
+            "{fixed}"
+        );
+    }
+
+    #[test]
+    fn fix_preserves_comments_between_package_and_imports() {
+        let source = r#"package demo;
+// stdlib imports
+import std.string.*;
+import std.io.*;
+
+function main(): None {
+    println("ok");
+    return None;
+}
+"#;
+        let result = lint_source(source, true).expect("lint succeeds");
+        let fixed = result.fixed_source.expect("fixed source");
+        assert!(
+            fixed.starts_with(
+                "package demo;\n\n// stdlib imports\nimport std.io.*;\nimport std.string.*;"
+            ),
+            "{fixed}"
+        );
+    }
+
+    #[test]
+    fn fix_preserves_shebang_and_header_comment_order() {
+        let source = r#"#!/usr/bin/env apex
+// generated file
+import std.string.*;
+import std.io.*;
+
+function main(): None {
+    println("ok");
+    return None;
+}
+"#;
+        let result = lint_source(source, true).expect("lint succeeds");
+        let fixed = result.fixed_source.expect("fixed source");
+        assert!(
+            fixed.starts_with(
+                "#!/usr/bin/env apex\n// generated file\nimport std.io.*;\nimport std.string.*;"
+            ),
+            "{fixed}"
+        );
     }
 
     #[test]

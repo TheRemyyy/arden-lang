@@ -32,6 +32,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - exact variant aliases used only in `match` patterns, such as `import app.Option.None as Empty; match (value) { Empty => ... }`, now count as real usage instead of being misreported as unused
   - enum aliases used only in pattern paths, such as `import app.Result as Res; match (value) { Res.Ok(v) => ... }`, now count as real usage
   - namespace aliases and nested enum aliases used only in pattern paths, such as `core.Result.Ok(v)` or `Enum.A(v)`, now also count as real usage in both statement and expression matches
+- Fixed `apex test` runner import injection and `main(...)` stripping edge cases:
+  - generated runners now still inject `import std.io.*;` when the source only mentions that import inside block comments, instead of treating commented text as a real import and emitting uncompilable runner code
+  - shebang-based scripts now keep `#!/...` as the first line and receive the injected stdio import after the shebang instead of before it
+  - user-defined `main(...)` bodies are now stripped correctly even when they contain `{` / `}` inside strings, line comments, or block comments, so runner generation no longer leaks pieces of the original main body or accidentally deletes following helper declarations
+- Fixed `apex fix` import reordering for file headers:
+  - leading line comments, block comments, and shebang-adjacent header comments now stay above `package` / sorted `import` blocks instead of being moved below them
+  - comments placed between `package ...;` and the import block now stay in that pre-import position after safe import sorting
+  - block-commented fake imports now remain commented text during fixups instead of being hoisted or split apart by the import rewriter
 - Fixed invalid string escape acceptance:
   - string literals like `"bad \q escape"` now fail during parsing instead of silently preserving unsupported escapes and diverging from documented string semantics
 - Fixed invalid char escape acceptance:
@@ -1055,11 +1063,11 @@ This release introduces a complete multi-file project system with Java-style nam
   - New CLI commands: `apex new`, `apex build`, `apex run`, `apex info`
   - Automatic merging and compilation of multiple source files
   - Entry point configuration for main function location
-  
+
 - **Project Commands**:
   - `apex new <name>` - Create a new project with standard structure
   - `apex build` - Build current project
-  - `apex run` - Build and run current project  
+  - `apex run` - Build and run current project
   - `apex info` - Display project information
   - `apex check [file]` - Check project or specific file
 

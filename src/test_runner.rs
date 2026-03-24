@@ -404,10 +404,26 @@ pub fn generate_test_runner_with_source(
 }
 
 fn ensure_test_runner_imports(source: &str) -> String {
-    if source
-        .lines()
-        .any(|line| line.trim_start().starts_with("import std.io.*;"))
-    {
+    let mut in_block_comment = false;
+    if source.lines().any(|line| {
+        let trimmed = line.trim_start();
+        let has_import = !in_block_comment
+            && !trimmed.starts_with("//")
+            && trimmed.starts_with("import std.io.*;");
+
+        if !in_block_comment {
+            if let Some(start) = trimmed.find("/*") {
+                let ends_after_start = trimmed[start + 2..].contains("*/");
+                if !ends_after_start {
+                    in_block_comment = true;
+                }
+            }
+        } else if trimmed.contains("*/") {
+            in_block_comment = false;
+        }
+
+        has_import
+    }) {
         return source.to_string();
     }
 
@@ -421,6 +437,15 @@ fn ensure_test_runner_imports(source: &str) -> String {
         return format!("{}\n", lines.join("\n"));
     }
 
+    if lines
+        .first()
+        .is_some_and(|line| line.trim_start().starts_with("#!"))
+    {
+        lines.insert(1, "import std.io.*;");
+        lines.insert(2, "");
+        return format!("{}\n", lines.join("\n"));
+    }
+
     format!("import std.io.*;\n\n{}", source)
 }
 
@@ -431,13 +456,69 @@ fn filter_out_main_function(source: &str) -> String {
     let mut in_main = false;
     let mut brace_depth = 0;
     let mut seen_main_open_brace = false;
+    let mut in_block_comment = false;
 
-    fn brace_delta(line: &str) -> i32 {
-        line.chars().fold(0, |acc, c| match c {
-            '{' => acc + 1,
-            '}' => acc - 1,
-            _ => acc,
-        })
+    fn scan_code_braces(line: &str, in_block_comment: &mut bool) -> (i32, bool) {
+        let mut delta = 0;
+        let mut saw_open_brace = false;
+        let mut chars = line.chars().peekable();
+        let mut in_string = false;
+        let mut in_char = false;
+        let mut escape = false;
+
+        while let Some(ch) = chars.next() {
+            if *in_block_comment {
+                if ch == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    *in_block_comment = false;
+                }
+                continue;
+            }
+
+            if in_string {
+                if escape {
+                    escape = false;
+                } else if ch == '\\' {
+                    escape = true;
+                } else if ch == '"' {
+                    in_string = false;
+                }
+                continue;
+            }
+
+            if in_char {
+                if escape {
+                    escape = false;
+                } else if ch == '\\' {
+                    escape = true;
+                } else if ch == '\'' {
+                    in_char = false;
+                }
+                continue;
+            }
+
+            if ch == '/' && chars.peek() == Some(&'/') {
+                break;
+            }
+            if ch == '/' && chars.peek() == Some(&'*') {
+                chars.next();
+                *in_block_comment = true;
+                continue;
+            }
+
+            match ch {
+                '"' => in_string = true,
+                '\'' => in_char = true,
+                '{' => {
+                    delta += 1;
+                    saw_open_brace = true;
+                }
+                '}' => delta -= 1,
+                _ => {}
+            }
+        }
+
+        (delta, saw_open_brace)
     }
 
     fn is_main_signature(line: &str) -> bool {
@@ -471,15 +552,17 @@ fn filter_out_main_function(source: &str) -> String {
         if is_main_signature(trimmed) && !in_main {
             pending_attributes.clear();
             in_main = true;
-            brace_depth = brace_delta(trimmed);
-            seen_main_open_brace = trimmed.contains('{');
+            let (delta, saw_open_brace) = scan_code_braces(line, &mut in_block_comment);
+            brace_depth = delta;
+            seen_main_open_brace = saw_open_brace;
             continue;
         }
 
         if in_main {
             // Track braces to find end of main; include the opening brace on signature line.
-            brace_depth += brace_delta(trimmed);
-            if trimmed.contains('{') {
+            let (delta, saw_open_brace) = scan_code_braces(line, &mut in_block_comment);
+            brace_depth += delta;
+            if saw_open_brace {
                 seen_main_open_brace = true;
             }
             if seen_main_open_brace && brace_depth <= 0 {
@@ -584,6 +667,26 @@ function helper(): None { return None; }
         let source = "// import std.io.*;\nfunction helper(): None { return None; }\n";
         let rewritten = ensure_test_runner_imports(source);
         assert!(rewritten.starts_with("import std.io.*;\n\n// import std.io.*;"));
+    }
+
+    #[test]
+    fn injects_stdio_import_when_block_comment_mentions_it() {
+        let source = "/*\nimport std.io.*;\n*/\nfunction helper(): None { return None; }\n";
+        let rewritten = ensure_test_runner_imports(source);
+        assert!(
+            rewritten.starts_with("import std.io.*;\n\n/*\nimport std.io.*;\n*/"),
+            "{rewritten}"
+        );
+    }
+
+    #[test]
+    fn injects_stdio_import_after_shebang() {
+        let source = "#!/usr/bin/env apex\nfunction helper(): None { return None; }\n";
+        let rewritten = ensure_test_runner_imports(source);
+        assert!(
+            rewritten.starts_with("#!/usr/bin/env apex\nimport std.io.*;\n\n"),
+            "{rewritten}"
+        );
     }
 
     #[test]
@@ -804,6 +907,106 @@ function helper(): None { return None; }
 "#;
         let generated = generate_test_runner_with_source(&discovery, source);
         assert!(generated.contains("function helper(): None"), "{generated}");
+    }
+
+    #[test]
+    fn strips_main_without_eating_following_code_when_string_contains_open_brace() {
+        let discovery = TestDiscovery {
+            suites: vec![],
+            total_tests: 0,
+            ignored_tests: 0,
+        };
+        let source = r#"
+function main(): Integer {
+    println("{");
+    return 0;
+}
+
+function helper(): None { return None; }
+"#;
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(generated.contains("function helper(): None"), "{generated}");
+        assert!(!generated.contains("println(\"{\")"), "{generated}");
+    }
+
+    #[test]
+    fn strips_main_without_leaking_body_when_line_comment_contains_closing_brace() {
+        let discovery = TestDiscovery {
+            suites: vec![],
+            total_tests: 0,
+            ignored_tests: 0,
+        };
+        let source = r#"
+function main(): Integer {
+    // }
+    return 0;
+}
+
+function helper(): None { return None; }
+"#;
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(!generated.contains("// }"), "{generated}");
+        assert!(generated.contains("function helper(): None"), "{generated}");
+    }
+
+    #[test]
+    fn strips_main_without_eating_following_code_when_line_comment_contains_open_brace() {
+        let discovery = TestDiscovery {
+            suites: vec![],
+            total_tests: 0,
+            ignored_tests: 0,
+        };
+        let source = r#"
+function main(): Integer {
+    // {
+    return 0;
+}
+
+function helper(): None { return None; }
+"#;
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(generated.contains("function helper(): None"), "{generated}");
+        assert!(!generated.contains("// {"), "{generated}");
+    }
+
+    #[test]
+    fn strips_main_without_leaking_body_when_block_comment_contains_closing_brace() {
+        let discovery = TestDiscovery {
+            suites: vec![],
+            total_tests: 0,
+            ignored_tests: 0,
+        };
+        let source = r#"
+function main(): Integer {
+    /* } */
+    return 0;
+}
+
+function helper(): None { return None; }
+"#;
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(!generated.contains("/* } */"), "{generated}");
+        assert!(generated.contains("function helper(): None"), "{generated}");
+    }
+
+    #[test]
+    fn strips_main_without_eating_following_code_when_block_comment_contains_open_brace() {
+        let discovery = TestDiscovery {
+            suites: vec![],
+            total_tests: 0,
+            ignored_tests: 0,
+        };
+        let source = r#"
+function main(): Integer {
+    /* { */
+    return 0;
+}
+
+function helper(): None { return None; }
+"#;
+        let generated = generate_test_runner_with_source(&discovery, source);
+        assert!(generated.contains("function helper(): None"), "{generated}");
+        assert!(!generated.contains("/* { */"), "{generated}");
     }
 
     #[test]

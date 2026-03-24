@@ -115,11 +115,12 @@ Filter note:
 - Test-file discovery matches `test/spec` case-insensitively, so names like `MathTest.apex` are included.
 - Missing test directories now fail with a direct CLI error instead of reporting an empty test set.
 - `--path <file>` must point to an `.apex` file; non-Apex files now fail immediately with a CLI error.
-- `--path <file>` also rejects symlinked `.apex` files that resolve outside the requested directory tree.
 - Test execution now uses isolated temporary runner files, so `apex test` no longer overwrites or deletes neighboring `*.test_runner.apex` / `*.test_runner.exe` files in the source tree.
 - In project mode, test execution now builds the generated runner inside an isolated temporary copy of the project, so tests can keep using project-local package imports and aliases without colliding with the original entrypoint `main()`.
 - Relative project file paths passed through `--path` now resolve correctly against the current project root, so commands like `apex test --path src/main.apex` work the same as absolute paths.
 - Bare relative filenames passed through `--path` now also validate correctly from the current directory, so commands like `apex test --path smoke_test.apex` no longer fail on parent-directory resolution before test execution starts.
+- Generated runners now still inject `import std.io.*;` when that text appears only inside block comments, and shebang scripts keep the shebang as line 1 while receiving the injected import on the next line.
+- Existing user `main(...)` stripping is now comment/string aware, so braces inside strings, `// ...`, or `/* ... */` no longer leak pieces of the original main body into the generated runner or swallow following declarations.
 
 ## Examples
 
@@ -226,6 +227,8 @@ Lint/fix note:
 - `apex lex`, `apex parse`, and `apex compile` also validate explicit source paths up front and reject directories or non-`.apex` files with a direct CLI error.
 - `apex check <path>` also validates explicit source paths up front and rejects directories or non-`.apex` files with a direct CLI error.
 - Explicit file-path commands also reject symlinked `.apex` files that resolve outside the requested directory tree instead of following them to external sources.
+- `apex fix` now preserves leading file-header comments and comments between `package ...;` and the import block while sorting/deduplicating imports, instead of moving those comments below the imports.
+- Block-commented import-like text now stays inside its original block comment during `apex fix`; only real top-level imports are rewritten.
 
 ### Linting and Safe Fixes
 
