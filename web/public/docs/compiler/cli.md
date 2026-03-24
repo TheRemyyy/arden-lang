@@ -243,6 +243,7 @@ Current `apex lint` rules cover:
 
 Scope note:
 - `L004` and `L005` now also cover locals introduced inside `async` expressions, expression-valued `if` branches, `match` pattern bindings, and lambda parameter lists instead of only statement-bodied scopes.
+- `L003` also treats imports referenced only from `match` patterns as used, including exact variant aliases, enum aliases, and namespace-qualified pattern paths.
 
 `apex fix` currently applies safe import deduping/sorting and then runs formatter output normalization.
 

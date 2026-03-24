@@ -1190,4 +1190,56 @@ function main(): None {
         assert!(rendered.contains("import <namespace> as <alias>;"));
         assert!(!rendered.contains("<invalid import alias>"));
     }
+
+    #[test]
+    fn local_lambda_binding_call_does_not_require_import() {
+        let source = r#"
+function main(): None {
+    f: (Integer) -> Integer = (x: Integer) => x + 1;
+    value: Integer = f(2);
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn function_parameter_call_does_not_require_import() {
+        let source = r#"
+function apply(f: (Integer) -> Integer, value: Integer): Integer {
+    return f(value);
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn lambda_parameter_call_does_not_require_import() {
+        let source = r#"
+function main(): None {
+    f: ((Integer) -> Integer) -> Integer = (g: (Integer) -> Integer) => g(1);
+    value: Integer = f((x: Integer) => x + 1);
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn async_block_local_lambda_call_does_not_require_import() {
+        let source = r#"
+function main(): None {
+    task: Task<Integer> = async {
+        f: (Integer) -> Integer = (x: Integer) => x + 1;
+        return f(2);
+    };
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
 }

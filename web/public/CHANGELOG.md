@@ -28,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - shadowing inside `async { ... }` and expression-valued `if` branches is now detected instead of being ignored whenever the inner declarations lived under an expression node rather than a statement block
   - `match` pattern bindings now report shadowing against outer locals in both statement and expression forms
   - lambda parameters that shadow outer locals are now flagged instead of bypassing `L005`
+- Fixed lint `L003` false unused-import reports for pattern-only imports:
+  - exact variant aliases used only in `match` patterns, such as `import app.Option.None as Empty; match (value) { Empty => ... }`, now count as real usage instead of being misreported as unused
+  - enum aliases used only in pattern paths, such as `import app.Result as Res; match (value) { Res.Ok(v) => ... }`, now count as real usage
+  - namespace aliases and nested enum aliases used only in pattern paths, such as `core.Result.Ok(v)` or `Enum.A(v)`, now also count as real usage in both statement and expression matches
 - Fixed invalid string escape acceptance:
   - string literals like `"bad \q escape"` now fail during parsing instead of silently preserving unsupported escapes and diverging from documented string semantics
 - Fixed invalid char escape acceptance:

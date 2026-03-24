@@ -890,6 +890,7 @@ fn collect_stmt_names(stmt: &Stmt, used: &mut HashSet<String>) {
         Stmt::Match { expr, arms } => {
             collect_expr_names(&expr.node, used);
             for arm in arms {
+                collect_pattern_names(&arm.pattern, used);
                 for stmt in &arm.body {
                     collect_stmt_names(&stmt.node, used);
                 }
@@ -943,6 +944,7 @@ fn collect_expr_names(expr: &Expr, used: &mut HashSet<String>) {
         Expr::Match { expr, arms } => {
             collect_expr_names(&expr.node, used);
             for arm in arms {
+                collect_pattern_names(&arm.pattern, used);
                 for stmt in &arm.body {
                     collect_stmt_names(&stmt.node, used);
                 }
@@ -990,6 +992,21 @@ fn collect_expr_names(expr: &Expr, used: &mut HashSet<String>) {
             }
         }
         Expr::Literal(_) | Expr::This => {}
+    }
+}
+
+fn collect_pattern_names(pattern: &crate::ast::Pattern, used: &mut HashSet<String>) {
+    match pattern {
+        crate::ast::Pattern::Ident(name) => {
+            used.insert(name.clone());
+        }
+        crate::ast::Pattern::Variant(name, _) => {
+            used.insert(name.clone());
+            if let Some((prefix, _)) = name.split_once('.') {
+                used.insert(prefix.to_string());
+            }
+        }
+        crate::ast::Pattern::Wildcard | crate::ast::Pattern::Literal(_) => {}
     }
 }
 
@@ -1316,6 +1333,192 @@ function main(value: u.Box): None {
         assert!(!result.findings.iter().any(|f| {
             f.code == "L003" && f.message.contains("import 'util as u' appears unused")
         }));
+    }
+
+    #[test]
+    fn exact_variant_alias_usage_in_match_statement_marks_import_as_used() {
+        let source = r#"import app.Option.None as Empty;
+
+function main(value: Option<Integer>): None {
+    match (value) {
+        Empty => { return None; }
+        _ => { return None; }
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| { f.code == "L003" && f.message.contains("app.Option.None as Empty") }));
+    }
+
+    #[test]
+    fn exact_variant_alias_usage_in_match_expression_marks_import_as_used() {
+        let source = r#"import app.Option.None as Empty;
+
+function main(value: Option<Integer>): Integer {
+    return match (value) {
+        Empty => 0,
+        _ => 1,
+    };
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| { f.code == "L003" && f.message.contains("app.Option.None as Empty") }));
+    }
+
+    #[test]
+    fn namespace_alias_usage_in_match_statement_pattern_marks_import_as_used() {
+        let source = r#"import app as core;
+
+function main(value: Result<Integer, String>): None {
+    match (value) {
+        core.Result.Ok(inner) => { println(to_string(inner)); return None; }
+        _ => { return None; }
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(
+            !result
+                .findings
+                .iter()
+                .any(|f| f.code == "L003"
+                    && f.message.contains("import 'app as core' appears unused"))
+        );
+    }
+
+    #[test]
+    fn namespace_alias_usage_in_match_expression_pattern_marks_import_as_used() {
+        let source = r#"import app as core;
+
+function main(value: Result<Integer, String>): Integer {
+    return match (value) {
+        core.Result.Ok(inner) => inner,
+        _ => 1,
+    };
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(
+            !result
+                .findings
+                .iter()
+                .any(|f| f.code == "L003"
+                    && f.message.contains("import 'app as core' appears unused"))
+        );
+    }
+
+    #[test]
+    fn nested_enum_alias_usage_in_match_statement_pattern_marks_import_as_used() {
+        let source = r#"import app.Result.Error as Failure;
+
+function main(value: Result<Integer, String>): None {
+    match (value) {
+        Failure(err) => { println(err); return None; }
+        _ => { return None; }
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| { f.code == "L003" && f.message.contains("app.Result.Error as Failure") }));
+    }
+
+    #[test]
+    fn nested_enum_alias_usage_in_match_expression_pattern_marks_import_as_used() {
+        let source = r#"import app.Result.Error as Failure;
+
+function main(value: Result<Integer, String>): Integer {
+    return match (value) {
+        Failure(err) => Str.len(err),
+        _ => 0,
+    };
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| { f.code == "L003" && f.message.contains("app.Result.Error as Failure") }));
+    }
+
+    #[test]
+    fn exact_enum_alias_usage_in_match_statement_pattern_marks_import_as_used() {
+        let source = r#"import app.Result as Res;
+
+function main(value: Result<Integer, String>): None {
+    match (value) {
+        Res.Ok(inner) => { println(to_string(inner)); return None; }
+        _ => { return None; }
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| { f.code == "L003" && f.message.contains("app.Result as Res") }));
+    }
+
+    #[test]
+    fn exact_enum_alias_usage_in_match_expression_pattern_marks_import_as_used() {
+        let source = r#"import app.Result as Res;
+
+function main(value: Result<Integer, String>): Integer {
+    return match (value) {
+        Res.Ok(inner) => inner,
+        _ => 0,
+    };
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| { f.code == "L003" && f.message.contains("app.Result as Res") }));
+    }
+
+    #[test]
+    fn nested_exact_enum_alias_usage_in_match_statement_pattern_marks_import_as_used() {
+        let source = r#"import app.M.E as Enum;
+
+function main(value: M.E): None {
+    match (value) {
+        Enum.A(inner) => { println(to_string(inner)); return None; }
+        _ => { return None; }
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| { f.code == "L003" && f.message.contains("app.M.E as Enum") }));
+    }
+
+    #[test]
+    fn nested_exact_enum_alias_usage_in_match_expression_pattern_marks_import_as_used() {
+        let source = r#"import app.M.E as Enum;
+
+function main(value: M.E): Integer {
+    return match (value) {
+        Enum.A(inner) => inner,
+        _ => 0,
+    };
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result
+            .findings
+            .iter()
+            .any(|f| { f.code == "L003" && f.message.contains("app.M.E as Enum") }));
     }
 
     #[test]
