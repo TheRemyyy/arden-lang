@@ -227,16 +227,16 @@ fn collect_declared_and_used_in_stmt(
     match &stmt.node {
         Stmt::Let { name, value, .. } => {
             declared.push((name.clone(), stmt.span.clone()));
-            collect_expr_idents(&value.node, used);
+            collect_expr_idents(&value.node, declared, used);
         }
         Stmt::Assign { target, value } => {
-            collect_expr_idents(&target.node, used);
-            collect_expr_idents(&value.node, used);
+            collect_expr_idents(&target.node, declared, used);
+            collect_expr_idents(&value.node, declared, used);
         }
-        Stmt::Expr(expr) => collect_expr_idents(&expr.node, used),
+        Stmt::Expr(expr) => collect_expr_idents(&expr.node, declared, used),
         Stmt::Return(expr) => {
             if let Some(expr) = expr {
-                collect_expr_idents(&expr.node, used);
+                collect_expr_idents(&expr.node, declared, used);
             }
         }
         Stmt::If {
@@ -244,14 +244,14 @@ fn collect_declared_and_used_in_stmt(
             then_block,
             else_block,
         } => {
-            collect_expr_idents(&condition.node, used);
+            collect_expr_idents(&condition.node, declared, used);
             collect_declared_and_used_in_block(then_block, declared, used);
             if let Some(else_block) = else_block {
                 collect_declared_and_used_in_block(else_block, declared, used);
             }
         }
         Stmt::While { condition, body } => {
-            collect_expr_idents(&condition.node, used);
+            collect_expr_idents(&condition.node, declared, used);
             collect_declared_and_used_in_block(body, declared, used);
         }
         Stmt::For {
@@ -261,12 +261,13 @@ fn collect_declared_and_used_in_stmt(
             ..
         } => {
             declared.push((var.clone(), stmt.span.clone()));
-            collect_expr_idents(&iterable.node, used);
+            collect_expr_idents(&iterable.node, declared, used);
             collect_declared_and_used_in_block(body, declared, used);
         }
         Stmt::Match { expr, arms } => {
-            collect_expr_idents(&expr.node, used);
+            collect_expr_idents(&expr.node, declared, used);
             for arm in arms {
+                collect_pattern_bindings(&arm.pattern, &stmt.span, declared);
                 collect_declared_and_used_in_block(&arm.body, declared, used);
             }
         }
@@ -274,70 +275,92 @@ fn collect_declared_and_used_in_stmt(
     }
 }
 
-fn collect_expr_idents(expr: &Expr, used: &mut HashSet<String>) {
+fn collect_pattern_bindings(
+    pattern: &crate::ast::Pattern,
+    span: &Span,
+    declared: &mut Vec<(String, Span)>,
+) {
+    match pattern {
+        crate::ast::Pattern::Ident(name) => declared.push((name.clone(), span.clone())),
+        crate::ast::Pattern::Variant(_, bindings) => {
+            for binding in bindings {
+                declared.push((binding.clone(), span.clone()));
+            }
+        }
+        crate::ast::Pattern::Wildcard | crate::ast::Pattern::Literal(_) => {}
+    }
+}
+
+fn collect_expr_idents(
+    expr: &Expr,
+    declared: &mut Vec<(String, Span)>,
+    used: &mut HashSet<String>,
+) {
     match expr {
         Expr::Ident(name) => {
             used.insert(name.clone());
         }
         Expr::Call { callee, args, .. } => {
-            collect_expr_idents(&callee.node, used);
+            collect_expr_idents(&callee.node, declared, used);
             for arg in args {
-                collect_expr_idents(&arg.node, used);
+                collect_expr_idents(&arg.node, declared, used);
             }
         }
         Expr::Binary { left, right, .. } => {
-            collect_expr_idents(&left.node, used);
-            collect_expr_idents(&right.node, used);
+            collect_expr_idents(&left.node, declared, used);
+            collect_expr_idents(&right.node, declared, used);
         }
         Expr::Unary { expr, .. }
         | Expr::Try(expr)
         | Expr::Borrow(expr)
         | Expr::MutBorrow(expr)
         | Expr::Deref(expr)
-        | Expr::Await(expr) => collect_expr_idents(&expr.node, used),
-        Expr::Field { object, .. } => collect_expr_idents(&object.node, used),
+        | Expr::Await(expr) => collect_expr_idents(&expr.node, declared, used),
+        Expr::Field { object, .. } => collect_expr_idents(&object.node, declared, used),
         Expr::Index { object, index } => {
-            collect_expr_idents(&object.node, used);
-            collect_expr_idents(&index.node, used);
+            collect_expr_idents(&object.node, declared, used);
+            collect_expr_idents(&index.node, declared, used);
         }
         Expr::Construct { args, .. } => {
             for arg in args {
-                collect_expr_idents(&arg.node, used);
+                collect_expr_idents(&arg.node, declared, used);
             }
         }
-        Expr::Lambda { body, .. } => collect_expr_idents(&body.node, used),
+        Expr::Lambda { params, body } => {
+            for param in params {
+                declared.push((param.name.clone(), 0..0));
+            }
+            collect_expr_idents(&body.node, declared, used);
+        }
         Expr::Match { expr, arms } => {
-            collect_expr_idents(&expr.node, used);
+            collect_expr_idents(&expr.node, declared, used);
             for arm in arms {
-                for stmt in &arm.body {
-                    collect_declared_and_used_in_stmt(stmt, &mut Vec::new(), used);
-                }
+                collect_pattern_bindings(&arm.pattern, &(0..0), declared);
+                collect_declared_and_used_in_block(&arm.body, declared, used);
             }
         }
         Expr::StringInterp(parts) => {
             for part in parts {
                 if let crate::ast::StringPart::Expr(expr) = part {
-                    collect_expr_idents(&expr.node, used);
+                    collect_expr_idents(&expr.node, declared, used);
                 }
             }
         }
         Expr::AsyncBlock(block) | Expr::Block(block) => {
-            for stmt in block {
-                collect_declared_and_used_in_stmt(stmt, &mut Vec::new(), used);
-            }
+            collect_declared_and_used_in_block(block, declared, used);
         }
         Expr::Require { condition, message } => {
-            collect_expr_idents(&condition.node, used);
+            collect_expr_idents(&condition.node, declared, used);
             if let Some(message) = message {
-                collect_expr_idents(&message.node, used);
+                collect_expr_idents(&message.node, declared, used);
             }
         }
         Expr::Range { start, end, .. } => {
             if let Some(start) = start {
-                collect_expr_idents(&start.node, used);
+                collect_expr_idents(&start.node, declared, used);
             }
             if let Some(end) = end {
-                collect_expr_idents(&end.node, used);
+                collect_expr_idents(&end.node, declared, used);
             }
         }
         Expr::IfExpr {
@@ -345,14 +368,10 @@ fn collect_expr_idents(expr: &Expr, used: &mut HashSet<String>) {
             then_branch,
             else_branch,
         } => {
-            collect_expr_idents(&condition.node, used);
-            for stmt in then_branch {
-                collect_declared_and_used_in_stmt(stmt, &mut Vec::new(), used);
-            }
+            collect_expr_idents(&condition.node, declared, used);
+            collect_declared_and_used_in_block(then_branch, declared, used);
             if let Some(else_branch) = else_branch {
-                for stmt in else_branch {
-                    collect_declared_and_used_in_stmt(stmt, &mut Vec::new(), used);
-                }
+                collect_declared_and_used_in_block(else_branch, declared, used);
             }
         }
         Expr::Literal(_) | Expr::This => {}
@@ -440,12 +459,16 @@ fn check_shadowed_in_block(
                 if let Some(current) = scopes.last_mut() {
                     current.insert(name.clone(), stmt.span.clone());
                 }
+                if let Stmt::Let { value, .. } = &stmt.node {
+                    check_shadowed_in_expr(&value.node, scopes, findings);
+                }
             }
             Stmt::If {
+                condition,
                 then_block,
                 else_block,
-                ..
             } => {
+                check_shadowed_in_expr(&condition.node, scopes, findings);
                 scopes.push(HashMap::new());
                 check_shadowed_in_block(then_block, scopes, findings);
                 scopes.pop();
@@ -455,12 +478,19 @@ fn check_shadowed_in_block(
                     scopes.pop();
                 }
             }
-            Stmt::While { body, .. } => {
+            Stmt::While { condition, body } => {
+                check_shadowed_in_expr(&condition.node, scopes, findings);
                 scopes.push(HashMap::new());
                 check_shadowed_in_block(body, scopes, findings);
                 scopes.pop();
             }
-            Stmt::For { var, body, .. } => {
+            Stmt::For {
+                var,
+                iterable,
+                body,
+                ..
+            } => {
+                check_shadowed_in_expr(&iterable.node, scopes, findings);
                 scopes.push(HashMap::new());
                 if let Some(parent_span) =
                     scopes.iter().rev().skip(1).find_map(|scope| scope.get(var))
@@ -482,19 +512,162 @@ fn check_shadowed_in_block(
                 check_shadowed_in_block(body, scopes, findings);
                 scopes.pop();
             }
-            Stmt::Match { arms, .. } => {
+            Stmt::Match { expr, arms } => {
+                check_shadowed_in_expr(&expr.node, scopes, findings);
                 for arm in arms {
                     scopes.push(HashMap::new());
+                    declare_pattern_bindings_in_scope(&arm.pattern, scopes, findings, &stmt.span);
                     check_shadowed_in_block(&arm.body, scopes, findings);
                     scopes.pop();
                 }
             }
-            Stmt::Assign { .. }
-            | Stmt::Expr(_)
-            | Stmt::Return(_)
-            | Stmt::Break
-            | Stmt::Continue => {}
+            Stmt::Assign { target, value } => {
+                check_shadowed_in_expr(&target.node, scopes, findings);
+                check_shadowed_in_expr(&value.node, scopes, findings);
+            }
+            Stmt::Expr(expr) => check_shadowed_in_expr(&expr.node, scopes, findings),
+            Stmt::Return(Some(expr)) => check_shadowed_in_expr(&expr.node, scopes, findings),
+            Stmt::Return(None) | Stmt::Break | Stmt::Continue => {}
         }
+    }
+}
+
+fn declare_name_in_scope(
+    name: &str,
+    span: &Span,
+    scopes: &mut [HashMap<String, Span>],
+    findings: &mut Vec<LintFinding>,
+) {
+    if let Some(parent_span) = scopes
+        .iter()
+        .rev()
+        .skip(1)
+        .find_map(|scope| scope.get(name))
+    {
+        findings.push(LintFinding {
+            code: "L005",
+            level: LintLevel::Warning,
+            message: format!(
+                "Variable '{}' shadows an outer variable declared at offset {}",
+                name, parent_span.start
+            ),
+            suggestion: Some("rename inner variable for clarity".to_string()),
+            span: Some(span.clone()),
+        });
+    }
+    if let Some(current) = scopes.last_mut() {
+        current.insert(name.to_string(), span.clone());
+    }
+}
+
+fn declare_pattern_bindings_in_scope(
+    pattern: &crate::ast::Pattern,
+    scopes: &mut [HashMap<String, Span>],
+    findings: &mut Vec<LintFinding>,
+    span: &Span,
+) {
+    match pattern {
+        crate::ast::Pattern::Ident(name) => declare_name_in_scope(name, span, scopes, findings),
+        crate::ast::Pattern::Variant(_, bindings) => {
+            for binding in bindings {
+                declare_name_in_scope(binding, span, scopes, findings);
+            }
+        }
+        crate::ast::Pattern::Wildcard | crate::ast::Pattern::Literal(_) => {}
+    }
+}
+
+fn check_shadowed_in_expr(
+    expr: &Expr,
+    scopes: &mut Vec<HashMap<String, Span>>,
+    findings: &mut Vec<LintFinding>,
+) {
+    match expr {
+        Expr::Call { callee, args, .. } => {
+            check_shadowed_in_expr(&callee.node, scopes, findings);
+            for arg in args {
+                check_shadowed_in_expr(&arg.node, scopes, findings);
+            }
+        }
+        Expr::Binary { left, right, .. } => {
+            check_shadowed_in_expr(&left.node, scopes, findings);
+            check_shadowed_in_expr(&right.node, scopes, findings);
+        }
+        Expr::Unary { expr, .. }
+        | Expr::Try(expr)
+        | Expr::Borrow(expr)
+        | Expr::MutBorrow(expr)
+        | Expr::Deref(expr)
+        | Expr::Await(expr) => check_shadowed_in_expr(&expr.node, scopes, findings),
+        Expr::Field { object, .. } => check_shadowed_in_expr(&object.node, scopes, findings),
+        Expr::Index { object, index } => {
+            check_shadowed_in_expr(&object.node, scopes, findings);
+            check_shadowed_in_expr(&index.node, scopes, findings);
+        }
+        Expr::Construct { args, .. } => {
+            for arg in args {
+                check_shadowed_in_expr(&arg.node, scopes, findings);
+            }
+        }
+        Expr::Lambda { params, body } => {
+            scopes.push(HashMap::new());
+            for param in params {
+                declare_name_in_scope(&param.name, &(0..0), scopes, findings);
+            }
+            check_shadowed_in_expr(&body.node, scopes, findings);
+            scopes.pop();
+        }
+        Expr::Match { expr, arms } => {
+            check_shadowed_in_expr(&expr.node, scopes, findings);
+            for arm in arms {
+                scopes.push(HashMap::new());
+                declare_pattern_bindings_in_scope(&arm.pattern, scopes, findings, &(0..0));
+                check_shadowed_in_block(&arm.body, scopes, findings);
+                scopes.pop();
+            }
+        }
+        Expr::StringInterp(parts) => {
+            for part in parts {
+                if let crate::ast::StringPart::Expr(expr) = part {
+                    check_shadowed_in_expr(&expr.node, scopes, findings);
+                }
+            }
+        }
+        Expr::AsyncBlock(block) | Expr::Block(block) => {
+            scopes.push(HashMap::new());
+            check_shadowed_in_block(block, scopes, findings);
+            scopes.pop();
+        }
+        Expr::Require { condition, message } => {
+            check_shadowed_in_expr(&condition.node, scopes, findings);
+            if let Some(message) = message {
+                check_shadowed_in_expr(&message.node, scopes, findings);
+            }
+        }
+        Expr::Range { start, end, .. } => {
+            if let Some(start) = start {
+                check_shadowed_in_expr(&start.node, scopes, findings);
+            }
+            if let Some(end) = end {
+                check_shadowed_in_expr(&end.node, scopes, findings);
+            }
+        }
+        Expr::IfExpr {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            check_shadowed_in_expr(&condition.node, scopes, findings);
+            scopes.push(HashMap::new());
+            check_shadowed_in_block(then_branch, scopes, findings);
+            scopes.pop();
+            if let Some(else_branch) = else_branch {
+                scopes.push(HashMap::new());
+                check_shadowed_in_block(else_branch, scopes, findings);
+                scopes.pop();
+            }
+        }
+        Expr::Literal(_) | Expr::Ident(_) | Expr::This => {}
     }
 }
 
@@ -1143,5 +1316,200 @@ function main(value: u.Box): None {
         assert!(!result.findings.iter().any(|f| {
             f.code == "L003" && f.message.contains("import 'util as u' appears unused")
         }));
+    }
+
+    #[test]
+    fn flags_unused_async_block_locals() {
+        let source = r#"function main(): None {
+    task: Task<Integer> = async {
+        temp: Integer = 1;
+        return 2;
+    };
+    println(to_string(await task));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'temp' is declared but never used")
+        }));
+    }
+
+    #[test]
+    fn flags_unused_if_expression_branch_locals() {
+        let source = r#"function main(): None {
+    value: Integer = if (true) {
+        then_only: Integer = 1;
+        2
+    } else {
+        else_only: Integer = 3;
+        4
+    };
+    println(to_string(value));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'then_only' is declared but never used")
+        }));
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'else_only' is declared but never used")
+        }));
+    }
+
+    #[test]
+    fn flags_unused_match_expression_pattern_bindings() {
+        let source = r#"enum Maybe { Some(Integer), Empty }
+
+function main(value: Maybe): None {
+    result: Integer = match (value) {
+        Some(inner) => 1,
+        Empty => 0,
+    };
+    println(to_string(result));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'inner' is declared but never used")
+        }));
+    }
+
+    #[test]
+    fn flags_unused_match_statement_pattern_bindings() {
+        let source = r#"enum Maybe { Some(Integer), Empty }
+
+function main(value: Maybe): None {
+    match (value) {
+        Some(inner) => { println("x"); }
+        Empty => { println("y"); }
+    }
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'inner' is declared but never used")
+        }));
+    }
+
+    #[test]
+    fn flags_unused_lambda_parameters() {
+        let source = r#"function main(): None {
+    f: (Integer) -> Integer = (x: Integer) => 1;
+    println(to_string(f(2)));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| f.code == "L004"
+            && f.message
+                .contains("Variable 'x' is declared but never used")));
+    }
+
+    #[test]
+    fn flags_shadowing_inside_async_block() {
+        let source = r#"function main(): None {
+    value: Integer = 1;
+    task: Task<Integer> = async {
+        value: Integer = 2;
+        return value;
+    };
+    println(to_string(await task));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| f.code == "L005"
+            && f.message
+                .contains("Variable 'value' shadows an outer variable")));
+    }
+
+    #[test]
+    fn flags_shadowing_inside_if_expression_branch() {
+        let source = r#"function main(): None {
+    value: Integer = 1;
+    result: Integer = if (true) {
+        value: Integer = 2;
+        value
+    } else {
+        0
+    };
+    println(to_string(result));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| f.code == "L005"
+            && f.message
+                .contains("Variable 'value' shadows an outer variable")));
+    }
+
+    #[test]
+    fn flags_shadowing_match_statement_pattern_bindings() {
+        let source = r#"enum Maybe { Some(Integer), Empty }
+
+function main(value: Maybe): None {
+    inner: Integer = 1;
+    match (value) {
+        Some(inner) => { println(to_string(inner)); }
+        Empty => { println("none"); }
+    }
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| f.code == "L005"
+            && f.message
+                .contains("Variable 'inner' shadows an outer variable")));
+    }
+
+    #[test]
+    fn flags_shadowing_match_expression_pattern_bindings() {
+        let source = r#"enum Maybe { Some(Integer), Empty }
+
+function main(value: Maybe): None {
+    inner: Integer = 1;
+    result: Integer = match (value) {
+        Some(inner) => inner,
+        Empty => 0,
+    };
+    println(to_string(result));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| f.code == "L005"
+            && f.message
+                .contains("Variable 'inner' shadows an outer variable")));
+    }
+
+    #[test]
+    fn flags_shadowing_lambda_parameters() {
+        let source = r#"function main(): None {
+    x: Integer = 1;
+    f: (Integer) -> Integer = (x: Integer) => x + 1;
+    println(to_string(f(2)));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.code == "L005"
+                && f.message.contains("Variable 'x' shadows an outer variable")));
     }
 }

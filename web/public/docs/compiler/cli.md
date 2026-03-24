@@ -241,6 +241,9 @@ Current `apex lint` rules cover:
 - unused local variables (`L004`, underscore-prefixed names are ignored)
 - variable shadowing inside nested scopes (`L005`)
 
+Scope note:
+- `L004` and `L005` now also cover locals introduced inside `async` expressions, expression-valued `if` branches, `match` pattern bindings, and lambda parameter lists instead of only statement-bodied scopes.
+
 `apex fix` currently applies safe import deduping/sorting and then runs formatter output normalization.
 
 Import cleanup behavior:

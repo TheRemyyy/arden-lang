@@ -20,6 +20,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - bare `apex test` inside a project now considers every source file listed in `apex.toml`, so `@Test` functions inside regular files like `src/main.apex` are no longer skipped just because the filename does not contain `test` or `spec`
 - Fixed project output collision validation:
   - `apex.toml` `output` values that resolve to `apex.toml`, the entry file, or any other listed source file are now rejected during validation instead of allowing builds/info flows to target and potentially overwrite project inputs
+- Fixed lint `L004` unused-variable coverage gaps in expression-bodied scopes:
+  - locals declared inside `async { ... }` and `if (...) { ... } else { ... }` expressions are now reported when unused instead of being skipped because the linter only tracked identifier reads from nested expression blocks
+  - `match` pattern bindings in both statement and expression forms are now reported when unused instead of silently disappearing from lint analysis
+  - lambda parameters are now included in unused-variable analysis instead of never producing `L004`
+- Fixed lint `L005` shadowing coverage gaps in expression-bodied scopes:
+  - shadowing inside `async { ... }` and expression-valued `if` branches is now detected instead of being ignored whenever the inner declarations lived under an expression node rather than a statement block
+  - `match` pattern bindings now report shadowing against outer locals in both statement and expression forms
+  - lambda parameters that shadow outer locals are now flagged instead of bypassing `L005`
 - Fixed invalid string escape acceptance:
   - string literals like `"bad \q escape"` now fail during parsing instead of silently preserving unsupported escapes and diverging from documented string semantics
 - Fixed invalid char escape acceptance:
