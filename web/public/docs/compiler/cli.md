@@ -230,6 +230,8 @@ Lint/fix note:
 - `apex fix` now preserves leading file-header comments and comments between `package ...;` and the import block while sorting/deduplicating imports, instead of moving those comments below the imports.
 - Block-commented import-like text now stays inside its original block comment during `apex fix`; only real top-level imports are rewritten.
 - `apex lint` `L003` now also treats imports as used when they only appear inside explicit generic call arguments (`List<Boxed>()`, `List<u.Box>()`) or inside interface default method bodies.
+- `apex lint` now also applies `L004` and `L005` inside interface default method bodies, including locals, loop variables, lambda parameters, and match bindings.
+- `apex lint` `L003` now also treats imports as used when they appear only in generic bounds on functions, classes, enums, interfaces, or class methods.
 
 ### Linting and Safe Fixes
 

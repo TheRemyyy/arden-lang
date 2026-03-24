@@ -36,6 +36,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - imports used only through explicit generic call arguments like `List<Boxed>()`, `List<u.Box>()`, and `List<Res>()` now count as used instead of being missed because the linter skipped `Expr::Call.type_args`
   - namespace aliases and exact imported aliases used only inside constructor type strings like `List<u.M.Box>()` / `List<Boxed>()` now also count as used instead of being missed by raw construct-type scanning
   - imports referenced only inside interface default method bodies now count as used instead of being ignored because `default_impl` statements were skipped during usage collection
+- Fixed lint `L004` / `L005` coverage gaps inside interface default methods:
+  - locals, loop variables, lambda parameters, and match bindings declared only inside `interface` `default_impl` bodies are now checked for unused-variable warnings instead of being skipped entirely
+  - shadowing against interface method parameters or outer locals inside those same default bodies is now reported instead of being skipped for `let`, `for`, lambda, and match-binding cases
+- Fixed lint `L003` false unused-import reports for generic bounds:
+  - imports referenced only from generic bounds like `function f<T extends Comparable>(...)`, `class Box<T extends Cmp>`, `enum Maybe<T extends Comparable>`, and `interface Sorter<T extends Cmp>` now count as used instead of being ignored
+  - the same bound-only usage now also works for class method generic parameters, so method-local bounds no longer trigger false unused-import warnings
 - Fixed `apex test` runner import injection and `main(...)` stripping edge cases:
   - generated runners now still inject `import std.io.*;` when the source only mentions that import inside block comments, instead of treating commented text as a real import and emitting uncompilable runner code
   - shebang-based scripts now keep `#!/...` as the first line and receive the injected stdio import after the shebang instead of before it

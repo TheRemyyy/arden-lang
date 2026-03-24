@@ -183,7 +183,14 @@ fn check_unused_variables(program: &Program) -> Vec<LintFinding> {
                 };
                 findings.extend(check_unused_variables(&nested));
             }
-            Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
+            Decl::Interface(interface) => {
+                for method in &interface.methods {
+                    if let Some(default_impl) = &method.default_impl {
+                        findings.extend(check_unused_variables_in_block(default_impl));
+                    }
+                }
+            }
+            Decl::Enum(_) | Decl::Import(_) => {}
         }
     }
 
@@ -416,7 +423,18 @@ fn check_shadowed_variables(program: &Program) -> Vec<LintFinding> {
                 };
                 findings.extend(check_shadowed_variables(&nested));
             }
-            Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
+            Decl::Interface(interface) => {
+                for method in &interface.methods {
+                    if let Some(default_impl) = &method.default_impl {
+                        let mut scopes = vec![
+                            scope_with_params(&method.params),
+                            HashMap::<String, Span>::new(),
+                        ];
+                        check_shadowed_in_block(default_impl, &mut scopes, &mut findings);
+                    }
+                }
+            }
+            Decl::Enum(_) | Decl::Import(_) => {}
         }
     }
     findings
@@ -788,6 +806,7 @@ fn collect_used_names(program: &Program, used: &mut HashSet<String>) {
     for decl in &program.declarations {
         match &decl.node {
             Decl::Function(func) => {
+                collect_generic_param_bound_names(&func.generic_params, used);
                 for param in &func.params {
                     collect_type_names(&param.ty, used);
                 }
@@ -797,6 +816,7 @@ fn collect_used_names(program: &Program, used: &mut HashSet<String>) {
                 }
             }
             Decl::Class(class) => {
+                collect_generic_param_bound_names(&class.generic_params, used);
                 if let Some(base) = &class.extends {
                     used.insert(base.clone());
                 }
@@ -820,6 +840,7 @@ fn collect_used_names(program: &Program, used: &mut HashSet<String>) {
                     }
                 }
                 for method in &class.methods {
+                    collect_generic_param_bound_names(&method.generic_params, used);
                     for param in &method.params {
                         collect_type_names(&param.ty, used);
                     }
@@ -830,6 +851,7 @@ fn collect_used_names(program: &Program, used: &mut HashSet<String>) {
                 }
             }
             Decl::Enum(en) => {
+                collect_generic_param_bound_names(&en.generic_params, used);
                 for variant in &en.variants {
                     for field in &variant.fields {
                         collect_type_names(&field.ty, used);
@@ -837,6 +859,7 @@ fn collect_used_names(program: &Program, used: &mut HashSet<String>) {
                 }
             }
             Decl::Interface(interface) => {
+                collect_generic_param_bound_names(&interface.generic_params, used);
                 for name in &interface.extends {
                     used.insert(name.clone());
                 }
@@ -860,6 +883,20 @@ fn collect_used_names(program: &Program, used: &mut HashSet<String>) {
                 collect_used_names(&nested, used);
             }
             Decl::Import(_) => {}
+        }
+    }
+}
+
+fn collect_generic_param_bound_names(
+    generic_params: &[crate::ast::GenericParam],
+    used: &mut HashSet<String>,
+) {
+    for param in generic_params {
+        for bound in &param.bounds {
+            used.insert(bound.clone());
+            if let Some((prefix, _)) = bound.split_once('.') {
+                used.insert(prefix.to_string());
+            }
         }
     }
 }
@@ -2051,5 +2088,367 @@ function main(value: Maybe): None {
             .iter()
             .any(|f| f.code == "L005"
                 && f.message.contains("Variable 'x' shadows an outer variable")));
+    }
+
+    #[test]
+    fn flags_unused_interface_default_impl_locals() {
+        let source = r#"interface Runner {
+    function run(): Integer {
+        temp: Integer = 1;
+        return 0;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'temp' is declared but never used")
+        }));
+    }
+
+    #[test]
+    fn flags_unused_interface_default_impl_loop_variables() {
+        let source = r#"interface Runner {
+    function run(): None {
+        for (item in range(0, 2)) {
+            println("x");
+        }
+        return None;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'item' is declared but never used")
+        }));
+    }
+
+    #[test]
+    fn flags_unused_interface_default_impl_lambda_parameters() {
+        let source = r#"interface Runner {
+    function run(): Integer {
+        f: (Integer) -> Integer = (x: Integer) => 1;
+        return f(2);
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'x' is declared but never used")
+        }));
+    }
+
+    #[test]
+    fn flags_unused_interface_default_impl_match_statement_bindings() {
+        let source = r#"enum Maybe { Some(Integer), Empty }
+
+interface Runner {
+    function run(value: Maybe): None {
+        match (value) {
+            Some(inner) => { println("x"); }
+            Empty => { println("y"); }
+        }
+        return None;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'inner' is declared but never used")
+        }));
+    }
+
+    #[test]
+    fn flags_unused_interface_default_impl_match_expression_bindings() {
+        let source = r#"enum Maybe { Some(Integer), Empty }
+
+interface Runner {
+    function run(value: Maybe): Integer {
+        result: Integer = match (value) {
+            Some(inner) => 1,
+            Empty => 0,
+        };
+        return result;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L004"
+                && f.message
+                    .contains("Variable 'inner' is declared but never used")
+        }));
+    }
+
+    #[test]
+    fn flags_shadowing_interface_default_impl_parameters() {
+        let source = r#"interface Runner {
+    function run(value: Integer): Integer {
+        value: Integer = 1;
+        return value;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L005"
+                && f.message
+                    .contains("Variable 'value' shadows an outer variable")
+        }));
+    }
+
+    #[test]
+    fn flags_shadowing_interface_default_impl_loop_variables() {
+        let source = r#"interface Runner {
+    function run(): None {
+        item: Integer = 1;
+        for (item in range(0, 2)) {
+            println(to_string(item));
+        }
+        return None;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L005"
+                && f.message
+                    .contains("Variable 'item' shadows an outer variable")
+        }));
+    }
+
+    #[test]
+    fn flags_shadowing_interface_default_impl_lambda_parameters() {
+        let source = r#"interface Runner {
+    function run(): Integer {
+        x: Integer = 1;
+        f: (Integer) -> Integer = (x: Integer) => x + 1;
+        return f(2);
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L005" && f.message.contains("Variable 'x' shadows an outer variable")
+        }));
+    }
+
+    #[test]
+    fn flags_shadowing_interface_default_impl_match_statement_bindings() {
+        let source = r#"enum Maybe { Some(Integer), Empty }
+
+interface Runner {
+    function run(value: Maybe): None {
+        inner: Integer = 1;
+        match (value) {
+            Some(inner) => { println(to_string(inner)); }
+            Empty => { println("none"); }
+        }
+        return None;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L005"
+                && f.message
+                    .contains("Variable 'inner' shadows an outer variable")
+        }));
+    }
+
+    #[test]
+    fn flags_shadowing_interface_default_impl_match_expression_bindings() {
+        let source = r#"enum Maybe { Some(Integer), Empty }
+
+interface Runner {
+    function run(value: Maybe): Integer {
+        inner: Integer = 1;
+        result: Integer = match (value) {
+            Some(inner) => inner,
+            Empty => 0,
+        };
+        return result;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(result.findings.iter().any(|f| {
+            f.code == "L005"
+                && f.message
+                    .contains("Variable 'inner' shadows an outer variable")
+        }));
+    }
+
+    #[test]
+    fn function_generic_bound_exact_alias_marks_import_as_used() {
+        let source = r#"import util.Comparable as Cmp;
+
+function sort<T extends Cmp>(value: T): T {
+    return value;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable as Cmp' appears unused")
+        }));
+    }
+
+    #[test]
+    fn function_generic_bound_specific_import_marks_import_as_used() {
+        let source = r#"import util.Comparable;
+
+function sort<T extends Comparable>(value: T): T {
+    return value;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_generic_bound_exact_alias_marks_import_as_used() {
+        let source = r#"import util.Comparable as Cmp;
+
+class Box<T extends Cmp> {
+    value: T;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable as Cmp' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_generic_bound_specific_import_marks_import_as_used() {
+        let source = r#"import util.Comparable;
+
+class Box<T extends Comparable> {
+    value: T;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_method_generic_bound_exact_alias_marks_import_as_used() {
+        let source = r#"import util.Comparable as Cmp;
+
+class Box {
+    function sort<T extends Cmp>(value: T): T {
+        return value;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable as Cmp' appears unused")
+        }));
+    }
+
+    #[test]
+    fn class_method_generic_bound_specific_import_marks_import_as_used() {
+        let source = r#"import util.Comparable;
+
+class Box {
+    function sort<T extends Comparable>(value: T): T {
+        return value;
+    }
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable' appears unused")
+        }));
+    }
+
+    #[test]
+    fn enum_generic_bound_exact_alias_marks_import_as_used() {
+        let source = r#"import util.Comparable as Cmp;
+
+enum Maybe<T extends Cmp> {
+    Some(T),
+    Empty
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable as Cmp' appears unused")
+        }));
+    }
+
+    #[test]
+    fn enum_generic_bound_specific_import_marks_import_as_used() {
+        let source = r#"import util.Comparable;
+
+enum Maybe<T extends Comparable> {
+    Some(T),
+    Empty
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable' appears unused")
+        }));
+    }
+
+    #[test]
+    fn interface_generic_bound_exact_alias_marks_import_as_used() {
+        let source = r#"import util.Comparable as Cmp;
+
+interface Sorter<T extends Cmp> {
+    function sort(value: T): T;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable as Cmp' appears unused")
+        }));
+    }
+
+    #[test]
+    fn interface_generic_bound_specific_import_marks_import_as_used() {
+        let source = r#"import util.Comparable;
+
+interface Sorter<T extends Comparable> {
+    function sort(value: T): T;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(!result.findings.iter().any(|f| {
+            f.code == "L003"
+                && f.message
+                    .contains("import 'util.Comparable' appears unused")
+        }));
     }
 }
