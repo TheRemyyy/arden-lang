@@ -1282,7 +1282,10 @@ function main(): None {
 }
 "#;
         let formatted = format_source(source).expect("format succeeds");
-        assert!(formatted.contains("match (2) { 2 => 3, _ => 4 }"), "{formatted}");
+        assert!(
+            formatted.contains("match (2) { 2 => 3, _ => 4 }"),
+            "{formatted}"
+        );
         let tokens = tokenize(&formatted).expect("formatted output should lex");
         let mut parser = Parser::new(tokens);
         parser

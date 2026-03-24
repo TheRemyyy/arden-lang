@@ -5749,7 +5749,10 @@ impl<'ctx> Codegen<'ctx> {
 
         for method in &class.methods {
             let method_name = format!("{}__{}", class.name, method.name);
-            if compile_entire_specialized_class || active_symbols.contains(&method_name) {
+            if compile_entire_specialized_class
+                || active_symbols.contains(&class.name)
+                || active_symbols.contains(&method_name)
+            {
                 self.compile_method(class, method)?;
             }
         }

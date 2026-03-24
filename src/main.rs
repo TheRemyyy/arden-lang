@@ -999,6 +999,24 @@ fn extend_declaration_symbols_for_reference(
         ) {
             push_owner(owner_ns, owner_file);
         }
+        // Try deeper split for nested modules
+        let mut parts = symbol.split("__").collect::<Vec<_>>();
+        while parts.len() > 1 {
+            parts.pop();
+            let parent = parts.join("__");
+            if let (Some(owner_ns), Some(owner_file)) = (
+                global_class_map.get(&parent),
+                global_class_file_map.get(&parent),
+            ) {
+                push_owner(owner_ns, owner_file);
+            }
+            if let (Some(owner_ns), Some(owner_file)) = (
+                global_module_map.get(&parent),
+                global_module_file_map.get(&parent),
+            ) {
+                push_owner(owner_ns, owner_file);
+            }
+        }
     }
 
     if let (Some(owner_ns), Some(owner_file)) = (
@@ -10020,7 +10038,9 @@ function main(): Integer {
             .expect_err("invalid nested tagged value-flow source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -10175,7 +10195,9 @@ function main(): Integer {
             .expect_err("invalid deeper multi-helper tagged source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -10385,7 +10407,9 @@ function main(): Integer {
             .expect_err("invalid scalar-only tagged source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -10522,7 +10546,9 @@ function main(): Integer {
             .expect_err("invalid scalar-only multi-helper tagged source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -10674,7 +10700,9 @@ function main(): Integer {
             .expect_err("invalid three-helper scalar tagged source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -10827,7 +10855,9 @@ function main(): Integer {
             .expect_err("invalid three-helper repeated-update scalar source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -10970,7 +11000,9 @@ function main(): Integer {
             .expect_err("invalid parameterized lookup tagged source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -11113,7 +11145,9 @@ function main(): Integer {
             .expect_err("invalid parameterized multi-key tagged source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -11256,7 +11290,9 @@ function main(): Integer {
             .expect_err("invalid parameterized multi-key scalar source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -11399,7 +11435,9 @@ function main(): Integer {
             .expect_err("invalid fresh multi-key scalar source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -11545,7 +11583,9 @@ function main(): Integer {
             .expect_err("invalid multi-key joined tagged source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -11759,7 +11799,9 @@ function main(): Integer {
             .expect_err("invalid scalarized nested tagged source should fail");
         let messages = errors.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert!(
-            messages.iter().any(|m| m.contains("If expression branch type mismatch")),
+            messages
+                .iter()
+                .any(|m| m.contains("If expression branch type mismatch")),
             "{}",
             messages.join("\n")
         );
@@ -11971,6 +12013,122 @@ function main(): Integer {
         assert_eq!(
             output.status.code(),
             Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_shadowed_alias_in_helper_return_path_survives_runtime() {
+        let temp_root = make_temp_project_root("shadowed-alias-helper-return-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nmodule M { function add1(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            r#"
+package app;
+import util as u;
+
+class Holder {
+    value: Integer;
+    constructor(v: Integer) { this.value = v; }
+    function get(): Integer { return this.value + 10; }
+}
+
+function fetch(v: Integer): Holder {
+    u: Holder = Holder(v);
+    return u;
+}
+
+function main(): Integer {
+    h: Holder = fetch(2);
+    return h.get();
+}
+"#,
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support shadowed alias in helper return path");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled shadowed-alias-helper-return binary");
+        assert_eq!(
+            output.status.code(),
+            Some(12),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_incorrectly_filters_class_dependency_under_shadowed_alias_in_dependency_closure(
+    ) {
+        let temp_root = make_temp_project_root("shadowed-alias-dependency-filtering");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nclass Box { value: Integer; constructor(v: Integer) { this.value = v; } }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            r#"
+package app;
+import util as u;
+
+class Local {
+    value: Integer;
+    constructor(v: Integer) { this.value = v; }
+    function get(): Integer { return this.value + 10; }
+}
+
+function main(): Integer {
+    u: Local = Local(2);
+    return u.get();
+}
+"#,
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should handle shadowed alias in dependency closure");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled shadowed-alias-dependency-filtering binary");
+        assert_eq!(
+            output.status.code(),
+            Some(12),
             "stdout={} stderr={}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
@@ -12242,7 +12400,6 @@ function main(): Integer {
         let _ = fs::remove_dir_all(temp_root);
     }
 
-    #[test]
     #[test]
     fn project_build_prefers_shadowed_local_over_namespace_alias_for_nested_field_chain_calls() {
         let temp_root = make_temp_project_root("shadowed-local-over-namespace-alias-project");

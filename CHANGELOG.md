@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project-mode filtered codegen for shadowed local class method calls:
+  - local receivers that shadow namespace aliases, like `u: Local = Local(2); u.get()`, now keep their owning class methods active in object codegen instead of linking with missing local method symbols such as `app__Local__get`
 - Fixed null-safe string equality in nested tagged container storage paths:
   - `Set<Result<Option<T>, String>>` and related nested tagged containers no longer crash after growth/removal when comparing string-backed `Result.error(...)` variants, because string equality now avoids calling `strcmp` on null payload pointers in inactive union slots
 - Fixed expected-type-aware `if` lowering for tagged constructor branches:
