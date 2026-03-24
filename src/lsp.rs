@@ -529,11 +529,15 @@ fn is_ident_byte(byte: u8) -> bool {
 fn word_at_position_impl(text: &str, pos: Position) -> Option<String> {
     let offset = position_to_offset_impl(text, pos).min(text.len());
     let bytes = text.as_bytes();
-    if bytes.is_empty() || offset >= bytes.len() {
+    if bytes.is_empty() {
         return None;
     }
 
-    let mut idx = offset;
+    let mut idx = if offset == bytes.len() {
+        offset.saturating_sub(1)
+    } else {
+        offset
+    };
     if !is_ident_byte(bytes[idx]) && idx > 0 {
         if bytes[idx].is_ascii_whitespace() || !is_ident_byte(bytes[idx - 1]) {
             return None;
@@ -1296,6 +1300,15 @@ mod tests {
         let text = "value\n";
         assert_eq!(word_at_position_impl(text, Position::new(0, 5)), None);
         assert_eq!(word_at_position_impl(text, Position::new(1, 0)), None);
+    }
+
+    #[test]
+    fn lsp_word_lookup_resolves_identifier_at_end_of_file() {
+        let text = "value";
+        assert_eq!(
+            word_at_position_impl(text, Position::new(0, 5)).as_deref(),
+            Some("value")
+        );
     }
 }
 

@@ -66,6 +66,7 @@ link_args = ["-Wl,--as-needed"]
 Path safety:
 - `entry` and every path in `files` must resolve inside the project root.
 - Paths that escape through `..` segments or symlinks are rejected during validation.
+- Project auto-discovery only treats a real `apex.toml` file as the project marker; a directory named `apex.toml` is ignored.
 
 ## Project Commands
 

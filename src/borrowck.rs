@@ -2254,7 +2254,7 @@ pub fn format_borrow_errors(errors: &[BorrowError], source: &str, filename: &str
             ));
 
             let underline_start = col.saturating_sub(1);
-            let underline_len = (error.span.end - error.span.start).max(1);
+            let underline_len = error.span.end.saturating_sub(error.span.start).max(1);
             output.push_str(&format!(
                 "   \x1b[1;34m|\x1b[0m {}\x1b[1;31m{}\x1b[0m\n",
                 " ".repeat(underline_start),
@@ -2298,7 +2298,7 @@ fn span_to_location(span: &Span, source: &str) -> (usize, usize) {
 
 #[cfg(test)]
 mod tests {
-    use super::BorrowChecker;
+    use super::{format_borrow_errors, BorrowChecker, BorrowError};
     use crate::parser::Parser;
     use crate::{ast::Program, lexer};
 
@@ -2323,6 +2323,19 @@ mod tests {
         let program = parse_program(source);
         let mut checker = BorrowChecker::new();
         checker.check(&program).expect("borrow check should pass");
+    }
+
+    #[test]
+    fn formatting_handles_inverted_spans_without_panicking() {
+        let errors = vec![BorrowError {
+            message: "broken span".to_string(),
+            span: 5..3,
+            note: None,
+        }];
+
+        let rendered = format_borrow_errors(&errors, "let x = 1;\n", "sample.apex");
+
+        assert!(rendered.contains("broken span"), "{rendered}");
     }
 
     #[test]

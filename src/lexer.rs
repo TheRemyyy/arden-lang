@@ -245,27 +245,28 @@ impl<'src> std::fmt::Display for Token<'src> {
 
 /// Tokenize source code
 pub fn tokenize(source: &str) -> Result<Vec<(Token<'_>, std::ops::Range<usize>)>, String> {
-    let source = if source.starts_with("#!") {
+    let (source, span_offset) = if source.starts_with("#!") {
         match source.find('\n') {
-            Some(pos) => &source[pos..],
-            None => "",
+            Some(pos) => (&source[pos..], pos),
+            None => ("", source.len()),
         }
     } else {
-        source
+        (source, 0)
     };
 
     let lexer = Token::lexer(source);
     let mut tokens = Vec::new();
 
     for (token, span) in lexer.spanned() {
+        let absolute_span = (span.start + span_offset)..(span.end + span_offset);
         match token {
-            Ok(t) => tokens.push((t, span)),
+            Ok(t) => tokens.push((t, absolute_span)),
             Err(_) => {
                 let snippet = &source[span.clone()];
                 if snippet.chars().all(|ch| ch.is_ascii_digit()) {
                     return Err(format!(
                         "Invalid integer literal at {}: '{}'",
-                        span.start, snippet
+                        absolute_span.start, snippet
                     ));
                 }
                 if snippet.contains('.')
@@ -273,13 +274,13 @@ pub fn tokenize(source: &str) -> Result<Vec<(Token<'_>, std::ops::Range<usize>)>
                 {
                     return Err(format!(
                         "Invalid float literal at {}: '{}'",
-                        span.start, snippet
+                        absolute_span.start, snippet
                     ));
                 }
                 let display_snippet: String = snippet.chars().take(20).collect();
                 return Err(format!(
                     "Unknown token at {}: '{}'",
-                    span.start, display_snippet
+                    absolute_span.start, display_snippet
                 ));
             }
         }
@@ -305,6 +306,16 @@ mod tests {
         let tokens = tokenize("#!/usr/bin/env apex\nfunction main(): None { return None; }")
             .expect("tokenization succeeds");
         assert!(matches!(tokens.first(), Some((Token::Function, _))));
+    }
+
+    #[test]
+    fn preserves_absolute_spans_after_shebang() {
+        let source = "#!/usr/bin/env apex\nfunction main(): None { return None; }";
+        let tokens = tokenize(source).expect("tokenization succeeds");
+        let (token, span) = tokens.first().expect("function token should exist");
+        assert!(matches!(token, Token::Function));
+        assert_eq!(&source[span.clone()], "function");
+        assert_eq!(span.start, source.find("function").expect("function keyword"));
     }
 
     #[test]

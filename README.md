@@ -96,6 +96,10 @@ For compiler robustness work there are now 2 additional loops beyond the normal 
 
 The ignored stress tests stay out of the default fast suite, while `cargo-fuzz` is intended for longer local or CI hardening runs.
 
+Diagnostics and editor tooling notes:
+- Shebang-based Apex entry files (`#!/usr/bin/env apex`) now preserve absolute lexer spans, so parse errors, source underlines, and LSP symbol locations stay aligned with the real file offsets.
+- Project auto-discovery now only trusts real `apex.toml` files, not directories with that name.
+
 ## 📁 Quick Start: Multi-File Project
 
 ```bash

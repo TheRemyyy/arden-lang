@@ -307,7 +307,7 @@ pub fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
 
     while let Some(dir) = current {
         let config_path = dir.join("apex.toml");
-        if config_path.exists() {
+        if config_path.is_file() {
             return Some(dir.to_path_buf());
         }
 
@@ -632,5 +632,20 @@ output = "demo"
         let _ = std::fs::remove_dir_all(&project_root);
 
         assert_eq!(discovered.as_deref(), Some(project_root.as_path()));
+    }
+
+    #[test]
+    fn find_project_root_rejects_directory_named_apex_toml() {
+        let project_root = unique_temp_dir("apex_project_find_root_fake_config_dir");
+        let fake_config_dir = project_root.join("apex.toml");
+        let src_dir = project_root.join("src");
+        std::fs::create_dir_all(&fake_config_dir).expect("fake apex.toml directory should exist");
+        std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
+
+        let discovered = super::find_project_root(&src_dir);
+
+        let _ = std::fs::remove_dir_all(&project_root);
+
+        assert!(discovered.is_none());
     }
 }

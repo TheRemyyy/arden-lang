@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed lexer span preservation after Unix shebang stripping:
+  - files that start with `#!/...` now keep absolute token offsets after lexing instead of shifting every downstream parser/LSP/diagnostic span to line 1
+- Fixed LSP identifier lookup at end-of-file:
+  - hover/completion/name-resolution now still sees the trailing identifier when the cursor sits exactly at the end of the last token instead of returning no symbol
+- Fixed project-root false positives for directory-shaped `apex.toml` entries:
+  - project discovery now requires a real `apex.toml` file, so stray directories with that name no longer trick CLI commands into thinking they are inside a valid Apex project
+- Fixed borrow-check diagnostic formatting on inverted/internal spans:
+  - rendering borrow errors now uses saturating span lengths instead of subtracting raw offsets, so malformed recovery spans no longer risk panicking while printing the original diagnostic
 - Fixed project-mode filtered codegen for shadowed local class method calls:
   - local receivers that shadow namespace aliases, like `u: Local = Local(2); u.get()`, now keep their owning class methods active in object codegen instead of linking with missing local method symbols such as `app__Local__get`
 - Fixed null-safe string equality in nested tagged container storage paths:
