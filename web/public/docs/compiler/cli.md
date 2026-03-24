@@ -49,6 +49,7 @@ Optimization note:
 - In project mode, optimization level is controlled by `opt_level` in `apex.toml` (`0/1/2/3/s/z/fast`, default `3`).
 - In project mode, `target` in `apex.toml` is passed to Clang as `--target <triple>` when set.
 - In single-file mode (`apex compile file.apex` / `apex run file.apex`), Apex defaults to `-O3` and uses native tuning when available.
+- Project-mode rewrite now rewrites alias-qualified and nested module-qualified nominal parents in `extends`, `implements`, and `interface ... extends ...`, so imported parents like `u.Base`, `u.Printable`, and `u.Api.Named` survive symbol mangling consistently across build/check/test flows.
 - Invalid `--opt-level` / `opt_level` values are now rejected up front instead of silently falling back to `-O3`.
 - `apex run` requires project `output_kind = "bin"` and now rejects shared/static library targets before starting a build; use `apex build` for library outputs.
 - Project `output` paths in `apex.toml` must stay inside the project root; traversal paths like `../outside/app` are rejected during validation.

@@ -46,6 +46,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - parser now accepts dotted names in `class ... extends ...`, `class ... implements ...`, and `interface ... extends ...`, so aliases and module-qualified bases like `u.Base` / `u.Api.Named` no longer fail with `Expected LBrace, found Some(Dot)`
   - lint `L003` now treats namespace aliases used only from those inheritance/implementation clauses as real usage instead of falsely reporting imports like `import app as u;` as unused
   - typechecking now resolves those alias-qualified and nested module-qualified inheritance references to the real class/interface definitions, so valid code like `class Child extends u.Base` and `interface Child extends u.Api.Named` no longer fails later with `extends unknown class` / `implements unknown interface`
+- Fixed project rewrite for qualified inheritance/implementation references:
+  - project-mode AST rewriting now rewrites alias-qualified and nested module-qualified class parents in `extends`, so inherited bases like `u.Base` and `u.Api.Base` no longer stay unresolved after project symbol mangling
+  - the same rewrite now also covers `implements` lists and `interface ... extends ...` clauses, so imported interfaces like `u.Printable`, `u.Api.Named`, and mixed multi-parent lists stay aligned with parser/typecheck resolution during project builds and tests
+  - nested module declarations now receive the same parent/interface rewrite pass, preventing direct module-local `class` / `interface` declarations from keeping stale alias-qualified parent names while the rest of their signatures are rewritten
 - Fixed `apex test` runner import injection and `main(...)` stripping edge cases:
   - generated runners now still inject `import std.io.*;` when the source only mentions that import inside block comments, instead of treating commented text as a real import and emitting uncompilable runner code
   - shebang-based scripts now keep `#!/...` as the first line and receive the injected stdio import after the shebang instead of before it

@@ -349,6 +349,34 @@ pub fn rewrite_program_for_project(
                     Decl::Class(class) => {
                         let mut c = class.clone();
                         c.name = mangle_project_symbol(current_namespace, entry_namespace, &c.name);
+                        c.extends = class.extends.as_ref().map(|extends| {
+                            rewrite_named_reference_for_project(
+                                extends,
+                                current_namespace,
+                                &local_classes,
+                                &imported_classes,
+                                global_class_map,
+                                &local_enums,
+                                &imported_enums,
+                                global_enum_map,
+                                &imported_modules,
+                                entry_namespace,
+                            )
+                        });
+                        c.implements = class
+                            .implements
+                            .iter()
+                            .map(|implemented| {
+                                rewrite_interface_reference_for_project(
+                                    implemented,
+                                    current_namespace,
+                                    &local_modules,
+                                    &imported_modules,
+                                    global_module_map,
+                                    entry_namespace,
+                                )
+                            })
+                            .collect();
                         c.fields = c
                             .fields
                             .iter()
@@ -566,6 +594,40 @@ pub fn rewrite_program_for_project(
                                     }
                                     Decl::Class(class) => {
                                         let mut c = class.clone();
+                                        c.extends = class.extends.as_ref().map(|extends| {
+                                            match rewrite_module_local_type(
+                                                &ast::Type::Named(extends.clone()),
+                                                &module_prefix,
+                                                current_namespace,
+                                                entry_namespace,
+                                                &module_local_classes,
+                                                &module_local_enums,
+                                                &module_local_modules,
+                                                &imported_classes,
+                                                global_class_map,
+                                                &imported_enums,
+                                                global_enum_map,
+                                                &imported_modules,
+                                            ) {
+                                                ast::Type::Named(rewritten) => rewritten,
+                                                _ => extends.clone(),
+                                            }
+                                        });
+                                        c.implements = class
+                                            .implements
+                                            .iter()
+                                            .map(|implemented| {
+                                                rewrite_interface_reference_for_module(
+                                                    implemented,
+                                                    &module_prefix,
+                                                    current_namespace,
+                                                    entry_namespace,
+                                                    &module_local_modules,
+                                                    &imported_modules,
+                                                    global_module_map,
+                                                )
+                                            })
+                                            .collect();
                                         c.fields = c
                                             .fields
                                             .iter()
@@ -758,6 +820,106 @@ pub fn rewrite_program_for_project(
                                         )
                                         .node
                                     }
+                                    Decl::Interface(interface) => {
+                                        let mut rewritten = interface.clone();
+                                        rewritten.extends = interface
+                                            .extends
+                                            .iter()
+                                            .map(|extended| {
+                                                rewrite_interface_reference_for_module(
+                                                    extended,
+                                                    &module_prefix,
+                                                    current_namespace,
+                                                    entry_namespace,
+                                                    &module_local_modules,
+                                                    &imported_modules,
+                                                    global_module_map,
+                                                )
+                                            })
+                                            .collect();
+                                        rewritten.methods = interface
+                                            .methods
+                                            .iter()
+                                            .map(|method| {
+                                                let mut new_method = method.clone();
+                                                let mut scopes: Vec<HashSet<String>> =
+                                                    vec![new_method
+                                                        .params
+                                                        .iter()
+                                                        .map(|p| p.name.clone())
+                                                        .collect()];
+                                                if let Some(scope) = scopes.last_mut() {
+                                                    scope.insert("this".to_string());
+                                                }
+                                                new_method.params = new_method
+                                                    .params
+                                                    .iter()
+                                                    .map(|param| ast::Parameter {
+                                                        name: param.name.clone(),
+                                                        ty: rewrite_module_local_type(
+                                                            &param.ty,
+                                                            &module_prefix,
+                                                            current_namespace,
+                                                            entry_namespace,
+                                                            &module_local_classes,
+                                                            &module_local_enums,
+                                                            &module_local_modules,
+                                                            &imported_classes,
+                                                            global_class_map,
+                                                            &imported_enums,
+                                                            global_enum_map,
+                                                            &imported_modules,
+                                                        ),
+                                                        mutable: param.mutable,
+                                                        mode: param.mode,
+                                                    })
+                                                    .collect();
+                                                new_method.return_type = rewrite_module_local_type(
+                                                    &new_method.return_type,
+                                                    &module_prefix,
+                                                    current_namespace,
+                                                    entry_namespace,
+                                                    &module_local_classes,
+                                                    &module_local_enums,
+                                                    &module_local_modules,
+                                                    &imported_classes,
+                                                    global_class_map,
+                                                    &imported_enums,
+                                                    global_enum_map,
+                                                    &imported_modules,
+                                                );
+                                                new_method.default_impl =
+                                                    method.default_impl.as_ref().map(|block| {
+                                                        fix_module_local_block(
+                                                            &rewrite_block_calls_for_project(
+                                                                block,
+                                                                current_namespace,
+                                                                entry_namespace,
+                                                                &module_local_functions,
+                                                                &imported_map,
+                                                                global_function_map,
+                                                                &module_local_classes,
+                                                                &imported_classes,
+                                                                global_class_map,
+                                                                &imported_enums,
+                                                                global_enum_map,
+                                                                &module_local_modules,
+                                                                &imported_modules,
+                                                                global_module_map,
+                                                                &mut scopes,
+                                                            ),
+                                                            current_namespace,
+                                                            entry_namespace,
+                                                            &module_prefix,
+                                                            &module_local_functions,
+                                                            &module_local_classes,
+                                                        )
+                                                    });
+                                                new_method
+                                            })
+                                            .collect();
+                                        Decl::Interface(rewritten)
+                                    }
                                     _ => inner.node.clone(),
                                 };
                                 ast::Spanned::new(node, inner.span.clone())
@@ -795,6 +957,98 @@ pub fn rewrite_program_for_project(
                             })
                             .collect();
                         Decl::Enum(e)
+                    }
+                    Decl::Interface(interface) => {
+                        let mut rewritten = interface.clone();
+                        rewritten.name = mangle_project_symbol(
+                            current_namespace,
+                            entry_namespace,
+                            &rewritten.name,
+                        );
+                        rewritten.extends = interface
+                            .extends
+                            .iter()
+                            .map(|extended| {
+                                rewrite_interface_reference_for_project(
+                                    extended,
+                                    current_namespace,
+                                    &local_modules,
+                                    &imported_modules,
+                                    global_module_map,
+                                    entry_namespace,
+                                )
+                            })
+                            .collect();
+                        rewritten.methods = interface
+                            .methods
+                            .iter()
+                            .map(|method| {
+                                let mut new_method = method.clone();
+                                let mut scopes: Vec<HashSet<String>> = vec![new_method
+                                    .params
+                                    .iter()
+                                    .map(|p| p.name.clone())
+                                    .collect()];
+                                if let Some(scope) = scopes.last_mut() {
+                                    scope.insert("this".to_string());
+                                }
+                                new_method.params = new_method
+                                    .params
+                                    .iter()
+                                    .map(|param| ast::Parameter {
+                                        name: param.name.clone(),
+                                        ty: rewrite_type_for_project(
+                                            &param.ty,
+                                            current_namespace,
+                                            &local_classes,
+                                            &imported_classes,
+                                            global_class_map,
+                                            &local_enums,
+                                            &imported_enums,
+                                            global_enum_map,
+                                            &imported_modules,
+                                            entry_namespace,
+                                        ),
+                                        mutable: param.mutable,
+                                        mode: param.mode,
+                                    })
+                                    .collect();
+                                new_method.return_type = rewrite_type_for_project(
+                                    &new_method.return_type,
+                                    current_namespace,
+                                    &local_classes,
+                                    &imported_classes,
+                                    global_class_map,
+                                    &local_enums,
+                                    &imported_enums,
+                                    global_enum_map,
+                                    &imported_modules,
+                                    entry_namespace,
+                                );
+                                new_method.default_impl =
+                                    method.default_impl.as_ref().map(|block| {
+                                        rewrite_block_calls_for_project(
+                                            block,
+                                            current_namespace,
+                                            entry_namespace,
+                                            &local_functions,
+                                            &imported_map,
+                                            global_function_map,
+                                            &local_classes,
+                                            &imported_classes,
+                                            global_class_map,
+                                            &imported_enums,
+                                            global_enum_map,
+                                            &local_modules,
+                                            &imported_modules,
+                                            global_module_map,
+                                            &mut scopes,
+                                        )
+                                    });
+                                new_method
+                            })
+                            .collect();
+                        Decl::Interface(rewritten)
                     }
                     _ => d.node.clone(),
                 };
@@ -1035,6 +1289,111 @@ fn rewrite_type_for_project(
         entry_namespace,
     };
     rewrite_type_for_project_with_ctx(ty, &ctx)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rewrite_named_reference_for_project(
+    name: &str,
+    current_namespace: &str,
+    local_classes: &HashSet<String>,
+    imported_classes: &ImportedMap,
+    global_class_map: &HashMap<String, String>,
+    local_enums: &HashSet<String>,
+    imported_enums: &ImportedMap,
+    global_enum_map: &HashMap<String, String>,
+    imported_modules: &ImportedMap,
+    entry_namespace: &str,
+) -> String {
+    match rewrite_type_for_project(
+        &ast::Type::Named(name.to_string()),
+        current_namespace,
+        local_classes,
+        imported_classes,
+        global_class_map,
+        local_enums,
+        imported_enums,
+        global_enum_map,
+        imported_modules,
+        entry_namespace,
+    ) {
+        ast::Type::Named(rewritten) => rewritten,
+        _ => name.to_string(),
+    }
+}
+
+fn rewrite_interface_reference_for_project(
+    name: &str,
+    current_namespace: &str,
+    local_interfaces: &HashSet<String>,
+    imported_interfaces: &ImportedMap,
+    global_interface_map: &HashMap<String, String>,
+    entry_namespace: &str,
+) -> String {
+    if local_interfaces.contains(name) {
+        return mangle_project_symbol(current_namespace, entry_namespace, name);
+    }
+    if let Some((ns, symbol_name)) = imported_interfaces.get(name) {
+        return mangle_project_symbol(ns, entry_namespace, symbol_name);
+    }
+    if let Some(ns) = global_interface_map.get(name) {
+        return mangle_project_symbol(ns, entry_namespace, name);
+    }
+
+    let Some((alias, rest)) = name.split_once('.') else {
+        return name.to_string();
+    };
+    let member_parts = rest
+        .split('.')
+        .map(|part| part.to_string())
+        .collect::<Vec<_>>();
+
+    if let Some((owner_ns, interface_name)) = resolve_module_alias_class_candidate(
+        current_namespace,
+        alias,
+        &member_parts,
+        global_interface_map,
+    ) {
+        return mangle_project_symbol(&owner_ns, entry_namespace, &interface_name);
+    }
+
+    let Some((ns, symbol_name)) = imported_interfaces.get(alias) else {
+        return name.to_string();
+    };
+
+    if let Some((owner_ns, interface_name)) =
+        resolve_module_alias_class_candidate(ns, symbol_name, &member_parts, global_interface_map)
+    {
+        return mangle_project_symbol(&owner_ns, entry_namespace, &interface_name);
+    }
+
+    name.to_string()
+}
+
+fn rewrite_interface_reference_for_module(
+    name: &str,
+    module_prefix: &str,
+    current_namespace: &str,
+    entry_namespace: &str,
+    local_interfaces: &HashSet<String>,
+    imported_interfaces: &ImportedMap,
+    global_interface_map: &HashMap<String, String>,
+) -> String {
+    if local_interfaces.contains(name) {
+        return mangle_project_symbol(
+            current_namespace,
+            entry_namespace,
+            &module_prefixed_symbol(module_prefix, name),
+        );
+    }
+
+    rewrite_interface_reference_for_project(
+        name,
+        current_namespace,
+        local_interfaces,
+        imported_interfaces,
+        global_interface_map,
+        entry_namespace,
+    )
 }
 
 fn is_shadowed(name: &str, scopes: &[HashSet<String>]) -> bool {
@@ -1411,6 +1770,40 @@ fn rewrite_nested_module_decl_for_project(
         }
         Decl::Class(class) => {
             let mut c = class.clone();
+            c.extends = class.extends.as_ref().map(|extends| {
+                match rewrite_module_local_type(
+                    &ast::Type::Named(extends.clone()),
+                    module_prefix,
+                    current_namespace,
+                    entry_namespace,
+                    module_local_classes,
+                    module_local_enums,
+                    module_local_modules,
+                    imported_classes,
+                    global_class_map,
+                    imported_enums,
+                    global_enum_map,
+                    imported_modules,
+                ) {
+                    ast::Type::Named(rewritten) => rewritten,
+                    _ => extends.clone(),
+                }
+            });
+            c.implements = class
+                .implements
+                .iter()
+                .map(|implemented| {
+                    rewrite_interface_reference_for_module(
+                        implemented,
+                        module_prefix,
+                        current_namespace,
+                        entry_namespace,
+                        module_local_modules,
+                        imported_modules,
+                        global_module_map,
+                    )
+                })
+                .collect();
             c.fields = c
                 .fields
                 .iter()
@@ -1638,7 +2031,102 @@ fn rewrite_nested_module_decl_for_project(
                 .collect();
             Decl::Module(nested)
         }
-        Decl::Interface(_) | Decl::Import(_) => decl.node.clone(),
+        Decl::Interface(interface) => {
+            let mut rewritten = interface.clone();
+            rewritten.extends = interface
+                .extends
+                .iter()
+                .map(|extended| {
+                    rewrite_interface_reference_for_module(
+                        extended,
+                        module_prefix,
+                        current_namespace,
+                        entry_namespace,
+                        module_local_modules,
+                        imported_modules,
+                        global_module_map,
+                    )
+                })
+                .collect();
+            rewritten.methods = interface
+                .methods
+                .iter()
+                .map(|method| {
+                    let mut new_method = method.clone();
+                    let mut scopes: Vec<HashSet<String>> =
+                        vec![new_method.params.iter().map(|p| p.name.clone()).collect()];
+                    if let Some(scope) = scopes.last_mut() {
+                        scope.insert("this".to_string());
+                    }
+                    new_method.params = new_method
+                        .params
+                        .iter()
+                        .map(|param| ast::Parameter {
+                            name: param.name.clone(),
+                            ty: rewrite_module_local_type(
+                                &param.ty,
+                                module_prefix,
+                                current_namespace,
+                                entry_namespace,
+                                module_local_classes,
+                                module_local_enums,
+                                module_local_modules,
+                                imported_classes,
+                                global_class_map,
+                                imported_enums,
+                                global_enum_map,
+                                imported_modules,
+                            ),
+                            mutable: param.mutable,
+                            mode: param.mode,
+                        })
+                        .collect();
+                    new_method.return_type = rewrite_module_local_type(
+                        &new_method.return_type,
+                        module_prefix,
+                        current_namespace,
+                        entry_namespace,
+                        module_local_classes,
+                        module_local_enums,
+                        module_local_modules,
+                        imported_classes,
+                        global_class_map,
+                        imported_enums,
+                        global_enum_map,
+                        imported_modules,
+                    );
+                    new_method.default_impl = method.default_impl.as_ref().map(|block| {
+                        fix_module_local_block(
+                            &rewrite_block_calls_for_project(
+                                block,
+                                current_namespace,
+                                entry_namespace,
+                                module_local_functions,
+                                imported_map,
+                                global_function_map,
+                                module_local_classes,
+                                imported_classes,
+                                global_class_map,
+                                imported_enums,
+                                global_enum_map,
+                                module_local_modules,
+                                imported_modules,
+                                global_module_map,
+                                &mut scopes,
+                            ),
+                            current_namespace,
+                            entry_namespace,
+                            module_prefix,
+                            module_local_functions,
+                            module_local_classes,
+                        )
+                    });
+                    new_method
+                })
+                .collect();
+            Decl::Interface(rewritten)
+        }
+        Decl::Import(_) => decl.node.clone(),
     };
 
     ast::Spanned::new(node, decl.span.clone())
@@ -7757,5 +8245,545 @@ mod tests {
         };
         assert_eq!(ty, "app__Box<Integer>");
         assert_eq!(args.len(), 1);
+    }
+
+    #[test]
+    fn rewrites_class_extends_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Class(ast::ClassDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: Some("u.Base".to_string()),
+                    implements: vec![],
+                    fields: vec![],
+                    constructor: None,
+                    destructor: None,
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Base".to_string()]))]),
+            &HashMap::from([("Base".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let class = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(class.extends.as_deref(), Some("util__Base"));
+    }
+
+    #[test]
+    fn rewrites_class_extends_nested_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Class(ast::ClassDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: Some("u.Api.Base".to_string()),
+                    implements: vec![],
+                    fields: vec![],
+                    constructor: None,
+                    destructor: None,
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Api__Base".to_string()]))]),
+            &HashMap::from([("Api__Base".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let class = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(class.extends.as_deref(), Some("util__Api__Base"));
+    }
+
+    #[test]
+    fn rewrites_class_implements_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Class(ast::ClassDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: None,
+                    implements: vec!["u.Printable".to_string()],
+                    fields: vec![],
+                    constructor: None,
+                    destructor: None,
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Printable".to_string()]))]),
+            &HashMap::from([("Printable".to_string(), "util".to_string())]),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let class = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(class.implements, vec!["util__Printable".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_class_implements_nested_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Class(ast::ClassDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: None,
+                    implements: vec!["u.Api.Printable".to_string()],
+                    fields: vec![],
+                    constructor: None,
+                    destructor: None,
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([(
+                "util".to_string(),
+                HashSet::from(["Api__Printable".to_string()]),
+            )]),
+            &HashMap::from([("Api__Printable".to_string(), "util".to_string())]),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let class = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(class.implements, vec!["util__Api__Printable".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_class_implements_multiple_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Class(ast::ClassDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: None,
+                    implements: vec!["u.Named".to_string(), "u.Printable".to_string()],
+                    fields: vec![],
+                    constructor: None,
+                    destructor: None,
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([(
+                "util".to_string(),
+                HashSet::from(["Named".to_string(), "Printable".to_string()]),
+            )]),
+            &HashMap::from([
+                ("Named".to_string(), "util".to_string()),
+                ("Printable".to_string(), "util".to_string()),
+            ]),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let class = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Class(class) => Some(class),
+                _ => None,
+            })
+            .expect("expected class declaration");
+        assert_eq!(
+            class.implements,
+            vec!["util__Named".to_string(), "util__Printable".to_string()]
+        );
+    }
+
+    #[test]
+    fn rewrites_interface_extends_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Interface(ast::InterfaceDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: vec!["u.Named".to_string()],
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Named".to_string()]))]),
+            &HashMap::from([("Named".to_string(), "util".to_string())]),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let interface = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) => Some(interface),
+                _ => None,
+            })
+            .expect("expected interface declaration");
+        assert_eq!(interface.extends, vec!["util__Named".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_interface_extends_nested_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Interface(ast::InterfaceDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: vec!["u.Api.Named".to_string()],
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([(
+                "util".to_string(),
+                HashSet::from(["Api__Named".to_string()]),
+            )]),
+            &HashMap::from([("Api__Named".to_string(), "util".to_string())]),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let interface = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) => Some(interface),
+                _ => None,
+            })
+            .expect("expected interface declaration");
+        assert_eq!(interface.extends, vec!["util__Api__Named".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_interface_extends_multiple_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Interface(ast::InterfaceDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: vec!["u.Named".to_string(), "u.Printable".to_string()],
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([(
+                "util".to_string(),
+                HashSet::from(["Named".to_string(), "Printable".to_string()]),
+            )]),
+            &HashMap::from([
+                ("Named".to_string(), "util".to_string()),
+                ("Printable".to_string(), "util".to_string()),
+            ]),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let interface = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) => Some(interface),
+                _ => None,
+            })
+            .expect("expected interface declaration");
+        assert_eq!(
+            interface.extends,
+            vec!["util__Named".to_string(), "util__Printable".to_string()]
+        );
+    }
+
+    #[test]
+    fn rewrites_nested_module_class_extends_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Module(ast::ModuleDecl {
+                    name: "M".to_string(),
+                    declarations: vec![sp(Decl::Class(ast::ClassDecl {
+                        name: "Child".to_string(),
+                        generic_params: vec![],
+                        extends: Some("u.Base".to_string()),
+                        implements: vec![],
+                        fields: vec![],
+                        constructor: None,
+                        destructor: None,
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    }))],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Base".to_string()]))]),
+            &HashMap::from([("Base".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let Decl::Class(class) = &module.declarations[0].node else {
+            panic!("expected nested class declaration");
+        };
+        assert_eq!(class.extends.as_deref(), Some("util__Base"));
+    }
+
+    #[test]
+    fn rewrites_nested_module_interface_extends_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Module(ast::ModuleDecl {
+                    name: "M".to_string(),
+                    declarations: vec![sp(Decl::Interface(ast::InterfaceDecl {
+                        name: "Child".to_string(),
+                        generic_params: vec![],
+                        extends: vec!["u.Named".to_string()],
+                        methods: vec![],
+                        visibility: ast::Visibility::Private,
+                    }))],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Named".to_string()]))]),
+            &HashMap::from([("Named".to_string(), "util".to_string())]),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let Decl::Interface(interface) = &module.declarations[0].node else {
+            panic!("expected nested interface declaration");
+        };
+        assert_eq!(interface.extends, vec!["util__Named".to_string()]);
     }
 }
