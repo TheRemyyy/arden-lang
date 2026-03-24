@@ -6562,6 +6562,86 @@ mod tests {
     }
 
     #[test]
+    fn supports_module_local_interface_implements() {
+        let src = r#"
+            module M {
+                interface Named {
+                    function name(): Integer;
+                }
+                class Book implements Named {
+                    constructor() {}
+                    function name(): Integer { return 1; }
+                }
+            }
+            function main(): Integer { return 0; }
+        "#;
+        check_source(src).expect("module-local interface implements should typecheck");
+    }
+
+    #[test]
+    fn supports_module_local_nested_interface_implements() {
+        let src = r#"
+            module M {
+                module Api {
+                    interface Named {
+                        function name(): Integer;
+                    }
+                }
+                class Book implements Api.Named {
+                    constructor() {}
+                    function name(): Integer { return 1; }
+                }
+            }
+            function main(): Integer { return 0; }
+        "#;
+        check_source(src).expect("module-local nested interface implements should typecheck");
+    }
+
+    #[test]
+    fn supports_module_local_interface_extends() {
+        let src = r#"
+            module M {
+                interface Named {
+                    function name(): Integer;
+                }
+                interface Printable extends Named {
+                    function print_me(): Integer;
+                }
+                class Report implements Printable {
+                    constructor() {}
+                    function name(): Integer { return 1; }
+                    function print_me(): Integer { return 2; }
+                }
+            }
+            function main(): Integer { return 0; }
+        "#;
+        check_source(src).expect("module-local interface extends should typecheck");
+    }
+
+    #[test]
+    fn supports_module_local_nested_interface_extends() {
+        let src = r#"
+            module M {
+                module Api {
+                    interface Named {
+                        function name(): Integer;
+                    }
+                }
+                interface Printable extends Api.Named {
+                    function print_me(): Integer;
+                }
+                class Report implements Printable {
+                    constructor() {}
+                    function name(): Integer { return 1; }
+                    function print_me(): Integer { return 2; }
+                }
+            }
+            function main(): Integer { return 0; }
+        "#;
+        check_source(src).expect("module-local nested interface extends should typecheck");
+    }
+
+    #[test]
     fn allows_interface_typed_parameters() {
         let src = r#"
             interface Printable {

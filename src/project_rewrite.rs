@@ -791,6 +791,38 @@ pub fn rewrite_program_for_project(
                                             .collect();
                                         Decl::Class(c)
                                     }
+                                    Decl::Enum(en) => {
+                                        let mut e = en.clone();
+                                        e.variants = e
+                                            .variants
+                                            .iter()
+                                            .map(|variant| ast::EnumVariant {
+                                                name: variant.name.clone(),
+                                                fields: variant
+                                                    .fields
+                                                    .iter()
+                                                    .map(|field| ast::EnumField {
+                                                        name: field.name.clone(),
+                                                        ty: rewrite_module_local_type(
+                                                            &field.ty,
+                                                            &module_prefix,
+                                                            current_namespace,
+                                                            entry_namespace,
+                                                            &module_local_classes,
+                                                            &module_local_enums,
+                                                            &module_local_modules,
+                                                            &imported_classes,
+                                                            global_class_map,
+                                                            &imported_enums,
+                                                            global_enum_map,
+                                                            &imported_modules,
+                                                        ),
+                                                    })
+                                                    .collect(),
+                                            })
+                                            .collect();
+                                        Decl::Enum(e)
+                                    }
                                     Decl::Module(module) => {
                                         let nested_prefix =
                                             module_prefixed_symbol(&module_prefix, &module.name);
@@ -9678,6 +9710,645 @@ mod tests {
                 "app__Outer__Inner__Named".to_string(),
                 "app__Outer__Inner__Printable".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn rewrites_module_enum_field_namespace_alias_class_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Module(ast::ModuleDecl {
+                    name: "M".to_string(),
+                    declarations: vec![sp(Decl::Enum(ast::EnumDecl {
+                        name: "E".to_string(),
+                        generic_params: vec![],
+                        variants: vec![ast::EnumVariant {
+                            name: "A".to_string(),
+                            fields: vec![ast::EnumField {
+                                name: None,
+                                ty: ast::Type::Named("u.Box".to_string()),
+                            }],
+                        }],
+                        visibility: ast::Visibility::Private,
+                    }))],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Box".to_string()]))]),
+            &HashMap::from([("Box".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let en = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Enum(en) => Some(en),
+                _ => None,
+            })
+            .expect("expected enum declaration");
+        assert_eq!(
+            en.variants[0].fields[0].ty,
+            ast::Type::Named("util__Box".to_string())
+        );
+    }
+
+    #[test]
+    fn rewrites_module_enum_field_namespace_alias_nested_class_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Module(ast::ModuleDecl {
+                    name: "M".to_string(),
+                    declarations: vec![sp(Decl::Enum(ast::EnumDecl {
+                        name: "E".to_string(),
+                        generic_params: vec![],
+                        variants: vec![ast::EnumVariant {
+                            name: "A".to_string(),
+                            fields: vec![ast::EnumField {
+                                name: None,
+                                ty: ast::Type::Named("u.Api.Box".to_string()),
+                            }],
+                        }],
+                        visibility: ast::Visibility::Private,
+                    }))],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Api__Box".to_string()]))]),
+            &HashMap::from([("Api__Box".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let en = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Enum(en) => Some(en),
+                _ => None,
+            })
+            .expect("expected enum declaration");
+        assert_eq!(
+            en.variants[0].fields[0].ty,
+            ast::Type::Named("util__Api__Box".to_string())
+        );
+    }
+
+    #[test]
+    fn rewrites_module_enum_field_namespace_alias_enum_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Module(ast::ModuleDecl {
+                    name: "M".to_string(),
+                    declarations: vec![sp(Decl::Enum(ast::EnumDecl {
+                        name: "E".to_string(),
+                        generic_params: vec![],
+                        variants: vec![ast::EnumVariant {
+                            name: "A".to_string(),
+                            fields: vec![ast::EnumField {
+                                name: None,
+                                ty: ast::Type::Named("u.Result".to_string()),
+                            }],
+                        }],
+                        visibility: ast::Visibility::Private,
+                    }))],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Result".to_string()]))]),
+            &HashMap::from([("Result".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let en = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Enum(en) => Some(en),
+                _ => None,
+            })
+            .expect("expected enum declaration");
+        assert_eq!(
+            en.variants[0].fields[0].ty,
+            ast::Type::Named("util__Result".to_string())
+        );
+    }
+
+    #[test]
+    fn rewrites_module_enum_field_local_nested_class_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "M".to_string(),
+                declarations: vec![
+                    sp(Decl::Module(ast::ModuleDecl {
+                        name: "Api".to_string(),
+                        declarations: vec![sp(Decl::Class(ast::ClassDecl {
+                            name: "Box".to_string(),
+                            generic_params: vec![],
+                            extends: None,
+                            implements: vec![],
+                            fields: vec![],
+                            constructor: None,
+                            destructor: None,
+                            methods: vec![],
+                            visibility: ast::Visibility::Private,
+                        }))],
+                    })),
+                    sp(Decl::Enum(ast::EnumDecl {
+                        name: "E".to_string(),
+                        generic_params: vec![],
+                        variants: vec![ast::EnumVariant {
+                            name: "A".to_string(),
+                            fields: vec![ast::EnumField {
+                                name: None,
+                                ty: ast::Type::Named("Api.Box".to_string()),
+                            }],
+                        }],
+                        visibility: ast::Visibility::Private,
+                    })),
+                ],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let en = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Enum(en) => Some(en),
+                _ => None,
+            })
+            .expect("expected enum declaration");
+        assert_eq!(
+            en.variants[0].fields[0].ty,
+            ast::Type::Named("app__M__Api__Box".to_string())
+        );
+    }
+
+    #[test]
+    fn rewrites_module_enum_field_local_nested_enum_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                name: "M".to_string(),
+                declarations: vec![
+                    sp(Decl::Module(ast::ModuleDecl {
+                        name: "Api".to_string(),
+                        declarations: vec![sp(Decl::Enum(ast::EnumDecl {
+                            name: "Result".to_string(),
+                            generic_params: vec![],
+                            variants: vec![],
+                            visibility: ast::Visibility::Private,
+                        }))],
+                    })),
+                    sp(Decl::Enum(ast::EnumDecl {
+                        name: "E".to_string(),
+                        generic_params: vec![],
+                        variants: vec![ast::EnumVariant {
+                            name: "A".to_string(),
+                            fields: vec![ast::EnumField {
+                                name: None,
+                                ty: ast::Type::Named("Api.Result".to_string()),
+                            }],
+                        }],
+                        visibility: ast::Visibility::Private,
+                    })),
+                ],
+            }))],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let en = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Enum(en) => Some(en),
+                _ => None,
+            })
+            .expect("expected enum declaration");
+        assert_eq!(
+            en.variants[0].fields[0].ty,
+            ast::Type::Named("app__M__Api__Result".to_string())
+        );
+    }
+
+    #[test]
+    fn rewrites_module_enum_field_generic_namespace_alias_class_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Module(ast::ModuleDecl {
+                    name: "M".to_string(),
+                    declarations: vec![sp(Decl::Enum(ast::EnumDecl {
+                        name: "E".to_string(),
+                        generic_params: vec![],
+                        variants: vec![ast::EnumVariant {
+                            name: "A".to_string(),
+                            fields: vec![ast::EnumField {
+                                name: None,
+                                ty: ast::Type::Generic(
+                                    "List".to_string(),
+                                    vec![ast::Type::Named("u.Box".to_string())],
+                                ),
+                            }],
+                        }],
+                        visibility: ast::Visibility::Private,
+                    }))],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Box".to_string()]))]),
+            &HashMap::from([("Box".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let en = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Enum(en) => Some(en),
+                _ => None,
+            })
+            .expect("expected enum declaration");
+        let ast::Type::Generic(_, args) = &en.variants[0].fields[0].ty else {
+            panic!("expected generic type");
+        };
+        assert_eq!(args[0], ast::Type::Named("util__Box".to_string()));
+    }
+
+    #[test]
+    fn rewrites_module_enum_named_field_namespace_alias_class_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Module(ast::ModuleDecl {
+                    name: "M".to_string(),
+                    declarations: vec![sp(Decl::Enum(ast::EnumDecl {
+                        name: "E".to_string(),
+                        generic_params: vec![],
+                        variants: vec![ast::EnumVariant {
+                            name: "A".to_string(),
+                            fields: vec![ast::EnumField {
+                                name: Some("value".to_string()),
+                                ty: ast::Type::Named("u.Box".to_string()),
+                            }],
+                        }],
+                        visibility: ast::Visibility::Private,
+                    }))],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Box".to_string()]))]),
+            &HashMap::from([("Box".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let en = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Enum(en) => Some(en),
+                _ => None,
+            })
+            .expect("expected enum declaration");
+        assert_eq!(
+            en.variants[0].fields[0].ty,
+            ast::Type::Named("util__Box".to_string())
+        );
+    }
+
+    #[test]
+    fn rewrites_module_enum_multiple_variant_field_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Module(ast::ModuleDecl {
+                    name: "M".to_string(),
+                    declarations: vec![sp(Decl::Enum(ast::EnumDecl {
+                        name: "E".to_string(),
+                        generic_params: vec![],
+                        variants: vec![
+                            ast::EnumVariant {
+                                name: "A".to_string(),
+                                fields: vec![ast::EnumField {
+                                    name: None,
+                                    ty: ast::Type::Named("u.Box".to_string()),
+                                }],
+                            },
+                            ast::EnumVariant {
+                                name: "B".to_string(),
+                                fields: vec![ast::EnumField {
+                                    name: None,
+                                    ty: ast::Type::Named("u.Result".to_string()),
+                                }],
+                            },
+                        ],
+                        visibility: ast::Visibility::Private,
+                    }))],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Box".to_string()]))]),
+            &HashMap::from([("Box".to_string(), "util".to_string())]),
+            &HashMap::from([("util".to_string(), HashSet::from(["Result".to_string()]))]),
+            &HashMap::from([("Result".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let module = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected module declaration");
+        let en = module
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Enum(en) => Some(en),
+                _ => None,
+            })
+            .expect("expected enum declaration");
+        assert_eq!(
+            en.variants[0].fields[0].ty,
+            ast::Type::Named("util__Box".to_string())
+        );
+        assert_eq!(
+            en.variants[1].fields[0].ty,
+            ast::Type::Named("util__Result".to_string())
+        );
+    }
+
+    #[test]
+    fn rewrites_nested_module_enum_field_namespace_alias_class_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Module(ast::ModuleDecl {
+                    name: "Outer".to_string(),
+                    declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+                        name: "Inner".to_string(),
+                        declarations: vec![sp(Decl::Enum(ast::EnumDecl {
+                            name: "E".to_string(),
+                            generic_params: vec![],
+                            variants: vec![ast::EnumVariant {
+                                name: "A".to_string(),
+                                fields: vec![ast::EnumField {
+                                    name: None,
+                                    ty: ast::Type::Named("u.Box".to_string()),
+                                }],
+                            }],
+                            visibility: ast::Visibility::Private,
+                        }))],
+                    }))],
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([("util".to_string(), HashSet::from(["Box".to_string()]))]),
+            &HashMap::from([("Box".to_string(), "util".to_string())]),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let outer = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected outer module declaration");
+        let inner = outer
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Module(module) => Some(module),
+                _ => None,
+            })
+            .expect("expected inner module declaration");
+        let en = inner
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Enum(en) => Some(en),
+                _ => None,
+            })
+            .expect("expected enum declaration");
+        assert_eq!(
+            en.variants[0].fields[0].ty,
+            ast::Type::Named("util__Box".to_string())
         );
     }
 }

@@ -13467,6 +13467,84 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_supports_module_local_interface_implements() {
+        let temp_root = make_temp_project_root("module-local-interface-implements-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    interface Named { function name(): Integer; }\n    class Book implements Named {\n        constructor() {}\n        function name(): Integer { return 1; }\n    }\n}\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support module-local interface implements");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_module_local_nested_interface_implements() {
+        let temp_root = make_temp_project_root("module-local-nested-interface-implements-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    module Api { interface Named { function name(): Integer; } }\n    class Book implements Api.Named {\n        constructor() {}\n        function name(): Integer { return 1; }\n    }\n}\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support module-local nested interface implements",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_module_local_interface_extends() {
+        let temp_root = make_temp_project_root("module-local-interface-extends-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    interface Named { function name(): Integer; }\n    interface Printable extends Named { function print_me(): Integer; }\n    class Report implements Printable {\n        constructor() {}\n        function name(): Integer { return 1; }\n        function print_me(): Integer { return 2; }\n    }\n}\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support module-local interface extends");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_module_local_nested_interface_extends() {
+        let temp_root = make_temp_project_root("module-local-nested-interface-extends-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    module Api { interface Named { function name(): Integer; } }\n    interface Printable extends Api.Named { function print_me(): Integer; }\n    class Report implements Printable {\n        constructor() {}\n        function name(): Integer { return 1; }\n        function print_me(): Integer { return 2; }\n    }\n}\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support module-local nested interface extends",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_supports_dereferenced_function_value_callees() {
         let temp_root = make_temp_project_root("deref-function-callee-project");
         let src_dir = temp_root.join("src");

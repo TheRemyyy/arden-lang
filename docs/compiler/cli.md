@@ -51,6 +51,7 @@ Optimization note:
 - In single-file mode (`apex compile file.apex` / `apex run file.apex`), Apex defaults to `-O3` and uses native tuning when available.
 - Project-mode rewrite now rewrites alias-qualified and nested module-qualified nominal parents in `extends`, `implements`, and `interface ... extends ...`, so imported parents like `u.Base`, `u.Printable`, and `u.Api.Named` survive symbol mangling consistently across build/check/test flows.
 - The same project rewrite pass now also rewrites module-local interface parents such as `implements Named` and `extends Api.Named` inside nested modules, so local interface inheritance stays aligned with the rest of project symbol rewriting.
+- Direct module enums now also rewrite their variant field types through the same project rewrite pass, including alias-qualified, nested-module-qualified, and generic payload types inside `module { enum ... }` declarations.
 - Invalid `--opt-level` / `opt_level` values are now rejected up front instead of silently falling back to `-O3`.
 - `apex run` requires project `output_kind = "bin"` and now rejects shared/static library targets before starting a build; use `apex build` for library outputs.
 - Project `output` paths in `apex.toml` must stay inside the project root; traversal paths like `../outside/app` are rejected during validation.
