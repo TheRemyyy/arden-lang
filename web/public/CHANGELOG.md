@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project object-code generation to preserve generic specialization demand without rebuilding every file from full ASTs:
+  - non-active files now contribute either API-only declarations or a minimal specialization-demand projection, so imported explicit generic calls and generic class/method specializations still emit their `__spec__` symbols correctly
+  - this restores the performance optimization path without reintroducing the linker regressions that previously broke project builds and runs involving imported generics
 - Fixed import-check coverage gaps for invalid alias usage in additional AST positions:
   - invalid exact symbol aliases like `import nope.missing.Box as Boxed;` now fail early when used in type annotations, generic call type arguments, lambda parameter types, and generic bounds instead of slipping past import checking
   - invalid namespace aliases now also fail inside assignment targets/values and `match` expressions, so alias errors are reported before later rewrite/typecheck passes

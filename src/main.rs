@@ -33,11 +33,11 @@ use std::time::Instant;
 use std::time::UNIX_EPOCH;
 use twox_hash::XxHash64;
 
-use crate::ast::{Block, Decl, Expr, ImportDecl, Pattern, Program, Spanned, Stmt};
+use crate::ast::{Block, Decl, Expr, ImportDecl, Pattern, Program, Spanned, Stmt, Type};
 use crate::borrowck::BorrowChecker;
 use crate::codegen::Codegen;
 use crate::import_check::ImportChecker;
-use crate::parser::Parser;
+use crate::parser::{parse_type_source, Parser};
 use crate::project::{find_project_root, OutputKind, ProjectConfig};
 use crate::stdlib::stdlib_registry;
 use crate::test_runner::{discover_tests, generate_test_runner_with_source, print_discovery};
@@ -571,9 +571,11 @@ struct RewrittenProjectUnit {
     file: PathBuf,
     program: Program,
     api_program: Program,
+    specialization_projection: Program,
     semantic_fingerprint: String,
     rewrite_context_fingerprint: String,
     active_symbols: HashSet<String>,
+    has_specialization_demand: bool,
     from_rewrite_cache: bool,
 }
 
@@ -834,6 +836,487 @@ fn api_program_fingerprint(program: &Program) -> String {
     source_fingerprint(&canonical)
 }
 
+fn type_has_codegen_specialization_demand(ty: &Type) -> bool {
+    match ty {
+        Type::Generic(_, _) => true,
+        Type::Function(params, ret) => {
+            params.iter().any(type_has_codegen_specialization_demand)
+                || type_has_codegen_specialization_demand(ret)
+        }
+        Type::Option(inner)
+        | Type::Result(inner, _)
+        | Type::List(inner)
+        | Type::Set(inner)
+        | Type::Ref(inner)
+        | Type::MutRef(inner)
+        | Type::Box(inner)
+        | Type::Rc(inner)
+        | Type::Arc(inner)
+        | Type::Ptr(inner)
+        | Type::Task(inner)
+        | Type::Range(inner) => type_has_codegen_specialization_demand(inner),
+        Type::Map(key, value) => {
+            type_has_codegen_specialization_demand(key)
+                || type_has_codegen_specialization_demand(value)
+        }
+        Type::Integer
+        | Type::Float
+        | Type::Boolean
+        | Type::String
+        | Type::Char
+        | Type::None
+        | Type::Named(_) => false,
+    }
+}
+
+fn expr_has_codegen_specialization_demand(expr: &Expr) -> bool {
+    match expr {
+        Expr::Call {
+            callee,
+            args,
+            type_args,
+        } => {
+            !type_args.is_empty()
+                || expr_has_codegen_specialization_demand(&callee.node)
+                || args
+                    .iter()
+                    .any(|arg| expr_has_codegen_specialization_demand(&arg.node))
+                || type_args.iter().any(type_has_codegen_specialization_demand)
+        }
+        Expr::Construct { ty, args } => {
+            parse_type_source(ty)
+                .ok()
+                .is_some_and(|ty| type_has_codegen_specialization_demand(&ty))
+                || args
+                    .iter()
+                    .any(|arg| expr_has_codegen_specialization_demand(&arg.node))
+        }
+        Expr::Binary { left, right, .. } => {
+            expr_has_codegen_specialization_demand(&left.node)
+                || expr_has_codegen_specialization_demand(&right.node)
+        }
+        Expr::Unary { expr, .. }
+        | Expr::Try(expr)
+        | Expr::Borrow(expr)
+        | Expr::MutBorrow(expr)
+        | Expr::Deref(expr)
+        | Expr::Await(expr) => expr_has_codegen_specialization_demand(&expr.node),
+        Expr::Field { object, .. } => expr_has_codegen_specialization_demand(&object.node),
+        Expr::Index { object, index } => {
+            expr_has_codegen_specialization_demand(&object.node)
+                || expr_has_codegen_specialization_demand(&index.node)
+        }
+        Expr::Lambda { params, body } => {
+            params
+                .iter()
+                .any(|param| type_has_codegen_specialization_demand(&param.ty))
+                || expr_has_codegen_specialization_demand(&body.node)
+        }
+        Expr::Match { expr, arms } => {
+            expr_has_codegen_specialization_demand(&expr.node)
+                || arms.iter().any(|arm| {
+                    arm.body
+                        .iter()
+                        .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                })
+        }
+        Expr::StringInterp(parts) => parts.iter().any(|part| match part {
+            ast::StringPart::Literal(_) => false,
+            ast::StringPart::Expr(expr) => expr_has_codegen_specialization_demand(&expr.node),
+        }),
+        Expr::AsyncBlock(block) | Expr::Block(block) => block
+            .iter()
+            .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node)),
+        Expr::Require { condition, message } => {
+            expr_has_codegen_specialization_demand(&condition.node)
+                || message
+                    .as_ref()
+                    .is_some_and(|msg| expr_has_codegen_specialization_demand(&msg.node))
+        }
+        Expr::Range { start, end, .. } => {
+            start
+                .as_ref()
+                .is_some_and(|expr| expr_has_codegen_specialization_demand(&expr.node))
+                || end
+                    .as_ref()
+                    .is_some_and(|expr| expr_has_codegen_specialization_demand(&expr.node))
+        }
+        Expr::IfExpr {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            expr_has_codegen_specialization_demand(&condition.node)
+                || then_branch
+                    .iter()
+                    .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                || else_branch.as_ref().is_some_and(|block| {
+                    block
+                        .iter()
+                        .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                })
+        }
+        Expr::Literal(_) | Expr::Ident(_) | Expr::This => false,
+    }
+}
+
+fn stmt_has_codegen_specialization_demand(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::Let { ty, value, .. } => {
+            type_has_codegen_specialization_demand(ty)
+                || expr_has_codegen_specialization_demand(&value.node)
+        }
+        Stmt::Assign { target, value } => {
+            expr_has_codegen_specialization_demand(&target.node)
+                || expr_has_codegen_specialization_demand(&value.node)
+        }
+        Stmt::Expr(expr) => expr_has_codegen_specialization_demand(&expr.node),
+        Stmt::Return(expr) => expr
+            .as_ref()
+            .is_some_and(|expr| expr_has_codegen_specialization_demand(&expr.node)),
+        Stmt::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            expr_has_codegen_specialization_demand(&condition.node)
+                || then_block
+                    .iter()
+                    .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                || else_block.as_ref().is_some_and(|block| {
+                    block
+                        .iter()
+                        .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                })
+        }
+        Stmt::While { condition, body } => {
+            expr_has_codegen_specialization_demand(&condition.node)
+                || body
+                    .iter()
+                    .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+        }
+        Stmt::For {
+            var_type,
+            iterable,
+            body,
+            ..
+        } => {
+            var_type
+                .as_ref()
+                .is_some_and(type_has_codegen_specialization_demand)
+                || expr_has_codegen_specialization_demand(&iterable.node)
+                || body
+                    .iter()
+                    .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+        }
+        Stmt::Match { expr, arms } => {
+            expr_has_codegen_specialization_demand(&expr.node)
+                || arms.iter().any(|arm| {
+                    arm.body
+                        .iter()
+                        .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                })
+        }
+        Stmt::Break | Stmt::Continue => false,
+    }
+}
+
+fn specialization_projection_stmt(stmt: &Stmt) -> Option<Stmt> {
+    match stmt {
+        Stmt::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            let projected_then = then_block
+                .iter()
+                .filter_map(|stmt| {
+                    specialization_projection_stmt(&stmt.node)
+                        .map(|node| Spanned::new(node, stmt.span.clone()))
+                })
+                .collect::<Vec<_>>();
+            let projected_else = else_block.as_ref().map(|block| {
+                block
+                    .iter()
+                    .filter_map(|stmt| {
+                        specialization_projection_stmt(&stmt.node)
+                            .map(|node| Spanned::new(node, stmt.span.clone()))
+                    })
+                    .collect::<Vec<_>>()
+            });
+            if expr_has_codegen_specialization_demand(&condition.node)
+                || !projected_then.is_empty()
+                || projected_else
+                    .as_ref()
+                    .is_some_and(|block| !block.is_empty())
+            {
+                Some(Stmt::If {
+                    condition: condition.clone(),
+                    then_block: projected_then,
+                    else_block: projected_else.filter(|block| !block.is_empty()),
+                })
+            } else {
+                None
+            }
+        }
+        Stmt::While { condition, body } => {
+            let projected_body = body
+                .iter()
+                .filter_map(|stmt| {
+                    specialization_projection_stmt(&stmt.node)
+                        .map(|node| Spanned::new(node, stmt.span.clone()))
+                })
+                .collect::<Vec<_>>();
+            if expr_has_codegen_specialization_demand(&condition.node) || !projected_body.is_empty()
+            {
+                Some(Stmt::While {
+                    condition: condition.clone(),
+                    body: projected_body,
+                })
+            } else {
+                None
+            }
+        }
+        Stmt::For {
+            var,
+            var_type,
+            iterable,
+            body,
+        } => {
+            let projected_body = body
+                .iter()
+                .filter_map(|stmt| {
+                    specialization_projection_stmt(&stmt.node)
+                        .map(|node| Spanned::new(node, stmt.span.clone()))
+                })
+                .collect::<Vec<_>>();
+            if var_type
+                .as_ref()
+                .is_some_and(type_has_codegen_specialization_demand)
+                || expr_has_codegen_specialization_demand(&iterable.node)
+                || !projected_body.is_empty()
+            {
+                Some(Stmt::For {
+                    var: var.clone(),
+                    var_type: var_type.clone(),
+                    iterable: iterable.clone(),
+                    body: projected_body,
+                })
+            } else {
+                None
+            }
+        }
+        Stmt::Match { expr, arms } => {
+            let projected_arms = arms
+                .iter()
+                .filter_map(|arm| {
+                    let projected_body = arm
+                        .body
+                        .iter()
+                        .filter_map(|stmt| {
+                            specialization_projection_stmt(&stmt.node)
+                                .map(|node| Spanned::new(node, stmt.span.clone()))
+                        })
+                        .collect::<Vec<_>>();
+                    if !projected_body.is_empty() {
+                        Some(ast::MatchArm {
+                            pattern: arm.pattern.clone(),
+                            body: projected_body,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            if expr_has_codegen_specialization_demand(&expr.node) || !projected_arms.is_empty() {
+                Some(Stmt::Match {
+                    expr: expr.clone(),
+                    arms: projected_arms,
+                })
+            } else {
+                None
+            }
+        }
+        _ if stmt_has_codegen_specialization_demand(stmt) => Some(stmt.clone()),
+        _ => None,
+    }
+}
+
+fn specialization_projection_decl(decl: &Spanned<Decl>) -> Spanned<Decl> {
+    let projected = match &decl.node {
+        Decl::Function(func) => {
+            let mut func = func.clone();
+            if !func.is_extern {
+                func.body = func
+                    .body
+                    .iter()
+                    .filter_map(|stmt| {
+                        specialization_projection_stmt(&stmt.node)
+                            .map(|node| Spanned::new(node, stmt.span.clone()))
+                    })
+                    .collect();
+            }
+            Decl::Function(func)
+        }
+        Decl::Class(class) => {
+            let mut class = class.clone();
+            if let Some(constructor) = &mut class.constructor {
+                constructor.body = constructor
+                    .body
+                    .iter()
+                    .filter_map(|stmt| {
+                        specialization_projection_stmt(&stmt.node)
+                            .map(|node| Spanned::new(node, stmt.span.clone()))
+                    })
+                    .collect();
+            }
+            if let Some(destructor) = &mut class.destructor {
+                destructor.body = destructor
+                    .body
+                    .iter()
+                    .filter_map(|stmt| {
+                        specialization_projection_stmt(&stmt.node)
+                            .map(|node| Spanned::new(node, stmt.span.clone()))
+                    })
+                    .collect();
+            }
+            class.methods = class
+                .methods
+                .into_iter()
+                .map(|mut method| {
+                    method.body = method
+                        .body
+                        .iter()
+                        .filter_map(|stmt| {
+                            specialization_projection_stmt(&stmt.node)
+                                .map(|node| Spanned::new(node, stmt.span.clone()))
+                        })
+                        .collect();
+                    method
+                })
+                .collect();
+            Decl::Class(class)
+        }
+        Decl::Interface(interface) => {
+            let mut interface = interface.clone();
+            interface.methods = interface
+                .methods
+                .into_iter()
+                .map(|mut method| {
+                    method.default_impl = method.default_impl.map(|body| {
+                        body.iter()
+                            .filter_map(|stmt| {
+                                specialization_projection_stmt(&stmt.node)
+                                    .map(|node| Spanned::new(node, stmt.span.clone()))
+                            })
+                            .collect()
+                    });
+                    method
+                })
+                .collect();
+            Decl::Interface(interface)
+        }
+        Decl::Module(module) => {
+            let mut module = module.clone();
+            module.declarations = module
+                .declarations
+                .iter()
+                .map(specialization_projection_decl)
+                .collect();
+            Decl::Module(module)
+        }
+        Decl::Enum(en) => Decl::Enum(en.clone()),
+        Decl::Import(import) => Decl::Import(import.clone()),
+    };
+    Spanned::new(projected, decl.span.clone())
+}
+
+fn specialization_projection_program(program: &Program) -> Program {
+    Program {
+        package: program.package.clone(),
+        declarations: program
+            .declarations
+            .iter()
+            .map(specialization_projection_decl)
+            .collect(),
+    }
+}
+
+fn decl_has_codegen_specialization_demand(decl: &Decl) -> bool {
+    match decl {
+        Decl::Function(func) => {
+            func.params
+                .iter()
+                .any(|param| type_has_codegen_specialization_demand(&param.ty))
+                || type_has_codegen_specialization_demand(&func.return_type)
+                || func
+                    .body
+                    .iter()
+                    .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+        }
+        Decl::Class(class) => {
+            class
+                .fields
+                .iter()
+                .any(|field| type_has_codegen_specialization_demand(&field.ty))
+                || class.constructor.as_ref().is_some_and(|ctor| {
+                    ctor.params
+                        .iter()
+                        .any(|param| type_has_codegen_specialization_demand(&param.ty))
+                        || ctor
+                            .body
+                            .iter()
+                            .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                })
+                || class.destructor.as_ref().is_some_and(|dtor| {
+                    dtor.body
+                        .iter()
+                        .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                })
+                || class.methods.iter().any(|method| {
+                    method
+                        .params
+                        .iter()
+                        .any(|param| type_has_codegen_specialization_demand(&param.ty))
+                        || type_has_codegen_specialization_demand(&method.return_type)
+                        || method
+                            .body
+                            .iter()
+                            .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                })
+        }
+        Decl::Enum(en) => en.variants.iter().any(|variant| {
+            variant
+                .fields
+                .iter()
+                .any(|field| type_has_codegen_specialization_demand(&field.ty))
+        }),
+        Decl::Interface(interface) => interface.methods.iter().any(|method| {
+            method
+                .params
+                .iter()
+                .any(|param| type_has_codegen_specialization_demand(&param.ty))
+                || type_has_codegen_specialization_demand(&method.return_type)
+                || method.default_impl.as_ref().is_some_and(|body| {
+                    body.iter()
+                        .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
+                })
+        }),
+        Decl::Module(module) => module
+            .declarations
+            .iter()
+            .any(|decl| decl_has_codegen_specialization_demand(&decl.node)),
+        Decl::Import(_) => false,
+    }
+}
+
+fn program_has_codegen_specialization_demand(program: &Program) -> bool {
+    program
+        .declarations
+        .iter()
+        .any(|decl| decl_has_codegen_specialization_demand(&decl.node))
+}
+
 fn codegen_program_for_unit(
     rewritten_files: &[RewrittenProjectUnit],
     rewritten_file_indices: &HashMap<PathBuf, usize>,
@@ -911,10 +1394,25 @@ fn codegen_program_for_unit(
     };
     let mut seen_specializations = HashSet::new();
 
-    let mut relevant_files = rewritten_files
+    let specialization_demand_files = rewritten_files
         .iter()
+        .filter(|unit| unit.has_specialization_demand)
         .map(|unit| unit.file.clone())
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
+    let mut relevant_files = _dependency_closure
+        .map(|closure| closure.iter().cloned().collect::<Vec<_>>())
+        .unwrap_or_else(|| {
+            rewritten_files
+                .iter()
+                .map(|unit| unit.file.clone())
+                .collect::<Vec<_>>()
+        });
+    relevant_files.extend(
+        specialization_demand_files
+            .iter()
+            .filter(|file| file.as_path() != active_file)
+            .cloned(),
+    );
     if !relevant_files.iter().any(|file| file == active_file) {
         relevant_files.push(active_file.to_path_buf());
     }
@@ -926,7 +1424,13 @@ fn codegen_program_for_unit(
             continue;
         };
         let unit = &rewritten_files[index];
-        let source_program = unit.program.clone();
+        let source_program = if file == active_file {
+            unit.program.clone()
+        } else if specialization_demand_files.contains(&file) {
+            unit.specialization_projection.clone()
+        } else {
+            unit.api_program.clone()
+        };
         merge_codegen_declarations(
             &mut program.declarations,
             &source_program.declarations,
@@ -5012,13 +5516,19 @@ fn build_project(
                         )? {
                             let active_symbols = collect_active_symbols(&cached);
                             let api_program = api_projection_program(&cached);
+                            let specialization_projection =
+                                specialization_projection_program(&cached);
+                            let has_specialization_demand =
+                                program_has_codegen_specialization_demand(&cached);
                             return Ok(RewrittenProjectUnit {
                                 file: unit.file.clone(),
                                 program: cached,
                                 api_program,
+                                specialization_projection,
                                 semantic_fingerprint: unit.semantic_fingerprint.clone(),
                                 rewrite_context_fingerprint: rewrite_context_fingerprint.clone(),
                                 active_symbols,
+                                has_specialization_demand,
                                 from_rewrite_cache: true,
                             });
                         }
@@ -5048,13 +5558,19 @@ fn build_project(
                         )?;
                         let active_symbols = collect_active_symbols(&rewritten);
                         let api_program = api_projection_program(&rewritten);
+                        let specialization_projection =
+                            specialization_projection_program(&rewritten);
+                        let has_specialization_demand =
+                            program_has_codegen_specialization_demand(&rewritten);
                         Ok(RewrittenProjectUnit {
                             file: unit.file.clone(),
                             active_symbols,
                             api_program,
+                            specialization_projection,
                             program: rewritten,
                             semantic_fingerprint: unit.semantic_fingerprint.clone(),
                             rewrite_context_fingerprint,
+                            has_specialization_demand,
                             from_rewrite_cache: false,
                         })
                     })
@@ -7223,7 +7739,9 @@ mod tests {
         ParsedFileCacheEntry, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
         DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
     };
-    use crate::ast::{Decl, FunctionDecl, ImportDecl, Program, Spanned, Type, Visibility};
+    use crate::ast::{
+        Decl, Expr, FunctionDecl, ImportDecl, Literal, Program, Spanned, Stmt, Type, Visibility,
+    };
     use crate::borrowck::BorrowChecker;
     use crate::formatter::format_program_canonical;
     use crate::parser::Parser;
@@ -21317,14 +21835,24 @@ function main(): Integer {
     }
 
     #[test]
-    fn codegen_program_for_unit_uses_full_programs_for_project_files() {
-        let make_function = |name: &str| {
+    fn codegen_program_for_unit_uses_api_for_dependencies_and_projection_for_specialization_files()
+    {
+        let make_stmt = |value: i64| {
+            Spanned::new(
+                Stmt::Return(Some(Spanned::new(
+                    Expr::Literal(Literal::Integer(value)),
+                    0..0,
+                ))),
+                0..0,
+            )
+        };
+        let make_function = |name: &str, body_len: usize| {
             Spanned::new(
                 Decl::Function(FunctionDecl {
                     name: name.to_string(),
                     params: Vec::new(),
                     return_type: Type::None,
-                    body: Vec::new(),
+                    body: (0..body_len).map(|idx| make_stmt(idx as i64)).collect(),
                     generic_params: Vec::new(),
                     visibility: Visibility::Public,
                     is_async: false,
@@ -21337,26 +21865,37 @@ function main(): Integer {
                 0..0,
             )
         };
-        let make_unit = |file: &str, body_name: &str, api_name: &str| RewrittenProjectUnit {
-            file: PathBuf::from(file),
-            program: Program {
-                package: None,
-                declarations: vec![make_function(body_name)],
-            },
-            api_program: Program {
-                package: None,
-                declarations: vec![make_function(api_name)],
-            },
-            semantic_fingerprint: "sem".to_string(),
-            rewrite_context_fingerprint: "rw".to_string(),
-            active_symbols: HashSet::from([body_name.to_string()]),
-            from_rewrite_cache: false,
-        };
+        let make_unit =
+            |file: &str,
+             body_name: &str,
+             body_len: usize,
+             api_len: usize,
+             projection_len: usize,
+             has_specialization_demand: bool| RewrittenProjectUnit {
+                file: PathBuf::from(file),
+                program: Program {
+                    package: None,
+                    declarations: vec![make_function(body_name, body_len)],
+                },
+                api_program: Program {
+                    package: None,
+                    declarations: vec![make_function(body_name, api_len)],
+                },
+                specialization_projection: Program {
+                    package: None,
+                    declarations: vec![make_function(body_name, projection_len)],
+                },
+                semantic_fingerprint: "sem".to_string(),
+                rewrite_context_fingerprint: "rw".to_string(),
+                active_symbols: HashSet::from([body_name.to_string()]),
+                has_specialization_demand,
+                from_rewrite_cache: false,
+            };
 
         let rewritten_files = vec![
-            make_unit("a.apex", "fa", "fa_api"),
-            make_unit("b.apex", "fb", "fb_api"),
-            make_unit("c.apex", "fc", "fc_api"),
+            make_unit("a.apex", "fa", 3, 0, 1, false),
+            make_unit("b.apex", "fb", 4, 0, 1, false),
+            make_unit("c.apex", "fc", 5, 0, 1, true),
         ];
         let rewritten_file_indices = HashMap::from([
             (PathBuf::from("a.apex"), 0usize),
@@ -21371,17 +21910,21 @@ function main(): Integer {
             Some(&HashSet::from(["fb".to_string()])),
         );
 
-        let names = program
+        let bodies = program
             .declarations
             .iter()
             .filter_map(|decl| match &decl.node {
-                Decl::Function(func) => Some(func.name.clone()),
+                Decl::Function(func) => Some((func.name.clone(), func.body.len())),
                 _ => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(
-            names,
-            vec!["fa".to_string(), "fb".to_string(), "fc".to_string()]
+            bodies,
+            vec![
+                ("fa".to_string(), 3usize),
+                ("fb".to_string(), 0usize),
+                ("fc".to_string(), 1usize),
+            ]
         );
     }
 }
