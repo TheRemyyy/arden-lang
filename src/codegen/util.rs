@@ -1456,7 +1456,19 @@ impl<'ctx> Codegen<'ctx> {
     /// Infer the Apex Type of an expression
     pub fn infer_object_type(&self, expr: &Expr) -> Option<Type> {
         let inferred = match expr {
-            Expr::Ident(name) => self.variables.get(name).map(|v| v.ty.clone()),
+            Expr::Ident(name) => self
+                .variables
+                .get(name)
+                .map(|v| v.ty.clone())
+                .or_else(|| self.functions.get(name).map(|(_, ty)| ty.clone()))
+                .or_else(|| {
+                    let resolved_name = self.resolve_function_alias(name);
+                    if resolved_name == *name {
+                        None
+                    } else {
+                        self.functions.get(&resolved_name).map(|(_, ty)| ty.clone())
+                    }
+                }),
             Expr::This => self.variables.get("this").map(|v| v.ty.clone()),
             Expr::Literal(Literal::Integer(_)) => Some(Type::Integer),
             Expr::Literal(Literal::Float(_)) => Some(Type::Float),
@@ -1588,7 +1600,15 @@ impl<'ctx> Codegen<'ctx> {
                         .variables
                         .get(name)
                         .map(|v| v.ty.clone())
-                        .or_else(|| self.functions.get(name).map(|(_, ty)| ty.clone()))?;
+                        .or_else(|| self.functions.get(name).map(|(_, ty)| ty.clone()))
+                        .or_else(|| {
+                            let resolved_name = self.resolve_function_alias(name);
+                            if resolved_name == *name {
+                                None
+                            } else {
+                                self.functions.get(&resolved_name).map(|(_, ty)| ty.clone())
+                            }
+                        })?;
                     match callee_ty {
                         Type::Function(_, ret) => Some((*ret).clone()),
                         _ => None,
@@ -1649,6 +1669,17 @@ impl<'ctx> Codegen<'ctx> {
                 _ => None,
             },
             Expr::Field { object, field } => {
+                if let Expr::Ident(owner_name) = &object.node {
+                    let resolved_owner = self.resolve_module_alias(owner_name);
+                    if self
+                        .enums
+                        .get(&resolved_owner)
+                        .and_then(|info| info.variants.get(field))
+                        .is_some()
+                    {
+                        return Some(Type::Named(resolved_owner));
+                    }
+                }
                 let obj_ty = self.infer_object_type(&object.node)?;
                 let (class_name, generic_args) = match &obj_ty {
                     Type::Named(n) => (n.clone(), None),

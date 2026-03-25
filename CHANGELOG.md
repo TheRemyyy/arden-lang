@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - unary tail expressions like `async { -7 }` and `async { !false }` now also infer and compile with the correct result type instead of collapsing to `Task<None>`
   - borrowed and mutable-borrow tail expressions now participate in block-tail inference as well, keeping expression-bodied inference consistent across non-literal tails
   - binary arithmetic and comparison tails like `async { 2 + 5 }` and `async { 2 + 5 == 7 }` now also infer and compile with the correct result type instead of collapsing to `Task<None>`
+  - direct function import aliases like `import util.add1 as inc; async { inc(1) }` now preserve the aliased callee return type during tail inference instead of dropping back to `Task<None>`
+  - expression-bodied async blocks returning first-class functions, such as `async { inc }` and `async { import_alias }`, now preserve the function value type instead of dropping to `Task<None>` because tail inference previously ignored global functions and alias-resolved functions in bare identifier form
+  - expression-bodied async blocks returning enum unit values, such as `async { E.A }` and `async { u.E.A }`, now preserve the enum value type instead of dropping to `Task<None>` because tail inference previously ignored enum variant values in bare field form
 - Fixed formatter semantics for expression-bodied blocks:
   - formatting `async`, `if`, `match`, and inline expression blocks no longer appends `;` to the final tail expression, so `format_source()` preserves runtime behavior instead of silently turning value-producing blocks into `None`
   - formatter roundtrips for expression-bodied async/if branches now preserve both syntax and runtime semantics instead of only staying parseable

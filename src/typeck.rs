@@ -8248,6 +8248,37 @@ mod tests {
     }
 
     #[test]
+    fn accepts_async_block_function_value_tail_expression_type() {
+        let src = r#"
+            function inc(x: Integer): Integer { return x + 1; }
+
+            function main(): None {
+                task: Task<(Integer) -> Integer> = async { inc };
+                f: (Integer) -> Integer = await(task);
+                value: Integer = f(1);
+                return None;
+            }
+        "#;
+        check_source(src)
+            .expect("async block function-value tail expressions should infer correct Task<T>");
+    }
+
+    #[test]
+    fn accepts_async_block_unit_enum_value_tail_expression_type() {
+        let src = r#"
+            enum E { A, B }
+
+            function main(): None {
+                task: Task<E> = async { E.A };
+                value: E = await(task);
+                return None;
+            }
+        "#;
+        check_source(src)
+            .expect("async block unit-enum tail expressions should infer correct Task<T>");
+    }
+
+    #[test]
     fn accepts_function_types_inside_generic_class_arguments() {
         let src = r#"
             class Holder<T> {

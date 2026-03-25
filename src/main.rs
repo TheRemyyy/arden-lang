@@ -14354,6 +14354,162 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_async_block_function_value_tail_expression_runtime() {
+        let temp_root = make_temp_project_root("async-block-function-value-tail-runtime");
+        let source_path = temp_root.join("async_block_function_value_tail_runtime.apex");
+        let output_path = temp_root.join("async_block_function_value_tail_runtime");
+        let source = r#"
+            function inc(x: Integer): Integer { return x + 1; }
+
+            function main(): Integer {
+                task: Task<(Integer) -> Integer> = async { inc };
+                f: (Integer) -> Integer = await(task);
+                return f(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async block function-value tail-expression path should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async block function-value tail-expression binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_block_unit_enum_value_tail_expression_runtime() {
+        let temp_root = make_temp_project_root("async-block-unit-enum-tail-runtime");
+        let source_path = temp_root.join("async_block_unit_enum_tail_runtime.apex");
+        let output_path = temp_root.join("async_block_unit_enum_tail_runtime");
+        let source = r#"
+            enum E { A, B }
+
+            function main(): Integer {
+                task: Task<E> = async { E.A };
+                value: E = await(task);
+                match (value) {
+                    E.A => { return 0; }
+                    E.B => { return 1; }
+                }
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async block unit-enum tail-expression path should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async block unit-enum tail-expression binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_async_block_namespace_alias_unit_enum_tail_runtime() {
+        let temp_root = make_temp_project_root("async-block-ns-alias-unit-enum-tail-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(src_dir.join("lib.apex"), "package util;\nenum E { A, B }\n").expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nfunction main(): Integer { task: Task<u.E> = async { u.E.A }; value: u.E = await(task); match (value) { u.E.A => { return 0; } u.E.B => { return 1; } } }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support async-block namespace-alias unit-enum tails");
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled async-block namespace-alias unit-enum tail binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_async_block_import_alias_function_value_tail_runtime() {
+        let temp_root = make_temp_project_root("async-block-import-alias-function-tail-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.add1 as inc;\nfunction main(): Integer { task: Task<(Integer) -> Integer> = async { inc }; f: (Integer) -> Integer = await(task); return f(1); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support async-block import-alias function-value tails",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled async-block import-alias function-value tail binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_async_block_import_alias_tail_expression_runtime() {
+        let temp_root = make_temp_project_root("async-block-import-alias-tail-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.add1 as inc;\nfunction main(): Integer { task: Task<Integer> = async { inc(1) }; return await(task); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support async-block import-alias tail expressions");
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled async-block import-alias tail-expression binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_supports_namespace_alias_unit_enum_values() {
         let temp_root = make_temp_project_root("namespace-alias-unit-enum-project");
         let src_dir = temp_root.join("src");
