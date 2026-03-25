@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed import-check coverage gaps for invalid alias usage in additional AST positions:
+  - invalid exact symbol aliases like `import nope.missing.Box as Boxed;` now fail early when used in type annotations, generic call type arguments, lambda parameter types, and generic bounds instead of slipping past import checking
+  - invalid namespace aliases now also fail inside assignment targets/values and `match` expressions, so alias errors are reported before later rewrite/typecheck passes
+  - generic bounds on functions, classes, class methods, enums, and interfaces are now checked consistently instead of bypassing import validation entirely
+- Fixed parser support for qualified generic bounds:
+  - generic parameter constraints now accept dotted names like `T extends util.Api.Named` and multiple qualified bounds such as `T extends util.Api.Named, util.Api.Serializable`
+  - that keeps generic bounds aligned with already-supported qualified names in `extends` / `implements` clauses and unblocks nested alias/interface-bound code paths
 - Fixed bindgen `restrict`-qualified pointer lowering:
   - C prototypes like `void copy(char *restrict dst, char *restrict src)` now parse into valid Apex bindings instead of being dropped because `*restrict` was treated as an unknown pseudo-type token
   - `char **restrict argv` style parameters now keep their real pointer depth instead of collapsing into Apex `String`

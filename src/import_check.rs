@@ -256,6 +256,16 @@ impl<'a> ImportChecker<'a> {
     }
 
     fn check_qualified_name_alias_usage(&mut self, name: &str, span: Span) {
+        if self.invalid_namespace_aliases.contains(name) {
+            self.errors.push(ImportError {
+                function_name: name.to_string(),
+                defined_in: "<unknown namespace alias>".to_string(),
+                used_in: self.current_namespace.clone(),
+                span,
+                suggestion: None,
+            });
+            return;
+        }
         let Some((alias, _)) = name.split_once('.') else {
             return;
         };
@@ -312,6 +322,14 @@ impl<'a> ImportChecker<'a> {
     fn check_pattern(&mut self, pattern: &Pattern, span: Span) {
         if let Pattern::Variant(name, _) = pattern {
             self.check_qualified_name_alias_usage(name, span);
+        }
+    }
+
+    fn check_generic_param_bounds(&mut self, generic_params: &[GenericParam]) {
+        for param in generic_params {
+            for bound in &param.bounds {
+                self.check_qualified_name_alias_usage(bound, 0..0);
+            }
         }
     }
 
@@ -578,6 +596,11 @@ impl<'a> ImportChecker<'a> {
                 for arg in args {
                     self.check_expr(&arg.node);
                 }
+                if let Expr::Call { type_args, .. } = expr {
+                    for ty in type_args {
+                        self.check_type(ty, 0..0);
+                    }
+                }
             }
             Expr::Binary { left, right, .. } => {
                 self.check_expr(&left.node);
@@ -603,12 +626,18 @@ impl<'a> ImportChecker<'a> {
             Expr::Match { expr, arms } => {
                 self.check_expr(&expr.node);
                 for arm in arms {
+                    self.check_pattern(&arm.pattern, 0..0);
                     for stmt in &arm.body {
                         self.check_stmt(&stmt.node);
                     }
                 }
             }
             Expr::Lambda { body, .. } => {
+                if let Expr::Lambda { params, .. } = expr {
+                    for param in params {
+                        self.check_type(&param.ty, 0..0);
+                    }
+                }
                 self.check_expr(&body.node);
             }
             Expr::Construct { args, .. } => {
@@ -679,6 +708,10 @@ impl<'a> ImportChecker<'a> {
             Stmt::Expr(expr) => {
                 self.check_expr(&expr.node);
             }
+            Stmt::Assign { target, value } => {
+                self.check_expr(&target.node);
+                self.check_expr(&value.node);
+            }
             Stmt::Let { value, .. } => {
                 if let Stmt::Let { ty, .. } = stmt {
                     self.check_type(ty, 0..0);
@@ -740,6 +773,7 @@ impl<'a> ImportChecker<'a> {
         fn check_decl(checker: &mut ImportChecker<'_>, decl: &Decl) {
             match decl {
                 Decl::Function(func) => {
+                    checker.check_generic_param_bounds(&func.generic_params);
                     for param in &func.params {
                         checker.check_type(&param.ty, 0..0);
                     }
@@ -749,6 +783,7 @@ impl<'a> ImportChecker<'a> {
                     }
                 }
                 Decl::Class(class) => {
+                    checker.check_generic_param_bounds(&class.generic_params);
                     if let Some(parent) = &class.extends {
                         checker.check_qualified_name_alias_usage(parent, 0..0);
                     }
@@ -772,6 +807,7 @@ impl<'a> ImportChecker<'a> {
                         }
                     }
                     for method in &class.methods {
+                        checker.check_generic_param_bounds(&method.generic_params);
                         for param in &method.params {
                             checker.check_type(&param.ty, 0..0);
                         }
@@ -787,6 +823,7 @@ impl<'a> ImportChecker<'a> {
                     }
                 }
                 Decl::Interface(interface) => {
+                    checker.check_generic_param_bounds(&interface.generic_params);
                     for extended in &interface.extends {
                         checker.check_qualified_name_alias_usage(extended, 0..0);
                     }
@@ -803,6 +840,7 @@ impl<'a> ImportChecker<'a> {
                     }
                 }
                 Decl::Enum(en) => {
+                    checker.check_generic_param_bounds(&en.generic_params);
                     for variant in &en.variants {
                         for field in &variant.fields {
                             checker.check_type(&field.ty, 0..0);
@@ -1105,6 +1143,191 @@ function main(value: Integer): None {
         let errors = check_import_errors(source);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].function_name, "alias.Result.Ok");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_match_expression_pattern_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing as alias;
+function main(value: Integer): Integer {
+    return match (value) {
+        alias.Result.Ok(inner) => { inner; },
+        _ => { 0; }
+    };
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "alias.Result.Ok");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_assignment_value_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing as alias;
+function main(): None {
+    value: Integer = 0;
+    value = alias.Box();
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "alias.Box");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_assignment_target_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing as alias;
+class Holder {
+    value: Integer;
+}
+
+function main(): None {
+    holder: Holder = Holder(0);
+    alias.store().value = 1;
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "alias.store");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_call_type_arg_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing.Box as Boxed;
+function consume<T>(): None { return None; }
+function main(): None {
+    consume<Boxed>();
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Boxed");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_lambda_param_type_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing.Box as Boxed;
+function main(): None {
+    mapper: (Integer) -> Integer = (value: Boxed) => 1;
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Boxed");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_function_generic_bound_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing.Named as Named;
+function render<T extends Named>(value: T): None {
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Named");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_class_generic_bound_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing.Named as Named;
+class Box<T extends Named> {
+    value: Integer;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Named");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_method_generic_bound_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing.Named as Named;
+class Worker {
+    function render<T extends Named>(value: T): None {
+        return None;
+    }
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Named");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_enum_generic_bound_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing.Named as Named;
+enum Result<T extends Named> {
+    Ok(value: T)
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Named");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_interface_generic_bound_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing.Named as Named;
+interface Renderable<T extends Named> {
+    function render(value: T): None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Named");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_exact_type_alias_annotation_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing.Box as Boxed;
+function main(value: Boxed): None {
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Boxed");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_exact_type_alias_constructor_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing.Box as Boxed;
+function main(): None {
+    Boxed();
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "Boxed");
         assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
     }
 

@@ -540,13 +540,13 @@ impl<'src> Parser<'src> {
 
             if self.check(&Token::Extends) {
                 self.advance();
-                bounds.push(self.parse_ident()?);
+                bounds.push(self.parse_qualified_name()?);
                 while self.check(&Token::Comma) && !self.check(&Token::Gt) {
                     // Check if next is another bound or next param
                     let saved_pos = self.pos;
                     self.advance();
                     if let Some(Token::Ident(_)) = self.current() {
-                        let next_name = self.parse_ident()?;
+                        let next_name = self.parse_qualified_name()?;
                         // Check if this is a bound (next is comma or >) or a new param (next is extends or :)
                         if self.check(&Token::Extends) || self.check(&Token::Colon) {
                             // It's a new param, restore
@@ -4180,6 +4180,43 @@ mod tests {
             "{}",
             err.message
         );
+    }
+
+    #[test]
+    fn test_parse_qualified_generic_parameter_bound() {
+        let source = r#"
+            function render<T extends util.Api.Named>(value: T): T {
+                return value;
+            }
+        "#;
+        let program = parse_source(source).expect("qualified generic bound should parse");
+        match &program.declarations[0].node {
+            Decl::Function(func) => {
+                assert_eq!(func.generic_params.len(), 1);
+                assert_eq!(func.generic_params[0].bounds, vec!["util.Api.Named"]);
+            }
+            _ => panic!("Expected function declaration"),
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_qualified_generic_parameter_bounds() {
+        let source = r#"
+            class Box<T extends util.Api.Named, util.Api.Serializable> {
+                value: T;
+            }
+        "#;
+        let program = parse_source(source).expect("multiple qualified generic bounds should parse");
+        match &program.declarations[0].node {
+            Decl::Class(class) => {
+                assert_eq!(class.generic_params.len(), 1);
+                assert_eq!(
+                    class.generic_params[0].bounds,
+                    vec!["util.Api.Named", "util.Api.Serializable"]
+                );
+            }
+            _ => panic!("Expected class declaration"),
+        }
     }
 
     #[test]

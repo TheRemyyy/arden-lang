@@ -30,9 +30,23 @@ class Box<T> {
 
 ## Type Constraints
 
-(Future Feature)
-You will be able to constrain generics to types that implement specific interfaces.
+Generic parameters can be constrained with `extends` bounds. Bounds accept both local names and
+qualified interface paths.
 
 ```apex
-// function printAll<T: Display>(item: T) { ... }
+function printAll<T extends Display>(item: T): None {
+    return None;
+}
+```
+
+Qualified and nested bounds are also valid:
+
+```apex
+function printAll<T extends util.Api.Named>(item: T): None {
+    return None;
+}
+
+class Box<T extends util.Api.Named, util.Api.Serializable> {
+    value: T;
+}
 ```
