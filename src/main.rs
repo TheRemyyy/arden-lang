@@ -838,7 +838,7 @@ fn codegen_program_for_unit(
     rewritten_files: &[RewrittenProjectUnit],
     rewritten_file_indices: &HashMap<PathBuf, usize>,
     active_file: &Path,
-    dependency_closure: Option<&HashSet<PathBuf>>,
+    _dependency_closure: Option<&HashSet<PathBuf>>,
     _declaration_symbols: Option<&HashSet<String>>,
 ) -> Program {
     fn merge_codegen_declarations(
@@ -911,14 +911,10 @@ fn codegen_program_for_unit(
     };
     let mut seen_specializations = HashSet::new();
 
-    let mut relevant_files = dependency_closure
-        .map(|closure| closure.iter().cloned().collect::<Vec<_>>())
-        .unwrap_or_else(|| {
-            rewritten_files
-                .iter()
-                .map(|unit| unit.file.clone())
-                .collect::<Vec<_>>()
-        });
+    let mut relevant_files = rewritten_files
+        .iter()
+        .map(|unit| unit.file.clone())
+        .collect::<Vec<_>>();
     if !relevant_files.iter().any(|file| file == active_file) {
         relevant_files.push(active_file.to_path_buf());
     }
@@ -930,11 +926,7 @@ fn codegen_program_for_unit(
             continue;
         };
         let unit = &rewritten_files[index];
-        let source_program = if file == active_file {
-            unit.program.clone()
-        } else {
-            unit.api_program.clone()
-        };
+        let source_program = unit.program.clone();
         merge_codegen_declarations(
             &mut program.declarations,
             &source_program.declarations,
