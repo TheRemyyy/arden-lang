@@ -3845,6 +3845,18 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         }
     }
 
+    fn collect_generic_param_bound_refs(
+        generic_params: &[ast::GenericParam],
+        out: &mut HashSet<String>,
+        qualified_out: &mut HashSet<Vec<String>>,
+    ) {
+        for param in generic_params {
+            for bound in &param.bounds {
+                collect_qualified_name_ref(bound, out, qualified_out);
+            }
+        }
+    }
+
     fn collect_expr_refs(
         expr: &Expr,
         out: &mut HashSet<String>,
@@ -4046,6 +4058,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
     ) {
         match decl {
             Decl::Function(func) => {
+                collect_generic_param_bound_refs(&func.generic_params, out, qualified_out);
                 for param in &func.params {
                     collect_type_refs(&param.ty, out, qualified_out);
                 }
@@ -4053,6 +4066,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 collect_block_refs(&func.body, out, qualified_out);
             }
             Decl::Class(class) => {
+                collect_generic_param_bound_refs(&class.generic_params, out, qualified_out);
                 if let Some(parent) = &class.extends {
                     collect_qualified_name_ref(parent, out, qualified_out);
                 }
@@ -4072,6 +4086,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                     collect_block_refs(&dtor.body, out, qualified_out);
                 }
                 for method in &class.methods {
+                    collect_generic_param_bound_refs(&method.generic_params, out, qualified_out);
                     for param in &method.params {
                         collect_type_refs(&param.ty, out, qualified_out);
                     }
@@ -4080,6 +4095,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 }
             }
             Decl::Enum(en) => {
+                collect_generic_param_bound_refs(&en.generic_params, out, qualified_out);
                 for variant in &en.variants {
                     for field in &variant.fields {
                         collect_type_refs(&field.ty, out, qualified_out);
@@ -4087,6 +4103,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 }
             }
             Decl::Interface(interface) => {
+                collect_generic_param_bound_refs(&interface.generic_params, out, qualified_out);
                 for extended in &interface.extends {
                     collect_qualified_name_ref(extended, out, qualified_out);
                 }
@@ -14041,6 +14058,35 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_supports_namespace_alias_generic_bounds() {
+        let temp_root = make_temp_project_root("namespace-alias-generic-bounds-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\ninterface Named { function name(): Integer; }\nclass Person implements Named {\n    constructor() {}\n    function name(): Integer { return 1; }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib as u;\nfunction read_name<T extends u.Named>(value: T): Integer { return value.name(); }\nfunction main(): None { person: u.Person = u.Person(); require(read_name(person) == 1); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support namespace alias generic bounds");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_supports_dereferenced_function_value_callees() {
         let temp_root = make_temp_project_root("deref-function-callee-project");
         let src_dir = temp_root.join("src");
@@ -21345,9 +21391,6 @@ function main(): Integer {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(
-            names,
-            vec!["fa".to_string(), "fb_api".to_string()]
-        );
+        assert_eq!(names, vec!["fa".to_string(), "fb_api".to_string()]);
     }
 }

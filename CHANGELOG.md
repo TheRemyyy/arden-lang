@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed parser support for qualified generic bounds:
   - generic parameter constraints now accept dotted names like `T extends util.Api.Named` and multiple qualified bounds such as `T extends util.Api.Named, util.Api.Serializable`
   - that keeps generic bounds aligned with already-supported qualified names in `extends` / `implements` clauses and unblocks nested alias/interface-bound code paths
+- Fixed generic-bound semantic enforcement across typechecking and project rewrite:
+  - generic bounds now fail fast when they reference unknown symbols or non-interface types instead of being accepted as unchecked syntax on functions, classes, enums, and interfaces
+  - explicit and inferred generic arguments now respect interface bounds, so calls like `render<Plain>(...)`, `render(Plain())`, and `Box<Plain>()` no longer bypass `T extends Named`
+  - method calls through bounded generic parameters now resolve against the bound interfaces, so valid code like `value.name()` inside `function read<T extends Named>(value: T)` typechecks again
+  - project rewrite and dependency metadata now preserve alias-qualified generic bounds like `T extends u.Named`, so project-mode builds no longer drop or leave bound-only interface references unresolved
 - Fixed bindgen `restrict`-qualified pointer lowering:
   - C prototypes like `void copy(char *restrict dst, char *restrict src)` now parse into valid Apex bindings instead of being dropped because `*restrict` was treated as an unknown pseudo-type token
   - `char **restrict argv` style parameters now keep their real pointer depth instead of collapsing into Apex `String`

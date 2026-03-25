@@ -240,6 +240,8 @@ pub struct TypeChecker {
     source: String,
     /// Function/method generic type parameter bindings in current checking context
     current_generic_type_bindings: HashMap<String, ResolvedType>,
+    /// Interface bounds declared for generic type variables
+    type_var_bounds: HashMap<usize, Vec<String>>,
     /// Current nested module prefix while collecting/checking module-scoped declarations
     current_module_prefix: Option<String>,
 }
@@ -477,6 +479,7 @@ impl TypeChecker {
             current_allow_any: false,
             source,
             current_generic_type_bindings: HashMap::new(),
+            type_var_bounds: HashMap::new(),
             current_module_prefix: None,
         }
     }
@@ -677,8 +680,107 @@ impl TypeChecker {
     ) -> HashMap<String, ResolvedType> {
         generic_params
             .iter()
-            .map(|p| (p.name.clone(), self.fresh_type_var()))
+            .map(|p| {
+                let type_var = self.fresh_type_var();
+                if let ResolvedType::TypeVar(id) = type_var {
+                    self.type_var_bounds.insert(id, p.bounds.clone());
+                }
+                (p.name.clone(), type_var)
+            })
             .collect()
+    }
+
+    fn validate_generic_param_bounds(
+        &mut self,
+        generic_params: &[GenericParam],
+        span: Span,
+        owner: &str,
+    ) {
+        for param in generic_params {
+            for bound in &param.bounds {
+                let resolved = self
+                    .resolve_nominal_reference_name(bound)
+                    .unwrap_or_else(|| bound.clone());
+                if self.interfaces.contains_key(&resolved) {
+                    continue;
+                }
+                if self.classes.contains_key(&resolved) || self.enums.contains_key(&resolved) {
+                    self.error(
+                        format!(
+                            "{} generic parameter '{}' must use an interface bound, found '{}'",
+                            owner, param.name, bound
+                        ),
+                        span.clone(),
+                    );
+                } else {
+                    self.error(
+                        format!(
+                            "{} generic parameter '{}' extends unknown interface '{}'",
+                            owner, param.name, bound
+                        ),
+                        span.clone(),
+                    );
+                }
+            }
+        }
+    }
+
+    fn type_satisfies_interface_bound(&self, actual: &ResolvedType, bound: &str) -> bool {
+        if matches!(actual, ResolvedType::Unknown | ResolvedType::TypeVar(_)) {
+            return true;
+        }
+        let resolved_bound = self
+            .resolve_nominal_reference_name(bound)
+            .unwrap_or_else(|| bound.to_string());
+        let ResolvedType::Class(actual_name) = actual else {
+            return false;
+        };
+        let actual_base = self.class_base_name(actual_name);
+        if actual_base == resolved_bound {
+            return true;
+        }
+        self.class_implements_interface(actual_base, &resolved_bound)
+            || self.interface_extends(actual_base, &resolved_bound)
+    }
+
+    fn type_var_satisfies_bounds(&self, type_var_id: usize, actual: &ResolvedType) -> bool {
+        self.type_var_bounds.get(&type_var_id).is_none_or(|bounds| {
+            bounds
+                .iter()
+                .all(|bound| self.type_satisfies_interface_bound(actual, bound))
+        })
+    }
+
+    fn validate_class_type_argument_bounds(&mut self, class_name: &str, span: Span, context: &str) {
+        let (base_name, substitutions) = self.instantiated_class_substitutions(class_name);
+        let Some(type_var_ids) = self
+            .classes
+            .get(&base_name)
+            .map(|class| class.generic_type_vars.clone())
+        else {
+            return;
+        };
+        for type_var_id in &type_var_ids {
+            let Some(actual) = substitutions.get(type_var_id) else {
+                continue;
+            };
+            if self.type_var_satisfies_bounds(*type_var_id, actual) {
+                continue;
+            }
+            let bounds = self
+                .type_var_bounds
+                .get(type_var_id)
+                .cloned()
+                .unwrap_or_default()
+                .join(", ");
+            self.error(
+                format!(
+                    "{} type argument {} does not satisfy bound(s) {}",
+                    context, actual, bounds
+                ),
+                span.clone(),
+            );
+        }
     }
 
     #[allow(clippy::only_used_in_recursion)]
@@ -1504,6 +1606,30 @@ impl TypeChecker {
         }
     }
 
+    fn lookup_type_var_bound_method(
+        &self,
+        type_var_id: usize,
+        method_name: &str,
+    ) -> Option<FuncSig> {
+        let mut matches = Vec::new();
+        for bound in self.type_var_bounds.get(&type_var_id)? {
+            let resolved_bound = self
+                .resolve_nominal_reference_name(bound)
+                .unwrap_or_else(|| bound.clone());
+            let mut methods = HashMap::new();
+            let mut visited = std::collections::HashSet::new();
+            self.collect_interface_methods(&resolved_bound, &mut methods, &mut visited);
+            if let Some(sig) = methods.get(method_name) {
+                matches.push(sig.clone());
+            }
+        }
+        if matches.is_empty() {
+            None
+        } else {
+            Some(matches.swap_remove(0))
+        }
+    }
+
     fn signatures_compatible(&self, expected: &FuncSig, actual: &FuncSig) -> bool {
         if expected.params.len() != actual.params.len() {
             return false;
@@ -1677,6 +1803,7 @@ impl TypeChecker {
     fn check_type_visibility(&mut self, ty: &ResolvedType, span: Span) {
         match ty {
             ResolvedType::Class(name) => {
+                self.validate_class_type_argument_bounds(name, span.clone(), "Type");
                 self.check_class_visibility(self.class_base_name(name), span)
             }
             ResolvedType::Option(inner)
@@ -2283,6 +2410,11 @@ impl TypeChecker {
             Decl::Enum(en) => {
                 let saved_module_prefix = self.current_module_prefix.clone();
                 self.current_module_prefix = module_prefix.map(|p| p.to_string());
+                self.validate_generic_param_bounds(
+                    &en.generic_params,
+                    span.clone(),
+                    &format!("Enum '{}'", en.name),
+                );
                 for variant in &en.variants {
                     for field in &variant.fields {
                         let ty = self.resolve_type(&field.ty);
@@ -2319,6 +2451,11 @@ impl TypeChecker {
     }
 
     fn check_interface(&mut self, interface: &InterfaceDecl, span: Span) {
+        self.validate_generic_param_bounds(
+            &interface.generic_params,
+            span.clone(),
+            &format!("Interface '{}'", interface.name),
+        );
         for method in &interface.methods {
             let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
             for param in &method.params {
@@ -2392,6 +2529,12 @@ impl TypeChecker {
         if is_entry_main {
             self.validate_main_signature(func, span.clone());
         }
+        let function_name = function_key.unwrap_or(&func.name);
+        self.validate_generic_param_bounds(
+            &func.generic_params,
+            span.clone(),
+            &format!("Function '{}'", function_name),
+        );
         let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
         self.current_generic_type_bindings = self.make_generic_type_bindings(&func.generic_params);
         self.enter_scope();
@@ -2466,6 +2609,11 @@ impl TypeChecker {
 
     fn check_class_named(&mut self, class: &ClassDecl, span: Span, class_key: &str) {
         let saved_class = self.current_class.clone();
+        self.validate_generic_param_bounds(
+            &class.generic_params,
+            span.clone(),
+            &format!("Class '{}'", class_key),
+        );
         let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
         self.current_generic_type_bindings = self.make_generic_type_bindings(&class.generic_params);
         self.current_class = Some(class_key.to_string());
@@ -2619,6 +2767,11 @@ impl TypeChecker {
 
         // Check methods
         for method in &class.methods {
+            self.validate_generic_param_bounds(
+                &method.generic_params,
+                span.clone(),
+                &format!("Method '{}.{}'", class_key, method.name),
+            );
             let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
             let mut method_bindings = saved_generic_bindings.clone();
             method_bindings.extend(self.make_generic_type_bindings(&method.generic_params));
@@ -3388,6 +3541,7 @@ impl TypeChecker {
 
                 let (class_name, class_substitutions) =
                     self.instantiated_class_substitutions(&scoped_ty);
+                self.validate_class_type_argument_bounds(&scoped_ty, span.clone(), "Constructor");
 
                 if self.interfaces.contains_key(&scoped_ty)
                     || self.interfaces.contains_key(&class_name)
@@ -3894,6 +4048,7 @@ impl TypeChecker {
     fn validate_resolved_type_exists(&mut self, ty: &ResolvedType, span: Span) {
         match ty {
             ResolvedType::Class(name) => {
+                self.validate_class_type_argument_bounds(name, span.clone(), "Type");
                 let base_name = self.class_base_name(name);
                 if !self.classes.contains_key(base_name)
                     && !self.interfaces.contains_key(base_name)
@@ -4068,6 +4223,21 @@ impl TypeChecker {
         for (type_var_id, arg) in sig.generic_type_vars.iter().zip(type_args.iter()) {
             let resolved = self.resolve_type(arg);
             self.validate_resolved_type_exists(&resolved, span.clone());
+            if !self.type_var_satisfies_bounds(*type_var_id, &resolved) {
+                let bounds = self
+                    .type_var_bounds
+                    .get(type_var_id)
+                    .cloned()
+                    .unwrap_or_default()
+                    .join(", ");
+                self.error(
+                    format!(
+                        "Function '{}' type argument {} does not satisfy bound(s) {}",
+                        name, resolved, bounds
+                    ),
+                    span.clone(),
+                );
+            }
             substitutions.insert(*type_var_id, resolved);
         }
 
@@ -5500,6 +5670,39 @@ impl TypeChecker {
                     ResolvedType::Unknown
                 }
             },
+            ResolvedType::TypeVar(id) => {
+                if let Some(sig) = self.lookup_type_var_bound_method(*id, method) {
+                    if !type_args.is_empty() {
+                        self.error(
+                            format!("Bounded generic method '{}' is not generic", method),
+                            span.clone(),
+                        );
+                    }
+                    if args.len() != sig.params.len() {
+                        self.error(
+                            format!("Method '{}' expects {} arguments", method, sig.params.len()),
+                            span,
+                        );
+                    } else {
+                        for (arg, (_, param_type)) in args.iter().zip(sig.params.iter()) {
+                            let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                            if !self.types_compatible(param_type, &arg_type) {
+                                self.error(
+                                    format!(
+                                        "Argument type mismatch: expected {}, got {}",
+                                        param_type, arg_type
+                                    ),
+                                    arg.span.clone(),
+                                );
+                            }
+                        }
+                    }
+                    sig.return_type
+                } else {
+                    self.error(format!("Cannot call method on type {}", obj_type), span);
+                    ResolvedType::Unknown
+                }
+            }
             _ => {
                 self.error(format!("Cannot call method on type {}", obj_type), span);
                 ResolvedType::Unknown
@@ -5826,9 +6029,10 @@ impl TypeChecker {
         }
 
         // Handle type variables
-        if matches!(expected, ResolvedType::TypeVar(_))
-            || matches!(actual, ResolvedType::TypeVar(_))
-        {
+        if let ResolvedType::TypeVar(id) = expected {
+            return self.type_var_satisfies_bounds(*id, actual);
+        }
+        if matches!(actual, ResolvedType::TypeVar(_)) {
             return true; // Type inference will resolve
         }
 
@@ -6640,6 +6844,237 @@ mod tests {
             function main(): Integer { return 0; }
         "#;
         check_source(src).expect("module-local nested interface extends should typecheck");
+    }
+
+    #[test]
+    fn rejects_unknown_function_generic_bound() {
+        let src = r#"
+            function render<T extends Missing>(value: T): None {
+                return None;
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src).expect_err("unknown generic bound should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains(
+                "Function 'render' generic parameter 'T' extends unknown interface 'Missing'"
+            ),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_non_interface_function_generic_bound() {
+        let src = r#"
+            class Secret { constructor() {} }
+            function render<T extends Secret>(value: T): None {
+                return None;
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src).expect_err("class generic bound should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Function 'render' generic parameter 'T' must use an interface bound, found 'Secret'"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_class_generic_bound() {
+        let src = r#"
+            class Box<T extends Missing> {
+                value: Integer;
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src).expect_err("unknown class generic bound should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined
+                .contains("Class 'Box' generic parameter 'T' extends unknown interface 'Missing'"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_enum_generic_bound() {
+        let src = r#"
+            enum Maybe<T extends Missing> {
+                Some(value: T),
+                Empty
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src).expect_err("unknown enum generic bound should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined
+                .contains("Enum 'Maybe' generic parameter 'T' extends unknown interface 'Missing'"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_interface_generic_bound() {
+        let src = r#"
+            interface Renderable<T extends Missing> {
+                function render(value: T): None;
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src).expect_err("unknown interface generic bound should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains(
+                "Interface 'Renderable' generic parameter 'T' extends unknown interface 'Missing'"
+            ),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_explicit_function_type_arg_that_violates_interface_bound() {
+        let src = r#"
+            interface Named { function name(): Integer; }
+            class Plain { constructor() {} }
+            function render<T extends Named>(value: T): Integer {
+                return 1;
+            }
+            function main(): Integer {
+                return render<Plain>(Plain());
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("explicit generic arg violating bound should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined
+                .contains("Function 'render' type argument Plain does not satisfy bound(s) Named"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_inferred_function_arg_that_violates_interface_bound() {
+        let src = r#"
+            interface Named { function name(): Integer; }
+            class Plain { constructor() {} }
+            function render<T extends Named>(value: T): Integer {
+                return 1;
+            }
+            function main(): Integer {
+                return render(Plain());
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("inferred generic arg violating bound should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Argument type mismatch: expected ?T"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn allows_method_calls_through_generic_interface_bound() {
+        let src = r#"
+            interface Named { function name(): Integer; }
+            class Person implements Named {
+                constructor() {}
+                function name(): Integer { return 7; }
+            }
+            function read_name<T extends Named>(value: T): Integer {
+                return value.name();
+            }
+            function main(): Integer {
+                return read_name(Person());
+            }
+        "#;
+        check_source(src).expect("bounded generic interface method calls should typecheck");
+    }
+
+    #[test]
+    fn rejects_constructor_type_arg_that_violates_interface_bound() {
+        let src = r#"
+            interface Named { function name(): Integer; }
+            class Plain { constructor() {} }
+            class Box<T extends Named> {
+                value: Integer;
+                constructor() { this.value = 1; }
+            }
+            function main(): Integer {
+                bad: Box<Plain> = Box<Plain>();
+                return bad.value;
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("constructor generic arg violating bound should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Constructor type argument Plain does not satisfy bound(s) Named"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_annotation_only_generic_type_arg_that_violates_interface_bound() {
+        let src = r#"
+            interface Named { function name(): Integer; }
+            class Plain { constructor() {} }
+            class Box<T extends Named> {
+                value: Integer;
+                constructor() { this.value = 1; }
+            }
+            function main(): Integer {
+                bad: Box<Plain> = Box<Plain>();
+                return 0;
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("annotation-only generic arg violating bound should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Type type argument Plain does not satisfy bound(s) Named"),
+            "{joined}"
+        );
     }
 
     #[test]

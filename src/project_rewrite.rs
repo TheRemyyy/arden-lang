@@ -126,6 +126,23 @@ fn format_construct_type_name(base: &str, type_args: &[ast::Type]) -> String {
     }
 }
 
+fn rewrite_generic_params_for_project(
+    generic_params: &[ast::GenericParam],
+    rewrite_bound: impl Fn(&str) -> String,
+) -> Vec<ast::GenericParam> {
+    generic_params
+        .iter()
+        .map(|param| ast::GenericParam {
+            name: param.name.clone(),
+            bounds: param
+                .bounds
+                .iter()
+                .map(|bound| rewrite_bound(bound))
+                .collect(),
+        })
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn rewrite_construct_type_name_for_project(
     ty: &str,
@@ -324,6 +341,18 @@ pub fn rewrite_program_for_project(
                 let node = match &d.node {
                     Decl::Function(func) => {
                         let mut f = func.clone();
+                        f.generic_params =
+                            rewrite_generic_params_for_project(&f.generic_params, |bound| {
+                                rewrite_interface_reference_for_project(
+                                    bound,
+                                    current_namespace,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    &imported_modules,
+                                    global_interface_map,
+                                    entry_namespace,
+                                )
+                            });
                         let mut scopes = vec![f.params.iter().map(|p| p.name.clone()).collect()];
                         f.params = f
                             .params
@@ -381,6 +410,18 @@ pub fn rewrite_program_for_project(
                     Decl::Class(class) => {
                         let mut c = class.clone();
                         c.name = mangle_project_symbol(current_namespace, entry_namespace, &c.name);
+                        c.generic_params =
+                            rewrite_generic_params_for_project(&c.generic_params, |bound| {
+                                rewrite_interface_reference_for_project(
+                                    bound,
+                                    current_namespace,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    &imported_modules,
+                                    global_interface_map,
+                                    entry_namespace,
+                                )
+                            });
                         c.extends = class.extends.as_ref().map(|extends| {
                             rewrite_named_reference_for_project(
                                 extends,
@@ -483,6 +524,20 @@ pub fn rewrite_program_for_project(
                             .iter()
                             .map(|m| {
                                 let mut nm = m.clone();
+                                nm.generic_params = rewrite_generic_params_for_project(
+                                    &nm.generic_params,
+                                    |bound| {
+                                        rewrite_interface_reference_for_project(
+                                            bound,
+                                            current_namespace,
+                                            &local_interfaces,
+                                            &imported_interfaces,
+                                            &imported_modules,
+                                            global_interface_map,
+                                            entry_namespace,
+                                        )
+                                    },
+                                );
                                 let mut scopes: Vec<HashSet<String>> =
                                     vec![nm.params.iter().map(|p| p.name.clone()).collect()];
                                 if let Some(scope) = scopes.last_mut() {
@@ -561,6 +616,22 @@ pub fn rewrite_program_for_project(
                                 let node = match &inner.node {
                                     Decl::Function(func) => {
                                         let mut f = func.clone();
+                                        f.generic_params = rewrite_generic_params_for_project(
+                                            &f.generic_params,
+                                            |bound| {
+                                                rewrite_interface_reference_for_module(
+                                                    bound,
+                                                    &module_prefix,
+                                                    current_namespace,
+                                                    entry_namespace,
+                                                    &module_local_interfaces,
+                                                    &module_local_modules,
+                                                    &imported_interfaces,
+                                                    &imported_modules,
+                                                    global_interface_map,
+                                                )
+                                            },
+                                        );
                                         let mut scopes =
                                             vec![f.params.iter().map(|p| p.name.clone()).collect()];
                                         f.params = f
@@ -628,6 +699,22 @@ pub fn rewrite_program_for_project(
                                     }
                                     Decl::Class(class) => {
                                         let mut c = class.clone();
+                                        c.generic_params = rewrite_generic_params_for_project(
+                                            &c.generic_params,
+                                            |bound| {
+                                                rewrite_interface_reference_for_module(
+                                                    bound,
+                                                    &module_prefix,
+                                                    current_namespace,
+                                                    entry_namespace,
+                                                    &module_local_interfaces,
+                                                    &module_local_modules,
+                                                    &imported_interfaces,
+                                                    &imported_modules,
+                                                    global_interface_map,
+                                                )
+                                            },
+                                        );
                                         c.extends = class.extends.as_ref().map(|extends| {
                                             match rewrite_module_local_type(
                                                 &ast::Type::Named(extends.clone()),
@@ -751,6 +838,23 @@ pub fn rewrite_program_for_project(
                                             .iter()
                                             .map(|method| {
                                                 let mut nm = method.clone();
+                                                nm.generic_params =
+                                                    rewrite_generic_params_for_project(
+                                                        &nm.generic_params,
+                                                        |bound| {
+                                                            rewrite_interface_reference_for_module(
+                                                                bound,
+                                                                &module_prefix,
+                                                                current_namespace,
+                                                                entry_namespace,
+                                                                &module_local_interfaces,
+                                                                &module_local_modules,
+                                                                &imported_interfaces,
+                                                                &imported_modules,
+                                                                global_interface_map,
+                                                            )
+                                                        },
+                                                    );
                                                 let mut scopes: Vec<HashSet<String>> = vec![nm
                                                     .params
                                                     .iter()
@@ -827,6 +931,22 @@ pub fn rewrite_program_for_project(
                                     }
                                     Decl::Enum(en) => {
                                         let mut e = en.clone();
+                                        e.generic_params = rewrite_generic_params_for_project(
+                                            &e.generic_params,
+                                            |bound| {
+                                                rewrite_interface_reference_for_module(
+                                                    bound,
+                                                    &module_prefix,
+                                                    current_namespace,
+                                                    entry_namespace,
+                                                    &module_local_interfaces,
+                                                    &module_local_modules,
+                                                    &imported_interfaces,
+                                                    &imported_modules,
+                                                    global_interface_map,
+                                                )
+                                            },
+                                        );
                                         e.variants = e
                                             .variants
                                             .iter()
@@ -893,6 +1013,23 @@ pub fn rewrite_program_for_project(
                                     }
                                     Decl::Interface(interface) => {
                                         let mut rewritten = interface.clone();
+                                        rewritten.generic_params =
+                                            rewrite_generic_params_for_project(
+                                                &rewritten.generic_params,
+                                                |bound| {
+                                                    rewrite_interface_reference_for_module(
+                                                        bound,
+                                                        &module_prefix,
+                                                        current_namespace,
+                                                        entry_namespace,
+                                                        &module_local_interfaces,
+                                                        &module_local_modules,
+                                                        &imported_interfaces,
+                                                        &imported_modules,
+                                                        global_interface_map,
+                                                    )
+                                                },
+                                            );
                                         rewritten.extends = interface
                                             .extends
                                             .iter()
@@ -1003,6 +1140,18 @@ pub fn rewrite_program_for_project(
                     Decl::Enum(en) => {
                         let mut e = en.clone();
                         e.name = mangle_project_symbol(current_namespace, entry_namespace, &e.name);
+                        e.generic_params =
+                            rewrite_generic_params_for_project(&e.generic_params, |bound| {
+                                rewrite_interface_reference_for_project(
+                                    bound,
+                                    current_namespace,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    &imported_modules,
+                                    global_interface_map,
+                                    entry_namespace,
+                                )
+                            });
                         e.variants = e
                             .variants
                             .iter()
@@ -1037,6 +1186,20 @@ pub fn rewrite_program_for_project(
                             current_namespace,
                             entry_namespace,
                             &rewritten.name,
+                        );
+                        rewritten.generic_params = rewrite_generic_params_for_project(
+                            &rewritten.generic_params,
+                            |bound| {
+                                rewrite_interface_reference_for_project(
+                                    bound,
+                                    current_namespace,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    &imported_modules,
+                                    global_interface_map,
+                                    entry_namespace,
+                                )
+                            },
                         );
                         rewritten.extends = interface
                             .extends
