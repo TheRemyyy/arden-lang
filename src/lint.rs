@@ -198,15 +198,25 @@ fn check_unused_variables(program: &Program) -> Vec<LintFinding> {
 }
 
 fn check_unused_variables_in_block(block: &[crate::ast::Spanned<Stmt>]) -> Vec<LintFinding> {
-    let mut declared: Vec<(String, Span)> = Vec::new();
-    let mut used: HashSet<String> = HashSet::new();
+    let mut declared: Vec<(String, Span, usize)> = Vec::new();
+    let mut used: HashSet<(String, usize)> = HashSet::new();
 
-    collect_declared_and_used_in_block(block, &mut declared, &mut used);
+    let mut scope_stack = vec![0usize];
+    let mut next_scope_id = 1usize;
+    collect_declared_and_used_in_block(
+        block,
+        &mut declared,
+        &mut used,
+        &mut scope_stack,
+        &mut next_scope_id,
+    );
 
     declared
         .into_iter()
-        .filter(|(name, _)| !name.starts_with('_') && !used.contains(name))
-        .map(|(name, span)| LintFinding {
+        .filter(|(name, _, scope_id)| {
+            !name.starts_with('_') && !used.contains(&(name.clone(), *scope_id))
+        })
+        .map(|(name, span, _)| LintFinding {
             code: "L004",
             level: LintLevel::Warning,
             message: format!("Variable '{}' is declared but never used", name),
@@ -218,32 +228,42 @@ fn check_unused_variables_in_block(block: &[crate::ast::Spanned<Stmt>]) -> Vec<L
 
 fn collect_declared_and_used_in_block(
     block: &[crate::ast::Spanned<Stmt>],
-    declared: &mut Vec<(String, Span)>,
-    used: &mut HashSet<String>,
+    declared: &mut Vec<(String, Span, usize)>,
+    used: &mut HashSet<(String, usize)>,
+    scope_stack: &mut Vec<usize>,
+    next_scope_id: &mut usize,
 ) {
     for stmt in block {
-        collect_declared_and_used_in_stmt(stmt, declared, used);
+        collect_declared_and_used_in_stmt(stmt, declared, used, scope_stack, next_scope_id);
     }
 }
 
 fn collect_declared_and_used_in_stmt(
     stmt: &crate::ast::Spanned<Stmt>,
-    declared: &mut Vec<(String, Span)>,
-    used: &mut HashSet<String>,
+    declared: &mut Vec<(String, Span, usize)>,
+    used: &mut HashSet<(String, usize)>,
+    scope_stack: &mut Vec<usize>,
+    next_scope_id: &mut usize,
 ) {
     match &stmt.node {
         Stmt::Let { name, value, .. } => {
-            declared.push((name.clone(), stmt.span.clone()));
-            collect_expr_idents(&value.node, declared, used);
+            declared.push((
+                name.clone(),
+                stmt.span.clone(),
+                *scope_stack.last().unwrap_or(&0),
+            ));
+            collect_expr_idents(&value.node, declared, used, scope_stack, next_scope_id);
         }
         Stmt::Assign { target, value } => {
-            collect_expr_idents(&target.node, declared, used);
-            collect_expr_idents(&value.node, declared, used);
+            collect_expr_idents(&target.node, declared, used, scope_stack, next_scope_id);
+            collect_expr_idents(&value.node, declared, used, scope_stack, next_scope_id);
         }
-        Stmt::Expr(expr) => collect_expr_idents(&expr.node, declared, used),
+        Stmt::Expr(expr) => {
+            collect_expr_idents(&expr.node, declared, used, scope_stack, next_scope_id)
+        }
         Stmt::Return(expr) => {
             if let Some(expr) = expr {
-                collect_expr_idents(&expr.node, declared, used);
+                collect_expr_idents(&expr.node, declared, used, scope_stack, next_scope_id);
             }
         }
         Stmt::If {
@@ -251,15 +271,39 @@ fn collect_declared_and_used_in_stmt(
             then_block,
             else_block,
         } => {
-            collect_expr_idents(&condition.node, declared, used);
-            collect_declared_and_used_in_block(then_block, declared, used);
+            collect_expr_idents(&condition.node, declared, used, scope_stack, next_scope_id);
+            let then_scope = *next_scope_id;
+            *next_scope_id += 1;
+            scope_stack.push(then_scope);
+            collect_declared_and_used_in_block(
+                then_block,
+                declared,
+                used,
+                scope_stack,
+                next_scope_id,
+            );
+            scope_stack.pop();
             if let Some(else_block) = else_block {
-                collect_declared_and_used_in_block(else_block, declared, used);
+                let else_scope = *next_scope_id;
+                *next_scope_id += 1;
+                scope_stack.push(else_scope);
+                collect_declared_and_used_in_block(
+                    else_block,
+                    declared,
+                    used,
+                    scope_stack,
+                    next_scope_id,
+                );
+                scope_stack.pop();
             }
         }
         Stmt::While { condition, body } => {
-            collect_expr_idents(&condition.node, declared, used);
-            collect_declared_and_used_in_block(body, declared, used);
+            collect_expr_idents(&condition.node, declared, used, scope_stack, next_scope_id);
+            let loop_scope = *next_scope_id;
+            *next_scope_id += 1;
+            scope_stack.push(loop_scope);
+            collect_declared_and_used_in_block(body, declared, used, scope_stack, next_scope_id);
+            scope_stack.pop();
         }
         Stmt::For {
             var,
@@ -267,15 +311,29 @@ fn collect_declared_and_used_in_stmt(
             body,
             ..
         } => {
-            declared.push((var.clone(), stmt.span.clone()));
-            collect_expr_idents(&iterable.node, declared, used);
-            collect_declared_and_used_in_block(body, declared, used);
+            let loop_scope = *next_scope_id;
+            *next_scope_id += 1;
+            scope_stack.push(loop_scope);
+            declared.push((var.clone(), stmt.span.clone(), loop_scope));
+            collect_expr_idents(&iterable.node, declared, used, scope_stack, next_scope_id);
+            collect_declared_and_used_in_block(body, declared, used, scope_stack, next_scope_id);
+            scope_stack.pop();
         }
         Stmt::Match { expr, arms } => {
-            collect_expr_idents(&expr.node, declared, used);
+            collect_expr_idents(&expr.node, declared, used, scope_stack, next_scope_id);
             for arm in arms {
-                collect_pattern_bindings(&arm.pattern, &stmt.span, declared);
-                collect_declared_and_used_in_block(&arm.body, declared, used);
+                let arm_scope = *next_scope_id;
+                *next_scope_id += 1;
+                scope_stack.push(arm_scope);
+                collect_pattern_bindings(&arm.pattern, &stmt.span, declared, arm_scope);
+                collect_declared_and_used_in_block(
+                    &arm.body,
+                    declared,
+                    used,
+                    scope_stack,
+                    next_scope_id,
+                );
+                scope_stack.pop();
             }
         }
         Stmt::Break | Stmt::Continue => {}
@@ -285,13 +343,14 @@ fn collect_declared_and_used_in_stmt(
 fn collect_pattern_bindings(
     pattern: &crate::ast::Pattern,
     span: &Span,
-    declared: &mut Vec<(String, Span)>,
+    declared: &mut Vec<(String, Span, usize)>,
+    scope_id: usize,
 ) {
     match pattern {
-        crate::ast::Pattern::Ident(name) => declared.push((name.clone(), span.clone())),
+        crate::ast::Pattern::Ident(name) => declared.push((name.clone(), span.clone(), scope_id)),
         crate::ast::Pattern::Variant(_, bindings) => {
             for binding in bindings {
-                declared.push((binding.clone(), span.clone()));
+                declared.push((binding.clone(), span.clone(), scope_id));
             }
         }
         crate::ast::Pattern::Wildcard | crate::ast::Pattern::Literal(_) => {}
@@ -300,74 +359,104 @@ fn collect_pattern_bindings(
 
 fn collect_expr_idents(
     expr: &Expr,
-    declared: &mut Vec<(String, Span)>,
-    used: &mut HashSet<String>,
+    declared: &mut Vec<(String, Span, usize)>,
+    used: &mut HashSet<(String, usize)>,
+    scope_stack: &mut Vec<usize>,
+    next_scope_id: &mut usize,
 ) {
     match expr {
         Expr::Ident(name) => {
-            used.insert(name.clone());
+            if let Some((_, _, scope_id)) = declared
+                .iter()
+                .rev()
+                .find(|(declared_name, _, _)| declared_name == name)
+            {
+                used.insert((name.clone(), *scope_id));
+            }
         }
         Expr::Call { callee, args, .. } => {
-            collect_expr_idents(&callee.node, declared, used);
+            collect_expr_idents(&callee.node, declared, used, scope_stack, next_scope_id);
             for arg in args {
-                collect_expr_idents(&arg.node, declared, used);
+                collect_expr_idents(&arg.node, declared, used, scope_stack, next_scope_id);
             }
         }
         Expr::Binary { left, right, .. } => {
-            collect_expr_idents(&left.node, declared, used);
-            collect_expr_idents(&right.node, declared, used);
+            collect_expr_idents(&left.node, declared, used, scope_stack, next_scope_id);
+            collect_expr_idents(&right.node, declared, used, scope_stack, next_scope_id);
         }
         Expr::Unary { expr, .. }
         | Expr::Try(expr)
         | Expr::Borrow(expr)
         | Expr::MutBorrow(expr)
         | Expr::Deref(expr)
-        | Expr::Await(expr) => collect_expr_idents(&expr.node, declared, used),
-        Expr::Field { object, .. } => collect_expr_idents(&object.node, declared, used),
+        | Expr::Await(expr) => {
+            collect_expr_idents(&expr.node, declared, used, scope_stack, next_scope_id)
+        }
+        Expr::Field { object, .. } => {
+            collect_expr_idents(&object.node, declared, used, scope_stack, next_scope_id)
+        }
         Expr::Index { object, index } => {
-            collect_expr_idents(&object.node, declared, used);
-            collect_expr_idents(&index.node, declared, used);
+            collect_expr_idents(&object.node, declared, used, scope_stack, next_scope_id);
+            collect_expr_idents(&index.node, declared, used, scope_stack, next_scope_id);
         }
         Expr::Construct { args, .. } => {
             for arg in args {
-                collect_expr_idents(&arg.node, declared, used);
+                collect_expr_idents(&arg.node, declared, used, scope_stack, next_scope_id);
             }
         }
         Expr::Lambda { params, body } => {
+            let lambda_scope = *next_scope_id;
+            *next_scope_id += 1;
+            scope_stack.push(lambda_scope);
             for param in params {
-                declared.push((param.name.clone(), 0..0));
+                declared.push((param.name.clone(), 0..0, lambda_scope));
             }
-            collect_expr_idents(&body.node, declared, used);
+            collect_expr_idents(&body.node, declared, used, scope_stack, next_scope_id);
+            scope_stack.pop();
         }
         Expr::Match { expr, arms } => {
-            collect_expr_idents(&expr.node, declared, used);
+            collect_expr_idents(&expr.node, declared, used, scope_stack, next_scope_id);
             for arm in arms {
-                collect_pattern_bindings(&arm.pattern, &(0..0), declared);
-                collect_declared_and_used_in_block(&arm.body, declared, used);
+                let arm_scope = *next_scope_id;
+                *next_scope_id += 1;
+                scope_stack.push(arm_scope);
+                collect_pattern_bindings(&arm.pattern, &(0..0), declared, arm_scope);
+                collect_declared_and_used_in_block(
+                    &arm.body,
+                    declared,
+                    used,
+                    scope_stack,
+                    next_scope_id,
+                );
+                scope_stack.pop();
             }
         }
         Expr::StringInterp(parts) => {
             for part in parts {
                 if let crate::ast::StringPart::Expr(expr) = part {
-                    collect_expr_idents(&expr.node, declared, used);
+                    collect_expr_idents(&expr.node, declared, used, scope_stack, next_scope_id);
                 }
             }
         }
         Expr::AsyncBlock(block) | Expr::Block(block) => {
-            collect_declared_and_used_in_block(block, declared, used);
+            let block_scope = *next_scope_id;
+            *next_scope_id += 1;
+            scope_stack.push(block_scope);
+            collect_declared_and_used_in_block(block, declared, used, scope_stack, next_scope_id);
+            scope_stack.pop();
         }
         Expr::Require { condition, message } => {
-            collect_expr_idents(&condition.node, declared, used);
+            collect_expr_idents(&condition.node, declared, used, scope_stack, next_scope_id);
             if let Some(message) = message {
-                collect_expr_idents(&message.node, declared, used);
+                collect_expr_idents(&message.node, declared, used, scope_stack, next_scope_id);
             }
         }
         Expr::Range { start, end, .. } => {
             if let Some(start) = start {
-                collect_expr_idents(&start.node, declared, used);
+                collect_expr_idents(&start.node, declared, used, scope_stack, next_scope_id);
             }
             if let Some(end) = end {
-                collect_expr_idents(&end.node, declared, used);
+                collect_expr_idents(&end.node, declared, used, scope_stack, next_scope_id);
             }
         }
         Expr::IfExpr {
@@ -375,10 +464,30 @@ fn collect_expr_idents(
             then_branch,
             else_branch,
         } => {
-            collect_expr_idents(&condition.node, declared, used);
-            collect_declared_and_used_in_block(then_branch, declared, used);
+            collect_expr_idents(&condition.node, declared, used, scope_stack, next_scope_id);
+            let then_scope = *next_scope_id;
+            *next_scope_id += 1;
+            scope_stack.push(then_scope);
+            collect_declared_and_used_in_block(
+                then_branch,
+                declared,
+                used,
+                scope_stack,
+                next_scope_id,
+            );
+            scope_stack.pop();
             if let Some(else_branch) = else_branch {
-                collect_declared_and_used_in_block(else_branch, declared, used);
+                let else_scope = *next_scope_id;
+                *next_scope_id += 1;
+                scope_stack.push(else_scope);
+                collect_declared_and_used_in_block(
+                    else_branch,
+                    declared,
+                    used,
+                    scope_stack,
+                    next_scope_id,
+                );
+                scope_stack.pop();
             }
         }
         Expr::Literal(_) | Expr::This => {}
@@ -1367,6 +1476,47 @@ function main(): None {
         assert!(result.findings.iter().any(|f| f.code == "L004"
             && f.message
                 .contains("Variable 'i' is declared but never used")));
+    }
+
+    #[test]
+    fn flags_unused_shadowed_variable_in_nested_block() {
+        let source = r#"function main(): None {
+    x: Integer = 1;
+    if (true) {
+        x: Integer = 2;
+    }
+    println(to_string(x));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        let unused = result
+            .findings
+            .iter()
+            .filter(|f| f.code == "L004" && f.message.contains("Variable 'x'"))
+            .collect::<Vec<_>>();
+        assert_eq!(unused.len(), 1, "{:?}", result.findings);
+    }
+
+    #[test]
+    fn flags_unused_shadowed_lambda_parameter_independently() {
+        let source = r#"function main(): None {
+    value: Integer = 1;
+    f: (Integer) -> Integer = (value: Integer) => 0;
+    println(to_string(value));
+    return None;
+}
+"#;
+        let result = lint_source(source, false).expect("lint succeeds");
+        assert!(
+            result.findings.iter().any(|f| {
+                f.code == "L004"
+                    && f.message
+                        .contains("Variable 'value' is declared but never used")
+            }),
+            "{:?}",
+            result.findings
+        );
     }
 
     #[test]

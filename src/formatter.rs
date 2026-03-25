@@ -352,6 +352,10 @@ impl Formatter {
     }
 
     fn format_stmt(&mut self, stmt: &Spanned<Stmt>) {
+        self.format_stmt_with_tail(stmt, false);
+    }
+
+    fn format_stmt_with_tail(&mut self, stmt: &Spanned<Stmt>, is_expression_tail: bool) {
         match &stmt.node {
             Stmt::Let {
                 name,
@@ -376,7 +380,9 @@ impl Formatter {
             }
             Stmt::Expr(expr) => {
                 let formatted = self.format_expr(&expr.node);
-                if matches!(expr.node, Expr::Match { .. } | Expr::IfExpr { .. }) {
+                if is_expression_tail {
+                    self.push_line(&formatted);
+                } else if matches!(expr.node, Expr::Match { .. } | Expr::IfExpr { .. }) {
                     self.push_line(&format!("({});", formatted));
                 } else {
                     self.push_line(&format!("{};", formatted));
@@ -452,6 +458,19 @@ impl Formatter {
             }
         }
         self.emit_comments_before(stmt.span.end);
+    }
+
+    fn format_expression_block_contents(&mut self, block: &Block) {
+        let last_expr_index = block
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(index, stmt)| matches!(stmt.node, Stmt::Expr(_)).then_some(index));
+
+        for (index, stmt) in block.iter().enumerate() {
+            self.emit_comments_before(stmt.span.start);
+            self.format_stmt_with_tail(stmt, last_expr_index == Some(index));
+        }
     }
 
     fn format_pattern(&self, pattern: &Pattern) -> String {
@@ -611,7 +630,7 @@ impl Formatter {
                     self.format_empty_block_comments()
                         .unwrap_or_else(|| String::from("\n"))
                 } else {
-                    self.format_nested_block_contents(block)
+                    self.format_nested_expression_block_contents(block)
                 };
                 let body = body.trim_end_matches('\n');
                 let closing_indent = "    ".repeat(self.indent);
@@ -745,13 +764,21 @@ impl Formatter {
             return "{ }".to_string();
         }
 
-        let body = self.format_nested_block_contents(block);
+        let body = self.format_nested_expression_block_contents(block);
         let lines = body.trim_end_matches('\n');
         let closing_indent = "    ".repeat(self.indent);
         format!("{{\n{}\n{}}}", lines, closing_indent)
     }
 
-    fn format_nested_block_contents(&mut self, block: &Block) -> String {
+    fn format_nested_expression_block_contents(&mut self, block: &Block) -> String {
+        self.format_nested_block_contents_with_mode(block, true)
+    }
+
+    fn format_nested_block_contents_with_mode(
+        &mut self,
+        block: &Block,
+        is_expression: bool,
+    ) -> String {
         let Some(block_end) = block.last().map(|stmt| stmt.span.end) else {
             return String::new();
         };
@@ -768,7 +795,11 @@ impl Formatter {
 
         let mut nested = Formatter::with_comments(block_comments, None, self.source.clone());
         nested.indent = self.indent + 1;
-        nested.format_block_contents(block);
+        if is_expression {
+            nested.format_expression_block_contents(block);
+        } else {
+            nested.format_block_contents(block);
+        }
         nested.emit_comments_before(block_limit);
         let consumed_comments = nested.next_comment;
         let body = nested.finish();
@@ -1520,6 +1551,32 @@ function main(): None {
     }
 
     #[test]
+    fn preserves_async_block_tail_expression_without_semicolon() {
+        let source = r#"
+function main(): None {
+    task: Task<Integer> = async {
+        1
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("async {\n        1\n    }"),
+            "{formatted}"
+        );
+        assert!(
+            !formatted.contains("async {\n        1;\n    }"),
+            "{formatted}"
+        );
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted async tail expression should parse");
+    }
+
+    #[test]
     fn preserves_comments_inside_if_expression_blocks() {
         let source = r#"
 function main(): None {
@@ -1534,7 +1591,7 @@ function main(): None {
 "#;
         let formatted = format_source(source).expect("format succeeds");
         assert!(
-            formatted.contains("if (true) {\n        // keep me\n        1;\n    }"),
+            formatted.contains("if (true) {\n        // keep me\n        1\n    }"),
             "{formatted}"
         );
         let tokens = tokenize(&formatted).expect("formatted output should lex");
@@ -1542,6 +1599,34 @@ function main(): None {
         parser
             .parse_program()
             .expect("formatted output should parse");
+    }
+
+    #[test]
+    fn preserves_if_expression_tail_without_semicolon() {
+        let source = r#"
+function main(): None {
+    value: Integer = if (true) {
+        1
+    } else {
+        2
+    };
+    return None;
+}
+"#;
+        let formatted = format_source(source).expect("format succeeds");
+        assert!(
+            formatted.contains("if (true) {\n        1\n    } else {\n        2\n    }"),
+            "{formatted}"
+        );
+        assert!(
+            !formatted.contains("if (true) {\n        1;\n    } else {\n        2;\n    }"),
+            "{formatted}"
+        );
+        let tokens = tokenize(&formatted).expect("formatted output should lex");
+        let mut parser = Parser::new(tokens);
+        parser
+            .parse_program()
+            .expect("formatted if-expression tail should parse");
     }
 
     #[test]
@@ -1602,7 +1687,7 @@ function main(): None {
 "#;
         let formatted = format_source(source).expect("format succeeds");
         assert!(
-            formatted.contains("1;\n        // trailing keep me\n    } else {"),
+            formatted.contains("1\n        // trailing keep me\n    } else {"),
             "{formatted}"
         );
         let tokens = tokenize(&formatted).expect("formatted output should lex");
@@ -1670,7 +1755,7 @@ function main(): None {
 "#;
         let formatted = format_source(source).expect("format succeeds");
         assert!(
-            formatted.contains("1;\n        /* trailing keep me */\n    } else {"),
+            formatted.contains("1\n        /* trailing keep me */\n    } else {"),
             "{formatted}"
         );
         let tokens = tokenize(&formatted).expect("formatted output should lex");

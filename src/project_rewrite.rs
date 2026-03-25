@@ -519,6 +519,29 @@ pub fn rewrite_program_for_project(
                             );
                             c.constructor = Some(new_ctor);
                         }
+                        if let Some(dtor) = &class.destructor {
+                            let mut new_dtor = dtor.clone();
+                            let mut scopes: Vec<HashSet<String>> =
+                                vec![HashSet::from(["this".to_string()])];
+                            new_dtor.body = rewrite_block_calls_for_project(
+                                &new_dtor.body,
+                                current_namespace,
+                                entry_namespace,
+                                &local_functions,
+                                &imported_map,
+                                global_function_map,
+                                &local_classes,
+                                &imported_classes,
+                                global_class_map,
+                                &imported_enums,
+                                global_enum_map,
+                                &local_modules,
+                                &imported_modules,
+                                global_module_map,
+                                &mut scopes,
+                            );
+                            c.destructor = Some(new_dtor);
+                        }
                         c.methods = class
                             .methods
                             .iter()
@@ -832,6 +855,36 @@ pub fn rewrite_program_for_project(
                                                 &module_local_classes,
                                             );
                                             c.constructor = Some(new_ctor);
+                                        }
+                                        if let Some(dtor) = &class.destructor {
+                                            let mut new_dtor = dtor.clone();
+                                            let mut scopes: Vec<HashSet<String>> =
+                                                vec![HashSet::from(["this".to_string()])];
+                                            new_dtor.body = fix_module_local_block(
+                                                &rewrite_block_calls_for_project(
+                                                    &new_dtor.body,
+                                                    current_namespace,
+                                                    entry_namespace,
+                                                    &module_local_functions,
+                                                    &imported_map,
+                                                    global_function_map,
+                                                    &module_local_classes,
+                                                    &imported_classes,
+                                                    global_class_map,
+                                                    &imported_enums,
+                                                    global_enum_map,
+                                                    &module_local_modules,
+                                                    &imported_modules,
+                                                    global_module_map,
+                                                    &mut scopes,
+                                                ),
+                                                current_namespace,
+                                                entry_namespace,
+                                                &module_prefix,
+                                                &module_local_functions,
+                                                &module_local_classes,
+                                            );
+                                            c.destructor = Some(new_dtor);
                                         }
                                         c.methods = class
                                             .methods

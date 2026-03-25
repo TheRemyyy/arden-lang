@@ -160,37 +160,45 @@ impl<'src> Parser<'src> {
 
         let mut i = 0usize;
         while i < tokens.len() {
-            match &tokens[i].0 {
-                Token::Function => {
-                    if let Some((Token::Ident(name), _)) = tokens.get(i + 1) {
+            let mut j = i;
+            while matches!(
+                tokens.get(j).map(|(token, _)| token),
+                Some(Token::Public | Token::Private | Token::Protected)
+            ) {
+                j += 1;
+            }
+
+            match tokens.get(j).map(|(token, _)| token) {
+                Some(Token::Function) => {
+                    if let Some((Token::Ident(name), _)) = tokens.get(j + 1) {
                         known_functions.insert((*name).to_string());
                     }
                 }
-                Token::Async => {
+                Some(Token::Async) => {
                     if let (Some((Token::Function, _)), Some((Token::Ident(name), _))) =
-                        (tokens.get(i + 1), tokens.get(i + 2))
+                        (tokens.get(j + 1), tokens.get(j + 2))
                     {
                         known_functions.insert((*name).to_string());
                     }
                 }
-                Token::Extern => {
+                Some(Token::Extern) => {
                     // extern(...) function name ...
-                    let mut j = i + 1;
-                    while j + 1 < tokens.len() {
-                        if matches!(tokens[j].0, Token::Function) {
-                            if let Token::Ident(name) = &tokens[j + 1].0 {
+                    let mut k = j + 1;
+                    while k + 1 < tokens.len() {
+                        if matches!(tokens[k].0, Token::Function) {
+                            if let Token::Ident(name) = &tokens[k + 1].0 {
                                 known_functions.insert((*name).to_string());
                             }
                             break;
                         }
-                        if matches!(tokens[j].0, Token::Semi | Token::LBrace) {
+                        if matches!(tokens[k].0, Token::Semi | Token::LBrace) {
                             break;
                         }
-                        j += 1;
+                        k += 1;
                     }
                 }
-                Token::Class | Token::Enum | Token::Interface => {
-                    if let Some((Token::Ident(name), _)) = tokens.get(i + 1) {
+                Some(Token::Class | Token::Enum | Token::Interface) => {
+                    if let Some((Token::Ident(name), _)) = tokens.get(j + 1) {
                         known_types.insert((*name).to_string());
                     }
                 }
@@ -761,6 +769,25 @@ impl<'src> Parser<'src> {
         Ok((Some(abi), link_name))
     }
 
+    fn parse_class_member_prefix(&mut self) -> ParseResult<(Visibility, Vec<Attribute>)> {
+        let mut visibility = Visibility::Public;
+        let mut saw_visibility = false;
+        let mut attributes = Vec::new();
+
+        loop {
+            match self.current() {
+                Some(Token::Public | Token::Private | Token::Protected) if !saw_visibility => {
+                    visibility = self.parse_visibility();
+                    saw_visibility = true;
+                }
+                Some(Token::At) => attributes.extend(self.parse_attributes()?),
+                _ => break,
+            }
+        }
+
+        Ok((visibility, attributes))
+    }
+
     fn parse_class(&mut self, _attributes: Vec<Attribute>) -> ParseResult<ClassDecl> {
         let visibility = self.parse_visibility();
 
@@ -820,14 +847,25 @@ impl<'src> Parser<'src> {
         let mut methods = Vec::new();
 
         while !self.check(&Token::RBrace) && !self.is_at_end() {
-            // Check for visibility modifier first
-            let member_visibility = self.parse_visibility();
+            let (member_visibility, member_attrs) = self.parse_class_member_prefix()?;
 
             match self.current() {
                 Some(Token::Constructor) => {
                     if member_visibility != Visibility::Public {
                         return Err(ParseError::new(
                             "Visibility modifiers are not supported on constructors",
+                            self.current_span(),
+                        ));
+                    }
+                    if !member_attrs.is_empty() {
+                        return Err(ParseError::new(
+                            "Attributes are not supported on constructors",
+                            self.current_span(),
+                        ));
+                    }
+                    if constructor.is_some() {
+                        return Err(ParseError::new(
+                            "Classes cannot declare more than one constructor",
                             self.current_span(),
                         ));
                     }
@@ -840,15 +878,32 @@ impl<'src> Parser<'src> {
                             self.current_span(),
                         ));
                     }
+                    if !member_attrs.is_empty() {
+                        return Err(ParseError::new(
+                            "Attributes are not supported on destructors",
+                            self.current_span(),
+                        ));
+                    }
+                    if destructor.is_some() {
+                        return Err(ParseError::new(
+                            "Classes cannot declare more than one destructor",
+                            self.current_span(),
+                        ));
+                    }
                     destructor = Some(self.parse_destructor()?);
                 }
                 Some(Token::Function) | Some(Token::Async) => {
-                    let method_attrs = self.parse_attributes()?;
-                    let mut method = self.parse_function(method_attrs)?;
+                    let mut method = self.parse_function(member_attrs)?;
                     method.visibility = member_visibility;
                     methods.push(method);
                 }
                 Some(Token::Mut) | Some(Token::Ident(_)) => {
+                    if !member_attrs.is_empty() {
+                        return Err(ParseError::new(
+                            "Attributes are only supported on class methods",
+                            self.current_span(),
+                        ));
+                    }
                     let mut field = self.parse_field()?;
                     field.visibility = member_visibility;
                     fields.push(field);
@@ -2554,7 +2609,7 @@ impl<'src> Parser<'src> {
                 self.advance();
                 if self.check(&Token::LBrace) {
                     self.advance();
-                    let body = self.parse_block()?;
+                    let body = self.parse_expression_block()?;
                     self.eat(&Token::RBrace)?;
                     Expr::AsyncBlock(body)
                 } else {
@@ -2585,7 +2640,7 @@ impl<'src> Parser<'src> {
 
                     let body = if self.check(&Token::LBrace) {
                         self.advance();
-                        let block = self.parse_block()?;
+                        let block = self.parse_expression_block()?;
                         self.eat(&Token::RBrace)?;
                         block
                     } else {
@@ -4627,6 +4682,182 @@ mod tests {
         };
         let field = &en.variants[0].fields[0];
         assert!(matches!(field.ty, Type::Ptr(_)));
+    }
+
+    #[test]
+    fn test_parse_class_method_attributes_before_visibility() {
+        let source = r#"
+            class Worker {
+                @Io
+                private function fetch(): Integer {
+                    return 1;
+                }
+            }
+        "#;
+        let program = parse_source(source).expect("class method attributes should parse");
+        let Decl::Class(class_decl) = &program.declarations[0].node else {
+            panic!("Expected class declaration");
+        };
+        let method = &class_decl.methods[0];
+        assert_eq!(method.visibility, Visibility::Private);
+        assert_eq!(method.attributes, vec![Attribute::EffectIo]);
+    }
+
+    #[test]
+    fn test_parse_class_method_attributes_after_visibility() {
+        let source = r#"
+            class Worker {
+                private @Pure function value(): Integer {
+                    return 1;
+                }
+            }
+        "#;
+        let program = parse_source(source).expect("mixed method modifiers should parse");
+        let Decl::Class(class_decl) = &program.declarations[0].node else {
+            panic!("Expected class declaration");
+        };
+        let method = &class_decl.methods[0];
+        assert_eq!(method.visibility, Visibility::Private);
+        assert_eq!(method.attributes, vec![Attribute::Pure]);
+    }
+
+    #[test]
+    fn test_reject_duplicate_class_constructor() {
+        let source = r#"
+            class Worker {
+                constructor() { }
+                constructor() { }
+            }
+        "#;
+        let err = parse_source(source).expect_err("duplicate constructor should fail");
+        assert!(
+            err.message
+                .contains("Classes cannot declare more than one constructor"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_reject_duplicate_class_destructor() {
+        let source = r#"
+            class Worker {
+                destructor() { }
+                destructor() { }
+            }
+        "#;
+        let err = parse_source(source).expect_err("duplicate destructor should fail");
+        assert!(
+            err.message
+                .contains("Classes cannot declare more than one destructor"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_parse_match_expression_block_tail_without_semicolon() {
+        let source = r#"
+            function main(): Integer {
+                return match (1) {
+                    1 => { 2 }
+                    _ => { 3 }
+                };
+            }
+        "#;
+        let program = parse_source(source).expect("match expression block tails should parse");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Return(Some(expr)) = &func.body[0].node else {
+            panic!("Expected return expression");
+        };
+        let Expr::Match { arms, .. } = &expr.node else {
+            panic!("Expected match expression");
+        };
+        assert!(matches!(
+            &arms[0].body[0].node,
+            Stmt::Expr(Spanned {
+                node: Expr::Literal(Literal::Integer(2)),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn test_parse_async_block_tail_without_semicolon() {
+        let source = r#"
+            function main(): Task<Integer> {
+                return async { 1 };
+            }
+        "#;
+        let program = parse_source(source).expect("async block tail expressions should parse");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+        let Stmt::Return(Some(expr)) = &func.body[0].node else {
+            panic!("Expected return expression");
+        };
+        let Expr::AsyncBlock(body) = &expr.node else {
+            panic!("Expected async block expression");
+        };
+        assert!(matches!(
+            &body[0].node,
+            Stmt::Expr(Spanned {
+                node: Expr::Literal(Literal::Integer(1)),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn test_parse_forward_public_uppercase_function_call_as_call() {
+        let source = r#"
+            function main(): Integer {
+                return ParseValue(1);
+            }
+
+            public function ParseValue(value: Integer): Integer {
+                return value;
+            }
+        "#;
+        let program =
+            parse_source(source).expect("public uppercase forward function call should parse");
+        let Decl::Function(main) = &program.declarations[0].node else {
+            panic!("Expected main function");
+        };
+        let Stmt::Return(Some(expr)) = &main.body[0].node else {
+            panic!("Expected return expression");
+        };
+        let Expr::Call { callee, .. } = &expr.node else {
+            panic!("Expected function call, not constructor");
+        };
+        assert!(matches!(&callee.node, Expr::Ident(name) if name == "ParseValue"));
+    }
+
+    #[test]
+    fn test_parse_forward_public_async_uppercase_function_call_as_call() {
+        let source = r#"
+            function main(): Task<Integer> {
+                return LoadValue(1);
+            }
+
+            public async function LoadValue(value: Integer): Task<Integer> {
+                return async { value };
+            }
+        "#;
+        let program = parse_source(source)
+            .expect("public async uppercase forward function call should parse");
+        let Decl::Function(main) = &program.declarations[0].node else {
+            panic!("Expected main function");
+        };
+        let Stmt::Return(Some(expr)) = &main.body[0].node else {
+            panic!("Expected return expression");
+        };
+        let Expr::Call { callee, .. } = &expr.node else {
+            panic!("Expected async function call, not constructor");
+        };
+        assert!(matches!(&callee.node, Expr::Ident(name) if name == "LoadValue"));
     }
 
     #[test]

@@ -2,6 +2,8 @@
 
 Generics allow you to write flexible, reusable code that works with any type.
 
+When you use multiple interface bounds on the same type parameter, overlapping methods must agree on the same signature. Apex now rejects ambiguous combinations like `T extends A, B` when `A.render()` and `B.render()` use different parameter or return types.
+
 ## Generic Functions
 
 ```apex

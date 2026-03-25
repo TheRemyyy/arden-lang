@@ -46,7 +46,7 @@ impl<'ctx> Codegen<'ctx> {
         self.normalize_codegen_type(&ty)
     }
 
-    fn infer_block_tail_type(&self, block: &[Spanned<Stmt>]) -> Option<Type> {
+    pub(crate) fn infer_block_tail_type(&self, block: &[Spanned<Stmt>]) -> Option<Type> {
         let last = block.last()?;
         match &last.node {
             Stmt::Expr(expr) => self.infer_object_type(&expr.node),
@@ -1458,20 +1458,69 @@ impl<'ctx> Codegen<'ctx> {
         let inferred = match expr {
             Expr::Ident(name) => self.variables.get(name).map(|v| v.ty.clone()),
             Expr::This => self.variables.get("this").map(|v| v.ty.clone()),
+            Expr::Literal(Literal::Integer(_)) => Some(Type::Integer),
+            Expr::Literal(Literal::Float(_)) => Some(Type::Float),
+            Expr::Literal(Literal::Boolean(_)) => Some(Type::Boolean),
             Expr::Literal(Literal::String(_)) => Some(Type::String),
+            Expr::Literal(Literal::Char(_)) => Some(Type::Char),
+            Expr::Literal(Literal::None) => Some(Type::None),
             Expr::StringInterp(_) => Some(Type::String),
             Expr::Construct { ty, .. } => parse_type_source(ty).ok(),
-            Expr::Binary {
-                op: BinOp::Add,
-                left,
-                right,
-            } => {
+            Expr::Unary { op, expr } => match op {
+                UnaryOp::Neg => {
+                    let inner_ty = self.infer_object_type(&expr.node)?;
+                    match inner_ty {
+                        Type::Integer | Type::Float => Some(inner_ty),
+                        _ => None,
+                    }
+                }
+                UnaryOp::Not => Some(Type::Boolean),
+            },
+            Expr::Borrow(expr) => {
+                let inner_ty = self.infer_object_type(&expr.node)?;
+                Some(Type::Ref(Box::new(inner_ty)))
+            }
+            Expr::MutBorrow(expr) => {
+                let inner_ty = self.infer_object_type(&expr.node)?;
+                Some(Type::MutRef(Box::new(inner_ty)))
+            }
+            Expr::Binary { op, left, right } => {
                 let left_ty = self.infer_object_type(&left.node)?;
                 let right_ty = self.infer_object_type(&right.node)?;
-                if matches!(left_ty, Type::String) && matches!(right_ty, Type::String) {
-                    Some(Type::String)
-                } else {
-                    None
+                match op {
+                    BinOp::Eq
+                    | BinOp::NotEq
+                    | BinOp::Lt
+                    | BinOp::LtEq
+                    | BinOp::Gt
+                    | BinOp::GtEq
+                    | BinOp::And
+                    | BinOp::Or => Some(Type::Boolean),
+                    BinOp::Add => {
+                        if matches!(left_ty, Type::String) && matches!(right_ty, Type::String) {
+                            Some(Type::String)
+                        } else if left_ty == right_ty
+                            && matches!(left_ty, Type::Integer | Type::Float)
+                        {
+                            Some(left_ty)
+                        } else {
+                            None
+                        }
+                    }
+                    BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                        if left_ty == right_ty && matches!(left_ty, Type::Integer | Type::Float) {
+                            Some(left_ty)
+                        } else {
+                            None
+                        }
+                    }
+                    BinOp::Mod => {
+                        if matches!(left_ty, Type::Integer) && matches!(right_ty, Type::Integer) {
+                            Some(Type::Integer)
+                        } else {
+                            None
+                        }
+                    }
                 }
             }
             Expr::Call { callee, .. } => match &callee.node {
@@ -2206,16 +2255,9 @@ impl<'ctx> Codegen<'ctx> {
                 _ => Type::Integer,
             },
             Expr::StringInterp(_) => Type::String,
-            Expr::AsyncBlock(stmts) => {
-                let mut ret = Type::None;
-                for stmt in stmts {
-                    if let Stmt::Return(Some(expr)) = &stmt.node {
-                        ret = self.infer_expr_type(&expr.node, params);
-                        break;
-                    }
-                }
-                Type::Task(Box::new(ret))
-            }
+            Expr::AsyncBlock(stmts) => Type::Task(Box::new(
+                self.infer_block_tail_type(stmts).unwrap_or(Type::None),
+            )),
             Expr::Require { .. } => Type::None,
             Expr::Range { .. } => Type::Range(Box::new(Type::Integer)),
             _ => Type::Integer,

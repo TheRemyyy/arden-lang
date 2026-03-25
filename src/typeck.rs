@@ -1606,13 +1606,83 @@ impl TypeChecker {
         }
     }
 
+    fn signatures_mutually_compatible(&self, left: &FuncSig, right: &FuncSig) -> bool {
+        self.signatures_compatible(left, right) && self.signatures_compatible(right, left)
+    }
+
+    fn validate_interface_inherited_method_conflicts(
+        &mut self,
+        interface: &InterfaceDecl,
+        key: &str,
+        span: Span,
+    ) {
+        let mut inherited_methods: HashMap<String, (String, FuncSig)> = HashMap::new();
+        for parent in &interface.extends {
+            let resolved_parent = self
+                .resolve_nominal_reference_name(parent)
+                .unwrap_or_else(|| parent.clone());
+            let mut methods = HashMap::new();
+            let mut visited = std::collections::HashSet::new();
+            self.collect_interface_methods(&resolved_parent, &mut methods, &mut visited);
+            for (method_name, sig) in methods {
+                if let Some((existing_parent, existing_sig)) = inherited_methods.get(&method_name) {
+                    if !self.signatures_mutually_compatible(existing_sig, &sig) {
+                        self.error(
+                            format!(
+                                "Interface '{}' inherits incompatible signatures for method '{}' from '{}' and '{}'",
+                                key, method_name, existing_parent, resolved_parent
+                            ),
+                            span.clone(),
+                        );
+                    }
+                } else {
+                    inherited_methods.insert(method_name, (resolved_parent.clone(), sig));
+                }
+            }
+        }
+
+        for method in &interface.methods {
+            let params = method
+                .params
+                .iter()
+                .map(|p| (p.name.clone(), self.resolve_type(&p.ty)))
+                .collect::<Vec<_>>();
+            let sig = FuncSig {
+                params,
+                return_type: self.resolve_type(&method.return_type),
+                generic_type_vars: Vec::new(),
+                is_variadic: false,
+                is_extern: false,
+                effects: Vec::new(),
+                is_pure: false,
+                allow_any: false,
+                has_explicit_effects: false,
+                span: span.clone(),
+            };
+            if let Some((parent_name, parent_sig)) = inherited_methods.get(&method.name) {
+                if !self.signatures_mutually_compatible(parent_sig, &sig) {
+                    self.error(
+                        format!(
+                            "Interface '{}.{}' overrides inherited method from '{}' with an incompatible signature",
+                            key, method.name, parent_name
+                        ),
+                        span.clone(),
+                    );
+                }
+            }
+        }
+    }
+
     fn lookup_type_var_bound_method(
         &self,
         type_var_id: usize,
         method_name: &str,
-    ) -> Option<FuncSig> {
+    ) -> std::result::Result<Option<FuncSig>, String> {
         let mut matches = Vec::new();
-        for bound in self.type_var_bounds.get(&type_var_id)? {
+        let Some(bounds) = self.type_var_bounds.get(&type_var_id) else {
+            return Ok(None);
+        };
+        for bound in bounds {
             let resolved_bound = self
                 .resolve_nominal_reference_name(bound)
                 .unwrap_or_else(|| bound.clone());
@@ -1620,14 +1690,22 @@ impl TypeChecker {
             let mut visited = std::collections::HashSet::new();
             self.collect_interface_methods(&resolved_bound, &mut methods, &mut visited);
             if let Some(sig) = methods.get(method_name) {
-                matches.push(sig.clone());
+                matches.push((resolved_bound, sig.clone()));
             }
         }
         if matches.is_empty() {
-            None
-        } else {
-            Some(matches.swap_remove(0))
+            return Ok(None);
         }
+        let (_, first_sig) = &matches[0];
+        for (bound_name, sig) in matches.iter().skip(1) {
+            if !self.signatures_mutually_compatible(first_sig, sig) {
+                return Err(format!(
+                    "Generic bound method '{}.{}' has incompatible signatures across bounds",
+                    bound_name, method_name
+                ));
+            }
+        }
+        Ok(Some(matches.swap_remove(0).1))
     }
 
     fn signatures_compatible(&self, expected: &FuncSig, actual: &FuncSig) -> bool {
@@ -2456,6 +2534,12 @@ impl TypeChecker {
             span.clone(),
             &format!("Interface '{}'", interface.name),
         );
+        let interface_key = self
+            .current_module_prefix
+            .as_ref()
+            .map(|prefix| format!("{}__{}", prefix, interface.name))
+            .unwrap_or_else(|| interface.name.clone());
+        self.validate_interface_inherited_method_conflicts(interface, &interface_key, span.clone());
         for method in &interface.methods {
             let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
             for param in &method.params {
@@ -2664,19 +2748,33 @@ impl TypeChecker {
             }
         }
 
-        let mut required_methods: HashMap<String, FuncSig> = HashMap::new();
-        let mut visited = std::collections::HashSet::new();
+        let mut required_methods: HashMap<String, (String, FuncSig)> = HashMap::new();
         for interface_name in &class.implements {
             let resolved_interface = self
                 .resolve_nominal_reference_name(interface_name)
                 .unwrap_or_else(|| interface_name.clone());
-            self.collect_interface_methods(
-                &resolved_interface,
-                &mut required_methods,
-                &mut visited,
-            );
+            let mut methods = HashMap::new();
+            let mut visited = std::collections::HashSet::new();
+            self.collect_interface_methods(&resolved_interface, &mut methods, &mut visited);
+            for (method_name, required_sig) in methods {
+                if let Some((existing_interface, existing_sig)) = required_methods.get(&method_name)
+                {
+                    if !self.signatures_mutually_compatible(existing_sig, &required_sig) {
+                        self.error(
+                            format!(
+                                "Class '{}' implements incompatible interface requirements for method '{}' from '{}' and '{}'",
+                                class_key, method_name, existing_interface, resolved_interface
+                            ),
+                            span.clone(),
+                        );
+                    }
+                } else {
+                    required_methods
+                        .insert(method_name, (resolved_interface.clone(), required_sig));
+                }
+            }
         }
-        for (method_name, required_sig) in required_methods {
+        for (method_name, (_, required_sig)) in required_methods {
             let Some((owner, actual_sig, _)) = self.lookup_class_method(class_key, &method_name)
             else {
                 self.error(
@@ -2688,7 +2786,7 @@ impl TypeChecker {
                 );
                 continue;
             };
-            if !self.signatures_compatible(&required_sig, &actual_sig) {
+            if !self.signatures_mutually_compatible(&required_sig, &actual_sig) {
                 self.error(
                     format!(
                         "Method '{}.{}' does not match interface signature",
@@ -3805,6 +3903,7 @@ impl TypeChecker {
                 let captured_outer_scopes = self.scopes.clone();
                 self.enter_scope();
                 let mut return_type = ResolvedType::None;
+                let mut tail_expr_type = None;
 
                 // For async blocks, we need to track return types specifically for this block
                 let saved_return_type = self.current_return_type.clone();
@@ -3812,24 +3911,39 @@ impl TypeChecker {
                 self.current_return_type = Some(ResolvedType::None);
 
                 for stmt in body {
-                    if let Stmt::Return(Some(expr)) = &stmt.node {
-                        let expr_type = self.check_expr(&expr.node, expr.span.clone());
-                        if matches!(self.current_return_type, Some(ResolvedType::None)) {
-                            self.current_return_type = Some(expr_type.clone());
-                            return_type = expr_type;
-                        } else if let Some(expected) = &self.current_return_type {
-                            if !self.types_compatible(expected, &expr_type) {
-                                self.error(
-                                    format!(
-                                        "Mismatching return types in async block: {} vs {}",
-                                        expected, expr_type
-                                    ),
-                                    expr.span.clone(),
-                                );
+                    match &stmt.node {
+                        Stmt::Return(Some(expr)) => {
+                            let expr_type = self.check_expr(&expr.node, expr.span.clone());
+                            tail_expr_type = None;
+                            if matches!(self.current_return_type, Some(ResolvedType::None)) {
+                                self.current_return_type = Some(expr_type.clone());
+                                return_type = expr_type;
+                            } else if let Some(expected) = &self.current_return_type {
+                                if !self.types_compatible(expected, &expr_type) {
+                                    self.error(
+                                        format!(
+                                            "Mismatching return types in async block: {} vs {}",
+                                            expected, expr_type
+                                        ),
+                                        expr.span.clone(),
+                                    );
+                                }
                             }
                         }
+                        Stmt::Expr(expr) => {
+                            tail_expr_type = Some(self.check_expr(&expr.node, expr.span.clone()));
+                        }
+                        _ => {
+                            tail_expr_type = None;
+                            self.check_stmt(&stmt.node, stmt.span.clone());
+                        }
                     }
-                    self.check_stmt(&stmt.node, stmt.span.clone());
+                }
+
+                if matches!(return_type, ResolvedType::None) {
+                    if let Some(tail_ty) = tail_expr_type {
+                        return_type = tail_ty;
+                    }
                 }
 
                 for scope in &captured_outer_scopes {
@@ -5670,8 +5784,8 @@ impl TypeChecker {
                     ResolvedType::Unknown
                 }
             },
-            ResolvedType::TypeVar(id) => {
-                if let Some(sig) = self.lookup_type_var_bound_method(*id, method) {
+            ResolvedType::TypeVar(id) => match self.lookup_type_var_bound_method(*id, method) {
+                Ok(Some(sig)) => {
                     if !type_args.is_empty() {
                         self.error(
                             format!("Bounded generic method '{}' is not generic", method),
@@ -5698,11 +5812,16 @@ impl TypeChecker {
                         }
                     }
                     sig.return_type
-                } else {
+                }
+                Ok(None) => {
                     self.error(format!("Cannot call method on type {}", obj_type), span);
                     ResolvedType::Unknown
                 }
-            }
+                Err(message) => {
+                    self.error(message, span);
+                    ResolvedType::Unknown
+                }
+            },
             _ => {
                 self.error(format!("Cannot call method on type {}", obj_type), span);
                 ResolvedType::Unknown
@@ -6329,19 +6448,28 @@ impl TypeChecker {
     fn split_generic_args_static(s: &str) -> Vec<String> {
         let mut parts = Vec::new();
         let mut current = String::new();
-        let mut depth = 0;
+        let mut angle_depth = 0usize;
+        let mut paren_depth = 0usize;
 
         for c in s.chars() {
             match c {
                 '<' => {
-                    depth += 1;
+                    angle_depth += 1;
                     current.push(c);
                 }
                 '>' => {
-                    depth -= 1;
+                    angle_depth = angle_depth.saturating_sub(1);
                     current.push(c);
                 }
-                ',' if depth == 0 => {
+                '(' => {
+                    paren_depth += 1;
+                    current.push(c);
+                }
+                ')' => {
+                    paren_depth = paren_depth.saturating_sub(1);
+                    current.push(c);
+                }
+                ',' if angle_depth == 0 && paren_depth == 0 => {
                     parts.push(current.trim().to_string());
                     current = String::new();
                 }
@@ -7021,6 +7149,128 @@ mod tests {
             }
         "#;
         check_source(src).expect("bounded generic interface method calls should typecheck");
+    }
+
+    #[test]
+    fn rejects_ambiguous_bounded_generic_method_signatures() {
+        let src = r#"
+            interface A { function render(): Integer; }
+            interface B { function render(): String; }
+            function read<T extends A, B>(value: T): Integer {
+                return value.render();
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src)
+            .expect_err("conflicting bounded generic method signatures should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains(
+                "Generic bound method 'B.render' has incompatible signatures across bounds"
+            ),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_interface_inheriting_conflicting_parent_method_signatures() {
+        let src = r#"
+            interface A { function render(): Integer; }
+            interface B { function render(): String; }
+            interface C extends A, B {}
+            function main(): Integer { return 0; }
+        "#;
+        let errors =
+            check_source(src).expect_err("conflicting parent interface methods should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains(
+                "Interface 'C' inherits incompatible signatures for method 'render' from 'A' and 'B'"
+            ),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_interface_overriding_parent_method_with_incompatible_signature() {
+        let src = r#"
+            interface A { function render(): Integer; }
+            interface C extends A {
+                function render(): String;
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors = check_source(src).expect_err("incompatible interface override should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains(
+                "Interface 'C.render' overrides inherited method from 'A' with an incompatible signature"
+            ),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_class_implementing_conflicting_interface_method_requirements() {
+        let src = r#"
+            interface A { function render(): Integer; }
+            interface B { function render(): String; }
+            class Both implements A, B {
+                constructor() {}
+                function render(): Integer { return 1; }
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors =
+            check_source(src).expect_err("conflicting implemented interface methods should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains(
+                "Class 'Both' implements incompatible interface requirements for method 'render' from 'A' and 'B'"
+            ),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_interface_implementation_with_narrower_parameter_type() {
+        let src = r#"
+            class Animal { constructor() {} }
+            class Dog extends Animal { constructor() {} }
+            interface Feeder { function feed(animal: Animal): Integer; }
+            class Kennel implements Feeder {
+                constructor() {}
+                function feed(animal: Dog): Integer { return 1; }
+            }
+            function main(): Integer { return 0; }
+        "#;
+        let errors =
+            check_source(src).expect_err("narrower interface implementation parameter should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Method 'Kennel.feed' does not match interface signature"),
+            "{joined}"
+        );
     }
 
     #[test]
@@ -7954,6 +8204,67 @@ mod tests {
             }
         "#;
         check_source(src).expect("unit enum variants should typecheck as values");
+    }
+
+    #[test]
+    fn accepts_async_block_tail_expression_type() {
+        let src = r#"
+            function main(): None {
+                task: Task<Integer> = async { 7 };
+                value: Integer = await(task);
+                return None;
+            }
+        "#;
+        check_source(src).expect("async block tail expression should infer Task<Integer>");
+    }
+
+    #[test]
+    fn accepts_async_block_unary_tail_expression_type() {
+        let src = r#"
+            function main(): None {
+                task: Task<Integer> = async { -7 };
+                flag: Task<Boolean> = async { !false };
+                a: Integer = await(task);
+                b: Boolean = await(flag);
+                return None;
+            }
+        "#;
+        check_source(src).expect("async block unary tail expressions should infer correct Task<T>");
+    }
+
+    #[test]
+    fn accepts_async_block_binary_tail_expression_type() {
+        let src = r#"
+            function main(): None {
+                sum_task: Task<Integer> = async { 2 + 5 };
+                cmp_task: Task<Boolean> = async { 2 + 5 == 7 };
+                a: Integer = await(sum_task);
+                b: Boolean = await(cmp_task);
+                return None;
+            }
+        "#;
+        check_source(src)
+            .expect("async block binary tail expressions should infer correct Task<T>");
+    }
+
+    #[test]
+    fn accepts_function_types_inside_generic_class_arguments() {
+        let src = r#"
+            class Holder<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function add(x: Integer, y: Integer): Integer { return x + y; }
+
+            function main(): None {
+                holder: Holder<(Integer, Integer) -> Integer> = Holder<(Integer, Integer) -> Integer>(add);
+                f: (Integer, Integer) -> Integer = holder.get();
+                return None;
+            }
+        "#;
+        check_source(src).expect("generic classes should preserve function-type arguments");
     }
 
     #[test]

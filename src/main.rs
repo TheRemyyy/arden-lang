@@ -7743,7 +7743,7 @@ mod tests {
         Decl, Expr, FunctionDecl, ImportDecl, Literal, Program, Spanned, Stmt, Type, Visibility,
     };
     use crate::borrowck::BorrowChecker;
-    use crate::formatter::format_program_canonical;
+    use crate::formatter::{self, format_program_canonical};
     use crate::parser::Parser;
     use crate::typeck::TypeChecker;
     use std::collections::{HashMap, HashSet};
@@ -14282,6 +14282,78 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_async_block_tail_expression_runtime() {
+        let temp_root = make_temp_project_root("async-block-tail-expression-runtime");
+        let source_path = temp_root.join("async_block_tail_expression_runtime.apex");
+        let output_path = temp_root.join("async_block_tail_expression_runtime");
+        let source = r#"
+            function main(): Integer {
+                task: Task<Integer> = async { 7 };
+                return await(task);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async block tail-expression path should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async block tail-expression binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_block_negative_tail_expression_runtime() {
+        let temp_root = make_temp_project_root("async-block-negative-tail-expression-runtime");
+        let source_path = temp_root.join("async_block_negative_tail_expression_runtime.apex");
+        let output_path = temp_root.join("async_block_negative_tail_expression_runtime");
+        let source = r#"
+            function main(): Integer {
+                task: Task<Integer> = async { -7 };
+                return 10 + await(task);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async block negative tail-expression path should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async block negative tail-expression binary");
+        assert_eq!(status.code(), Some(3));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_block_binary_tail_expression_runtime() {
+        let temp_root = make_temp_project_root("async-block-binary-tail-expression-runtime");
+        let source_path = temp_root.join("async_block_binary_tail_expression_runtime.apex");
+        let output_path = temp_root.join("async_block_binary_tail_expression_runtime");
+        let source = r#"
+            function main(): Integer {
+                task: Task<Integer> = async { 2 + 5 };
+                return await(task);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async block binary tail-expression path should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async block binary tail-expression binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_supports_namespace_alias_unit_enum_values() {
         let temp_root = make_temp_project_root("namespace-alias-unit-enum-project");
         let src_dir = temp_root.join("src");
@@ -14379,6 +14451,64 @@ function main(): Integer {
             build_project(false, false, true, false, false)
                 .expect("project build should support imported generic class instance methods");
         });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_top_level_destructor_alias_rewrite() {
+        let temp_root = make_temp_project_root("destructor-alias-rewrite-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.add1 as inc;\nclass Boxed {\n    value: Integer;\n    constructor(value: Integer) { this.value = value; }\n    destructor() { require(inc(this.value) == 2); }\n}\nfunction main(): Integer { box: Boxed = Boxed(1); return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should rewrite top-level destructor alias calls");
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled destructor alias rewrite binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_module_local_destructor_function_rewrite() {
+        let temp_root = make_temp_project_root("module-destructor-rewrite-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    function score(x: Integer): Integer { return x + 1; }\n    class Boxed {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        destructor() { require(score(this.value) == 2); }\n    }\n    function make(): Boxed { return Boxed(1); }\n}\nfunction main(): Integer { box: M.Boxed = M.make(); return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should rewrite module-local destructor calls");
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled module destructor rewrite binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -18194,6 +18324,41 @@ function main(): Integer {
         compile_source(source, &source_path, &output_path, true, true, None, None)
             .expect("if-expression function-value callee should codegen");
         assert!(output_path.with_extension("ll").exists());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn formatted_async_block_tail_expression_preserves_runtime_behavior() {
+        let temp_root = make_temp_project_root("formatted-async-block-tail-runtime");
+        let source_path = temp_root.join("formatted_async_block_tail_runtime.apex");
+        let output_path = temp_root.join("formatted_async_block_tail_runtime");
+        let source = r#"
+            function main(): Integer {
+                task: Task<Integer> = async {
+                    7
+                };
+                return await(task);
+            }
+        "#;
+
+        let formatted = formatter::format_source(source).expect("format source");
+        fs::write(&source_path, &formatted).expect("write formatted source");
+        compile_source(
+            &formatted,
+            &source_path,
+            &output_path,
+            false,
+            true,
+            None,
+            None,
+        )
+        .expect("formatted async tail-expression source should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run formatted async tail-expression binary");
+        assert_eq!(status.code(), Some(7));
 
         let _ = fs::remove_dir_all(temp_root);
     }

@@ -7828,16 +7828,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn infer_async_block_return_type(&self, body: &[Spanned<Stmt>]) -> Type {
-        let mut ret: Option<Type> = None;
-        for stmt in body {
-            if let Stmt::Return(Some(expr)) = &stmt.node {
-                let ty = self.infer_expr_type(&expr.node, &[]);
-                if ret.is_none() {
-                    ret = Some(ty);
-                }
-            }
-        }
-        ret.unwrap_or(Type::None)
+        self.infer_block_tail_type(body).unwrap_or(Type::None)
     }
 
     fn compile_async_block(&mut self, body: &[Spanned<Stmt>]) -> Result<BasicValueEnum<'ctx>> {
@@ -7985,7 +7976,18 @@ impl<'ctx> Codegen<'ctx> {
             );
         }
 
-        for stmt in body {
+        for (index, stmt) in body.iter().enumerate() {
+            let is_last = index + 1 == body.len();
+            if is_last && self.needs_terminator() {
+                if let Stmt::Expr(expr) = &stmt.node {
+                    if !matches!(inner_return_type, Type::None) {
+                        let value =
+                            self.compile_expr_with_expected_type(&expr.node, &inner_return_type)?;
+                        self.builder.build_return(Some(&value)).unwrap();
+                        continue;
+                    }
+                }
+            }
             self.compile_stmt(&stmt.node)?;
         }
         if self.needs_terminator() {

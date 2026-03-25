@@ -8,6 +8,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed several parser/runtime consistency bugs around expression-bodied constructs and class members:
+  - class methods now accept attributes in either `@Attr private function ...` or `private @Attr function ...` order instead of failing with `Unexpected token in class`
+  - duplicate `constructor()` and `destructor()` declarations now fail during parsing instead of silently overwriting the earlier body
+  - expression `match` arms and `async { ... }` blocks now accept tail expressions without a trailing semicolon, aligning them with other expression-bodied constructs and restoring downstream type/codegen handling
+  - forward calls to `public` / `public async` uppercase-named functions are now recognized as function calls during parsing instead of being misclassified as constructor expressions
+- Fixed generic type-string splitting for function-typed generic arguments:
+  - user-defined generic classes now preserve function types like `Holder<(Integer, Integer) -> Integer>` instead of splitting the comma inside the function signature as if it were two generic arguments
+  - the same fix also restores generic substitution and constructor/type parsing paths that relied on the same helper
+- Fixed import-check alias validation inside constructor type arguments:
+  - invalid namespace aliases referenced only from constructor type strings such as `List<alias.Box>()` now fail during import checking instead of slipping through because constructor types were inspected as raw strings
+- Fixed async block tail-expression handling across typechecking and codegen:
+  - `async { 7 }` and similar expression-bodied async blocks now infer the correct `Task<T>` inner type instead of degrading to `Task<None>`
+  - async block codegen now returns the final tail expression when no explicit `return` is present, so runtime results are preserved instead of silently becoming `0` / empty values
+  - scalar literal tail expressions inside expression-bodied blocks now participate in codegen type inference instead of being treated as unknown
+  - unary tail expressions like `async { -7 }` and `async { !false }` now also infer and compile with the correct result type instead of collapsing to `Task<None>`
+  - borrowed and mutable-borrow tail expressions now participate in block-tail inference as well, keeping expression-bodied inference consistent across non-literal tails
+  - binary arithmetic and comparison tails like `async { 2 + 5 }` and `async { 2 + 5 == 7 }` now also infer and compile with the correct result type instead of collapsing to `Task<None>`
+- Fixed formatter semantics for expression-bodied blocks:
+  - formatting `async`, `if`, `match`, and inline expression blocks no longer appends `;` to the final tail expression, so `format_source()` preserves runtime behavior instead of silently turning value-producing blocks into `None`
+  - formatter roundtrips for expression-bodied async/if branches now preserve both syntax and runtime semantics instead of only staying parseable
+- Fixed typechecker soundness for interface-bound and interface-inheritance method compatibility:
+  - bounded generics with multiple interface bounds no longer pick the first matching method signature when different bounds declare incompatible signatures for the same method
+  - interfaces extending multiple parents now fail when inherited methods conflict instead of silently letting the later parent overwrite the earlier one
+  - child interfaces overriding inherited methods now fail on incompatible signatures instead of quietly changing the contract
+  - classes implementing multiple interfaces now reject conflicting method requirements, and single-interface implementations no longer pass with narrower parameter types than the interface contract
+- Fixed project rewrite coverage for class destructors:
+  - top-level and module-local destructor bodies now rewrite imported aliases and module-local calls the same way constructors and methods already did
+  - that prevents project-mode linker/runtime failures when destructor logic calls aliased or module-scoped functions
+- Fixed lint `L004` scope tracking for shadowed variables:
+  - unused locals and lambda parameters now track usage against the nearest declaration instead of a file-wide name set
+  - that restores warnings for inner variables shadowing an outer binding but never being read themselves
 - Fixed project object-code generation to preserve generic specialization demand without rebuilding every file from full ASTs:
   - non-active files now contribute either API-only declarations or a minimal specialization-demand projection, so imported explicit generic calls and generic class/method specializations still emit their `__spec__` symbols correctly
   - this restores the performance optimization path without reintroducing the linker regressions that previously broke project builds and runs involving imported generics

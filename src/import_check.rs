@@ -642,7 +642,11 @@ impl<'a> ImportChecker<'a> {
             }
             Expr::Construct { args, .. } => {
                 if let Expr::Construct { ty, .. } = expr {
-                    self.check_qualified_name_alias_usage(ty, 0..0);
+                    if let Ok(parsed_ty) = crate::parser::parse_type_source(ty) {
+                        self.check_type(&parsed_ty, 0..0);
+                    } else {
+                        self.check_qualified_name_alias_usage(ty, 0..0);
+                    }
                 }
                 for arg in args {
                     self.check_expr(&arg.node);
@@ -1126,6 +1130,20 @@ interface Printable extends alias.Named {
         let errors = check_import_errors(source);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].function_name, "alias.Named");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_inside_constructor_type_args_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing as alias;
+function main(): Integer {
+    return List<alias.Box>().length();
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].function_name, "alias.Box");
         assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
     }
 
