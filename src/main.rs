@@ -21317,8 +21317,7 @@ function main(): Integer {
     }
 
     #[test]
-    fn codegen_program_for_unit_limits_inputs_to_dependency_closure_and_uses_api_for_dependencies()
-    {
+    fn codegen_program_for_unit_uses_full_programs_for_project_files() {
         let make_function = |name: &str| {
             Spanned::new(
                 Decl::Function(FunctionDecl {
@@ -21364,15 +21363,12 @@ function main(): Integer {
             (PathBuf::from("b.apex"), 1usize),
             (PathBuf::from("c.apex"), 2usize),
         ]);
-        let closure = HashSet::from([PathBuf::from("b.apex")]);
-        let declaration_symbols = HashSet::from(["fb".to_string()]);
-
         let program = codegen_program_for_unit(
             &rewritten_files,
             &rewritten_file_indices,
             Path::new("a.apex"),
-            Some(&closure),
-            Some(&declaration_symbols),
+            Some(&HashSet::from([PathBuf::from("b.apex")])),
+            Some(&HashSet::from(["fb".to_string()])),
         );
 
         let names = program
@@ -21383,6 +21379,9 @@ function main(): Integer {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["fa".to_string(), "fb_api".to_string()]);
+        assert_eq!(
+            names,
+            vec!["fa".to_string(), "fb".to_string(), "fc".to_string()]
+        );
     }
 }
