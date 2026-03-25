@@ -255,6 +255,66 @@ impl<'a> ImportChecker<'a> {
         }
     }
 
+    fn check_qualified_name_alias_usage(&mut self, name: &str, span: Span) {
+        let Some((alias, _)) = name.split_once('.') else {
+            return;
+        };
+        if self.invalid_namespace_aliases.contains(alias) {
+            self.errors.push(ImportError {
+                function_name: name.to_string(),
+                defined_in: "<unknown namespace alias>".to_string(),
+                used_in: self.current_namespace.clone(),
+                span,
+                suggestion: None,
+            });
+        }
+    }
+
+    fn check_type(&mut self, ty: &Type, span: Span) {
+        match ty {
+            Type::Named(name) => self.check_qualified_name_alias_usage(name, span),
+            Type::Generic(name, args) => {
+                self.check_qualified_name_alias_usage(name, span.clone());
+                for arg in args {
+                    self.check_type(arg, span.clone());
+                }
+            }
+            Type::Function(params, ret) => {
+                for param in params {
+                    self.check_type(param, span.clone());
+                }
+                self.check_type(ret, span);
+            }
+            Type::Option(inner)
+            | Type::List(inner)
+            | Type::Set(inner)
+            | Type::Ref(inner)
+            | Type::MutRef(inner)
+            | Type::Box(inner)
+            | Type::Rc(inner)
+            | Type::Arc(inner)
+            | Type::Ptr(inner)
+            | Type::Task(inner)
+            | Type::Range(inner) => self.check_type(inner, span),
+            Type::Result(ok, err) | Type::Map(ok, err) => {
+                self.check_type(ok, span.clone());
+                self.check_type(err, span);
+            }
+            Type::Integer
+            | Type::Float
+            | Type::Boolean
+            | Type::String
+            | Type::Char
+            | Type::None => {}
+        }
+    }
+
+    fn check_pattern(&mut self, pattern: &Pattern, span: Span) {
+        if let Pattern::Variant(name, _) = pattern {
+            self.check_qualified_name_alias_usage(name, span);
+        }
+    }
+
     fn namespace_matches_module_hint(namespace: &str, module_hint: &str) -> bool {
         namespace
             .rsplit('.')
@@ -552,6 +612,9 @@ impl<'a> ImportChecker<'a> {
                 self.check_expr(&body.node);
             }
             Expr::Construct { args, .. } => {
+                if let Expr::Construct { ty, .. } = expr {
+                    self.check_qualified_name_alias_usage(ty, 0..0);
+                }
                 for arg in args {
                     self.check_expr(&arg.node);
                 }
@@ -617,6 +680,9 @@ impl<'a> ImportChecker<'a> {
                 self.check_expr(&expr.node);
             }
             Stmt::Let { value, .. } => {
+                if let Stmt::Let { ty, .. } = stmt {
+                    self.check_type(ty, 0..0);
+                }
                 self.check_expr(&value.node);
             }
             Stmt::Return(Some(expr)) => {
@@ -644,6 +710,13 @@ impl<'a> ImportChecker<'a> {
                 }
             }
             Stmt::For { iterable, body, .. } => {
+                if let Stmt::For {
+                    var_type: Some(var_type),
+                    ..
+                } = stmt
+                {
+                    self.check_type(var_type, 0..0);
+                }
                 self.check_expr(&iterable.node);
                 for stmt in body {
                     self.check_stmt(&stmt.node);
@@ -652,6 +725,7 @@ impl<'a> ImportChecker<'a> {
             Stmt::Match { expr, arms } => {
                 self.check_expr(&expr.node);
                 for arm in arms {
+                    self.check_pattern(&arm.pattern, 0..0);
                     for stmt in &arm.body {
                         self.check_stmt(&stmt.node);
                     }
@@ -666,12 +740,28 @@ impl<'a> ImportChecker<'a> {
         fn check_decl(checker: &mut ImportChecker<'_>, decl: &Decl) {
             match decl {
                 Decl::Function(func) => {
+                    for param in &func.params {
+                        checker.check_type(&param.ty, 0..0);
+                    }
+                    checker.check_type(&func.return_type, 0..0);
                     for stmt in &func.body {
                         checker.check_stmt(&stmt.node);
                     }
                 }
                 Decl::Class(class) => {
+                    if let Some(parent) = &class.extends {
+                        checker.check_qualified_name_alias_usage(parent, 0..0);
+                    }
+                    for implemented in &class.implements {
+                        checker.check_qualified_name_alias_usage(implemented, 0..0);
+                    }
+                    for field in &class.fields {
+                        checker.check_type(&field.ty, 0..0);
+                    }
                     if let Some(ctor) = &class.constructor {
+                        for param in &ctor.params {
+                            checker.check_type(&param.ty, 0..0);
+                        }
                         for stmt in &ctor.body {
                             checker.check_stmt(&stmt.node);
                         }
@@ -682,6 +772,10 @@ impl<'a> ImportChecker<'a> {
                         }
                     }
                     for method in &class.methods {
+                        for param in &method.params {
+                            checker.check_type(&param.ty, 0..0);
+                        }
+                        checker.check_type(&method.return_type, 0..0);
                         for stmt in &method.body {
                             checker.check_stmt(&stmt.node);
                         }
@@ -693,7 +787,14 @@ impl<'a> ImportChecker<'a> {
                     }
                 }
                 Decl::Interface(interface) => {
+                    for extended in &interface.extends {
+                        checker.check_qualified_name_alias_usage(extended, 0..0);
+                    }
                     for method in &interface.methods {
+                        for param in &method.params {
+                            checker.check_type(&param.ty, 0..0);
+                        }
+                        checker.check_type(&method.return_type, 0..0);
                         if let Some(default_impl) = &method.default_impl {
                             for stmt in default_impl {
                                 checker.check_stmt(&stmt.node);
@@ -701,7 +802,14 @@ impl<'a> ImportChecker<'a> {
                         }
                     }
                 }
-                Decl::Enum(_) | Decl::Import(_) => {}
+                Decl::Enum(en) => {
+                    for variant in &en.variants {
+                        for field in &variant.fields {
+                            checker.check_type(&field.ty, 0..0);
+                        }
+                    }
+                }
+                Decl::Import(_) => {}
             }
         }
 
@@ -937,6 +1045,66 @@ function main(): None {
         let errors = check_import_errors(source);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].function_name, "n.call");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_constructor_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing as alias;
+function main(): None {
+    alias.Box();
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "alias.Box");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_type_annotation_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing as alias;
+function main(value: alias.Box): None {
+    return None;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "alias.Box");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_interface_extends_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing as alias;
+interface Printable extends alias.Named {
+    function print_me(): Integer;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "alias.Named");
+        assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_pattern_reports_import_error_on_use() {
+        let source = r#"
+import nope.missing as alias;
+function main(value: Integer): None {
+    match (value) {
+        alias.Result.Ok(inner) => { return None; },
+        _ => { return None; }
+    }
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].function_name, "alias.Result.Ok");
         assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
     }
 

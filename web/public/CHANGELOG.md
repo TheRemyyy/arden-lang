@@ -68,6 +68,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - qualified pattern refs like `u.Result.Value.Ok(v)` now also feed `qualified_symbol_refs`, preventing cross-file enum matches from being split into separate semantic components during project builds
 - Fixed project import checking for nested namespace aliases without functions:
   - imports such as `import util.Api as u;` now resolve in project mode even when `Api` contains only classes/enums/interfaces, because the import checker now learns nested module namespace paths from parsed project units instead of inferring them only from function symbols
+- Fixed deep nested module alias handling across parse metadata, import checking, and project rewrite:
+  - parse metadata now records nested module paths recursively instead of only top-level module names, so cache-backed project analysis no longer loses paths like `Api__V1`
+  - imports such as `import util.Api.V1 as u;` now work for constructor-only modules, interface parents like `u.Named`, and enum matches like `u.Value.Ok(...)` even when the nested modules expose no functions
+  - project rewrite now resolves class/enum/interface candidates against nested module alias paths relative to the owning package namespace, so deep namespace aliases no longer fall through to unresolved variable/method errors
+- Fixed import-check coverage gaps for invalid namespace aliases outside direct calls:
+  - invalid aliases now fail during import checking when used in constructor types like `alias.Box()` and in type annotations like `value: alias.Box`, instead of slipping through to later type errors
+  - the same early alias error now also triggers in `interface ... extends alias.Named`, `class ... implements alias.Named`, enum field types, generic type arguments, and `match` patterns like `alias.Result.Ok(v)`
 - Fixed codegen match lowering collisions between built-in and user enum variant names:
   - custom enums using variant leaves like `Ok` / `Error` no longer get lowered through the built-in `Result` match path, avoiding backend crashes like `ExtractOutOfRange` during payload extraction
   - that built-in fast path now runs only when the matched expression is actually `Option` or `Result`

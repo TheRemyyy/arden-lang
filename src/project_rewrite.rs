@@ -404,6 +404,7 @@ pub fn rewrite_program_for_project(
                                     current_namespace,
                                     &local_interfaces,
                                     &imported_interfaces,
+                                    &imported_modules,
                                     global_interface_map,
                                     entry_namespace,
                                 )
@@ -657,8 +658,9 @@ pub fn rewrite_program_for_project(
                                                     entry_namespace,
                                                     &module_local_interfaces,
                                                     &module_local_modules,
+                                                    &imported_interfaces,
                                                     &imported_modules,
-                                                    global_module_map,
+                                                    global_interface_map,
                                                 )
                                             })
                                             .collect();
@@ -884,6 +886,7 @@ pub fn rewrite_program_for_project(
                                             &imported_enums,
                                             global_enum_map,
                                             &imported_modules,
+                                            global_interface_map,
                                             global_module_map,
                                         )
                                         .node
@@ -901,8 +904,9 @@ pub fn rewrite_program_for_project(
                                                     entry_namespace,
                                                     &module_local_interfaces,
                                                     &module_local_modules,
+                                                    &imported_interfaces,
                                                     &imported_modules,
-                                                    global_module_map,
+                                                    global_interface_map,
                                                 )
                                             })
                                             .collect();
@@ -1043,6 +1047,7 @@ pub fn rewrite_program_for_project(
                                     current_namespace,
                                     &local_interfaces,
                                     &imported_interfaces,
+                                    &imported_modules,
                                     global_interface_map,
                                     entry_namespace,
                                 )
@@ -1395,6 +1400,7 @@ fn rewrite_interface_reference_for_project(
     current_namespace: &str,
     local_interfaces: &HashSet<String>,
     imported_interfaces: &ImportedMap,
+    imported_modules: &ImportedMap,
     global_interface_map: &HashMap<String, String>,
     entry_namespace: &str,
 ) -> String {
@@ -1425,14 +1431,26 @@ fn rewrite_interface_reference_for_project(
         return mangle_project_symbol(&owner_ns, entry_namespace, &interface_name);
     }
 
-    let Some((ns, symbol_name)) = imported_interfaces.get(alias) else {
-        return name.to_string();
-    };
+    if let Some((ns, symbol_name)) = imported_interfaces.get(alias) {
+        if let Some((owner_ns, interface_name)) = resolve_module_alias_class_candidate(
+            ns,
+            symbol_name,
+            &member_parts,
+            global_interface_map,
+        ) {
+            return mangle_project_symbol(&owner_ns, entry_namespace, &interface_name);
+        }
+    }
 
-    if let Some((owner_ns, interface_name)) =
-        resolve_module_alias_class_candidate(ns, symbol_name, &member_parts, global_interface_map)
-    {
-        return mangle_project_symbol(&owner_ns, entry_namespace, &interface_name);
+    if let Some((ns, symbol_name)) = imported_modules.get(alias) {
+        if let Some((owner_ns, interface_name)) = resolve_module_alias_class_candidate(
+            ns,
+            symbol_name,
+            &member_parts,
+            global_interface_map,
+        ) {
+            return mangle_project_symbol(&owner_ns, entry_namespace, &interface_name);
+        }
     }
 
     name.to_string()
@@ -1446,6 +1464,7 @@ fn rewrite_interface_reference_for_module(
     local_interfaces: &HashSet<String>,
     local_modules: &HashSet<String>,
     imported_interfaces: &ImportedMap,
+    imported_modules: &ImportedMap,
     global_interface_map: &HashMap<String, String>,
 ) -> String {
     if local_interfaces.contains(name) {
@@ -1471,6 +1490,7 @@ fn rewrite_interface_reference_for_module(
         current_namespace,
         local_interfaces,
         imported_interfaces,
+        imported_modules,
         global_interface_map,
         entry_namespace,
     )
@@ -1553,19 +1573,44 @@ fn resolve_module_alias_class_candidate(
         return None;
     }
 
-    let full_parts = if symbol_name.is_empty() {
-        member_parts.to_vec()
-    } else {
-        let mut parts = vec![symbol_name.to_string()];
-        parts.extend_from_slice(member_parts);
-        parts
-    };
-    let candidate = full_parts.join("__");
+    let mut owner_namespaces: HashSet<&str> = HashSet::new();
+    owner_namespaces.extend(global_class_map.values().map(String::as_str));
 
-    global_class_map
-        .get(&candidate)
-        .map(|owner_ns| (owner_ns.clone(), candidate))
-        .filter(|(owner_ns, _)| owner_ns == import_ns)
+    for owner_ns in owner_namespaces {
+        let module_path = if import_ns == owner_ns {
+            String::new()
+        } else if let Some(suffix) = import_ns.strip_prefix(owner_ns) {
+            if let Some(rest) = suffix.strip_prefix('.') {
+                rest.replace('.', "__")
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        let full_parts = if symbol_name.is_empty() {
+            member_parts.to_vec()
+        } else {
+            let mut parts = vec![symbol_name.to_string()];
+            parts.extend_from_slice(member_parts);
+            parts
+        };
+        let joined = full_parts.join("__");
+        let candidate = if module_path.is_empty() {
+            joined
+        } else {
+            format!("{}__{}", module_path, joined)
+        };
+        if global_class_map
+            .get(&candidate)
+            .is_some_and(|owner| owner == owner_ns)
+        {
+            return Some((owner_ns.to_string(), candidate));
+        }
+    }
+
+    None
 }
 
 fn resolve_module_alias_enum_candidate(
@@ -1579,15 +1624,8 @@ fn resolve_module_alias_enum_candidate(
     }
 
     let (enum_parts, variant_name) = member_parts.split_at(member_parts.len() - 1);
-    let enum_name = if symbol_name.is_empty() {
-        enum_parts.join("__")
-    } else {
-        format!("{}__{}", symbol_name, enum_parts.join("__"))
-    };
-    global_enum_map
-        .get(&enum_name)
-        .filter(|owner_ns| *owner_ns == import_ns)
-        .map(|owner_ns| (owner_ns.clone(), enum_name, variant_name[0].clone()))
+    resolve_module_alias_enum_type_candidate(import_ns, symbol_name, enum_parts, global_enum_map)
+        .map(|(owner_ns, enum_name)| (owner_ns, enum_name, variant_name[0].clone()))
 }
 
 fn resolve_module_alias_enum_type_candidate(
@@ -1600,15 +1638,41 @@ fn resolve_module_alias_enum_type_candidate(
         return None;
     }
 
-    let enum_name = if symbol_name.is_empty() {
-        member_parts.join("__")
-    } else {
-        format!("{}__{}", symbol_name, member_parts.join("__"))
-    };
-    global_enum_map
-        .get(&enum_name)
-        .filter(|owner_ns| *owner_ns == import_ns)
-        .map(|owner_ns| (owner_ns.clone(), enum_name))
+    let mut owner_namespaces: HashSet<&str> = HashSet::new();
+    owner_namespaces.extend(global_enum_map.values().map(String::as_str));
+
+    for owner_ns in owner_namespaces {
+        let module_path = if import_ns == owner_ns {
+            String::new()
+        } else if let Some(suffix) = import_ns.strip_prefix(owner_ns) {
+            if let Some(rest) = suffix.strip_prefix('.') {
+                rest.replace('.', "__")
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        let joined = if symbol_name.is_empty() {
+            member_parts.join("__")
+        } else {
+            format!("{}__{}", symbol_name, member_parts.join("__"))
+        };
+        let candidate = if module_path.is_empty() {
+            joined
+        } else {
+            format!("{}__{}", module_path, joined)
+        };
+        if global_enum_map
+            .get(&candidate)
+            .is_some_and(|owner| owner == owner_ns)
+        {
+            return Some((owner_ns.to_string(), candidate));
+        }
+    }
+
+    None
 }
 
 fn push_scope(scopes: &mut Vec<HashSet<String>>) {
@@ -1785,6 +1849,7 @@ fn rewrite_nested_module_decl_for_project(
     imported_enums: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
     imported_modules: &ImportedMap,
+    global_interface_map: &HashMap<String, String>,
     global_module_map: &HashMap<String, String>,
 ) -> ast::Spanned<Decl> {
     let node = match &decl.node {
@@ -1887,7 +1952,8 @@ fn rewrite_nested_module_decl_for_project(
                         module_local_interfaces,
                         module_local_modules,
                         imported_modules,
-                        global_module_map,
+                        imported_modules,
+                        global_interface_map,
                     )
                 })
                 .collect();
@@ -2114,6 +2180,7 @@ fn rewrite_nested_module_decl_for_project(
                         imported_enums,
                         global_enum_map,
                         imported_modules,
+                        global_interface_map,
                         global_module_map,
                     )
                 })
@@ -2134,7 +2201,8 @@ fn rewrite_nested_module_decl_for_project(
                         module_local_interfaces,
                         module_local_modules,
                         imported_modules,
-                        global_module_map,
+                        imported_modules,
+                        global_interface_map,
                     )
                 })
                 .collect();

@@ -511,7 +511,7 @@ fn save_semantic_cached_fingerprint(project_root: &Path, fingerprint: &str) -> R
     })
 }
 
-const PARSE_CACHE_SCHEMA: &str = "v8";
+const PARSE_CACHE_SCHEMA: &str = "v9";
 const DEPENDENCY_GRAPH_CACHE_SCHEMA: &str = "v2";
 const SEMANTIC_SUMMARY_CACHE_SCHEMA: &str = "v2";
 const TYPECHECK_SUMMARY_CACHE_SCHEMA: &str = "v4";
@@ -3719,6 +3719,20 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         }
     }
 
+    fn collect_module_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
+        if let Decl::Module(module) = decl {
+            let full_name = if let Some(prefix) = module_prefix {
+                format!("{}__{}", prefix, module.name)
+            } else {
+                module.name.clone()
+            };
+            out.push(full_name.clone());
+            for inner in &module.declarations {
+                collect_module_names(&inner.node, Some(full_name.clone()), out);
+            }
+        }
+    }
+
     fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
         match expr {
             Expr::Ident(name) => Some(vec![name.clone()]),
@@ -4117,8 +4131,8 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         for decl in &program.declarations {
             match &decl.node {
                 Decl::Function(_) => collect_function_names(&decl.node, None, &mut function_names),
-                Decl::Module(module) => {
-                    module_names.push(module.name.clone());
+                Decl::Module(_) => {
+                    collect_module_names(&decl.node, None, &mut module_names);
                     collect_function_names(&decl.node, None, &mut function_names);
                     collect_class_names(&decl.node, None, &mut class_names);
                     collect_interface_names(&decl.node, None, &mut interface_names);
@@ -4152,6 +4166,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         qualified_symbol_refs.sort();
         let mut api_referenced_symbols = api_referenced_symbols.into_iter().collect::<Vec<_>>();
         api_referenced_symbols.sort();
+        module_names.sort();
         interface_names.sort();
         enum_names.sort();
         let import_check_fingerprint = compute_import_check_fingerprint(
@@ -12800,6 +12815,94 @@ function main(): Integer {
             build_project(false, false, true, false, false).expect(
                 "project build should support nested module namespace aliases without functions",
             );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_deep_nested_module_namespace_aliases_without_functions() {
+        let temp_root = make_temp_project_root("deep-nested-module-namespace-alias-build-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nmodule Api {\n    module V1 {\n        class Box {\n            constructor() {}\n        }\n    }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.Api.V1 as u;\nfunction main(): None { u.Box(); return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support deep nested module namespace aliases without functions",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_deep_nested_module_interface_aliases() {
+        let temp_root = make_temp_project_root("deep-nested-module-interface-alias-build-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nmodule Api {\n    module V1 {\n        interface Named { function name(): Integer; }\n    }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.Api.V1 as u;\ninterface Printable extends u.Named { function print_me(): Integer; }\nclass Report implements Printable {\n    constructor() {}\n    function name(): Integer { return 1; }\n    function print_me(): Integer { return 2; }\n}\nfunction main(): None { return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support deep nested module interface aliases");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_deep_nested_module_enum_alias_patterns() {
+        let temp_root = make_temp_project_root("deep-nested-module-enum-alias-build-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package util;\nmodule Api {\n    module V1 {\n        enum Value { Ok(Integer) Error(Integer) }\n    }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.Api.V1 as u;\nfunction main(): None { value: u.Value = u.Value.Ok(2); match (value) { u.Value.Ok(v) => { require(v == 2); } u.Value.Error(err) => { require(false); } } return None; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support deep nested module enum alias patterns");
         });
 
         let _ = fs::remove_dir_all(temp_root);
