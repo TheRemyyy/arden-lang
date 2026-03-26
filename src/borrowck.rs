@@ -610,7 +610,7 @@ impl BorrowChecker {
                 self.check_expr(&index.node, index.span.clone(), false);
             }
             Expr::Deref(inner) => {
-                // Check that we're dereferencing a mutable reference
+                self.check_owner_mutability_for_assignment(target, span.clone());
                 self.check_expr(&inner.node, inner.span.clone(), true);
             }
             _ => {
@@ -660,18 +660,44 @@ impl BorrowChecker {
         match expr {
             Expr::Ident(name) => {
                 if let Some(var) = self.get_var(name) {
-                    if !var.mutable {
-                        self.errors.push(BorrowError::new(
-                            format!("Cannot assign through immutable variable '{}'", name),
-                            span,
-                        ));
+                    match var.ty.as_ref() {
+                        Some(Type::MutRef(_)) => {}
+                        Some(Type::Ref(_)) => {
+                            self.errors.push(BorrowError::new(
+                                format!("Cannot assign through immutable reference '{}'", name),
+                                span,
+                            ));
+                        }
+                        _ if !var.mutable => {
+                            self.errors.push(BorrowError::new(
+                                format!("Cannot assign through immutable variable '{}'", name),
+                                span,
+                            ));
+                        }
+                        _ => {}
                     }
                 }
             }
             Expr::Field { object, .. } | Expr::Index { object, .. } => {
                 self.check_owner_mutability_for_assignment(&object.node, span);
             }
-            Expr::This | Expr::Deref(_) => {}
+            Expr::Deref(inner) => {
+                let inner_ty = self.infer_expr_type(&inner.node);
+                match inner_ty.as_ref() {
+                    Some(Type::MutRef(_)) => {}
+                    Some(Type::Ref(_)) => {
+                        let message = match &inner.node {
+                            Expr::Ident(name) => {
+                                format!("Cannot assign through immutable reference '{}'", name)
+                            }
+                            _ => "Cannot assign through immutable reference".to_string(),
+                        };
+                        self.errors.push(BorrowError::new(message, span));
+                    }
+                    _ => {}
+                }
+            }
+            Expr::This => {}
             _ => {}
         }
     }
@@ -1448,10 +1474,15 @@ impl BorrowChecker {
     }
 
     fn class_mutating_methods(class: &ClassDecl) -> std::collections::HashSet<String> {
+        let field_types = class
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), field.ty.clone()))
+            .collect::<HashMap<_, _>>();
         let mut mutating: std::collections::HashSet<String> = class
             .methods
             .iter()
-            .filter(|m| Self::block_mutates_this(&m.body))
+            .filter(|m| Self::block_mutates_this(&m.body, &field_types))
             .map(|m| m.name.clone())
             .collect();
 
@@ -1471,28 +1502,161 @@ impl BorrowChecker {
         mutating
     }
 
-    fn block_mutates_this(block: &Block) -> bool {
-        block.iter().any(|stmt| Self::stmt_mutates_this(&stmt.node))
+    fn block_mutates_this(block: &Block, field_types: &HashMap<String, Type>) -> bool {
+        block
+            .iter()
+            .any(|stmt| Self::stmt_mutates_this(&stmt.node, field_types))
     }
 
-    fn stmt_mutates_this(stmt: &Stmt) -> bool {
+    fn stmt_mutates_this(stmt: &Stmt, field_types: &HashMap<String, Type>) -> bool {
         match stmt {
-            Stmt::Assign { target, .. } => Self::expr_root_is_this(&target.node),
+            Stmt::Let { value, .. } => {
+                Self::expr_mutates_this_via_builtin(&value.node, field_types)
+            }
+            Stmt::Assign { target, value } => {
+                Self::expr_root_is_this(&target.node)
+                    || Self::expr_mutates_this_via_builtin(&value.node, field_types)
+            }
+            Stmt::Expr(expr) => Self::expr_mutates_this_via_builtin(&expr.node, field_types),
+            Stmt::Return(expr) => expr
+                .as_ref()
+                .is_some_and(|expr| Self::expr_mutates_this_via_builtin(&expr.node, field_types)),
             Stmt::If {
+                condition,
                 then_block,
                 else_block,
-                ..
             } => {
-                Self::block_mutates_this(then_block)
-                    || else_block.as_ref().is_some_and(Self::block_mutates_this)
+                Self::expr_mutates_this_via_builtin(&condition.node, field_types)
+                    || Self::block_mutates_this(then_block, field_types)
+                    || else_block
+                        .as_ref()
+                        .is_some_and(|block| Self::block_mutates_this(block, field_types))
             }
-            Stmt::While { body, .. } => Self::block_mutates_this(body),
-            Stmt::For { body, .. } => Self::block_mutates_this(body),
-            Stmt::Match { arms, .. } => arms.iter().any(|arm| Self::block_mutates_this(&arm.body)),
-            Stmt::Expr(_) | Stmt::Let { .. } | Stmt::Return(_) | Stmt::Break | Stmt::Continue => {
-                false
+            Stmt::While { condition, body } => {
+                Self::expr_mutates_this_via_builtin(&condition.node, field_types)
+                    || Self::block_mutates_this(body, field_types)
             }
+            Stmt::For { iterable, body, .. } => {
+                Self::expr_mutates_this_via_builtin(&iterable.node, field_types)
+                    || Self::block_mutates_this(body, field_types)
+            }
+            Stmt::Match { expr, arms } => {
+                Self::expr_mutates_this_via_builtin(&expr.node, field_types)
+                    || arms
+                        .iter()
+                        .any(|arm| Self::block_mutates_this(&arm.body, field_types))
+            }
+            Stmt::Break | Stmt::Continue => false,
         }
+    }
+
+    fn expr_mutates_this_via_builtin(expr: &Expr, field_types: &HashMap<String, Type>) -> bool {
+        match expr {
+            Expr::Call { callee, args, .. } => {
+                Self::callee_is_mutating_builtin_on_this_field(&callee.node, field_types)
+                    || Self::expr_mutates_this_via_builtin(&callee.node, field_types)
+                    || args
+                        .iter()
+                        .any(|arg| Self::expr_mutates_this_via_builtin(&arg.node, field_types))
+            }
+            Expr::Binary { left, right, op } => {
+                if Self::expr_mutates_this_via_builtin(&left.node, field_types) {
+                    return true;
+                }
+                let should_check_right = !matches!(
+                    (op, Self::literal_bool(&left.node)),
+                    (BinOp::Or, Some(true)) | (BinOp::And, Some(false))
+                );
+                should_check_right && Self::expr_mutates_this_via_builtin(&right.node, field_types)
+            }
+            Expr::Unary { expr, .. }
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr)
+            | Expr::Try(expr) => Self::expr_mutates_this_via_builtin(&expr.node, field_types),
+            Expr::Field { object, .. } => {
+                Self::expr_mutates_this_via_builtin(&object.node, field_types)
+            }
+            Expr::Index { object, index } => {
+                Self::expr_mutates_this_via_builtin(&object.node, field_types)
+                    || Self::expr_mutates_this_via_builtin(&index.node, field_types)
+            }
+            Expr::Construct { args, .. } => args
+                .iter()
+                .any(|arg| Self::expr_mutates_this_via_builtin(&arg.node, field_types)),
+            Expr::Lambda { body, .. } => {
+                Self::expr_mutates_this_via_builtin(&body.node, field_types)
+            }
+            Expr::Match { expr, arms } => {
+                Self::expr_mutates_this_via_builtin(&expr.node, field_types)
+                    || arms
+                        .iter()
+                        .any(|arm| Self::block_mutates_this(&arm.body, field_types))
+            }
+            Expr::StringInterp(parts) => parts.iter().any(|part| match part {
+                StringPart::Expr(expr) => {
+                    Self::expr_mutates_this_via_builtin(&expr.node, field_types)
+                }
+                StringPart::Literal(_) => false,
+            }),
+            Expr::AsyncBlock(body) => body
+                .iter()
+                .any(|stmt| Self::stmt_mutates_this(&stmt.node, field_types)),
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                Self::expr_mutates_this_via_builtin(&condition.node, field_types)
+                    || Self::block_mutates_this(then_branch, field_types)
+                    || else_branch
+                        .as_ref()
+                        .is_some_and(|block| Self::block_mutates_this(block, field_types))
+            }
+            Expr::Require { condition, message } => {
+                Self::expr_mutates_this_via_builtin(&condition.node, field_types)
+                    || message.as_ref().is_some_and(|message| {
+                        Self::expr_mutates_this_via_builtin(&message.node, field_types)
+                    })
+            }
+            Expr::Range { start, end, .. } => {
+                start.as_ref().is_some_and(|expr| {
+                    Self::expr_mutates_this_via_builtin(&expr.node, field_types)
+                }) || end.as_ref().is_some_and(|expr| {
+                    Self::expr_mutates_this_via_builtin(&expr.node, field_types)
+                })
+            }
+            Expr::Block(block) => Self::block_mutates_this(block, field_types),
+            Expr::Ident(_) | Expr::Literal(_) | Expr::This => false,
+        }
+    }
+
+    fn callee_is_mutating_builtin_on_this_field(
+        callee: &Expr,
+        field_types: &HashMap<String, Type>,
+    ) -> bool {
+        let Expr::Field {
+            object,
+            field: method,
+        } = callee
+        else {
+            return false;
+        };
+        let Expr::Field {
+            object: owner,
+            field: base_field,
+        } = &object.node
+        else {
+            return false;
+        };
+        if !matches!(&owner.node, Expr::This) {
+            return false;
+        }
+        field_types
+            .get(base_field)
+            .and_then(|ty| Self::builtin_receiver_mode_for_type(ty, method))
+            .is_some_and(|mode| mode == ParamMode::BorrowMut)
     }
 
     fn expr_root_is_this(expr: &Expr) -> bool {
@@ -2784,6 +2948,58 @@ mod tests {
     }
 
     #[test]
+    fn immutable_borrow_blocks_method_with_mutating_builtin_field_call() {
+        let source = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                constructor() { this.xs = List<Integer>(); }
+                function add_one(): None {
+                    this.xs.push(1);
+                    return None;
+                }
+            }
+            function main(): None {
+                mut bag: Bag = Bag();
+                rb: &Bag = &bag;
+                bag.add_one();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot mutably borrow 'bag' while immutably borrowed")));
+    }
+
+    #[test]
+    fn immutable_borrow_blocks_transitively_mutating_builtin_field_method_call() {
+        let source = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                constructor() { this.xs = List<Integer>(); }
+                function add_one_impl(): None {
+                    this.xs.push(1);
+                    return None;
+                }
+                function add_one(): None {
+                    this.add_one_impl();
+                    return None;
+                }
+            }
+            function main(): None {
+                mut bag: Bag = Bag();
+                rb: &Bag = &bag;
+                bag.add_one();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot mutably borrow 'bag' while immutably borrowed")));
+    }
+
+    #[test]
     fn mutating_method_receiver_borrow_is_temporary() {
         let source = r#"
             class C {
@@ -3142,6 +3358,81 @@ mod tests {
             }
         "#;
         borrow_ok(source);
+    }
+
+    #[test]
+    fn mutable_reference_index_assignments_are_allowed_without_mut_binding() {
+        let source = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                mut m: Map<String, Integer>;
+
+                constructor() {
+                    this.xs = List<Integer>();
+                    this.m = Map<String, Integer>();
+                }
+            }
+
+            function main(): None {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                mut bag: Bag = Bag();
+
+                rxs: &mut List<Integer> = &mut xs;
+                rm: &mut Map<String, Integer> = &mut m;
+                rb: &mut Bag = &mut bag;
+
+                rxs[0] = 2;
+                rm["k"] = 7;
+                rb.xs.push(1);
+                rb.xs[0] = 3;
+                rb.m["k2"] = 4;
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn immutable_reference_index_assignments_are_rejected() {
+        let source = r#"
+            function main(): None {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                mut m: Map<String, Integer> = Map<String, Integer>();
+
+                rxs: &List<Integer> = &xs;
+                rm: &Map<String, Integer> = &m;
+
+                rxs[0] = 2;
+                rm["k"] = 7;
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot assign through immutable reference 'rxs'")));
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot assign through immutable reference 'rm'")));
+    }
+
+    #[test]
+    fn immutable_reference_deref_assignment_is_rejected() {
+        let source = r#"
+            function main(): None {
+                mut x: Integer = 1;
+                r: &Integer = &x;
+                *r = 2;
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot assign through immutable reference 'r'")));
     }
 
     #[test]

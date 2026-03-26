@@ -1344,7 +1344,12 @@ impl<'ctx> Codegen<'ctx> {
                 .map(|v| v.ptr)
                 .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", name))),
             Expr::Field { object, field } => {
-                let obj_ptr = self.compile_expr(&object.node)?.into_pointer_value();
+                let object_ty = self.infer_object_type(&object.node);
+                let obj_ptr = if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+                    self.compile_deref(&object.node)?.into_pointer_value()
+                } else {
+                    self.compile_expr(&object.node)?.into_pointer_value()
+                };
 
                 let class_name = self
                     .infer_object_type(&object.node)
@@ -1379,9 +1384,13 @@ impl<'ctx> Codegen<'ctx> {
             }
             Expr::Index { object, index } => {
                 let idx_val = self.compile_expr(&index.node)?.into_int_value();
+                let object_ty = self.infer_object_type(&object.node);
+                let deref_object_ty = object_ty
+                    .clone()
+                    .map(|ty| self.deref_codegen_type(&ty).clone());
 
                 // Prefer typed list element pointer for List<T> index assignment.
-                if let Some(Type::List(inner)) = self.infer_object_type(&object.node) {
+                if let Some(Type::List(inner)) = deref_object_ty {
                     let elem_ty = self.llvm_type(&inner);
                     let list_type = self.context.struct_type(
                         &[
@@ -1391,7 +1400,12 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         false,
                     );
-                    let obj_val = self.compile_expr(&object.node)?;
+                    let obj_val = if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_)))
+                    {
+                        self.compile_deref(&object.node)?
+                    } else {
+                        self.compile_expr(&object.node)?
+                    };
                     let (length, data_ptr) = if let BasicValueEnum::StructValue(list_struct) =
                         obj_val
                     {
@@ -1513,6 +1527,7 @@ impl<'ctx> Codegen<'ctx> {
                 };
                 Ok(elem_ptr)
             }
+            Expr::Deref(inner) => Ok(self.compile_expr(&inner.node)?.into_pointer_value()),
             _ => Err(CodegenError::new("Invalid lvalue")),
         }
     }

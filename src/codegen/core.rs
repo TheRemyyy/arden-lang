@@ -6959,12 +6959,19 @@ impl<'ctx> Codegen<'ctx> {
 
             Stmt::Assign { target, value } => {
                 if let Expr::Index { object, index } = &target.node {
-                    if let Some(map_ty @ Type::Map(_, _)) = self.infer_object_type(&object.node) {
-                        let map_value = if let Ok(map_ptr) = self.compile_lvalue(&object.node) {
-                            map_ptr.into()
-                        } else {
-                            self.compile_expr(&object.node)?
-                        };
+                    let object_ty = self.infer_object_type(&object.node);
+                    let deref_object_ty = object_ty
+                        .clone()
+                        .map(|ty| self.deref_codegen_type(&ty).clone());
+                    if let Some(map_ty @ Type::Map(_, _)) = deref_object_ty {
+                        let map_value =
+                            if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+                                self.compile_expr(&object.node)?
+                            } else if let Ok(map_ptr) = self.compile_lvalue(&object.node) {
+                                map_ptr.into()
+                            } else {
+                                self.compile_expr(&object.node)?
+                            };
                         let args = [
                             Spanned::new(index.node.clone(), index.span.clone()),
                             Spanned::new(value.node.clone(), value.span.clone()),
@@ -9219,9 +9226,6 @@ impl<'ctx> Codegen<'ctx> {
             compiled_args.iter().map(|a| (*a).into()).collect();
         let call = self.builder.build_call(func, &args_meta, "call").unwrap();
 
-        // Tail Call Optimization - mark as tail call
-        call.set_tail_call(true);
-
         match call.try_as_basic_value() {
             ValueKind::Basic(val) => Ok(val),
             ValueKind::Instruction(_) => Ok(self.context.i8_type().const_int(0, false).into()),
@@ -9328,7 +9332,11 @@ impl<'ctx> Codegen<'ctx> {
                         }
                         _ => {}
                     }
-                    let range_val = self.compile_expr(object)?;
+                    let range_val = if is_reference_receiver {
+                        self.compile_deref(object)?
+                    } else {
+                        self.compile_expr(object)?
+                    };
                     return self.compile_range_method_on_value(range_val, ty, method);
                 }
                 Type::Task(inner) => {
@@ -9453,7 +9461,12 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         let task_ty = self.task_struct_type();
-        let task_raw = self.compile_expr(object)?;
+        let object_ty = self.infer_object_type(object);
+        let task_raw = if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+            self.compile_deref(object)?
+        } else {
+            self.compile_expr(object)?
+        };
         if !task_raw.is_pointer_value() {
             return Err(CodegenError::new("Task method call on non-task value"));
         }

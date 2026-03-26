@@ -16109,6 +16109,513 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_mutable_borrowed_map_methods_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-map-runtime");
+        let source_path = temp_root.join("mutable_borrowed_map_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_map_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                rm: &mut Map<String, Integer> = &mut m;
+                rm.set("k", 7);
+                return if (rm["k"] == 7 && rm.contains("k")) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed map methods should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed map binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_set_methods_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-set-runtime");
+        let source_path = temp_root.join("mutable_borrowed_set_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_set_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut s: Set<Integer> = Set<Integer>();
+                rs: &mut Set<Integer> = &mut s;
+                rs.add(9);
+                removed: Boolean = rs.remove(9);
+                return if (removed && !rs.contains(9) && rs.length() == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed set methods should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed set binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_range_methods_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-range-runtime");
+        let source_path = temp_root.join("mutable_borrowed_range_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_range_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut r: Range<Integer> = range(0, 3);
+                rr: &mut Range<Integer> = &mut r;
+                first: Integer = rr.next();
+                return if (first == 0 && rr.has_next()) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed range methods should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed range binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_range_next_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-range-next-runtime");
+        let source_path = temp_root.join("mutable_borrowed_range_next_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_range_next_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut r: Range<Integer> = range(0, 3);
+                rr: &mut Range<Integer> = &mut r;
+                first: Integer = rr.next();
+                if (first != 0) { return 1; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed range next should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed range next binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_range_has_next_after_next_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-range-has-next-runtime");
+        let source_path = temp_root.join("mutable_borrowed_range_has_next_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_range_has_next_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut r: Range<Integer> = range(0, 3);
+                rr: &mut Range<Integer> = &mut r;
+                rr.next();
+                if (!rr.has_next()) { return 1; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed range has_next should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed range has_next binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_range_has_next_runtime() {
+        let temp_root = make_temp_project_root("borrowed-range-has-next-runtime");
+        let source_path = temp_root.join("borrowed_range_has_next_runtime.apex");
+        let output_path = temp_root.join("borrowed_range_has_next_runtime");
+        let source = r#"
+            function main(): Integer {
+                r: Range<Integer> = range(0, 2);
+                rr: &Range<Integer> = &r;
+                return if (rr.has_next()) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed range has_next should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed range has_next binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_task_methods_runtime() {
+        let temp_root = make_temp_project_root("borrowed-task-methods-runtime");
+        let source_path = temp_root.join("borrowed_task_methods_runtime.apex");
+        let output_path = temp_root.join("borrowed_task_methods_runtime");
+        let source = r#"
+            async function work(): Integer {
+                return 7;
+            }
+
+            function main(): Integer {
+                t: Task<Integer> = work();
+                rt: &Task<Integer> = &t;
+                maybe: Option<Integer> = rt.await_timeout(100);
+                if (maybe.unwrap() != 7) { return 1; }
+                if (!rt.is_done()) { return 2; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed task methods should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed task methods binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_task_cancel_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-task-cancel-runtime");
+        let source_path = temp_root.join("mutable_borrowed_task_cancel_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_task_cancel_runtime");
+        let source = r#"
+            async function work(): Integer {
+                return 7;
+            }
+
+            function main(): Integer {
+                mut t: Task<Integer> = work();
+                rt: &mut Task<Integer> = &mut t;
+                rt.cancel();
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed task cancel should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed task cancel binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_field_reference_runtime() {
+        let temp_root = make_temp_project_root("borrowed-field-reference-runtime");
+        let source_path = temp_root.join("borrowed_field_reference_runtime.apex");
+        let output_path = temp_root.join("borrowed_field_reference_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function read_ref(r: &Integer): Integer {
+                return *r;
+            }
+
+            function main(): Integer {
+                b: Boxed = Boxed(9);
+                rb: &Boxed = &b;
+                return if (read_ref(&rb.value) == 9) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed field reference should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed field reference binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_field_reference_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-field-reference-runtime");
+        let source_path = temp_root.join("mutable_borrowed_field_reference_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_field_reference_runtime");
+        let source = r#"
+            class Boxed {
+                mut value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function write_ref(r: &mut Integer): None {
+                *r = 11;
+                return None;
+            }
+
+            function main(): Integer {
+                mut b: Boxed = Boxed(9);
+                rb: &mut Boxed = &mut b;
+                write_ref(&mut rb.value);
+                return if (rb.value == 11) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed field reference should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed field reference binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_list_index_assignment_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-list-index-assignment-runtime");
+        let source_path = temp_root.join("mutable_borrowed_list_index_assignment_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_list_index_assignment_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                rxs: &mut List<Integer> = &mut xs;
+                rxs[0] = 2;
+                return if (rxs[0] == 2 && xs[0] == 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed list index assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed list index assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_map_index_assignment_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-map-index-assignment-runtime");
+        let source_path = temp_root.join("mutable_borrowed_map_index_assignment_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_map_index_assignment_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                rm: &mut Map<String, Integer> = &mut m;
+                rm["k"] = 7;
+                return if (rm["k"] == 7 && m["k"] == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed map index assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed map index assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_nested_index_assignment_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-nested-index-assignment-runtime");
+        let source_path = temp_root.join("mutable_borrowed_nested_index_assignment_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_nested_index_assignment_runtime");
+        let source = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                mut m: Map<String, Integer>;
+
+                constructor() {
+                    this.xs = List<Integer>();
+                    this.xs.push(1);
+                    this.m = Map<String, Integer>();
+                }
+            }
+
+            function main(): Integer {
+                mut bag: Bag = Bag();
+                rb: &mut Bag = &mut bag;
+                rb.xs[0] = 3;
+                rb.m["k"] = 4;
+                if (rb.xs[0] != 3) { return 1; }
+                if (rb.m["k"] != 4) { return 2; }
+                if (bag.xs[0] != 3) { return 3; }
+                if (bag.m["k"] != 4) { return 4; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed nested index assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed nested index assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_method_with_mutating_builtin_field_runtime() {
+        let temp_root = make_temp_project_root("method-with-mutating-builtin-field-runtime");
+        let source_path = temp_root.join("method_with_mutating_builtin_field_runtime.apex");
+        let output_path = temp_root.join("method_with_mutating_builtin_field_runtime");
+        let source = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                constructor() { this.xs = List<Integer>(); }
+                function add_one(): None {
+                    this.xs.push(1);
+                    return None;
+                }
+            }
+
+            function main(): Integer {
+                mut bag: Bag = Bag();
+                bag.add_one();
+                return if (bag.xs[0] == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("method with mutating builtin field should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutating builtin field method binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_local_deref_assignment_runtime() {
+        let temp_root = make_temp_project_root("local-deref-assignment-runtime");
+        let source_path = temp_root.join("local_deref_assignment_runtime.apex");
+        let output_path = temp_root.join("local_deref_assignment_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut x: Integer = 5;
+                rx: &mut Integer = &mut x;
+                *rx = 19;
+                return if (*rx == 19) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("local deref assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled local deref assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_mutable_reference_assignment_runtime() {
+        let temp_root = make_temp_project_root("direct-mutable-reference-assignment-runtime");
+        let source_path = temp_root.join("direct_mutable_reference_assignment_runtime.apex");
+        let output_path = temp_root.join("direct_mutable_reference_assignment_runtime");
+        let source = r#"
+            function write_ref(r: &mut Integer): None {
+                *r = 13;
+                return None;
+            }
+
+            function main(): Integer {
+                mut x: Integer = 5;
+                rx: &mut Integer = &mut x;
+                write_ref(rx);
+                return if (*rx == 13) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct mutable reference assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct mutable reference assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_inline_mutable_reference_assignment_runtime() {
+        let temp_root = make_temp_project_root("inline-mutable-reference-assignment-runtime");
+        let source_path = temp_root.join("inline_mutable_reference_assignment_runtime.apex");
+        let output_path = temp_root.join("inline_mutable_reference_assignment_runtime");
+        let source = r#"
+            function write_ref(r: &mut Integer): None {
+                *r = 17;
+                return None;
+            }
+
+            function main(): Integer {
+                mut x: Integer = 5;
+                write_ref(&mut x);
+                rx: &mut Integer = &mut x;
+                return if (*rx == 17) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("inline mutable reference assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled inline mutable reference assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_option_unwrap_method_chains_on_call_results() {
         let temp_root = make_temp_project_root("option-call-unwrap-method-runtime");
         let source_path = temp_root.join("option_call_unwrap_method_runtime.apex");

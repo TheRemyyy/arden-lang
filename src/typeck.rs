@@ -3130,19 +3130,45 @@ impl TypeChecker {
         match target {
             Expr::Ident(name) => {
                 if let Some(var) = self.lookup_variable(name) {
-                    if !var.mutable {
-                        self.error_with_hint(
-                            format!("Cannot assign to immutable variable '{}'", name),
-                            span,
-                            "Consider declaring with 'mut'".to_string(),
-                        );
+                    match &var.ty {
+                        ResolvedType::MutRef(_) => {}
+                        ResolvedType::Ref(_) => {
+                            self.error(
+                                format!("Cannot assign through immutable reference '{}'", name),
+                                span,
+                            );
+                        }
+                        _ if !var.mutable => {
+                            self.error_with_hint(
+                                format!("Cannot assign to immutable variable '{}'", name),
+                                span,
+                                "Consider declaring with 'mut'".to_string(),
+                            );
+                        }
+                        _ => {}
                     }
                 }
             }
             Expr::Field { object, .. } | Expr::Index { object, .. } => {
                 self.check_assignment_target_mutability(&object.node, span);
             }
-            Expr::This | Expr::Deref(_) => {}
+            Expr::Deref(inner) => {
+                let inner_type = self.check_expr(&inner.node, inner.span.clone());
+                match inner_type {
+                    ResolvedType::MutRef(_) => {}
+                    ResolvedType::Ref(_) => {
+                        let message = match &inner.node {
+                            Expr::Ident(name) => {
+                                format!("Cannot assign through immutable reference '{}'", name)
+                            }
+                            _ => "Cannot assign through immutable reference".to_string(),
+                        };
+                        self.error(message, span);
+                    }
+                    _ => {}
+                }
+            }
+            Expr::This => {}
             _ => {}
         }
     }
@@ -7906,6 +7932,96 @@ mod tests {
             }
         "#;
         check_source(src).expect("borrowed mutating accesses should typecheck");
+    }
+
+    #[test]
+    fn borrowed_mutating_index_assignments_typecheck() {
+        let src = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                mut m: Map<String, Integer>;
+
+                constructor() {
+                    this.xs = List<Integer>();
+                    this.m = Map<String, Integer>();
+                }
+            }
+
+            function main(): None {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                mut bag: Bag = Bag();
+
+                rxs: &mut List<Integer> = &mut xs;
+                rm: &mut Map<String, Integer> = &mut m;
+                rb: &mut Bag = &mut bag;
+
+                rxs[0] = 2;
+                rm["k"] = 7;
+                rb.xs.push(1);
+                rb.xs[0] = 3;
+                rb.m["k2"] = 4;
+                return None;
+            }
+        "#;
+        check_source(src).expect("borrowed mutating index assignments should typecheck");
+    }
+
+    #[test]
+    fn immutable_reference_index_assignment_rejected() {
+        let src = r#"
+            function main(): None {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                mut m: Map<String, Integer> = Map<String, Integer>();
+
+                rxs: &List<Integer> = &xs;
+                rm: &Map<String, Integer> = &m;
+
+                rxs[0] = 2;
+                rm["k"] = 7;
+                return None;
+            }
+        "#;
+        let errors = check_source(src)
+            .expect_err("immutable reference index assignments should be rejected");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Cannot assign through immutable reference 'rxs'"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("Cannot assign through immutable reference 'rm'"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn immutable_reference_deref_assignment_rejected() {
+        let src = r#"
+            function main(): None {
+                mut x: Integer = 1;
+                r: &Integer = &x;
+                *r = 2;
+                return None;
+            }
+        "#;
+        let errors =
+            check_source(src).expect_err("immutable reference deref assignment should be rejected");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Cannot assign through immutable reference 'r'"),
+            "{joined}"
+        );
     }
 
     #[test]
