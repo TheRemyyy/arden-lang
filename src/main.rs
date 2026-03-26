@@ -17554,6 +17554,117 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_list_index_compound_assignment_without_double_evaluation() {
+        let temp_root = make_temp_project_root("list-index-compound-assign-call-runtime");
+        let source_path = temp_root.join("list_index_compound_assign_call_runtime.apex");
+        let output_path = temp_root.join("list_index_compound_assign_call_runtime");
+        let source = r#"
+            class Factory {
+                mut calls: Integer;
+                constructor() { this.calls = 0; }
+                function make(): List<Integer> {
+                    this.calls += 1;
+                    xs: List<Integer> = List<Integer>();
+                    xs.push(1);
+                    return xs;
+                }
+            }
+
+            function main(): Integer {
+                mut factory: Factory = Factory();
+                factory.make()[0] += 2;
+                return if (factory.calls == 1) { 0 } else { factory.calls };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("list index compound assignment on function-returned list should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled list compound assignment call binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_field_compound_assignment_without_double_evaluation() {
+        let temp_root = make_temp_project_root("field-compound-assign-call-runtime");
+        let source_path = temp_root.join("field_compound_assign_call_runtime.apex");
+        let output_path = temp_root.join("field_compound_assign_call_runtime");
+        let source = r#"
+            class Boxed {
+                mut value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            class Factory {
+                mut calls: Integer;
+                constructor() { this.calls = 0; }
+                function make_box(): Boxed {
+                    this.calls += 1;
+                    return Boxed(1);
+                }
+            }
+
+            function main(): Integer {
+                mut factory: Factory = Factory();
+                factory.make_box().value += 2;
+                return if (factory.calls == 1) { 0 } else { factory.calls };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("field compound assignment on function-returned object should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled field compound assignment call binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_index_compound_assignment_without_double_evaluation() {
+        let temp_root = make_temp_project_root("map-index-compound-assign-call-runtime");
+        let source_path = temp_root.join("map_index_compound_assign_call_runtime.apex");
+        let output_path = temp_root.join("map_index_compound_assign_call_runtime");
+        let source = r#"
+            class Factory {
+                mut calls: Integer;
+                constructor() { this.calls = 0; }
+                function make_map(): Map<String, Integer> {
+                    this.calls += 1;
+                    mut m: Map<String, Integer> = Map<String, Integer>();
+                    m["k"] = 1;
+                    return m;
+                }
+            }
+
+            function main(): Integer {
+                mut factory: Factory = Factory();
+                factory.make_map()["k"] += 2;
+                return if (factory.calls == 1) { 0 } else { factory.calls };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("map index compound assignment on function-returned map should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map compound assignment call binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_fails_fast_on_out_of_bounds_list_index_assignment() {
         let temp_root = make_temp_project_root("list-index-assign-oob-runtime");
         let source_path = temp_root.join("list_index_assign_oob_runtime.apex");

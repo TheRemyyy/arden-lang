@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - mutable references now correctly allow those same mutating receiver calls without requiring the reference binding itself to be declared `mut`
   - nested receiver chains such as `ref.field.push(...)` and `ref.field.next()` now inherit the correct root borrow behavior for `&T` / `&mut T` owners
   - read-only built-in receiver calls such as `length`, `get`, `contains`, `unwrap`, `is_some`, `is_none`, `is_ok`, `is_error`, `has_next`, `is_done`, and `await_timeout` now consistently stay in read-only borrow mode during borrow checking
-  - class methods that mutate `this` only through built-in field receivers such as `this.items.push(...)` or `this.map.set(...)` are now classified as mutating methods too, so calling them through an immutably borrowed owner is rejected consistently
+  - class methods that mutate `this` only through built-in field receivers such as `this.items.push(...)`, `this.map.set(...)`, or deeper chains like `this.inner.items.push(...)` are now classified as mutating methods too, so calling them through an immutably borrowed owner is rejected consistently
 - Fixed codegen for borrowed pointer-backed and field-backed lvalues:
   - `&Range<T>` / `&mut Range<T>` method calls now dereference to the actual runtime range object before dispatch, restoring correct `next()` / `has_next()` behavior for borrowed range receivers
   - `&Task<T>` / `&mut Task<T>` method calls now dereference to the actual task handle before dispatch, restoring borrowed `await_timeout()`, `is_done()`, and `cancel()` receiver paths
@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - immutable dereference assignments like `*r = 2` are now rejected consistently for `&T` instead of silently writing through a read-only reference path
   - indexed assignments through borrowed mutable containers, such as `rxs[0] = 2`, `rm["k"] = 7`, and nested forms like `rb.items[0] = 3`, now mutate the underlying storage correctly instead of being rejected or codegening against the reference slot
   - immutable borrowed container assignments like `view[0] = 2` and `lookup["k"] = 7` now fail with a dedicated immutable-reference diagnostic instead of incorrectly behaving like plain immutable-owner assignment
+  - compound assignments on side-effectful lvalues such as `factory.make()[0] += 2`, `factory.make_box().value += 2`, and `factory.make_map()["k"] += 2` now evaluate the target only once instead of re-running the call path for both the load and the store
 - Fixed incorrect unconditional tail-call marking on ordinary user-function calls:
   - non-tail calls are no longer emitted with LLVM `tail` hints, which had let the optimizer miscompile stack/reference-sensitive code paths
   - passing `&mut` locals into ordinary helper functions now preserves caller-visible mutations instead of being optimized into stale reads

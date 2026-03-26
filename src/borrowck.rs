@@ -201,6 +201,9 @@ impl BorrowChecker {
             self.collect_sig(&decl.node);
         }
 
+        let class_mutating_methods = self.compute_program_class_mutating_methods(program);
+        self.apply_mutating_method_seeds(&class_mutating_methods);
+
         // Second pass: check function bodies
         for decl in &program.declarations {
             self.check_decl(&decl.node, decl.span.clone());
@@ -234,16 +237,11 @@ impl BorrowChecker {
             }
             Decl::Class(class) => {
                 let mut methods = HashMap::new();
-                let mutating_methods = Self::class_mutating_methods(class);
                 for method in &class.methods {
                     methods.insert(
                         method.name.clone(),
                         MethodBorrowSig {
-                            receiver_mode: if mutating_methods.contains(&method.name) {
-                                ParamMode::BorrowMut
-                            } else {
-                                ParamMode::Borrow
-                            },
+                            receiver_mode: ParamMode::Borrow,
                             params: method.params.iter().map(|p| p.mode).collect(),
                         },
                     );
@@ -1473,16 +1471,38 @@ impl BorrowChecker {
         });
     }
 
-    fn class_mutating_methods(class: &ClassDecl) -> std::collections::HashSet<String> {
-        let field_types = class
-            .fields
-            .iter()
-            .map(|field| (field.name.clone(), field.ty.clone()))
-            .collect::<HashMap<_, _>>();
+    fn compute_program_class_mutating_methods(
+        &self,
+        program: &Program,
+    ) -> HashMap<String, HashSet<String>> {
+        fn collect_from_decls(
+            checker: &BorrowChecker,
+            decls: &[Spanned<Decl>],
+            out: &mut HashMap<String, HashSet<String>>,
+        ) {
+            for decl in decls {
+                match &decl.node {
+                    Decl::Class(class) => {
+                        out.insert(class.name.clone(), checker.class_mutating_methods(class));
+                    }
+                    Decl::Module(module) => {
+                        collect_from_decls(checker, &module.declarations, out);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let mut out = HashMap::new();
+        collect_from_decls(self, &program.declarations, &mut out);
+        out
+    }
+
+    fn class_mutating_methods(&self, class: &ClassDecl) -> std::collections::HashSet<String> {
         let mut mutating: std::collections::HashSet<String> = class
             .methods
             .iter()
-            .filter(|m| Self::block_mutates_this(&m.body, &field_types))
+            .filter(|m| self.block_mutates_this(&class.name, &m.body))
             .map(|m| m.name.clone())
             .collect();
 
@@ -1502,139 +1522,137 @@ impl BorrowChecker {
         mutating
     }
 
-    fn block_mutates_this(block: &Block, field_types: &HashMap<String, Type>) -> bool {
+    fn block_mutates_this(&self, class_name: &str, block: &Block) -> bool {
         block
             .iter()
-            .any(|stmt| Self::stmt_mutates_this(&stmt.node, field_types))
+            .any(|stmt| self.stmt_mutates_this(class_name, &stmt.node))
     }
 
-    fn stmt_mutates_this(stmt: &Stmt, field_types: &HashMap<String, Type>) -> bool {
+    fn stmt_mutates_this(&self, class_name: &str, stmt: &Stmt) -> bool {
         match stmt {
-            Stmt::Let { value, .. } => {
-                Self::expr_mutates_this_via_builtin(&value.node, field_types)
-            }
+            Stmt::Let { value, .. } => self.expr_mutates_this_via_builtin(class_name, &value.node),
             Stmt::Assign { target, value } => {
                 Self::expr_root_is_this(&target.node)
-                    || Self::expr_mutates_this_via_builtin(&value.node, field_types)
+                    || self.expr_mutates_this_via_builtin(class_name, &value.node)
             }
-            Stmt::Expr(expr) => Self::expr_mutates_this_via_builtin(&expr.node, field_types),
+            Stmt::Expr(expr) => self.expr_mutates_this_via_builtin(class_name, &expr.node),
             Stmt::Return(expr) => expr
                 .as_ref()
-                .is_some_and(|expr| Self::expr_mutates_this_via_builtin(&expr.node, field_types)),
+                .is_some_and(|expr| self.expr_mutates_this_via_builtin(class_name, &expr.node)),
             Stmt::If {
                 condition,
                 then_block,
                 else_block,
             } => {
-                Self::expr_mutates_this_via_builtin(&condition.node, field_types)
-                    || Self::block_mutates_this(then_block, field_types)
+                self.expr_mutates_this_via_builtin(class_name, &condition.node)
+                    || self.block_mutates_this(class_name, then_block)
                     || else_block
                         .as_ref()
-                        .is_some_and(|block| Self::block_mutates_this(block, field_types))
+                        .is_some_and(|block| self.block_mutates_this(class_name, block))
             }
             Stmt::While { condition, body } => {
-                Self::expr_mutates_this_via_builtin(&condition.node, field_types)
-                    || Self::block_mutates_this(body, field_types)
+                self.expr_mutates_this_via_builtin(class_name, &condition.node)
+                    || self.block_mutates_this(class_name, body)
             }
             Stmt::For { iterable, body, .. } => {
-                Self::expr_mutates_this_via_builtin(&iterable.node, field_types)
-                    || Self::block_mutates_this(body, field_types)
+                self.expr_mutates_this_via_builtin(class_name, &iterable.node)
+                    || self.block_mutates_this(class_name, body)
             }
             Stmt::Match { expr, arms } => {
-                Self::expr_mutates_this_via_builtin(&expr.node, field_types)
+                self.expr_mutates_this_via_builtin(class_name, &expr.node)
                     || arms
                         .iter()
-                        .any(|arm| Self::block_mutates_this(&arm.body, field_types))
+                        .any(|arm| self.block_mutates_this(class_name, &arm.body))
             }
             Stmt::Break | Stmt::Continue => false,
         }
     }
 
-    fn expr_mutates_this_via_builtin(expr: &Expr, field_types: &HashMap<String, Type>) -> bool {
+    fn expr_mutates_this_via_builtin(&self, class_name: &str, expr: &Expr) -> bool {
         match expr {
             Expr::Call { callee, args, .. } => {
-                Self::callee_is_mutating_builtin_on_this_field(&callee.node, field_types)
-                    || Self::expr_mutates_this_via_builtin(&callee.node, field_types)
+                self.callee_is_mutating_builtin_on_this_field_chain(class_name, &callee.node)
+                    || self.expr_mutates_this_via_builtin(class_name, &callee.node)
                     || args
                         .iter()
-                        .any(|arg| Self::expr_mutates_this_via_builtin(&arg.node, field_types))
+                        .any(|arg| self.expr_mutates_this_via_builtin(class_name, &arg.node))
             }
             Expr::Binary { left, right, op } => {
-                if Self::expr_mutates_this_via_builtin(&left.node, field_types) {
+                if self.expr_mutates_this_via_builtin(class_name, &left.node) {
                     return true;
                 }
                 let should_check_right = !matches!(
                     (op, Self::literal_bool(&left.node)),
                     (BinOp::Or, Some(true)) | (BinOp::And, Some(false))
                 );
-                should_check_right && Self::expr_mutates_this_via_builtin(&right.node, field_types)
+                should_check_right && self.expr_mutates_this_via_builtin(class_name, &right.node)
             }
             Expr::Unary { expr, .. }
             | Expr::Borrow(expr)
             | Expr::MutBorrow(expr)
             | Expr::Deref(expr)
             | Expr::Await(expr)
-            | Expr::Try(expr) => Self::expr_mutates_this_via_builtin(&expr.node, field_types),
+            | Expr::Try(expr) => self.expr_mutates_this_via_builtin(class_name, &expr.node),
             Expr::Field { object, .. } => {
-                Self::expr_mutates_this_via_builtin(&object.node, field_types)
+                self.expr_mutates_this_via_builtin(class_name, &object.node)
             }
             Expr::Index { object, index } => {
-                Self::expr_mutates_this_via_builtin(&object.node, field_types)
-                    || Self::expr_mutates_this_via_builtin(&index.node, field_types)
+                self.expr_mutates_this_via_builtin(class_name, &object.node)
+                    || self.expr_mutates_this_via_builtin(class_name, &index.node)
             }
             Expr::Construct { args, .. } => args
                 .iter()
-                .any(|arg| Self::expr_mutates_this_via_builtin(&arg.node, field_types)),
-            Expr::Lambda { body, .. } => {
-                Self::expr_mutates_this_via_builtin(&body.node, field_types)
-            }
+                .any(|arg| self.expr_mutates_this_via_builtin(class_name, &arg.node)),
+            Expr::Lambda { body, .. } => self.expr_mutates_this_via_builtin(class_name, &body.node),
             Expr::Match { expr, arms } => {
-                Self::expr_mutates_this_via_builtin(&expr.node, field_types)
+                self.expr_mutates_this_via_builtin(class_name, &expr.node)
                     || arms
                         .iter()
-                        .any(|arm| Self::block_mutates_this(&arm.body, field_types))
+                        .any(|arm| self.block_mutates_this(class_name, &arm.body))
             }
             Expr::StringInterp(parts) => parts.iter().any(|part| match part {
                 StringPart::Expr(expr) => {
-                    Self::expr_mutates_this_via_builtin(&expr.node, field_types)
+                    self.expr_mutates_this_via_builtin(class_name, &expr.node)
                 }
                 StringPart::Literal(_) => false,
             }),
             Expr::AsyncBlock(body) => body
                 .iter()
-                .any(|stmt| Self::stmt_mutates_this(&stmt.node, field_types)),
+                .any(|stmt| self.stmt_mutates_this(class_name, &stmt.node)),
             Expr::IfExpr {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                Self::expr_mutates_this_via_builtin(&condition.node, field_types)
-                    || Self::block_mutates_this(then_branch, field_types)
+                self.expr_mutates_this_via_builtin(class_name, &condition.node)
+                    || self.block_mutates_this(class_name, then_branch)
                     || else_branch
                         .as_ref()
-                        .is_some_and(|block| Self::block_mutates_this(block, field_types))
+                        .is_some_and(|block| self.block_mutates_this(class_name, block))
             }
             Expr::Require { condition, message } => {
-                Self::expr_mutates_this_via_builtin(&condition.node, field_types)
+                self.expr_mutates_this_via_builtin(class_name, &condition.node)
                     || message.as_ref().is_some_and(|message| {
-                        Self::expr_mutates_this_via_builtin(&message.node, field_types)
+                        self.expr_mutates_this_via_builtin(class_name, &message.node)
                     })
             }
             Expr::Range { start, end, .. } => {
-                start.as_ref().is_some_and(|expr| {
-                    Self::expr_mutates_this_via_builtin(&expr.node, field_types)
-                }) || end.as_ref().is_some_and(|expr| {
-                    Self::expr_mutates_this_via_builtin(&expr.node, field_types)
-                })
+                start
+                    .as_ref()
+                    .is_some_and(|expr| self.expr_mutates_this_via_builtin(class_name, &expr.node))
+                    || end.as_ref().is_some_and(|expr| {
+                        self.expr_mutates_this_via_builtin(class_name, &expr.node)
+                    })
             }
-            Expr::Block(block) => Self::block_mutates_this(block, field_types),
+            Expr::Block(block) => self.block_mutates_this(class_name, block),
             Expr::Ident(_) | Expr::Literal(_) | Expr::This => false,
         }
     }
 
-    fn callee_is_mutating_builtin_on_this_field(
+    fn callee_is_mutating_builtin_on_this_field_chain(
+        &self,
+        class_name: &str,
         callee: &Expr,
-        field_types: &HashMap<String, Type>,
     ) -> bool {
         let Expr::Field {
             object,
@@ -1643,20 +1661,29 @@ impl BorrowChecker {
         else {
             return false;
         };
-        let Expr::Field {
-            object: owner,
-            field: base_field,
-        } = &object.node
-        else {
-            return false;
-        };
-        if !matches!(&owner.node, Expr::This) {
-            return false;
-        }
-        field_types
-            .get(base_field)
+        self.resolve_this_field_chain_type(class_name, &object.node)
+            .as_ref()
             .and_then(|ty| Self::builtin_receiver_mode_for_type(ty, method))
             .is_some_and(|mode| mode == ParamMode::BorrowMut)
+    }
+
+    fn resolve_this_field_chain_type(&self, class_name: &str, expr: &Expr) -> Option<Type> {
+        match expr {
+            Expr::This => Some(Type::Named(class_name.to_string())),
+            Expr::Field { object, field } => {
+                let owner_ty = self.resolve_this_field_chain_type(class_name, &object.node)?;
+                let owner_name = match Self::peel_reference_type(&owner_ty) {
+                    Type::Named(name) | Type::Generic(name, _) => name.clone(),
+                    _ => return None,
+                };
+                self.classes
+                    .get(&owner_name)?
+                    .field_types
+                    .get(field)
+                    .cloned()
+            }
+            _ => None,
+        }
     }
 
     fn expr_root_is_this(expr: &Expr) -> bool {
@@ -2997,6 +3024,34 @@ mod tests {
         assert!(errors
             .iter()
             .any(|m| m.contains("Cannot mutably borrow 'bag' while immutably borrowed")));
+    }
+
+    #[test]
+    fn immutable_borrow_blocks_method_with_nested_mutating_builtin_field_call() {
+        let source = r#"
+            class Inner {
+                mut xs: List<Integer>;
+                constructor() { this.xs = List<Integer>(); }
+            }
+            class Outer {
+                mut inner: Inner;
+                constructor() { this.inner = Inner(); }
+                function add_one(): None {
+                    this.inner.xs.push(1);
+                    return None;
+                }
+            }
+            function main(): None {
+                mut outer: Outer = Outer();
+                ro: &Outer = &outer;
+                outer.add_one();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot mutably borrow 'outer' while immutably borrowed")));
     }
 
     #[test]

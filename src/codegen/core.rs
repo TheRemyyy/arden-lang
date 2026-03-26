@@ -6958,6 +6958,41 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             Stmt::Assign { target, value } => {
+                if let Some((op, rhs)) =
+                    Self::match_compound_assign_target(&target.node, &value.node)
+                {
+                    let is_map_index_target = matches!(
+                        &target.node,
+                        Expr::Index { object, .. }
+                            if matches!(
+                                self.infer_object_type(&object.node)
+                                    .map(|ty| self.deref_codegen_type(&ty).clone()),
+                                Some(Type::Map(_, _))
+                            )
+                    );
+                    if !is_map_index_target {
+                        let ptr = self.compile_lvalue(&target.node)?;
+                        let current = self
+                            .builder
+                            .build_load(
+                                self.llvm_type(&self.infer_expr_type(&target.node, &[])),
+                                ptr,
+                                "compound_current",
+                            )
+                            .unwrap();
+                        let rhs_value = self.compile_expr(&rhs.node)?;
+                        let result = self.compile_binary_values(
+                            op,
+                            current,
+                            rhs_value,
+                            &self.infer_expr_type(&target.node, &[]),
+                            &self.infer_expr_type(&rhs.node, &[]),
+                        )?;
+                        self.builder.build_store(ptr, result).unwrap();
+                        return Ok(());
+                    }
+                }
+
                 if let Expr::Index { object, index } = &target.node {
                     let object_ty = self.infer_object_type(&object.node);
                     let deref_object_ty = object_ty
@@ -6972,6 +7007,27 @@ impl<'ctx> Codegen<'ctx> {
                             } else {
                                 self.compile_expr(&object.node)?
                             };
+                        if let Some((op, rhs)) =
+                            Self::match_compound_assign_target(&target.node, &value.node)
+                        {
+                            let (key_ty, val_ty) = match &map_ty {
+                                Type::Map(key_ty, val_ty) => ((*key_ty.clone()), (*val_ty.clone())),
+                                _ => unreachable!(),
+                            };
+                            let key = self.compile_expr_with_expected_type(&index.node, &key_ty)?;
+                            let get_args = [Spanned::new(index.node.clone(), index.span.clone())];
+                            let current = self.compile_map_method_on_value(
+                                map_value, &map_ty, "get", &get_args,
+                            )?;
+                            let rhs_value =
+                                self.compile_expr_with_expected_type(&rhs.node, &val_ty)?;
+                            let result = self
+                                .compile_binary_values(op, current, rhs_value, &val_ty, &val_ty)?;
+                            self.compile_map_set_on_value_with_compiled_key_value(
+                                map_value, &map_ty, key, result,
+                            )?;
+                            return Ok(());
+                        }
                         let args = [
                             Spanned::new(index.node.clone(), index.span.clone()),
                             Spanned::new(value.node.clone(), value.span.clone()),
@@ -7834,6 +7890,88 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn match_compound_assign_target<'a>(
+        target: &'a Expr,
+        value: &'a Expr,
+    ) -> Option<(BinOp, &'a Spanned<Expr>)> {
+        let Expr::Binary { op, left, right } = value else {
+            return None;
+        };
+        matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div)
+            .then_some(())
+            .filter(|_| Self::exprs_structurally_equal(target, &left.node))
+            .map(|_| (*op, right.as_ref()))
+    }
+
+    fn exprs_structurally_equal(left: &Expr, right: &Expr) -> bool {
+        match (left, right) {
+            (Expr::Ident(a), Expr::Ident(b)) => a == b,
+            (Expr::This, Expr::This) => true,
+            (Expr::Literal(a), Expr::Literal(b)) => Self::literals_structurally_equal(a, b),
+            (
+                Expr::Field {
+                    object: ao,
+                    field: af,
+                },
+                Expr::Field {
+                    object: bo,
+                    field: bf,
+                },
+            ) => af == bf && Self::exprs_structurally_equal(&ao.node, &bo.node),
+            (
+                Expr::Index {
+                    object: ao,
+                    index: ai,
+                },
+                Expr::Index {
+                    object: bo,
+                    index: bi,
+                },
+            ) => {
+                Self::exprs_structurally_equal(&ao.node, &bo.node)
+                    && Self::exprs_structurally_equal(&ai.node, &bi.node)
+            }
+            (
+                Expr::Call {
+                    callee: ac,
+                    args: aa,
+                    type_args: at,
+                },
+                Expr::Call {
+                    callee: bc,
+                    args: ba,
+                    type_args: bt,
+                },
+            ) => {
+                at == bt
+                    && aa.len() == ba.len()
+                    && Self::exprs_structurally_equal(&ac.node, &bc.node)
+                    && aa
+                        .iter()
+                        .zip(ba.iter())
+                        .all(|(a, b)| Self::exprs_structurally_equal(&a.node, &b.node))
+            }
+            (Expr::Deref(a), Expr::Deref(b))
+            | (Expr::Borrow(a), Expr::Borrow(b))
+            | (Expr::MutBorrow(a), Expr::MutBorrow(b)) => {
+                Self::exprs_structurally_equal(&a.node, &b.node)
+            }
+            _ => false,
+        }
+    }
+
+    fn literals_structurally_equal(left: &Literal, right: &Literal) -> bool {
+        match (left, right) {
+            (Literal::Integer(a), Literal::Integer(b)) => a == b,
+            (Literal::Float(a), Literal::Float(b)) => a.to_bits() == b.to_bits(),
+            (Literal::Boolean(a), Literal::Boolean(b)) => a == b,
+            (Literal::String(a), Literal::String(b)) => a == b,
+            (Literal::Char(a), Literal::Char(b)) => a == b,
+            (Literal::None, Literal::None) => true,
+            _ => false,
+        }
+    }
+
     fn infer_async_block_return_type(&self, body: &[Spanned<Stmt>]) -> Type {
         self.infer_block_tail_type(body).unwrap_or(Type::None)
     }
@@ -8582,7 +8720,17 @@ impl<'ctx> Codegen<'ctx> {
 
         let lhs = self.compile_expr(left)?;
         let rhs = self.compile_expr(right)?;
+        self.compile_binary_values(op, lhs, rhs, &left_ty, &right_ty)
+    }
 
+    fn compile_binary_values(
+        &mut self,
+        op: BinOp,
+        lhs: BasicValueEnum<'ctx>,
+        rhs: BasicValueEnum<'ctx>,
+        left_ty: &Type,
+        right_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
         // Integer operations
         if lhs.is_int_value() && rhs.is_int_value() {
             let l = lhs.into_int_value();
@@ -8686,29 +8834,55 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         // String concatenation
-        if matches!(op, BinOp::Add) && lhs.is_pointer_value() && rhs.is_pointer_value() {
-            // Re-use Str__concat logic
-            // Since we don't have Spanned<Expr> here easily, we call compile_builtin_call with dummy spans
-            let args = vec![
-                Spanned::new(left.clone(), Span::default()),
-                Spanned::new(right.clone(), Span::default()),
-            ];
-            return self
-                .compile_stdlib_function("Str__concat", &args)
-                .map(|v| v.unwrap());
+        if matches!(op, BinOp::Add)
+            && matches!(left_ty, Type::String)
+            && matches!(right_ty, Type::String)
+        {
+            let strlen_fn = self.get_or_declare_strlen();
+            let malloc = self.get_or_declare_malloc();
+            let strcpy_fn = self.get_or_declare_strcpy();
+            let strcat_fn = self.get_or_declare_strcat();
+            let s1 = lhs.into_pointer_value();
+            let s2 = rhs.into_pointer_value();
+
+            let len1_call = self
+                .builder
+                .build_call(strlen_fn, &[s1.into()], "len1")
+                .unwrap();
+            let len1 = self.extract_call_value(len1_call).into_int_value();
+            let len2_call = self
+                .builder
+                .build_call(strlen_fn, &[s2.into()], "len2")
+                .unwrap();
+            let len2 = self.extract_call_value(len2_call).into_int_value();
+            let total_len = self.builder.build_int_add(len1, len2, "total").unwrap();
+            let buffer_size = self
+                .builder
+                .build_int_add(
+                    total_len,
+                    self.context.i64_type().const_int(1, false),
+                    "bufsize",
+                )
+                .unwrap();
+            let buffer_call = self
+                .builder
+                .build_call(malloc, &[buffer_size.into()], "buf")
+                .unwrap();
+            let buffer = self.extract_call_value(buffer_call).into_pointer_value();
+            self.builder
+                .build_call(strcpy_fn, &[buffer.into(), s1.into()], "")
+                .unwrap();
+            self.builder
+                .build_call(strcat_fn, &[buffer.into(), s2.into()], "")
+                .unwrap();
+            return Ok(buffer.into());
         }
 
-        let left_is_string = matches!(self.infer_object_type(left), Some(Type::String))
-            || matches!(left_ty, Type::String);
-        let right_is_string = matches!(self.infer_object_type(right), Some(Type::String))
-            || matches!(right_ty, Type::String);
+        let left_is_string = matches!(left_ty, Type::String);
+        let right_is_string = matches!(right_ty, Type::String);
         if left_is_string && right_is_string && matches!(op, BinOp::Eq | BinOp::NotEq) {
-            let lhs = self
-                .compile_expr_with_expected_type(left, &Type::String)?
-                .into_pointer_value();
-            let rhs = self
-                .compile_expr_with_expected_type(right, &Type::String)?
-                .into_pointer_value();
+            let lhs = lhs.into_pointer_value();
+            let rhs = rhs.into_pointer_value();
             let strcmp = self.get_or_declare_strcmp();
             let cmp = self
                 .builder
