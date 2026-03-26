@@ -46,6 +46,72 @@ impl<'ctx> Codegen<'ctx> {
         self.normalize_codegen_type(&ty)
     }
 
+    fn infer_builtin_call_type(&self, callee: &Expr, args: &[Spanned<Expr>]) -> Option<Type> {
+        match callee {
+            Expr::Ident(name) if name == "println" => Some(Type::None),
+            Expr::Ident(name) if name == "to_string" => Some(Type::String),
+            Expr::Ident(name) if name == "range" => args
+                .first()
+                .map(|arg| Type::Range(Box::new(self.infer_expr_type(&arg.node, &[]))))
+                .or_else(|| Some(Type::Range(Box::new(Type::Integer)))),
+            Expr::Field { object, field } => {
+                let Expr::Ident(owner_name) = &object.node else {
+                    return None;
+                };
+                let resolved_owner = self.resolve_module_alias(owner_name);
+                match (resolved_owner.as_str(), field.as_str()) {
+                    ("Str", "len") | ("Str", "compare") => Some(Type::Integer),
+                    ("Str", "concat") | ("Str", "upper") | ("Str", "lower") | ("Str", "trim") => {
+                        Some(Type::String)
+                    }
+                    ("Str", "contains") | ("Str", "startsWith") | ("Str", "endsWith") => {
+                        Some(Type::Boolean)
+                    }
+                    ("Option", "some") => args.first().map(|first_arg| {
+                        Type::Option(Box::new(self.infer_expr_type(&first_arg.node, &[])))
+                    }),
+                    ("Option", "none") => Some(Type::Option(Box::new(Type::Integer))),
+                    ("Result", "ok") => args.first().map(|first_arg| {
+                        Type::Result(
+                            Box::new(self.infer_expr_type(&first_arg.node, &[])),
+                            Box::new(Type::String),
+                        )
+                    }),
+                    ("Result", "error") => args.first().map(|first_arg| {
+                        Type::Result(
+                            Box::new(Type::Integer),
+                            Box::new(self.infer_expr_type(&first_arg.node, &[])),
+                        )
+                    }),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn unwrap_class_like_type(&self, ty: &Type) -> Option<(String, Option<Vec<Type>>)> {
+        match self.normalize_codegen_type(ty) {
+            Type::Named(name) => Some((name, None)),
+            Type::Generic(name, args) => Some((name, Some(args))),
+            Type::Ref(inner)
+            | Type::MutRef(inner)
+            | Type::Box(inner)
+            | Type::Rc(inner)
+            | Type::Arc(inner) => self.unwrap_class_like_type(&inner),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn deref_codegen_type<'a>(&self, ty: &'a Type) -> &'a Type {
+        match ty {
+            Type::Ref(inner) | Type::MutRef(inner) | Type::Ptr(inner) => {
+                self.deref_codegen_type(inner)
+            }
+            _ => ty,
+        }
+    }
+
     pub(crate) fn infer_block_tail_type(&self, block: &[Spanned<Stmt>]) -> Option<Type> {
         let last = block.last()?;
         match &last.node {
@@ -55,7 +121,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn builtin_method_return_type(&self, obj_ty: &Type, field: &str) -> Option<Type> {
-        match obj_ty {
+        match self.deref_codegen_type(obj_ty) {
             Type::List(inner) => match field {
                 "get" | "pop" => Some((**inner).clone()),
                 "length" => Some(Type::Integer),
@@ -1535,52 +1601,13 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
             }
-            Expr::Call { callee, .. } => match &callee.node {
-                Expr::Ident(name) if name == "range" => match expr {
-                    Expr::Call { args, .. } => args
-                        .first()
-                        .map(|arg| Type::Range(Box::new(self.infer_expr_type(&arg.node, &[]))))
-                        .or_else(|| Some(Type::Range(Box::new(Type::Integer)))),
-                    _ => Some(Type::Range(Box::new(Type::Integer))),
-                },
+            Expr::Call { callee, args, .. } => match &callee.node {
+                Expr::Ident(name) if matches!(name.as_str(), "println" | "to_string" | "range") => {
+                    self.infer_builtin_call_type(&callee.node, args)
+                }
                 Expr::Field { object, field } => {
-                    if let Expr::Ident(owner_name) = &object.node {
-                        let resolved_owner = self.resolve_module_alias(owner_name);
-                        match (resolved_owner.as_str(), field.as_str()) {
-                            ("Option", "some") => {
-                                if let Expr::Call { args, .. } = expr {
-                                    if let Some(first_arg) = args.first() {
-                                        return Some(Type::Option(Box::new(
-                                            self.infer_expr_type(&first_arg.node, &[]),
-                                        )));
-                                    }
-                                }
-                            }
-                            ("Option", "none") => {
-                                return Some(Type::Option(Box::new(Type::Integer)))
-                            }
-                            ("Result", "ok") => {
-                                if let Expr::Call { args, .. } = expr {
-                                    if let Some(first_arg) = args.first() {
-                                        return Some(Type::Result(
-                                            Box::new(self.infer_expr_type(&first_arg.node, &[])),
-                                            Box::new(Type::String),
-                                        ));
-                                    }
-                                }
-                            }
-                            ("Result", "error") => {
-                                if let Expr::Call { args, .. } = expr {
-                                    if let Some(first_arg) = args.first() {
-                                        return Some(Type::Result(
-                                            Box::new(Type::Integer),
-                                            Box::new(self.infer_expr_type(&first_arg.node, &[])),
-                                        ));
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
+                    if let Some(ret_ty) = self.infer_builtin_call_type(&callee.node, args) {
+                        return Some(ret_ty);
                     }
                     let obj_ty = self.infer_object_type(&object.node)?;
                     if let Some(ret_ty) = self.builtin_method_return_type(&obj_ty, field) {
@@ -1662,12 +1689,18 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Block(block) | Expr::AsyncBlock(block) => self.infer_block_tail_type(block),
-            Expr::Index { object, .. } => match self.infer_object_type(&object.node)? {
-                Type::List(inner) => Some((*inner).clone()),
-                Type::Map(_, value) => Some((*value).clone()),
-                Type::String => Some(Type::Char),
-                _ => None,
-            },
+            Expr::Index { object, .. } => {
+                match self.deref_codegen_type(&self.infer_object_type(&object.node)?) {
+                    Type::List(inner) => Some((**inner).clone()),
+                    Type::Map(_, value) => Some((**value).clone()),
+                    Type::String => Some(Type::Char),
+                    _ => None,
+                }
+            }
+            Expr::Lambda { params, body } => Some(Type::Function(
+                params.iter().map(|param| param.ty.clone()).collect(),
+                Box::new(self.infer_expr_type(&body.node, params)),
+            )),
             Expr::Field { object, field } => {
                 if let Expr::Ident(owner_name) = &object.node {
                     let resolved_owner = self.resolve_module_alias(owner_name);
@@ -1681,14 +1714,10 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
                 let obj_ty = self.infer_object_type(&object.node)?;
-                let (class_name, generic_args) = match &obj_ty {
-                    Type::Named(n) => (n.clone(), None),
-                    Type::Generic(n, args) => (n.clone(), Some(args)),
-                    _ => return None,
-                };
+                let (class_name, generic_args) = self.unwrap_class_like_type(&obj_ty)?;
                 let class_info = self.classes.get(&class_name)?;
                 let field_ty = class_info.field_types.get(field)?.clone();
-                if let Some(args) = generic_args {
+                if let Some(args) = generic_args.as_ref() {
                     if class_info.generic_params.len() == args.len() {
                         let bindings = class_info
                             .generic_params
@@ -1701,7 +1730,8 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Some(field_ty)
             }
-            _ => None,
+            Expr::Require { .. } => Some(Type::None),
+            Expr::Range { .. } => Some(Type::Range(Box::new(Type::Integer))),
         }?;
         Some(self.normalize_inferred_object_type(inferred))
     }

@@ -9236,17 +9236,25 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>> {
         // Infer object type first
         let obj_ty = self.infer_object_type(object);
+        let deref_obj_ty = obj_ty
+            .clone()
+            .map(|ty| self.deref_codegen_type(&ty).clone());
+        let is_reference_receiver = matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_)));
 
         // Handle built-in types (List, Map, Set, Option, Result) for any expression
-        if let Some(ref ty) = obj_ty {
+        if let Some(ref ty) = deref_obj_ty {
             match ty {
                 Type::List(_) => {
                     let list_ptr = match object {
-                        Expr::Ident(name) => self.variables.get(name).map(|v| v.ptr),
+                        Expr::Ident(name) if !is_reference_receiver => {
+                            self.variables.get(name).map(|v| v.ptr)
+                        }
                         Expr::Field { object: obj, field } => {
                             self.compile_field_ptr(&obj.node, field).ok()
                         }
-                        Expr::This => self.variables.get("this").map(|v| v.ptr),
+                        Expr::This if !is_reference_receiver => {
+                            self.variables.get("this").map(|v| v.ptr)
+                        }
                         _ => None,
                     };
                     if let Some(ptr) = list_ptr {
@@ -9257,14 +9265,18 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Type::Map(_, _) => {
                     if let Expr::Ident(name) = object {
-                        return self.compile_map_method(name, method, args);
+                        if !is_reference_receiver {
+                            return self.compile_map_method(name, method, args);
+                        }
                     }
                     let map_val = self.compile_expr(object)?;
                     return self.compile_map_method_on_value(map_val, ty, method, args);
                 }
                 Type::Set(_) => {
                     if let Expr::Ident(name) = object {
-                        return self.compile_set_method(name, method, args);
+                        if !is_reference_receiver {
+                            return self.compile_set_method(name, method, args);
+                        }
                     }
                     let set_val = self.compile_expr(object)?;
                     return self.compile_set_method_on_value(set_val, ty, method, args);
@@ -9279,7 +9291,9 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Type::Range(_) => {
                     if let Expr::Ident(name) = object {
-                        return self.compile_range_method(name, method, args);
+                        if !is_reference_receiver {
+                            return self.compile_range_method(name, method, args);
+                        }
                     }
                     let range_val = self.compile_expr(object)?;
                     return self.compile_range_method_on_value(range_val, ty, method);
@@ -9295,7 +9309,11 @@ impl<'ctx> Codegen<'ctx> {
                                 args.len()
                             )));
                         }
-                        let s = self.compile_expr(object)?;
+                        let s = if is_reference_receiver {
+                            self.compile_deref(object)?
+                        } else {
+                            self.compile_expr(object)?
+                        };
                         return self.compile_utf8_string_length_runtime(s.into_pointer_value());
                     }
                 }
@@ -9303,10 +9321,14 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        let obj_val = self.compile_expr(object)?;
+        let obj_val = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+            self.compile_deref(object)?
+        } else {
+            self.compile_expr(object)?
+        };
 
         // Get class name from inferred type
-        let class_name = obj_ty
+        let class_name = deref_obj_ty
             .as_ref()
             .and_then(|ty| self.type_to_class_name(ty))
             .ok_or_else(|| {
@@ -10013,10 +10035,13 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        let obj_ptr = self.compile_expr(object)?.into_pointer_value();
-
         // Get class name using type inference
         let obj_ty = self.infer_object_type(object);
+        let obj_ptr = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+            self.compile_deref(object)?.into_pointer_value()
+        } else {
+            self.compile_expr(object)?.into_pointer_value()
+        };
         let class_name = obj_ty
             .as_ref()
             .and_then(|ty| self.type_to_class_name(ty))
@@ -10064,9 +10089,12 @@ impl<'ctx> Codegen<'ctx> {
 
     /// Get pointer to a field (for in-place modifications on collections)
     pub fn compile_field_ptr(&mut self, object: &Expr, field: &str) -> Result<PointerValue<'ctx>> {
-        let obj_ptr = self.compile_expr(object)?.into_pointer_value();
-
         let obj_ty = self.infer_object_type(object);
+        let obj_ptr = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+            self.compile_deref(object)?.into_pointer_value()
+        } else {
+            self.compile_expr(object)?.into_pointer_value()
+        };
         let class_name = obj_ty
             .as_ref()
             .and_then(|ty| self.type_to_class_name(ty))
@@ -11060,16 +11088,21 @@ impl<'ctx> Codegen<'ctx> {
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
         let obj_val = self.compile_expr(object)?;
         let object_ty = self.infer_object_type(object);
+        let deref_object_ty = object_ty
+            .clone()
+            .map(|ty| self.deref_codegen_type(&ty).clone());
 
-        if let Some(map_ty @ Type::Map(_, _)) = &object_ty {
+        if let Some(Type::Map(_, _)) = &deref_object_ty {
             let index_arg = [Spanned::new(index.clone(), 0..0)];
-            return self.compile_map_method_on_value(obj_val, map_ty, "get", &index_arg);
+            if let Some(map_ty) = &deref_object_ty {
+                return self.compile_map_method_on_value(obj_val, map_ty, "get", &index_arg);
+            }
         }
 
         let idx = self.compile_expr(index)?.into_int_value();
-        let list_ty = object_ty;
+        let list_ty = object_ty.clone();
 
-        if matches!(list_ty, Some(Type::String)) {
+        if matches!(deref_object_ty, Some(Type::String)) {
             if let Expr::Literal(Literal::String(text)) = object {
                 let char_values = text.chars().collect::<Vec<_>>();
                 if let Some(NumericConst::Integer(index_value)) =
@@ -11170,10 +11203,15 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap());
             }
 
-            return self.compile_utf8_string_index_runtime(obj_val.into_pointer_value(), idx);
+            let string_value = if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+                self.compile_deref(object)?
+            } else {
+                obj_val
+            };
+            return self.compile_utf8_string_index_runtime(string_value.into_pointer_value(), idx);
         }
 
-        if let Some(Type::List(_)) = &list_ty {
+        if let Some(Type::List(_)) = &deref_object_ty {
             let i64_type = self.context.i64_type();
             let non_negative = self
                 .builder
@@ -11197,9 +11235,9 @@ impl<'ctx> Codegen<'ctx> {
                         .build_extract_value(list_struct, 2, "list_data")
                         .map_err(|_| CodegenError::new("Invalid list value for index access"))?
                         .into_pointer_value();
-                    let elem_ty = match list_ty {
+                    let elem_ty = match &deref_object_ty {
                         Some(list_ty @ Type::List(_)) => {
-                            self.list_element_layout_from_list_type(&list_ty).0
+                            self.list_element_layout_from_list_type(list_ty).0
                         }
                         _ => self.list_element_layout_default().0,
                     };

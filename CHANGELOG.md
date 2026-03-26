@@ -31,6 +31,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed formatter semantics for expression-bodied blocks:
   - formatting `async`, `if`, `match`, and inline expression blocks no longer appends `;` to the final tail expression, so `format_source()` preserves runtime behavior instead of silently turning value-producing blocks into `None`
   - formatter roundtrips for expression-bodied async/if branches now preserve both syntax and runtime semantics instead of only staying parseable
+- Fixed 20 more expression-tail inference/runtime bugs in async and nested expression-bodied paths:
+  - builtin/static tails such as `Option.some(...)`, `Option.none()`, `Result.ok(...)`, and `Result.error(...)` now infer the correct `Task<T>` inner type instead of collapsing in expression-bodied async blocks
+  - `Str.len`, `Str.compare`, `Str.concat`, `Str.upper`, `Str.lower`, `Str.trim`, `Str.contains`, `Str.startsWith`, and `Str.endsWith` now all preserve their return types in async/if/match tail positions instead of failing tail inference
+  - global builtin tails `to_string(...)` and `println(...)` now infer as `String` and `None` in expression-bodied blocks instead of degrading to unknown/`Task<None>` behavior
+  - `require(...)`, `range(...)`, and lambda tails such as `async { |x: Integer| x + 1 }` now infer correctly in expression-bodied async blocks
+  - nested `if` / `match` tails that end in builtin/static expressions now compile and run correctly because tail inference no longer loses those return types in branch bodies
+- Fixed borrowed read access across typechecking and runtime dispatch:
+  - field access through immutable and mutable references like `ref.value` now typechecks and codegens against the pointee class instead of failing as `Cannot access field on type &T` or reading through the wrong pointer layer at runtime
+  - borrowed class method calls like `ref.get()` now dispatch on the pointee object instead of treating `&T` as an unknown receiver type or passing a pointer-to-pointer into instance calls
+  - borrowed list reads now work consistently for `ref_list[i]`, `ref_list.get(i)`, and `ref_list.length()` instead of mixing typecheck acceptance with broken runtime dispatch
+  - borrowed map reads now work for `ref_map[key]`, `ref_map.get(key)`, and `ref_map.contains(key)` instead of failing container helper type matching or crashing at runtime
+  - borrowed string indexing like `ref_string[i]` now loads the pointee string buffer correctly instead of indexing through the reference cell
 - Fixed typechecker soundness for interface-bound and interface-inheritance method compatibility:
   - bounded generics with multiple interface bounds no longer pick the first matching method signature when different bounds declare incompatible signatures for the same method
   - interfaces extending multiple parents now fail when inherited methods conflict instead of silently letting the later parent overwrite the earlier one

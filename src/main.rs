@@ -14510,6 +14510,79 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_builtin_and_reference_async_block_tail_expression_runtime() {
+        let temp_root = make_temp_project_root("async-block-builtin-tail-runtime");
+        let source_path = temp_root.join("async_block_builtin_tail_runtime.apex");
+        let output_path = temp_root.join("async_block_builtin_tail_runtime");
+        let source = r#"
+            import std.string.*;
+            import std.io.println;
+
+            function main(): Integer {
+                some_task: Task<Option<Integer>> = async { Option.some(7) };
+                none_task: Task<Option<Integer>> = async { Option.none() };
+                ok_task: Task<Result<Integer, String>> = async { Result.ok(7) };
+                err_task: Task<Result<Integer, String>> = async { Result.error("boom") };
+                len_task: Task<Integer> = async { Str.len("abc") };
+                compare_task: Task<Integer> = async { Str.compare("a", "a") };
+                concat_task: Task<String> = async { Str.concat("a", "b") };
+                upper_task: Task<String> = async { Str.upper("ab") };
+                lower_task: Task<String> = async { Str.lower("AB") };
+                trim_task: Task<String> = async { Str.trim("  ok  ") };
+                contains_task: Task<Boolean> = async { Str.contains("abc", "b") };
+                starts_task: Task<Boolean> = async { Str.startsWith("abc", "a") };
+                ends_task: Task<Boolean> = async { Str.endsWith("abc", "c") };
+                string_task: Task<String> = async { to_string(7) };
+                print_task: Task<None> = async { println("hi") };
+                require_task: Task<None> = async { require(true) };
+                range_task: Task<Range<Integer>> = async { range(0, 3) };
+                lambda_task: Task<(Integer) -> Integer> = async { |x: Integer| x + 1 };
+                if_task: Task<Integer> = async { if (true) { Str.len("abc") } else { Str.len("ab") } };
+                match_task: Task<String> = async {
+                    match (1) {
+                        1 => { to_string(7) }
+                        _ => { to_string(8) }
+                    }
+                };
+
+                await(print_task);
+                await(require_task);
+
+                if (await(some_task).unwrap() != 7) { return 1; }
+                if (!await(none_task).is_none()) { return 2; }
+                if (await(ok_task).unwrap() != 7) { return 3; }
+                if (!await(err_task).is_error()) { return 4; }
+                if (await(len_task) != 3) { return 5; }
+                if (await(compare_task) != 0) { return 6; }
+                if (await(concat_task) != "ab") { return 7; }
+                if (await(upper_task) != "AB") { return 8; }
+                if (await(lower_task) != "ab") { return 9; }
+                if (await(trim_task) != "ok") { return 10; }
+                if (!await(contains_task)) { return 11; }
+                if (!await(starts_task)) { return 12; }
+                if (!await(ends_task)) { return 13; }
+                if (await(string_task) != "7") { return 14; }
+                if (!await(range_task).has_next()) { return 15; }
+                if ((await(lambda_task))(1) != 2) { return 16; }
+                if (await(if_task) != 3) { return 17; }
+                if (await(match_task) != "7") { return 18; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("builtin and reference async block tail-expression paths should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled builtin and reference async block tail-expression binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_supports_namespace_alias_unit_enum_values() {
         let temp_root = make_temp_project_root("namespace-alias-unit-enum-project");
         let src_dir = temp_root.join("src");
@@ -15779,6 +15852,172 @@ function main(): Integer {
             .status()
             .expect("run compiled indexed-object field binary");
         assert_eq!(status.code(), Some(31));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_read_accesses_runtime() {
+        let temp_root = make_temp_project_root("borrowed-read-access-runtime");
+        let source_path = temp_root.join("borrowed_read_access_runtime.apex");
+        let output_path = temp_root.join("borrowed_read_access_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function get(): Integer { return this.value; }
+            }
+
+            function main(): Integer {
+                s: String = "ab";
+                xs: List<Integer> = List<Integer>();
+                xs.push(40);
+                m: Map<String, Integer> = Map<String, Integer>();
+                m.set("k", 41);
+                b: Boxed = Boxed(42);
+
+                rs: &String = &s;
+                rxs: &List<Integer> = &xs;
+                rm: &Map<String, Integer> = &m;
+                rb: &Boxed = &b;
+
+                if (rb.value != 42) { return 1; }
+                if (rb.get() != 42) { return 2; }
+                if (rs[1] != 'b') { return 3; }
+                if (rxs[0] != 40) { return 4; }
+                if (rxs.get(0) != 40) { return 5; }
+                if (rxs.length() != 1) { return 6; }
+                if (rm["k"] != 41) { return 7; }
+                if (rm.get("k") != 41) { return 8; }
+                if (!rm.contains("k")) { return 9; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed read accesses should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed read access binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_class_read_access_runtime() {
+        let temp_root = make_temp_project_root("borrowed-class-read-access-runtime");
+        let source_path = temp_root.join("borrowed_class_read_access_runtime.apex");
+        let output_path = temp_root.join("borrowed_class_read_access_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function get(): Integer { return this.value; }
+            }
+
+            function main(): Integer {
+                b: Boxed = Boxed(42);
+                rb: &Boxed = &b;
+                if (rb.value != 42) { return 1; }
+                if (rb.get() != 42) { return 2; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed class reads should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed class read access binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_list_read_access_runtime() {
+        let temp_root = make_temp_project_root("borrowed-list-read-access-runtime");
+        let source_path = temp_root.join("borrowed_list_read_access_runtime.apex");
+        let output_path = temp_root.join("borrowed_list_read_access_runtime");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Integer> = List<Integer>();
+                xs.push(40);
+                rxs: &List<Integer> = &xs;
+                if (rxs[0] != 40) { return 1; }
+                if (rxs.get(0) != 40) { return 2; }
+                if (rxs.length() != 1) { return 3; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed list reads should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed list read access binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_string_index_runtime() {
+        let temp_root = make_temp_project_root("borrowed-string-index-runtime");
+        let source_path = temp_root.join("borrowed_string_index_runtime.apex");
+        let output_path = temp_root.join("borrowed_string_index_runtime");
+        let source = r#"
+            function main(): Integer {
+                s: String = "ab";
+                rs: &String = &s;
+                return if (rs[1] == 'b') { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed string index should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed string index binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_map_read_access_runtime() {
+        let temp_root = make_temp_project_root("borrowed-map-read-access-runtime");
+        let source_path = temp_root.join("borrowed_map_read_access_runtime.apex");
+        let output_path = temp_root.join("borrowed_map_read_access_runtime");
+        let source = r#"
+            function main(): Integer {
+                m: Map<String, Integer> = Map<String, Integer>();
+                m.set("k", 41);
+                rm: &Map<String, Integer> = &m;
+                if (rm["k"] != 41) { return 1; }
+                if (rm.get("k") != 41) { return 2; }
+                if (!rm.contains("k")) { return 3; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed map reads should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed map read access binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }

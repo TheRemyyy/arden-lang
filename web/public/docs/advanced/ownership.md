@@ -36,6 +36,25 @@ leng: Integer = len(&s1); // Pass reference
 println("{s1}"); // s1 is still valid
 ```
 
+Immutable references can be used directly for read access on borrowed values without spelling an explicit `*` first. The compiler now accepts field access, read-only method calls, and indexing through borrowed receivers when the underlying type supports them.
+
+```apex
+class Boxed {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+    function get(): Integer { return this.value; }
+}
+
+box: Boxed = Boxed(42);
+ref: &Boxed = &box;
+nums: List<Integer> = List<Integer>(1, 2, 3);
+nums_ref: &List<Integer> = &nums;
+
+v: Integer = ref.value;
+g: Integer = ref.get();
+n: Integer = nums_ref.get(0);
+```
+
 ### Mutable References
 
 Create a mutable reference with `&mut`. You can only have **one** mutable reference at a time.

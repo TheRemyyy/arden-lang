@@ -54,3 +54,13 @@ task: Task<Integer> = async {
 
 value: Integer = await task; // value == 42
 ```
+
+Expression-bodied async blocks also infer the tail expression type directly, so builtin/static calls, lambdas, ranges, and assertion-style expressions work without an explicit `return`.
+
+```apex
+import std.string.*;
+
+task: Task<String> = async { Str.upper("apex") };
+f: Task<(Integer) -> Integer> = async { |x: Integer| x + 1 };
+r: Task<Range<Integer>> = async { range(0, 3) };
+```

@@ -247,6 +247,15 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
+    fn peel_reference_type(ty: &ResolvedType) -> &ResolvedType {
+        match ty {
+            ResolvedType::Ref(inner) | ResolvedType::MutRef(inner) => {
+                Self::peel_reference_type(inner)
+            }
+            _ => ty,
+        }
+    }
+
     pub(crate) fn eval_numeric_const_expr(expr: &Expr) -> Option<NumericConst> {
         match expr {
             Expr::Literal(Literal::Integer(value)) => Some(NumericConst::Integer(*value)),
@@ -3521,8 +3530,9 @@ impl TypeChecker {
             Expr::Index { object, index } => {
                 let obj_type = self.check_expr(&object.node, object.span.clone());
                 let idx_type = self.check_expr(&index.node, index.span.clone());
+                let indexed_type = Self::peel_reference_type(&obj_type);
 
-                match &obj_type {
+                match indexed_type {
                     ResolvedType::List(inner) => {
                         if !matches!(idx_type, ResolvedType::Integer) {
                             self.error(
@@ -5423,7 +5433,8 @@ impl TypeChecker {
         type_args: &[Type],
         span: Span,
     ) -> ResolvedType {
-        if !type_args.is_empty() && !matches!(obj_type, ResolvedType::Class(_)) {
+        let receiver_type = Self::peel_reference_type(obj_type);
+        if !type_args.is_empty() && !matches!(receiver_type, ResolvedType::Class(_)) {
             self.error(
                 format!(
                     "Method '{}' on type '{}' does not accept explicit type arguments",
@@ -5433,7 +5444,7 @@ impl TypeChecker {
             );
         }
 
-        match obj_type {
+        match receiver_type {
             ResolvedType::List(inner) => match method {
                 "push" => {
                     self.check_arg_count(method, args, 1, span.clone());
@@ -5836,7 +5847,7 @@ impl TypeChecker {
         field: &str,
         span: Span,
     ) -> ResolvedType {
-        match obj_type {
+        match Self::peel_reference_type(obj_type) {
             ResolvedType::Class(name) => {
                 let (base_name, class_substitutions) = self.instantiated_class_substitutions(name);
                 if self.interfaces.contains_key(&base_name) {
@@ -7811,6 +7822,43 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_read_accesses_typecheck() {
+        let src = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function get(): Integer { return this.value; }
+            }
+
+            function main(): None {
+                s: String = "ab";
+                xs: List<Integer> = List<Integer>();
+                xs.push(40);
+                m: Map<String, Integer> = Map<String, Integer>();
+                m.set("k", 41);
+                b: Boxed = Boxed(42);
+
+                rs: &String = &s;
+                rxs: &List<Integer> = &xs;
+                rm: &Map<String, Integer> = &m;
+                rb: &Boxed = &b;
+
+                a: Integer = rb.value;
+                c: Integer = rb.get();
+                d: Char = rs[1];
+                e: Integer = rxs[0];
+                f: Integer = rxs.get(0);
+                g: Integer = rxs.length();
+                h: Integer = rm["k"];
+                i: Integer = rm.get("k");
+                j: Boolean = rm.contains("k");
+                return None;
+            }
+        "#;
+        check_source(src).expect("borrowed read accesses should typecheck");
+    }
+
+    #[test]
     fn if_expression_branch_type_mismatch_fails() {
         let src = r#"
             function main(): None {
@@ -8276,6 +8324,66 @@ mod tests {
         "#;
         check_source(src)
             .expect("async block unit-enum tail expressions should infer correct Task<T>");
+    }
+
+    #[test]
+    fn accepts_builtin_and_reference_async_block_tail_expression_types() {
+        let src = r#"
+            import std.string.*;
+            import std.io.println;
+
+            function main(): None {
+                some_task: Task<Option<Integer>> = async { Option.some(7) };
+                none_task: Task<Option<Integer>> = async { Option.none() };
+                ok_task: Task<Result<Integer, String>> = async { Result.ok(7) };
+                err_task: Task<Result<Integer, String>> = async { Result.error("boom") };
+                len_task: Task<Integer> = async { Str.len("abc") };
+                compare_task: Task<Integer> = async { Str.compare("a", "a") };
+                concat_task: Task<String> = async { Str.concat("a", "b") };
+                upper_task: Task<String> = async { Str.upper("ab") };
+                lower_task: Task<String> = async { Str.lower("AB") };
+                trim_task: Task<String> = async { Str.trim("  ok  ") };
+                contains_task: Task<Boolean> = async { Str.contains("abc", "b") };
+                starts_task: Task<Boolean> = async { Str.startsWith("abc", "a") };
+                ends_task: Task<Boolean> = async { Str.endsWith("abc", "c") };
+                string_task: Task<String> = async { to_string(7) };
+                print_task: Task<None> = async { println("hi") };
+                require_task: Task<None> = async { require(true) };
+                range_task: Task<Range<Integer>> = async { range(0, 3) };
+                lambda_task: Task<(Integer) -> Integer> = async { |x: Integer| x + 1 };
+                if_task: Task<Integer> = async { if (true) { Str.len("abc") } else { Str.len("ab") } };
+                match_task: Task<String> = async {
+                    match (1) {
+                        1 => { to_string(7) }
+                        _ => { to_string(8) }
+                    }
+                };
+
+                require(await(some_task).unwrap() == 7);
+                require(await(none_task).is_none());
+                require(await(ok_task).unwrap() == 7);
+                require(await(err_task).is_error());
+                require(await(len_task) == 3);
+                require(await(compare_task) == 0);
+                require(await(concat_task) == "ab");
+                require(await(upper_task) == "AB");
+                require(await(lower_task) == "ab");
+                require(await(trim_task) == "ok");
+                require(await(contains_task));
+                require(await(starts_task));
+                require(await(ends_task));
+                require(await(string_task) == "7");
+                await(print_task);
+                await(require_task);
+                require(await(range_task).has_next());
+                require((await(lambda_task))(1) == 2);
+                require(await(if_task) == 3);
+                require(await(match_task) == "7");
+                return None;
+            }
+        "#;
+        check_source(src)
+            .expect("builtin and reference async block tails should infer correct Task<T>");
     }
 
     #[test]

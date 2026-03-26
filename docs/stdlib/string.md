@@ -23,3 +23,5 @@ String manipulation utilities. All functions are available as static methods on 
 | Function | Type Signature | Description |
 | :--- | :--- | :--- |
 | `to_string` | `<T>(x: T) -> String` | Converts any type to its string representation (Global). |
+
+`Str.*` calls and `to_string(...)` can be used directly as expression tails, including inside `async { ... }`, `if` expressions, and `match` arms.

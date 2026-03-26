@@ -717,7 +717,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(length)
             }
             "add" | "contains" | "remove" => {
-                let inner_ty = match set_ty {
+                let inner_ty = match self.deref_codegen_type(set_ty) {
                     Type::Set(inner) => &**inner,
                     _ => return Err(CodegenError::new("Expected Set type")),
                 };
@@ -1149,7 +1149,7 @@ impl<'ctx> Codegen<'ctx> {
             self.materialize_value_pointer_for_type(option_value, option_expr_ty, "option_tmp")?;
         // Assuming Option<T> is { is_some: i8, value: T }
         // We need to infer T from var.ty
-        let option_ty = match option_expr_ty {
+        let option_ty = match self.deref_codegen_type(option_expr_ty) {
             Type::Option(inner_ty) => inner_ty,
             _ => return Err(CodegenError::new("Expected Option type")),
         };
@@ -1323,7 +1323,7 @@ impl<'ctx> Codegen<'ctx> {
         let result_ptr =
             self.materialize_value_pointer_for_type(result_value, result_expr_ty, "result_tmp")?;
         // Result<T, E> is struct { is_ok: i8, ok_value: T, err_value: E }
-        let (ok_ty, err_ty) = match result_expr_ty {
+        let (ok_ty, err_ty) = match self.deref_codegen_type(result_expr_ty) {
             Type::Result(ok, err) => (ok, err),
             _ => return Err(CodegenError::new("Expected Result type")),
         };
@@ -2455,7 +2455,8 @@ impl<'ctx> Codegen<'ctx> {
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let list_ptr = self.materialize_value_pointer_for_type(list_value, list_ty, "list_tmp")?;
-        let (elem_llvm_ty, elem_size) = self.list_element_layout_from_list_type(list_ty);
+        let (elem_llvm_ty, elem_size) =
+            self.list_element_layout_from_list_type(self.deref_codegen_type(list_ty));
         let list_type = self.context.struct_type(
             &[
                 self.context.i64_type().into(),
@@ -3389,7 +3390,7 @@ impl<'ctx> Codegen<'ctx> {
         let i32_type = self.context.i32_type();
         let i64_type = self.context.i64_type();
         let zero = i32_type.const_int(0, false);
-        let (key_ty, val_ty) = match map_expr_ty {
+        let (key_ty, val_ty) = match self.deref_codegen_type(map_expr_ty) {
             Type::Map(k, v) => ((**k).clone(), (**v).clone()),
             _ => return Err(CodegenError::new("Expected Map type")),
         };
@@ -4029,7 +4030,7 @@ impl<'ctx> Codegen<'ctx> {
                 self.materialize_value_pointer_for_type(range_value, range_expr_ty, "range_tmp")?
             }
         };
-        let range_element_ty = match range_expr_ty {
+        let range_element_ty = match self.deref_codegen_type(range_expr_ty) {
             Type::Range(inner) => &**inner,
             _ => return Err(CodegenError::new("Expected Range type")),
         };
