@@ -69,6 +69,18 @@ mut s: String = "hello";
 append(&mut s);
 ```
 
+Mutable references also forward receiver mutability for built-in container and iterator methods. That means `&mut List<T>`, `&mut Map<K, V>`, `&mut Set<T>`, and `&mut Range<T>` can call mutating methods directly, while the corresponding immutable references are rejected for those same calls.
+
+```apex
+mut xs: List<Integer> = List<Integer>();
+items: &mut List<Integer> = &mut xs;
+items.push(1);
+items.set(0, 2);
+
+view: &List<Integer> = &xs;
+// view.push(3); // Error: mutating method through immutable reference
+```
+
 ## Lifetimes
 
 (Advanced)
@@ -86,3 +98,4 @@ The compiler enforces these edge cases explicitly:
 - compound assignment on a currently borrowed variable is rejected
 - assignments through nested lvalues (`obj.field = ...`, `arr[i] = ...`) are rejected when the owner is currently borrowed
 - method calls on `this` use declared parameter borrow modes (no fallback to default owned move behavior)
+- built-in receiver methods now use the correct borrow mode too, including nested chains like `ref.items.push(...)` and `ref.range.next()`

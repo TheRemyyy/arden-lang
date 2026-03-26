@@ -9264,19 +9264,39 @@ impl<'ctx> Codegen<'ctx> {
                     return self.compile_list_method_on_value(list_val, ty, method, args);
                 }
                 Type::Map(_, _) => {
-                    if let Expr::Ident(name) = object {
-                        if !is_reference_receiver {
+                    match object {
+                        Expr::Ident(name) if !is_reference_receiver => {
                             return self.compile_map_method(name, method, args);
                         }
+                        Expr::Field { object: obj, field } => {
+                            let map_ptr = self.compile_field_ptr(&obj.node, field)?;
+                            return self.compile_map_method_on_value(
+                                map_ptr.into(),
+                                ty,
+                                method,
+                                args,
+                            );
+                        }
+                        _ => {}
                     }
                     let map_val = self.compile_expr(object)?;
                     return self.compile_map_method_on_value(map_val, ty, method, args);
                 }
                 Type::Set(_) => {
-                    if let Expr::Ident(name) = object {
-                        if !is_reference_receiver {
+                    match object {
+                        Expr::Ident(name) if !is_reference_receiver => {
                             return self.compile_set_method(name, method, args);
                         }
+                        Expr::Field { object: obj, field } => {
+                            let set_ptr = self.compile_field_ptr(&obj.node, field)?;
+                            return self.compile_set_method_on_value(
+                                set_ptr.into(),
+                                ty,
+                                method,
+                                args,
+                            );
+                        }
+                        _ => {}
                     }
                     let set_val = self.compile_expr(object)?;
                     return self.compile_set_method_on_value(set_val, ty, method, args);
@@ -9290,10 +9310,23 @@ impl<'ctx> Codegen<'ctx> {
                     return self.compile_result_method_on_value(result_val, ty, method);
                 }
                 Type::Range(_) => {
-                    if let Expr::Ident(name) = object {
-                        if !is_reference_receiver {
+                    match object {
+                        Expr::Ident(name) if !is_reference_receiver => {
                             return self.compile_range_method(name, method, args);
                         }
+                        Expr::Field { object: obj, field } => {
+                            let range_ptr_ptr = self.compile_field_ptr(&obj.node, field)?;
+                            let range_ptr = self
+                                .builder
+                                .build_load(
+                                    self.context.ptr_type(AddressSpace::default()),
+                                    range_ptr_ptr,
+                                    "range_field_ptr",
+                                )
+                                .unwrap();
+                            return self.compile_range_method_on_value(range_ptr, ty, method);
+                        }
+                        _ => {}
                     }
                     let range_val = self.compile_expr(object)?;
                     return self.compile_range_method_on_value(range_val, ty, method);

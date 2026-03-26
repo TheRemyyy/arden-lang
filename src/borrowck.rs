@@ -109,7 +109,20 @@ struct MethodBorrowSig {
     params: Vec<ParamMode>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ReceiverBorrowBehavior {
+    mode: ParamMode,
+    require_mutable_binding: bool,
+}
+
 impl BorrowChecker {
+    fn peel_reference_type(ty: &Type) -> &Type {
+        match ty {
+            Type::Ref(inner) | Type::MutRef(inner) => Self::peel_reference_type(inner),
+            _ => ty,
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             scopes: vec![HashMap::new()],
@@ -698,9 +711,14 @@ impl BorrowChecker {
                 // Borrows created to satisfy receiver/argument modes are
                 // temporary for this call expression.
                 self.enter_scope();
-                if let Some(mode) = self.resolve_call_receiver_mode(&callee.node) {
+                if let Some(behavior) = self.resolve_call_receiver_behavior(&callee.node) {
                     if let Expr::Field { object, .. } = &callee.node {
-                        self.apply_receiver_mode(&object.node, mode, callee.span.clone());
+                        self.apply_receiver_mode(
+                            &object.node,
+                            behavior.mode,
+                            behavior.require_mutable_binding,
+                            callee.span.clone(),
+                        );
                     }
                 }
 
@@ -1103,9 +1121,52 @@ impl BorrowChecker {
 
     fn infer_expr_class(&self, expr: &Expr) -> Option<String> {
         let ty = self.infer_expr_type(expr)?;
-        match ty {
-            Type::Named(class_name) => Some(class_name),
-            Type::Generic(class_name, _) => Some(class_name),
+        match Self::peel_reference_type(&ty) {
+            Type::Named(class_name) => Some(class_name.clone()),
+            Type::Generic(class_name, _) => Some(class_name.clone()),
+            _ => None,
+        }
+    }
+
+    fn builtin_receiver_mode_for_type(ty: &Type, method: &str) -> Option<ParamMode> {
+        match Self::peel_reference_type(ty) {
+            Type::List(_) => match method {
+                "get" | "length" => Some(ParamMode::Borrow),
+                "push" | "set" | "pop" => Some(ParamMode::BorrowMut),
+                _ => None,
+            },
+            Type::Map(_, _) => match method {
+                "get" | "contains" | "length" => Some(ParamMode::Borrow),
+                "insert" | "set" => Some(ParamMode::BorrowMut),
+                _ => None,
+            },
+            Type::Set(_) => match method {
+                "contains" | "length" => Some(ParamMode::Borrow),
+                "add" | "remove" => Some(ParamMode::BorrowMut),
+                _ => None,
+            },
+            Type::Option(_) => match method {
+                "unwrap" | "is_some" | "is_none" => Some(ParamMode::Borrow),
+                _ => None,
+            },
+            Type::Result(_, _) => match method {
+                "unwrap" | "is_ok" | "is_error" => Some(ParamMode::Borrow),
+                _ => None,
+            },
+            Type::Task(_) => match method {
+                "await_timeout" | "is_done" => Some(ParamMode::Borrow),
+                "cancel" => Some(ParamMode::BorrowMut),
+                _ => None,
+            },
+            Type::Range(_) => match method {
+                "has_next" => Some(ParamMode::Borrow),
+                "next" => Some(ParamMode::BorrowMut),
+                _ => None,
+            },
+            Type::String => match method {
+                "length" => Some(ParamMode::Borrow),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -1198,28 +1259,127 @@ impl BorrowChecker {
         }
     }
 
-    fn resolve_call_receiver_mode(&self, callee: &Expr) -> Option<ParamMode> {
+    fn resolve_call_receiver_behavior(&self, callee: &Expr) -> Option<ReceiverBorrowBehavior> {
         let Expr::Field { object, field } = callee else {
             return None;
         };
-        let class_name = self.infer_expr_class(&object.node)?;
-        let class_sig = self.classes.get(&class_name)?;
-        class_sig.methods.get(field).map(|sig| sig.receiver_mode)
+        if let Some(class_name) = self.infer_expr_class(&object.node) {
+            if let Some(class_sig) = self.classes.get(&class_name) {
+                if let Some(sig) = class_sig.methods.get(field) {
+                    return Some(ReceiverBorrowBehavior {
+                        mode: sig.receiver_mode,
+                        require_mutable_binding: true,
+                    });
+                }
+            }
+        }
+
+        let obj_ty = self.infer_expr_type(&object.node)?;
+        Self::builtin_receiver_mode_for_type(&obj_ty, field).map(|mode| ReceiverBorrowBehavior {
+            mode,
+            require_mutable_binding: false,
+        })
     }
 
-    fn apply_receiver_mode(&mut self, receiver: &Expr, mode: ParamMode, span: Span) {
+    fn apply_receiver_mode(
+        &mut self,
+        receiver: &Expr,
+        mode: ParamMode,
+        require_mutable_binding: bool,
+        span: Span,
+    ) {
         match receiver {
-            Expr::Ident(name) => match mode {
-                ParamMode::Borrow => self.create_borrow(name, false, span),
-                ParamMode::BorrowMut => self.create_receiver_borrow(name, true, span),
-                ParamMode::Owned => self.try_move(receiver, span),
-            },
+            Expr::Ident(name) => {
+                let reference_ty = self.get_var(name).and_then(|var| var.ty.clone());
+                if let Some(ty) = reference_ty {
+                    match (&ty, mode) {
+                        (Type::Ref(_), ParamMode::Borrow)
+                        | (Type::MutRef(_), ParamMode::Borrow) => {
+                            return;
+                        }
+                        (Type::MutRef(_), ParamMode::BorrowMut) => {
+                            return;
+                        }
+                        (Type::Ref(_), ParamMode::BorrowMut) => {
+                            self.errors.push(BorrowError::new(
+                                format!(
+                                    "Cannot call mutating method through immutable reference '{}'",
+                                    name
+                                ),
+                                span,
+                            ));
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+                match mode {
+                    ParamMode::Borrow => self.create_borrow(name, false, span),
+                    ParamMode::BorrowMut => {
+                        if require_mutable_binding {
+                            self.create_receiver_borrow(name, true, span);
+                        } else {
+                            self.create_exclusive_receiver_borrow(name, span);
+                        }
+                    }
+                    ParamMode::Owned => self.try_move(receiver, span),
+                }
+            }
             Expr::Field { object, .. } | Expr::Index { object, .. } => {
-                self.apply_receiver_mode(&object.node, mode, span)
+                self.apply_receiver_mode(&object.node, mode, require_mutable_binding, span)
             }
             Expr::This => {}
             _ => {}
         }
+    }
+
+    fn create_exclusive_receiver_borrow(&mut self, name: &str, span: Span) {
+        let state = {
+            if let Some(var) = self.get_var(name) {
+                var.state.clone()
+            } else {
+                return;
+            }
+        };
+
+        match state {
+            OwnershipState::Moved(move_span) => {
+                self.errors.push(
+                    BorrowError::new(format!("Cannot borrow '{}' after move", name), span.clone())
+                        .with_note("Value was moved here", move_span),
+                );
+                return;
+            }
+            OwnershipState::MutBorrowed(borrow_span) => {
+                self.errors.push(
+                    BorrowError::new(
+                        format!("Cannot borrow '{}' while mutably borrowed", name),
+                        span.clone(),
+                    )
+                    .with_note("Mutable borrow occurred here", borrow_span),
+                );
+                return;
+            }
+            OwnershipState::Borrowed(count) if count > 0 => {
+                self.errors.push(BorrowError::new(
+                    format!("Cannot mutably borrow '{}' while immutably borrowed", name),
+                    span.clone(),
+                ));
+                return;
+            }
+            _ => {}
+        }
+
+        if let Some(var) = self.get_var_mut(name) {
+            var.state = OwnershipState::MutBorrowed(span.clone());
+        }
+
+        self.borrows.push(BorrowInfo {
+            borrowed_from: name.to_string(),
+            mutable: true,
+            span,
+            scope_depth: self.scope_depth,
+        });
     }
 
     fn create_receiver_borrow(&mut self, name: &str, mutable: bool, span: Span) {
@@ -1923,8 +2083,8 @@ impl BorrowChecker {
                 }) {
                     return true;
                 }
-                if let Some(mode) = self.resolve_call_receiver_mode(&callee.node) {
-                    if mode == ParamMode::BorrowMut
+                if let Some(behavior) = self.resolve_call_receiver_behavior(&callee.node) {
+                    if behavior.mode == ParamMode::BorrowMut
                         && matches!(&callee.node, Expr::Field { object, .. } if matches!(&object.node, Expr::Ident(name) if name == ident))
                     {
                         return true;
@@ -2801,6 +2961,187 @@ mod tests {
         assert!(errors
             .iter()
             .any(|m| m.contains("Cannot mutably borrow 'a' while immutably borrowed")));
+    }
+
+    #[test]
+    fn immutable_reference_receiver_blocks_mutating_method_call() {
+        let source = r#"
+            class C {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function touch(): None { this.v += 1; return None; }
+            }
+            function main(): None {
+                mut c: C = C(1);
+                r: &C = &c;
+                r.touch();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors.iter().any(|m| {
+            m.contains("Cannot call mutating method through immutable reference 'r'")
+        }));
+    }
+
+    #[test]
+    fn mutable_reference_receiver_allows_mutating_method_call_without_mut_binding() {
+        let source = r#"
+            class C {
+                mut v: Integer;
+                constructor(v: Integer) { this.v = v; }
+                function touch(): None { this.v += 1; return None; }
+                function get(): Integer { return this.v; }
+            }
+            function main(): None {
+                mut c: C = C(1);
+                r: &mut C = &mut c;
+                r.touch();
+                x: Integer = r.get();
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn immutable_reference_receiver_blocks_mutating_builtin_methods() {
+        let source = r#"
+            function main(): None {
+                mut xs: List<Integer> = List<Integer>();
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                mut s: Set<Integer> = Set<Integer>();
+                mut r: Range<Integer> = range(0, 2);
+
+                rxs: &List<Integer> = &xs;
+                rm: &Map<String, Integer> = &m;
+                rs: &Set<Integer> = &s;
+                rr: &Range<Integer> = &r;
+
+                rxs.push(1);
+                rxs.set(0, 2);
+                rxs.pop();
+                rm.set("k", 1);
+                rs.add(1);
+                rs.remove(1);
+                rr.next();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot call mutating method through immutable reference 'rxs'")));
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot call mutating method through immutable reference 'rm'")));
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot call mutating method through immutable reference 'rs'")));
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot call mutating method through immutable reference 'rr'")));
+    }
+
+    #[test]
+    fn mutable_reference_receiver_allows_mutating_builtin_methods_without_mut_binding() {
+        let source = r#"
+            function main(): None {
+                mut xs: List<Integer> = List<Integer>();
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                mut s: Set<Integer> = Set<Integer>();
+                mut r: Range<Integer> = range(0, 3);
+
+                rxs: &mut List<Integer> = &mut xs;
+                rm: &mut Map<String, Integer> = &mut m;
+                rs: &mut Set<Integer> = &mut s;
+                rr: &mut Range<Integer> = &mut r;
+
+                rxs.push(1);
+                rxs.set(0, 2);
+                x: Integer = rxs.pop();
+                rm.set("k", x);
+                ok1: Boolean = rs.add(x);
+                ok2: Boolean = rs.remove(x);
+                first: Integer = rr.next();
+                more: Boolean = rr.has_next();
+                require(first == 0);
+                require(rm.contains("k"));
+                require(ok1 || !ok1);
+                require(ok2 || !ok2);
+                require(more);
+                return None;
+            }
+        "#;
+        borrow_ok(source);
+    }
+
+    #[test]
+    fn immutable_borrow_blocks_nested_mutating_builtin_field_calls() {
+        let source = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                mut m: Map<String, Integer>;
+                mut s: Set<Integer>;
+                mut r: Range<Integer>;
+
+                constructor() {
+                    this.xs = List<Integer>();
+                    this.m = Map<String, Integer>();
+                    this.s = Set<Integer>();
+                    this.r = range(0, 2);
+                }
+            }
+
+            function main(): None {
+                mut bag: Bag = Bag();
+                rb: &Bag = &bag;
+                bag.xs.push(1);
+                bag.m.set("k", 2);
+                bag.s.add(3);
+                bag.r.next();
+                return None;
+            }
+        "#;
+        let errors = borrow_errors(source);
+        assert!(errors
+            .iter()
+            .any(|m| m.contains("Cannot mutably borrow 'bag' while immutably borrowed")));
+    }
+
+    #[test]
+    fn mutable_reference_receiver_allows_nested_mutating_builtin_field_calls() {
+        let source = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                mut m: Map<String, Integer>;
+                mut s: Set<Integer>;
+                mut r: Range<Integer>;
+
+                constructor() {
+                    this.xs = List<Integer>();
+                    this.m = Map<String, Integer>();
+                    this.s = Set<Integer>();
+                    this.r = range(0, 3);
+                }
+            }
+
+            function main(): None {
+                mut bag: Bag = Bag();
+                rb: &mut Bag = &mut bag;
+                rb.xs.push(1);
+                rb.xs.set(0, 2);
+                value: Integer = rb.xs.pop();
+                rb.m.set("k", value);
+                rb.s.add(value);
+                rb.s.remove(value);
+                first: Integer = rb.r.next();
+                require(first == 0);
+                require(rb.m.contains("k"));
+                return None;
+            }
+        "#;
+        borrow_ok(source);
     }
 
     #[test]

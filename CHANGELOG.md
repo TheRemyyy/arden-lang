@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed borrow-check receiver-mode enforcement for built-in methods on borrowed values:
+  - immutable references now correctly reject mutating built-in receiver calls instead of silently allowing `List.push`, `List.set`, `List.pop`, `Map.set` / `Map.insert`, `Set.add`, `Set.remove`, `Range.next`, and `Task.cancel`
+  - mutable references now correctly allow those same mutating receiver calls without requiring the reference binding itself to be declared `mut`
+  - nested receiver chains such as `ref.field.push(...)` and `ref.field.next()` now inherit the correct root borrow behavior for `&T` / `&mut T` owners
+  - read-only built-in receiver calls such as `length`, `get`, `contains`, `unwrap`, `is_some`, `is_none`, `is_ok`, `is_error`, `has_next`, `is_done`, and `await_timeout` now consistently stay in read-only borrow mode during borrow checking
 - Fixed several parser/runtime consistency bugs around expression-bodied constructs and class members:
   - class methods now accept attributes in either `@Attr private function ...` or `private @Attr function ...` order instead of failing with `Unexpected token in class`
   - duplicate `constructor()` and `destructor()` declarations now fail during parsing instead of silently overwriting the earlier body

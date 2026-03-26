@@ -7859,6 +7859,56 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_mutating_accesses_typecheck() {
+        let src = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                mut m: Map<String, Integer>;
+                mut s: Set<Integer>;
+                mut r: Range<Integer>;
+
+                constructor() {
+                    this.xs = List<Integer>();
+                    this.m = Map<String, Integer>();
+                    this.s = Set<Integer>();
+                    this.r = range(0, 3);
+                }
+            }
+
+            function main(): None {
+                mut xs: List<Integer> = List<Integer>();
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                mut s: Set<Integer> = Set<Integer>();
+                mut r: Range<Integer> = range(0, 2);
+                mut bag: Bag = Bag();
+
+                rxs: &mut List<Integer> = &mut xs;
+                rm: &mut Map<String, Integer> = &mut m;
+                rs: &mut Set<Integer> = &mut s;
+                rr: &mut Range<Integer> = &mut r;
+                rb: &mut Bag = &mut bag;
+
+                rxs.push(1);
+                rxs.set(0, 2);
+                value: Integer = rxs.pop();
+                rm.set("k", value);
+                rs.add(value);
+                rs.remove(value);
+                x: Integer = rr.next();
+                require(x == 0);
+
+                rb.xs.push(3);
+                rb.m.set("k2", 4);
+                rb.s.add(5);
+                y: Integer = rb.r.next();
+                require(y == 0);
+                return None;
+            }
+        "#;
+        check_source(src).expect("borrowed mutating accesses should typecheck");
+    }
+
+    #[test]
     fn if_expression_branch_type_mismatch_fails() {
         let src = r#"
             function main(): None {

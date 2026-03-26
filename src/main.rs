@@ -16023,6 +16023,92 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_mutable_borrowed_builtin_methods_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-builtin-methods-runtime");
+        let source_path = temp_root.join("mutable_borrowed_builtin_methods_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_builtin_methods_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut xs: List<Integer> = List<Integer>();
+
+                rxs: &mut List<Integer> = &mut xs;
+
+                rxs.push(1);
+                rxs.set(0, 2);
+                value: Integer = rxs.pop();
+
+                if (value != 2) { return 1; }
+                if (rxs.length() != 0) { return 2; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed builtin methods should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed builtin methods binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_nested_builtin_field_methods_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-nested-builtin-field-runtime");
+        let source_path = temp_root.join("mutable_borrowed_nested_builtin_field_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_nested_builtin_field_runtime");
+        let source = r#"
+            class Bag {
+                mut xs: List<Integer>;
+                mut m: Map<String, Integer>;
+                mut s: Set<Integer>;
+                mut r: Range<Integer>;
+
+                constructor() {
+                    this.xs = List<Integer>();
+                    this.m = Map<String, Integer>();
+                    this.s = Set<Integer>();
+                    this.r = range(0, 3);
+                }
+            }
+
+            function main(): Integer {
+                mut bag: Bag = Bag();
+                rb: &mut Bag = &mut bag;
+
+                rb.xs.push(1);
+                rb.xs.set(0, 3);
+                value: Integer = rb.xs.pop();
+                rb.m.set("k", value);
+                rb.s.add(value);
+                removed: Boolean = rb.s.remove(value);
+                first: Integer = rb.r.next();
+
+                if (value != 3) { return 1; }
+                if (rb.m["k"] != 3) { return 2; }
+                if (!removed) { return 3; }
+                if (rb.s.contains(3)) { return 4; }
+                if (first != 0) { return 5; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed nested builtin field methods should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed nested builtin field methods binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_option_unwrap_method_chains_on_call_results() {
         let temp_root = make_temp_project_root("option-call-unwrap-method-runtime");
         let source_path = temp_root.join("option_call_unwrap_method_runtime.apex");
