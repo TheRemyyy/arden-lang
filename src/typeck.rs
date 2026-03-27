@@ -282,6 +282,95 @@ impl TypeChecker {
         )
     }
 
+    fn format_diagnostic_class_name(name: &str) -> String {
+        if let Some(open_bracket) = name.find('<') {
+            if name.ends_with('>') {
+                let base = &name[..open_bracket];
+                let inner = &name[open_bracket + 1..name.len() - 1];
+                let formatted_args = Self::split_generic_args_static(inner)
+                    .into_iter()
+                    .map(|arg| Self::format_diagnostic_class_name(&arg))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return format!("{}<{}>", base.replace("__", "."), formatted_args);
+            }
+        }
+
+        name.replace("__", ".")
+    }
+
+    fn format_resolved_type_for_diagnostic(ty: &ResolvedType) -> String {
+        match ty {
+            ResolvedType::Integer => "Integer".to_string(),
+            ResolvedType::Float => "Float".to_string(),
+            ResolvedType::Boolean => "Boolean".to_string(),
+            ResolvedType::String => "String".to_string(),
+            ResolvedType::Char => "Char".to_string(),
+            ResolvedType::None => "None".to_string(),
+            ResolvedType::Class(name) => Self::format_diagnostic_class_name(name),
+            ResolvedType::Option(inner) => {
+                format!(
+                    "Option<{}>",
+                    Self::format_resolved_type_for_diagnostic(inner)
+                )
+            }
+            ResolvedType::Result(ok, err) => format!(
+                "Result<{}, {}>",
+                Self::format_resolved_type_for_diagnostic(ok),
+                Self::format_resolved_type_for_diagnostic(err)
+            ),
+            ResolvedType::List(inner) => {
+                format!("List<{}>", Self::format_resolved_type_for_diagnostic(inner))
+            }
+            ResolvedType::Map(key, value) => format!(
+                "Map<{}, {}>",
+                Self::format_resolved_type_for_diagnostic(key),
+                Self::format_resolved_type_for_diagnostic(value)
+            ),
+            ResolvedType::Set(inner) => {
+                format!("Set<{}>", Self::format_resolved_type_for_diagnostic(inner))
+            }
+            ResolvedType::Ref(inner) => {
+                format!("&{}", Self::format_resolved_type_for_diagnostic(inner))
+            }
+            ResolvedType::MutRef(inner) => {
+                format!("&mut {}", Self::format_resolved_type_for_diagnostic(inner))
+            }
+            ResolvedType::Box(inner) => {
+                format!("Box<{}>", Self::format_resolved_type_for_diagnostic(inner))
+            }
+            ResolvedType::Rc(inner) => {
+                format!("Rc<{}>", Self::format_resolved_type_for_diagnostic(inner))
+            }
+            ResolvedType::Arc(inner) => {
+                format!("Arc<{}>", Self::format_resolved_type_for_diagnostic(inner))
+            }
+            ResolvedType::Ptr(inner) => {
+                format!("Ptr<{}>", Self::format_resolved_type_for_diagnostic(inner))
+            }
+            ResolvedType::Task(inner) => {
+                format!("Task<{}>", Self::format_resolved_type_for_diagnostic(inner))
+            }
+            ResolvedType::Range(inner) => {
+                format!(
+                    "Range<{}>",
+                    Self::format_resolved_type_for_diagnostic(inner)
+                )
+            }
+            ResolvedType::Function(params, ret) => format!(
+                "({}) -> {}",
+                params
+                    .iter()
+                    .map(Self::format_resolved_type_for_diagnostic)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                Self::format_resolved_type_for_diagnostic(ret)
+            ),
+            ResolvedType::TypeVar(id) => format!("?T{}", id),
+            ResolvedType::Unknown => "unknown".to_string(),
+        }
+    }
+
     fn peel_reference_type(ty: &ResolvedType) -> &ResolvedType {
         match ty {
             ResolvedType::Ref(inner) | ResolvedType::MutRef(inner) => {
@@ -831,7 +920,9 @@ impl TypeChecker {
             self.error(
                 format!(
                     "{} type argument {} does not satisfy bound(s) {}",
-                    context, actual, bounds
+                    context,
+                    Self::format_resolved_type_for_diagnostic(actual),
+                    Self::format_diagnostic_class_name(&bounds)
                 ),
                 span.clone(),
             );
@@ -2546,130 +2637,206 @@ impl TypeChecker {
         }
     }
 
-    fn expr_mentions_ident(expr: &Expr, ident: &str) -> bool {
+    fn add_pattern_bindings(
+        pattern: &Pattern,
+        local_names: &mut std::collections::HashSet<String>,
+    ) {
+        match pattern {
+            Pattern::Ident(name) => {
+                local_names.insert(name.clone());
+            }
+            Pattern::Variant(_, bindings) => {
+                for binding in bindings {
+                    local_names.insert(binding.clone());
+                }
+            }
+            Pattern::Wildcard | Pattern::Literal(_) => {}
+        }
+    }
+
+    fn block_mentions_ident_with_shadowing(
+        block: &[Spanned<Stmt>],
+        ident: &str,
+        local_names: &mut std::collections::HashSet<String>,
+    ) -> bool {
+        block
+            .iter()
+            .any(|stmt| Self::stmt_mentions_ident_with_shadowing(&stmt.node, ident, local_names))
+    }
+
+    fn expr_mentions_ident_with_shadowing(
+        expr: &Expr,
+        ident: &str,
+        local_names: &std::collections::HashSet<String>,
+    ) -> bool {
         match expr {
-            Expr::Ident(name) => name == ident,
+            Expr::Ident(name) => name == ident && !local_names.contains(name),
             Expr::Binary { left, right, .. } => {
-                Self::expr_mentions_ident(&left.node, ident)
-                    || Self::expr_mentions_ident(&right.node, ident)
+                Self::expr_mentions_ident_with_shadowing(&left.node, ident, local_names)
+                    || Self::expr_mentions_ident_with_shadowing(&right.node, ident, local_names)
             }
             Expr::Unary { expr, .. }
             | Expr::Try(expr)
             | Expr::Borrow(expr)
             | Expr::MutBorrow(expr)
             | Expr::Deref(expr)
-            | Expr::Await(expr) => Self::expr_mentions_ident(&expr.node, ident),
-            Expr::Call { callee, args, .. } => {
-                Self::expr_mentions_ident(&callee.node, ident)
-                    || args
-                        .iter()
-                        .any(|arg| Self::expr_mentions_ident(&arg.node, ident))
+            | Expr::Await(expr) => {
+                Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
             }
-            Expr::Field { object, .. } => Self::expr_mentions_ident(&object.node, ident),
+            Expr::Call { callee, args, .. } => {
+                Self::expr_mentions_ident_with_shadowing(&callee.node, ident, local_names)
+                    || args.iter().any(|arg| {
+                        Self::expr_mentions_ident_with_shadowing(&arg.node, ident, local_names)
+                    })
+            }
+            Expr::Field { object, .. } => {
+                Self::expr_mentions_ident_with_shadowing(&object.node, ident, local_names)
+            }
             Expr::Index { object, index } => {
-                Self::expr_mentions_ident(&object.node, ident)
-                    || Self::expr_mentions_ident(&index.node, ident)
+                Self::expr_mentions_ident_with_shadowing(&object.node, ident, local_names)
+                    || Self::expr_mentions_ident_with_shadowing(&index.node, ident, local_names)
             }
             Expr::Construct { args, .. } => args
                 .iter()
-                .any(|arg| Self::expr_mentions_ident(&arg.node, ident)),
-            Expr::Lambda { body, .. } => Self::expr_mentions_ident(&body.node, ident),
+                .any(|arg| Self::expr_mentions_ident_with_shadowing(&arg.node, ident, local_names)),
+            Expr::Lambda { params, body } => {
+                let mut nested_locals = local_names.clone();
+                for param in params {
+                    nested_locals.insert(param.name.clone());
+                }
+                Self::expr_mentions_ident_with_shadowing(&body.node, ident, &nested_locals)
+            }
             Expr::Match { expr, arms } => {
-                Self::expr_mentions_ident(&expr.node, ident)
+                Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
                     || arms.iter().any(|arm| {
-                        arm.body
-                            .iter()
-                            .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                        let mut arm_locals = local_names.clone();
+                        Self::add_pattern_bindings(&arm.pattern, &mut arm_locals);
+                        Self::block_mentions_ident_with_shadowing(&arm.body, ident, &mut arm_locals)
                     })
             }
             Expr::StringInterp(parts) => parts.iter().any(|part| match part {
                 StringPart::Literal(_) => false,
-                StringPart::Expr(expr) => Self::expr_mentions_ident(&expr.node, ident),
+                StringPart::Expr(expr) => {
+                    Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
+                }
             }),
-            Expr::AsyncBlock(body) | Expr::Block(body) => body
-                .iter()
-                .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident)),
+            Expr::AsyncBlock(body) | Expr::Block(body) => {
+                let mut block_locals = local_names.clone();
+                Self::block_mentions_ident_with_shadowing(body, ident, &mut block_locals)
+            }
             Expr::Require { condition, message } => {
-                Self::expr_mentions_ident(&condition.node, ident)
-                    || message
-                        .as_ref()
-                        .is_some_and(|msg| Self::expr_mentions_ident(&msg.node, ident))
+                Self::expr_mentions_ident_with_shadowing(&condition.node, ident, local_names)
+                    || message.as_ref().is_some_and(|msg| {
+                        Self::expr_mentions_ident_with_shadowing(&msg.node, ident, local_names)
+                    })
             }
             Expr::Range { start, end, .. } => {
-                start
-                    .as_ref()
-                    .is_some_and(|expr| Self::expr_mentions_ident(&expr.node, ident))
-                    || end
-                        .as_ref()
-                        .is_some_and(|expr| Self::expr_mentions_ident(&expr.node, ident))
+                start.as_ref().is_some_and(|expr| {
+                    Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
+                }) || end.as_ref().is_some_and(|expr| {
+                    Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
+                })
             }
             Expr::IfExpr {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                Self::expr_mentions_ident(&condition.node, ident)
-                    || then_branch
-                        .iter()
-                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                Self::expr_mentions_ident_with_shadowing(&condition.node, ident, local_names)
+                    || {
+                        let mut then_locals = local_names.clone();
+                        Self::block_mentions_ident_with_shadowing(
+                            then_branch,
+                            ident,
+                            &mut then_locals,
+                        )
+                    }
                     || else_branch.as_ref().is_some_and(|stmts| {
-                        stmts
-                            .iter()
-                            .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                        let mut else_locals = local_names.clone();
+                        Self::block_mentions_ident_with_shadowing(stmts, ident, &mut else_locals)
                     })
             }
             Expr::Literal(_) | Expr::This => false,
         }
     }
 
-    fn stmt_mentions_ident(stmt: &Stmt, ident: &str) -> bool {
+    fn expr_mentions_ident(expr: &Expr, ident: &str) -> bool {
+        Self::expr_mentions_ident_with_shadowing(expr, ident, &std::collections::HashSet::new())
+    }
+
+    fn stmt_mentions_ident_with_shadowing(
+        stmt: &Stmt,
+        ident: &str,
+        local_names: &mut std::collections::HashSet<String>,
+    ) -> bool {
         match stmt {
-            Stmt::Let { value, .. } => Self::expr_mentions_ident(&value.node, ident),
-            Stmt::Assign { target, value } => {
-                Self::expr_mentions_ident(&target.node, ident)
-                    || Self::expr_mentions_ident(&value.node, ident)
+            Stmt::Let { name, value, .. } => {
+                let mentions =
+                    Self::expr_mentions_ident_with_shadowing(&value.node, ident, local_names);
+                local_names.insert(name.clone());
+                mentions
             }
-            Stmt::Expr(expr) => Self::expr_mentions_ident(&expr.node, ident),
-            Stmt::Return(expr) => expr
-                .as_ref()
-                .is_some_and(|expr| Self::expr_mentions_ident(&expr.node, ident)),
+            Stmt::Assign { target, value } => {
+                Self::expr_mentions_ident_with_shadowing(&target.node, ident, local_names)
+                    || Self::expr_mentions_ident_with_shadowing(&value.node, ident, local_names)
+            }
+            Stmt::Expr(expr) => {
+                Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
+            }
+            Stmt::Return(expr) => expr.as_ref().is_some_and(|expr| {
+                Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
+            }),
             Stmt::If {
                 condition,
                 then_block,
                 else_block,
             } => {
-                Self::expr_mentions_ident(&condition.node, ident)
-                    || then_block
-                        .iter()
-                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                Self::expr_mentions_ident_with_shadowing(&condition.node, ident, local_names)
+                    || {
+                        let mut then_locals = local_names.clone();
+                        Self::block_mentions_ident_with_shadowing(
+                            then_block,
+                            ident,
+                            &mut then_locals,
+                        )
+                    }
                     || else_block.as_ref().is_some_and(|stmts| {
-                        stmts
-                            .iter()
-                            .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                        let mut else_locals = local_names.clone();
+                        Self::block_mentions_ident_with_shadowing(stmts, ident, &mut else_locals)
                     })
             }
             Stmt::While { condition, body } => {
-                Self::expr_mentions_ident(&condition.node, ident)
-                    || body
-                        .iter()
-                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                Self::expr_mentions_ident_with_shadowing(&condition.node, ident, local_names) || {
+                    let mut body_locals = local_names.clone();
+                    Self::block_mentions_ident_with_shadowing(body, ident, &mut body_locals)
+                }
             }
-            Stmt::For { iterable, body, .. } => {
-                Self::expr_mentions_ident(&iterable.node, ident)
-                    || body
-                        .iter()
-                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+            Stmt::For {
+                var,
+                iterable,
+                body,
+                ..
+            } => {
+                Self::expr_mentions_ident_with_shadowing(&iterable.node, ident, local_names) || {
+                    let mut body_locals = local_names.clone();
+                    body_locals.insert(var.clone());
+                    Self::block_mentions_ident_with_shadowing(body, ident, &mut body_locals)
+                }
             }
             Stmt::Match { expr, arms } => {
-                Self::expr_mentions_ident(&expr.node, ident)
+                Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
                     || arms.iter().any(|arm| {
-                        arm.body
-                            .iter()
-                            .any(|stmt| Self::stmt_mentions_ident(&stmt.node, ident))
+                        let mut arm_locals = local_names.clone();
+                        Self::add_pattern_bindings(&arm.pattern, &mut arm_locals);
+                        Self::block_mentions_ident_with_shadowing(&arm.body, ident, &mut arm_locals)
                     })
             }
             Stmt::Break | Stmt::Continue => false,
         }
+    }
+
+    fn stmt_mentions_ident(stmt: &Stmt, ident: &str) -> bool {
+        Self::stmt_mentions_ident_with_shadowing(stmt, ident, &mut std::collections::HashSet::new())
     }
 
     /// Check a declaration
@@ -4317,7 +4484,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "If expression branch type mismatch: then is {}, else is {}",
-                            then_type, else_type
+                            Self::format_resolved_type_for_diagnostic(&then_type),
+                            Self::format_resolved_type_for_diagnostic(&else_type)
                         ),
                         span,
                     );
@@ -4408,12 +4576,18 @@ impl TypeChecker {
             }
         }
 
-        for scope in &captured_outer_scopes {
+        let mut shadowed_outer_names = std::collections::HashSet::new();
+        for scope in captured_outer_scopes.iter().rev() {
             for (name, var) in &scope.variables {
+                if shadowed_outer_names.contains(name) {
+                    continue;
+                }
                 if Self::type_contains_borrowed_reference(&var.ty)
-                    && body
-                        .iter()
-                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, name))
+                    && Self::block_mentions_ident_with_shadowing(
+                        body,
+                        name,
+                        &mut shadowed_outer_names.clone(),
+                    )
                 {
                     self.error(
                         format!(
@@ -4424,6 +4598,7 @@ impl TypeChecker {
                     );
                 }
             }
+            shadowed_outer_names.extend(scope.variables.keys().cloned());
         }
 
         self.current_return_type = saved_return_type;
@@ -5112,7 +5287,8 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "If expression branch type mismatch: then is {}, else is {}",
-                                then_type, else_type
+                                Self::format_resolved_type_for_diagnostic(&then_type),
+                                Self::format_resolved_type_for_diagnostic(&else_type)
                             ),
                             condition.span.clone(),
                         );
@@ -5401,7 +5577,9 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Function '{}' type argument {} does not satisfy bound(s) {}",
-                        name, resolved, bounds
+                        name,
+                        Self::format_resolved_type_for_diagnostic(&resolved),
+                        Self::format_diagnostic_class_name(&bounds)
                     ),
                     span.clone(),
                 );

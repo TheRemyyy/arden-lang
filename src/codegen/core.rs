@@ -8819,9 +8819,9 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>> {
         let mut captures: Vec<(String, Type)> = Vec::new();
         let mut seen = std::collections::HashSet::new();
-        let params = std::collections::HashSet::new();
+        let mut params = std::collections::HashSet::new();
         for stmt in body {
-            self.walk_stmt_for_captures(&stmt.node, &params, &mut captures, &mut seen);
+            self.walk_stmt_for_captures(&stmt.node, &mut params, &mut captures, &mut seen);
         }
 
         let inner_return_type = expected_inner_return_type

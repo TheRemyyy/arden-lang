@@ -2072,25 +2072,62 @@ impl<'ctx> Codegen<'ctx> {
     pub fn identify_captures(&self, expr: &Expr, params: &[Parameter]) -> Vec<(String, Type)> {
         let mut captures = Vec::new();
         let mut seen = std::collections::HashSet::new();
-        let mut param_names = std::collections::HashSet::new();
+        let mut local_names = std::collections::HashSet::new();
         for p in params {
-            param_names.insert(p.name.clone());
+            local_names.insert(p.name.clone());
         }
 
-        self.walk_expr_for_captures(expr, &param_names, &mut captures, &mut seen);
+        self.walk_expr_for_captures(expr, &local_names, &mut captures, &mut seen);
         captures
+    }
+
+    fn add_pattern_bindings(
+        pattern: &Pattern,
+        local_names: &mut std::collections::HashSet<String>,
+    ) {
+        match pattern {
+            Pattern::Ident(name) => {
+                local_names.insert(name.clone());
+            }
+            Pattern::Variant(_, bindings) => {
+                for binding in bindings {
+                    local_names.insert(binding.clone());
+                }
+            }
+            Pattern::Wildcard | Pattern::Literal(_) => {}
+        }
+    }
+
+    fn walk_block_for_captures(
+        &self,
+        block: &[Spanned<Stmt>],
+        local_names: &mut std::collections::HashSet<String>,
+        captures: &mut Vec<(String, Type)>,
+        seen: &mut std::collections::HashSet<String>,
+    ) {
+        for stmt in block {
+            self.walk_stmt_for_captures(&stmt.node, local_names, captures, seen);
+        }
     }
 
     pub fn walk_expr_for_captures(
         &self,
         expr: &Expr,
-        params: &std::collections::HashSet<String>,
+        local_names: &std::collections::HashSet<String>,
         captures: &mut Vec<(String, Type)>,
         seen: &mut std::collections::HashSet<String>,
     ) {
         match expr {
+            Expr::This => {
+                if !local_names.contains("this") && !seen.contains("this") {
+                    if let Some(var) = self.variables.get("this") {
+                        seen.insert("this".to_string());
+                        captures.push(("this".to_string(), var.ty.clone()));
+                    }
+                }
+            }
             Expr::Ident(name) => {
-                if !params.contains(name) && !seen.contains(name) {
+                if !local_names.contains(name) && !seen.contains(name) {
                     if let Some(var) = self.variables.get(name) {
                         seen.insert(name.clone());
                         captures.push((name.clone(), var.ty.clone()));
@@ -2098,34 +2135,34 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Binary { left, right, .. } => {
-                self.walk_expr_for_captures(&left.node, params, captures, seen);
-                self.walk_expr_for_captures(&right.node, params, captures, seen);
+                self.walk_expr_for_captures(&left.node, local_names, captures, seen);
+                self.walk_expr_for_captures(&right.node, local_names, captures, seen);
             }
             Expr::Unary { expr, .. } => {
-                self.walk_expr_for_captures(&expr.node, params, captures, seen);
+                self.walk_expr_for_captures(&expr.node, local_names, captures, seen);
             }
             Expr::Call { callee, args, .. } => {
-                self.walk_expr_for_captures(&callee.node, params, captures, seen);
+                self.walk_expr_for_captures(&callee.node, local_names, captures, seen);
                 for arg in args {
-                    self.walk_expr_for_captures(&arg.node, params, captures, seen);
+                    self.walk_expr_for_captures(&arg.node, local_names, captures, seen);
                 }
             }
             Expr::Field { object, .. } => {
-                self.walk_expr_for_captures(&object.node, params, captures, seen);
+                self.walk_expr_for_captures(&object.node, local_names, captures, seen);
             }
             Expr::Index { object, index } => {
-                self.walk_expr_for_captures(&object.node, params, captures, seen);
-                self.walk_expr_for_captures(&index.node, params, captures, seen);
+                self.walk_expr_for_captures(&object.node, local_names, captures, seen);
+                self.walk_expr_for_captures(&index.node, local_names, captures, seen);
             }
             Expr::Construct { args, .. } => {
                 for arg in args {
-                    self.walk_expr_for_captures(&arg.node, params, captures, seen);
+                    self.walk_expr_for_captures(&arg.node, local_names, captures, seen);
                 }
             }
             Expr::StringInterp(parts) => {
                 for part in parts {
                     if let StringPart::Expr(e) = part {
-                        self.walk_expr_for_captures(&e.node, params, captures, seen);
+                        self.walk_expr_for_captures(&e.node, local_names, captures, seen);
                     }
                 }
             }
@@ -2133,29 +2170,56 @@ impl<'ctx> Codegen<'ctx> {
                 params: l_params,
                 body: l_body,
             } => {
-                let mut nested_params = params.clone();
+                let mut nested_params = local_names.clone();
                 for p in l_params {
                     nested_params.insert(p.name.clone());
                 }
                 self.walk_expr_for_captures(&l_body.node, &nested_params, captures, seen);
             }
-            Expr::Match { expr, arms } => {
-                self.walk_expr_for_captures(&expr.node, params, captures, seen);
-                for arm in arms {
-                    for stmt in &arm.body {
-                        self.walk_stmt_for_captures(&stmt.node, params, captures, seen);
-                    }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.walk_expr_for_captures(&condition.node, local_names, captures, seen);
+                let mut then_locals = local_names.clone();
+                self.walk_block_for_captures(then_branch, &mut then_locals, captures, seen);
+                if let Some(block) = else_branch {
+                    let mut else_locals = local_names.clone();
+                    self.walk_block_for_captures(block, &mut else_locals, captures, seen);
                 }
             }
-            Expr::Try(inner) => {
-                self.walk_expr_for_captures(&inner.node, params, captures, seen);
+            Expr::Match { expr, arms } => {
+                self.walk_expr_for_captures(&expr.node, local_names, captures, seen);
+                for arm in arms {
+                    let mut arm_locals = local_names.clone();
+                    Self::add_pattern_bindings(&arm.pattern, &mut arm_locals);
+                    self.walk_block_for_captures(&arm.body, &mut arm_locals, captures, seen);
+                }
             }
-            Expr::Await(inner) => {
-                self.walk_expr_for_captures(&inner.node, params, captures, seen);
+            Expr::Try(inner)
+            | Expr::Await(inner)
+            | Expr::Borrow(inner)
+            | Expr::MutBorrow(inner)
+            | Expr::Deref(inner) => {
+                self.walk_expr_for_captures(&inner.node, local_names, captures, seen);
             }
-            Expr::AsyncBlock(stmts) => {
-                for stmt in stmts {
-                    self.walk_stmt_for_captures(&stmt.node, params, captures, seen);
+            Expr::AsyncBlock(stmts) | Expr::Block(stmts) => {
+                let mut block_locals = local_names.clone();
+                self.walk_block_for_captures(stmts, &mut block_locals, captures, seen);
+            }
+            Expr::Require { condition, message } => {
+                self.walk_expr_for_captures(&condition.node, local_names, captures, seen);
+                if let Some(message) = message {
+                    self.walk_expr_for_captures(&message.node, local_names, captures, seen);
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                if let Some(start) = start {
+                    self.walk_expr_for_captures(&start.node, local_names, captures, seen);
+                }
+                if let Some(end) = end {
+                    self.walk_expr_for_captures(&end.node, local_names, captures, seen);
                 }
             }
             _ => {}
@@ -2165,51 +2229,61 @@ impl<'ctx> Codegen<'ctx> {
     pub fn walk_stmt_for_captures(
         &self,
         stmt: &Stmt,
-        params: &std::collections::HashSet<String>,
+        local_names: &mut std::collections::HashSet<String>,
         captures: &mut Vec<(String, Type)>,
         seen: &mut std::collections::HashSet<String>,
     ) {
         match stmt {
-            Stmt::Expr(e) => self.walk_expr_for_captures(&e.node, params, captures, seen),
-            Stmt::Let { value, .. } => {
-                self.walk_expr_for_captures(&value.node, params, captures, seen);
-                // Let doesn't capture the variable it's declaring, but we'll ignore shadowing for now
+            Stmt::Expr(e) => self.walk_expr_for_captures(&e.node, local_names, captures, seen),
+            Stmt::Let { name, value, .. } => {
+                self.walk_expr_for_captures(&value.node, local_names, captures, seen);
+                local_names.insert(name.clone());
             }
             Stmt::Assign { target, value } => {
-                self.walk_expr_for_captures(&target.node, params, captures, seen);
-                self.walk_expr_for_captures(&value.node, params, captures, seen);
+                self.walk_expr_for_captures(&target.node, local_names, captures, seen);
+                self.walk_expr_for_captures(&value.node, local_names, captures, seen);
             }
             Stmt::If {
                 condition,
                 then_block,
                 else_block,
             } => {
-                self.walk_expr_for_captures(&condition.node, params, captures, seen);
-                for s in then_block {
-                    self.walk_stmt_for_captures(&s.node, params, captures, seen);
-                }
+                self.walk_expr_for_captures(&condition.node, local_names, captures, seen);
+                let mut then_locals = local_names.clone();
+                self.walk_block_for_captures(then_block, &mut then_locals, captures, seen);
                 if let Some(eb) = else_block {
-                    for s in eb {
-                        self.walk_stmt_for_captures(&s.node, params, captures, seen);
-                    }
+                    let mut else_locals = local_names.clone();
+                    self.walk_block_for_captures(eb, &mut else_locals, captures, seen);
                 }
             }
             Stmt::While { condition, body } => {
-                self.walk_expr_for_captures(&condition.node, params, captures, seen);
-                for s in body {
-                    self.walk_stmt_for_captures(&s.node, params, captures, seen);
-                }
+                self.walk_expr_for_captures(&condition.node, local_names, captures, seen);
+                let mut body_locals = local_names.clone();
+                self.walk_block_for_captures(body, &mut body_locals, captures, seen);
             }
-            Stmt::For { iterable, body, .. } => {
-                self.walk_expr_for_captures(&iterable.node, params, captures, seen);
-                for s in body {
-                    self.walk_stmt_for_captures(&s.node, params, captures, seen);
-                }
+            Stmt::For {
+                var,
+                iterable,
+                body,
+                ..
+            } => {
+                self.walk_expr_for_captures(&iterable.node, local_names, captures, seen);
+                let mut body_locals = local_names.clone();
+                body_locals.insert(var.clone());
+                self.walk_block_for_captures(body, &mut body_locals, captures, seen);
             }
             Stmt::Return(Some(expr)) => {
-                self.walk_expr_for_captures(&expr.node, params, captures, seen);
+                self.walk_expr_for_captures(&expr.node, local_names, captures, seen);
             }
-            _ => {}
+            Stmt::Match { expr, arms } => {
+                self.walk_expr_for_captures(&expr.node, local_names, captures, seen);
+                for arm in arms {
+                    let mut arm_locals = local_names.clone();
+                    Self::add_pattern_bindings(&arm.pattern, &mut arm_locals);
+                    self.walk_block_for_captures(&arm.body, &mut arm_locals, captures, seen);
+                }
+            }
+            Stmt::Return(None) | Stmt::Break | Stmt::Continue => {}
         }
     }
 

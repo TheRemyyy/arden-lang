@@ -176,6 +176,16 @@ That fix now extends to builtin-shaped multi-parameter types too. User-defined c
 
 Those owner-specialized rewrites now also derive their generic bindings from structured receiver expressions, not just direct constructor syntax. Project-mode calls such as `(if (flag) { Result<Integer, String>(1, "ok") } else { Result<Integer, String>(2, "ok") }).map_ok<Float>(to_float)` and the same pattern for user-defined `Map<K, V>` now keep the correct specialized receiver layout and runtime result.
 
+Method-returned lambdas now also capture `this` correctly in project builds. That includes generic method flows where the lambda body reads instance state and calls a specialized callback, such as `Box<Integer>(7).mk<Float>(to_float)` returning a zero-arg closure that later evaluates `f(this.value)`.
+
+Project-mode closure and async capture analysis now also follows nested expression branches like `if` expressions, so returned lambdas or async tasks can safely reference outer locals from inside branch tails without degrading into late `Unknown variable` codegen failures.
+
+Async borrowed-capture diagnostics are now shadowing-aware too. A local name re-used inside the async block no longer gets mistaken for a capture of an outer borrowed reference with the same identifier.
+
+The same shadowing-aware async analysis now applies to `match` pattern bindings as well, so enum payload names introduced by an arm safely shadow unrelated outer borrowed locals with the same identifier.
+
+Project-mode type errors now also render demangled module paths in diagnostics. When a build fails on a generic bound or branch mismatch, the reported types use source-style names like `lib.Plain` or `lib.Api.Person` instead of internal rewritten symbols.
+
 ```toml
 # apex.toml
 name = "multi_file_demo"

@@ -14309,6 +14309,71 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_reports_demangled_generic_bound_errors() {
+        let temp_root = make_temp_project_root("project-demangled-generic-bound-errors");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\ninterface Named { function name(): Integer; }\nclass Plain { constructor() {} }\nclass Box<T extends Named> {\n    value: Integer;\n    constructor() { this.value = 1; }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib as u;\nfunction main(): Integer {\n    bad: u.Box<u.Plain> = u.Box<u.Plain>();\n    return bad.value;\n}\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with invalid bound should fail");
+            assert!(err.contains("lib.Plain"), "{err}");
+            assert!(err.contains("lib.Named"), "{err}");
+            assert!(!err.contains("lib__Plain"), "{err}");
+            assert!(!err.contains("lib__Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_if_branch_type_mismatch() {
+        let temp_root = make_temp_project_root("project-demangled-if-branch-mismatch");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass A { constructor() {} }\nclass B { constructor() {} }\nfunction pick(flag: Boolean): Integer {\n    value: Integer = if (flag) { A() } else { B() };\n    return value;\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib.pick as pick;\nfunction main(): Integer { return pick(true); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with if branch mismatch should fail");
+            assert!(err.contains("then is lib.A, else is lib.B"), "{err}");
+            assert!(!err.contains("lib__A"), "{err}");
+            assert!(!err.contains("lib__B"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_async_block_tail_expression_runtime() {
         let temp_root = make_temp_project_root("async-block-tail-expression-runtime");
         let source_path = temp_root.join("async_block_tail_expression_runtime.apex");
@@ -19486,6 +19551,174 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled if receiver Map generic method builtin function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_method_lambda_capturing_this_runtime() {
+        let temp_root = make_temp_project_root("method-lambda-capturing-this-runtime");
+        let source_path = temp_root.join("method_lambda_capturing_this_runtime.apex");
+        let output_path = temp_root.join("method_lambda_capturing_this_runtime");
+        let source = r#"
+            class C {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function mk(): () -> Integer { return () => this.value; }
+            }
+            function main(): Integer {
+                f: () -> Integer = C(7).mk();
+                return if (f() == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("method lambda capturing this should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled method lambda capturing this binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_generic_method_lambda_capturing_this_and_builtin_callback_runtime() {
+        let temp_root =
+            make_temp_project_root("generic-method-lambda-capturing-this-builtin-callback");
+        let source_path =
+            temp_root.join("generic_method_lambda_capturing_this_builtin_callback.apex");
+        let output_path = temp_root.join("generic_method_lambda_capturing_this_builtin_callback");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function mk<U>(f: (T) -> U): () -> U { return () => f(this.value); }
+            }
+            function main(): Integer {
+                thunk: () -> Float = Box<Integer>(7).mk<Float>(to_float);
+                return if (thunk() == 7.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("generic method lambda capturing this with builtin callback should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled generic method lambda capturing this builtin callback binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_lambda_if_expression_capture_runtime() {
+        let temp_root = make_temp_project_root("lambda-if-expression-capture-runtime");
+        let source_path = temp_root.join("lambda_if_expression_capture_runtime.apex");
+        let output_path = temp_root.join("lambda_if_expression_capture_runtime");
+        let source = r#"
+            function main(): Integer {
+                x: Integer = 7;
+                f: () -> Integer = () => if (true) { x } else { 0 };
+                return if (f() == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("lambda if-expression capture should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled lambda if-expression capture binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_if_expression_capture_runtime() {
+        let temp_root = make_temp_project_root("async-if-expression-capture-runtime");
+        let source_path = temp_root.join("async_if_expression_capture_runtime.apex");
+        let output_path = temp_root.join("async_if_expression_capture_runtime");
+        let source = r#"
+            function main(): Integer {
+                x: Integer = 7;
+                t: Task<Integer> = async { if (true) { x } else { 0 } };
+                return if (await(t) == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async if-expression capture should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async if-expression capture binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_shadowed_borrow_name_without_false_capture_runtime() {
+        let temp_root = make_temp_project_root("async-shadowed-borrow-name-runtime");
+        let source_path = temp_root.join("async_shadowed_borrow_name_runtime.apex");
+        let output_path = temp_root.join("async_shadowed_borrow_name_runtime");
+        let source = r#"
+            function main(): Integer {
+                seed: Integer = 1;
+                r: &Integer = &seed;
+                task: Task<Integer> = async {
+                    r: Integer = 2;
+                    r
+                };
+                return if (await(task) == 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async shadowed borrow name should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async shadowed borrow name binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_match_pattern_shadowed_borrow_name_runtime() {
+        let temp_root = make_temp_project_root("async-match-pattern-shadowed-borrow-name-runtime");
+        let source_path = temp_root.join("async_match_pattern_shadowed_borrow_name_runtime.apex");
+        let output_path = temp_root.join("async_match_pattern_shadowed_borrow_name_runtime");
+        let source = r#"
+            enum E { A(Integer) }
+            function main(): Integer {
+                seed: Integer = 1;
+                v: &Integer = &seed;
+                t: Task<Integer> = match (E.A(7)) {
+                    E.A(v) => { async { v } }
+                };
+                return if (await(t) == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async match pattern shadowed borrow name should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async match pattern shadowed borrow name binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
