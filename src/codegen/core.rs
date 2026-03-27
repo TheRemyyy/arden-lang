@@ -293,6 +293,48 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn specialize_constructor_param_types(
+        &self,
+        source_ty: Option<&Type>,
+        normalized_ty: &Type,
+        ctor_params: &[Type],
+    ) -> Vec<Type> {
+        let generic_binding_source = match source_ty {
+            Some(Type::Generic(name, args)) => Some((
+                self.canonical_codegen_type_name(name)
+                    .unwrap_or_else(|| name.clone()),
+                args.iter()
+                    .map(|arg| self.normalize_codegen_type(arg))
+                    .collect::<Vec<_>>(),
+            )),
+            _ => match normalized_ty {
+                Type::Generic(name, args) => Some((name.clone(), args.clone())),
+                _ => None,
+            },
+        };
+
+        let Some((base_name, type_args)) = generic_binding_source else {
+            return ctor_params.to_vec();
+        };
+        let Some(class_info) = self.classes.get(&base_name) else {
+            return ctor_params.to_vec();
+        };
+        if class_info.generic_params.len() != type_args.len() {
+            return ctor_params.to_vec();
+        }
+
+        let bindings = class_info
+            .generic_params
+            .iter()
+            .cloned()
+            .zip(type_args)
+            .collect::<HashMap<_, _>>();
+        ctor_params
+            .iter()
+            .map(|param| Self::substitute_type(param, &bindings))
+            .collect()
+    }
+
     fn local_module_class_name(
         module_prefix: &str,
         name: &str,
@@ -5168,7 +5210,7 @@ impl<'ctx> Codegen<'ctx> {
         name.to_string()
     }
 
-    fn resolve_contextual_function_value_name(&self, expr: &Expr) -> Option<String> {
+    pub(crate) fn resolve_contextual_function_value_name(&self, expr: &Expr) -> Option<String> {
         match expr {
             Expr::Ident(name) => {
                 let resolved = self.resolve_function_alias(name);
@@ -7906,12 +7948,8 @@ impl<'ctx> Codegen<'ctx> {
 
             self.builder.position_at_end(body_bb);
             let ch = self.compile_utf8_string_index_runtime(string_value, idx_val)?;
-            let iter_val = self.adapt_for_loop_binding_value(
-                ch.into(),
-                &Type::Char,
-                &iter_ty,
-                "for_string_iter",
-            )?;
+            let iter_val =
+                self.adapt_for_loop_binding_value(ch, &Type::Char, &iter_ty, "for_string_iter")?;
             self.builder.build_store(var_alloca, iter_val).unwrap();
 
             self.loop_stack.push(LoopContext {
@@ -8491,11 +8529,7 @@ impl<'ctx> Codegen<'ctx> {
 
     fn infer_await_inner_type(&self, expr: &Expr) -> Type {
         let inferred = self.infer_expr_type(expr, &[]);
-        if let Type::Task(inner) = inferred {
-            *inner
-        } else {
-            Type::Integer
-        }
+        self.task_inner_type(&inferred).unwrap_or(Type::Integer)
     }
 
     fn match_compound_assign_target<'a>(
@@ -8966,7 +9000,7 @@ impl<'ctx> Codegen<'ctx> {
 
                         Ok(closure.into())
                     } else {
-                        return Err(CodegenError::new(format!("Unknown variable: {}", name)));
+                        Err(CodegenError::new(format!("Unknown variable: {}", name)))
                     }
                 }
             }
@@ -9280,7 +9314,29 @@ impl<'ctx> Codegen<'ctx> {
             .any(|(expected, actual)| expected != actual);
         let return_needs_adapter = actual_ret.as_ref() != expected_ret.as_ref();
         if !params_need_adapter && !return_needs_adapter {
-            return Ok(None);
+            if self.extern_functions.contains(name) {
+                return Err(CodegenError::new(format!(
+                    "extern function '{}' cannot be used as a first-class value yet",
+                    name
+                )));
+            }
+
+            let struct_ty = self.llvm_type(expected_ty).into_struct_type();
+            let mut closure = struct_ty.get_undef();
+            let fn_ptr = func.as_global_value().as_pointer_value();
+            let null_env = self.context.ptr_type(AddressSpace::default()).const_null();
+
+            closure = self
+                .builder
+                .build_insert_value(closure, fn_ptr, 0, "fn")
+                .unwrap()
+                .into_struct_value();
+            closure = self
+                .builder
+                .build_insert_value(closure, null_env, 1, "env")
+                .unwrap()
+                .into_struct_value();
+            return Ok(Some(closure.into()));
         }
         if expected_params
             .iter()
@@ -10285,12 +10341,18 @@ impl<'ctx> Codegen<'ctx> {
             .build_conditional_branch(cond, then_block, else_block)
             .unwrap();
 
+        let inferred_result_ty = self.infer_if_expr_result_type(then_branch, else_branch, &[]);
+        let expected_result_ty = expected_ty.or(match inferred_result_ty {
+            Type::None => None,
+            ref ty => Some(ty),
+        });
+
         // Then branch
         self.builder.position_at_end(then_block);
         let mut then_result = self.context.i8_type().const_int(0, false).into();
         for stmt in then_branch {
             if let Stmt::Expr(expr) = &stmt.node {
-                then_result = if let Some(expected_ty) = expected_ty {
+                then_result = if let Some(expected_ty) = expected_result_ty {
                     self.compile_expr_with_expected_type(&expr.node, expected_ty)?
                 } else {
                     self.compile_expr(&expr.node)?
@@ -10310,7 +10372,7 @@ impl<'ctx> Codegen<'ctx> {
         if let Some(else_stmts) = else_branch {
             for stmt in else_stmts {
                 if let Stmt::Expr(expr) = &stmt.node {
-                    else_result = if let Some(expected_ty) = expected_ty {
+                    else_result = if let Some(expected_ty) = expected_result_ty {
                         self.compile_expr_with_expected_type(&expr.node, expected_ty)?
                     } else {
                         self.compile_expr(&expr.node)?
@@ -10915,25 +10977,51 @@ impl<'ctx> Codegen<'ctx> {
 
         // Method call on object
         if let Expr::Field { object, field } = callee {
-            let field_ty = self
-                .infer_object_type(&object.node)
-                .and_then(|ty| self.type_to_class_name(&ty))
-                .and_then(|class_name| {
-                    self.classes
-                        .get(&class_name)
-                        .and_then(|class_info| class_info.field_types.get(field).cloned())
-                });
+            let field_ty = self.infer_object_type(&object.node).and_then(|obj_ty| {
+                let (class_name, generic_args) = self.unwrap_class_like_type(&obj_ty)?;
+                let class_info = self.classes.get(&class_name)?;
+                let field_ty = class_info.field_types.get(field)?.clone();
+                if let Some(args) = generic_args {
+                    if class_info.generic_params.len() == args.len() {
+                        let bindings = class_info
+                            .generic_params
+                            .iter()
+                            .cloned()
+                            .zip(args)
+                            .collect::<HashMap<_, _>>();
+                        return Some(Self::substitute_type(&field_ty, &bindings));
+                    }
+                }
+                Some(field_ty)
+            });
             if let Some(Type::Function(param_types, ret_type)) = field_ty {
-                let closure_val = self.compile_expr(callee)?.into_struct_value();
-                let ptr = self
-                    .builder
-                    .build_extract_value(closure_val, 0, "fn_ptr")
-                    .unwrap()
-                    .into_pointer_value();
-                let env_ptr = self
-                    .builder
-                    .build_extract_value(closure_val, 1, "env_ptr")
-                    .unwrap();
+                let compiled_callee = self.compile_expr(callee)?;
+                let (ptr, env_ptr) = if compiled_callee.is_struct_value() {
+                    let closure_val = compiled_callee.into_struct_value();
+                    let ptr = self
+                        .builder
+                        .build_extract_value(closure_val, 0, "fn_ptr")
+                        .unwrap()
+                        .into_pointer_value();
+                    let env_ptr = self
+                        .builder
+                        .build_extract_value(closure_val, 1, "env_ptr")
+                        .unwrap();
+                    (ptr, env_ptr)
+                } else if compiled_callee.is_pointer_value() {
+                    (
+                        compiled_callee.into_pointer_value(),
+                        self.context
+                            .ptr_type(AddressSpace::default())
+                            .const_null()
+                            .into(),
+                    )
+                } else {
+                    return Err(CodegenError::new(format!(
+                        "Function-valued field '{}': expected closure or function pointer, got {:?}",
+                        field, compiled_callee
+                    )));
+                };
 
                 let llvm_ret = self.llvm_type(&ret_type);
                 let mut llvm_params: Vec<BasicMetadataTypeEnum> =
@@ -12037,7 +12125,7 @@ impl<'ctx> Codegen<'ctx> {
         };
         let class_name = obj_ty
             .as_ref()
-            .and_then(|ty| self.type_to_class_name(ty))
+            .and_then(|ty| self.unwrap_class_like_type(ty).map(|(name, _)| name))
             .ok_or_else(|| {
                 CodegenError::new(format!(
                     "Cannot determine object type for field access: {:?}.{}",
@@ -12090,7 +12178,7 @@ impl<'ctx> Codegen<'ctx> {
         };
         let class_name = obj_ty
             .as_ref()
-            .and_then(|ty| self.type_to_class_name(ty))
+            .and_then(|ty| self.unwrap_class_like_type(ty).map(|(name, _)| name))
             .ok_or_else(|| CodegenError::new("Cannot determine object type for field ptr"))?;
 
         let class_info = self
@@ -13374,9 +13462,11 @@ impl<'ctx> Codegen<'ctx> {
         ty: &str,
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
-        let normalized_ty = parse_type_source(ty)
-            .map(|parsed| self.normalize_codegen_type(&parsed))
-            .unwrap_or_else(|_| Type::Named(ty.to_string()));
+        let parsed_ty = parse_type_source(ty).ok();
+        let normalized_ty = parsed_ty
+            .as_ref()
+            .map(|parsed| self.normalize_codegen_type(parsed))
+            .unwrap_or_else(|| Type::Named(ty.to_string()));
 
         match &normalized_ty {
             Type::List(inner) => {
@@ -13410,7 +13500,7 @@ impl<'ctx> Codegen<'ctx> {
         };
         let func_name = format!("{}__new", ctor_ty);
 
-        let (func, _) = self
+        let (func, func_ty) = self
             .functions
             .get(&func_name)
             .ok_or_else(|| {
@@ -13427,9 +13517,22 @@ impl<'ctx> Codegen<'ctx> {
                 .const_null()
                 .into(), // env_ptr
         ];
-        let llvm_param_types = func.get_type().get_param_types();
-        for (arg, llvm_param_ty) in args.iter().zip(llvm_param_types.into_iter().skip(1)) {
-            compiled_args.push(self.compile_expr_for_llvm_param(&arg.node, llvm_param_ty)?);
+        let ctor_params = match func_ty {
+            Type::Function(params, _) => params,
+            _ => {
+                return Err(CodegenError::new(format!(
+                    "Constructor metadata for '{}' is not a function type",
+                    func_name
+                )))
+            }
+        };
+        let ctor_params = self.specialize_constructor_param_types(
+            parsed_ty.as_ref(),
+            &normalized_ty,
+            &ctor_params,
+        );
+        for (arg, expected_ty) in args.iter().zip(ctor_params.iter()) {
+            compiled_args.push(self.compile_expr_with_expected_type(&arg.node, expected_ty)?);
         }
 
         let args_meta: Vec<BasicMetadataValueEnum> =

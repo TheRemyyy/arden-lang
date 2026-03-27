@@ -162,6 +162,14 @@ See `examples/insane_showcase_project/` for a larger project-mode showcase that 
 - async/await plus `await_timeout`
 - file I/O and interpolation-heavy reporting
 
+Project-mode name resolution now preserves async return types through package aliases and deep module chains too, so calls such as `await(analytics.Api.V2.score(10))` keep their declared inner type during codegen instead of degrading to the default numeric fallback. The same alias-aware resolution also applies to exact-typed first-class references like `f: (Integer) -> Task<Float> = analytics.Api.V2.score`.
+
+Project-mode reporting paths also preserve merged mixed-numeric expression types during codegen, so inline expressions such as `"{if (flag) { 1 } else { 2.5 }}"` or equivalent `match` expressions now keep their `Float` display/phi lowering instead of degrading to the first arm's integer shape.
+
+Expected-type propagation now also reaches `if` and `match` expression branches for first-class functions, so expression forms that return callables, including builtin values like `to_float`, behave the same way as direct assignments and returns.
+
+That same expected-type propagation now extends through typed containers and constructors in project builds as well. `Option.some(...)`, `Result.ok(...)`, `Result.error(...)`, and constructor calls such as `Box<(Integer) -> Float>(to_float)` now preserve first-class function payload types instead of degrading into late `Unknown variable` codegen failures, even when the callable is pulled back out through a generic field like `box.value(1)`.
+
 ```toml
 # apex.toml
 name = "multi_file_demo"

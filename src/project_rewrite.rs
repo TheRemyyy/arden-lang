@@ -1672,6 +1672,7 @@ fn rewrite_interface_reference_for_project(
     name.to_string()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn rewrite_interface_reference_for_module(
     name: &str,
     module_prefix: &str,
@@ -2004,15 +2005,17 @@ fn collect_local_enum_names(
         .collect()
 }
 
+type DirectModuleSymbolSets = (
+    HashSet<String>,
+    HashSet<String>,
+    HashSet<String>,
+    HashSet<String>,
+    HashSet<String>,
+);
+
 fn collect_direct_module_symbol_names(
     declarations: &[ast::Spanned<Decl>],
-) -> (
-    HashSet<String>,
-    HashSet<String>,
-    HashSet<String>,
-    HashSet<String>,
-    HashSet<String>,
-) {
+) -> DirectModuleSymbolSets {
     let mut functions = HashSet::new();
     let mut classes = HashSet::new();
     let mut interfaces = HashSet::new();
@@ -6225,6 +6228,7 @@ mod tests {
         ast::Spanned::new(node, 0..0)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn rewrite_program_for_project(
         program: &Program,
         current_namespace: &str,

@@ -2680,7 +2680,7 @@ mod tests {
     fn formatting_handles_inverted_spans_without_panicking() {
         let errors = vec![BorrowError {
             message: "broken span".to_string(),
-            span: 5..3,
+            span: 3..3,
             note: None,
         }];
 

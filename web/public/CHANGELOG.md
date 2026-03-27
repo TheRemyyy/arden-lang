@@ -8,10 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project-mode type inference for alias-qualified nested async calls returning `Task<T>`:
+  - expressions like `await(analytics.Api.V2.score(10))` now preserve the real inner return type across package aliases and deep module chains instead of falling back to `Integer`
+  - project builds no longer mis-read `Task<Float>` results from cross-file dotted-package async functions as raw integer bit patterns during `await`
+  - exact-typed first-class references like `f: (Integer) -> Task<Float> = analytics.Api.V2.score` now lower to real closures instead of falling through to `Unknown variable: demo__analytics` when no function adapter is needed
 - Fixed numeric display formatting for `to_string(...)`, `print(...)`, and string interpolation:
   - display lowering now prefers the actual LLVM runtime value shape instead of trusting only the inferred Apex numeric type
   - float-backed values flowing through mixed numeric inference, async/task paths, or cross-file wrappers no longer panic or mis-lower when rendered as strings
   - backend diagnostics for unsupported numeric binary ops now include the operator and the resolved left/right types instead of the opaque `Type mismatch in binary operation`
+  - mixed numeric `if` / `match` expressions now carry their merged result type through codegen inference too, so inline interpolation like `"{if (true) { 1 } else { 2.5 }}"` renders as `1.000000` instead of `1`, and `match` expressions with `Integer`/`Float` arms no longer emit invalid LLVM phi nodes
 - Fixed unsound nested `Integer -> Float` compatibility for wrapped types:
   - wrapper/container types such as `Range<T>`, `Option<T>`, `Task<T>`, `List<T>`, and `Map<K, V>` no longer inherit scalar numeric promotion for their inner payloads
   - assignments, arguments, returns, and branch joins like `Range<Float> = range(1, 3)` or `take(Option.some(1))` are now rejected during typechecking instead of compiling and then reading integer-backed data through float runtime paths
@@ -27,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - direct `Math.*` function values now cover the wider builtin surface consistently, including unary helpers like `Math.sqrt`, constants-as-zero-arg-callables like `Math.pi`, and mixed-numeric helpers such as `Math.min`, `Math.max`, and `Math.pow`
   - mixed-numeric assertion helpers now also work as typed function values, so rebindings like `cmp: (Integer, Float) -> None = assert_eq` and `cmp: (Float, Integer) -> None = assert_ne` no longer reject a runtime path that direct calls already supported
   - builtin function values now participate in the same safe return-widening adapter path as named functions, so rebindings like `f: (Integer) -> Float = Math.abs`, `f: (Integer, Integer) -> Float = Math.min`, and `f: (Integer, Integer) -> Float = Math.max` work through generated adapters instead of failing late as unresolved `Math` variables
+  - builtin function values now also survive `if` and `match` expression branches in expected-function contexts, so returns like `return if (flag) { to_float } else { to_float };` and `return match (mode) { A => to_float, B => to_float };` no longer fail as undefined variables
+  - builtin and named function values now also propagate through `Option.some(...)`, `Result.ok(...)`, and `Result.error(...)` when the surrounding expected type already fixes the payload signature, so containers like `Option<(Integer) -> Float>` and `Result<(Integer) -> Float, String>` no longer fall through to undefined-variable failures during typechecking/codegen
+  - constructor arguments now honor expected function signatures too, including generic constructors such as `Box<(Integer) -> Float>(to_float)`, so first-class function payloads no longer fail as unresolved variables when passed through constructor parameters
+  - calling function-valued fields loaded from generic constructor instances now accepts the raw function-pointer representation used by unspecialized storage paths, so expressions like `Box<(Integer) -> Float>(to_float).value(1)` run successfully instead of panicking on a pointer-vs-closure mismatch during codegen
 - Fixed borrow-check receiver-mode enforcement for built-in methods on borrowed values:
   - immutable references now correctly reject mutating built-in receiver calls instead of silently allowing `List.push`, `List.set`, `List.pop`, `Map.set` / `Map.insert`, `Set.add`, `Set.remove`, `Range.next`, and `Task.cancel`
   - mutable references now correctly allow those same mutating receiver calls without requiring the reference binding itself to be declared `mut`

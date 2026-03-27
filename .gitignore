@@ -35,6 +35,7 @@ web/dist
 examples/test_no_import/test_no_import
 examples/multi_file_depth_project/multi_file_depth_project
 examples/multi_file_project/multi_file_project
+examples/insane_showcase_project/insane_showcase_project
 examples/.apexcache/
 .apexcache/
 fuzz/artifacts/

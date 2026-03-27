@@ -18822,6 +18822,514 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_runs_dotted_package_async_float_await_runtime() {
+        let temp_root = make_temp_project_root("dotted-package-async-float-await-runtime");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/lib.apex", "src/main.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            r#"
+package demo.analytics;
+module Api {
+    module V2 {
+        async function score(v: Integer): Task<Float> {
+            return to_float(v) + 10.0;
+        }
+    }
+}
+"#,
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            r#"
+package app;
+import std.io.*;
+import demo.analytics as analytics;
+
+function main(): Integer {
+    score: Float = await(analytics.Api.V2.score(10));
+    println("score={score}");
+    return if (score == 20.0) { 0 } else { 1 };
+}
+"#,
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should preserve dotted-package async Float await values");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled dotted-package async float await binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("score=20.000000"),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_runs_dotted_package_async_function_value_runtime() {
+        let temp_root = make_temp_project_root("dotted-package-async-function-value-runtime");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/lib.apex", "src/main.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            r#"
+package demo.analytics;
+module Api {
+    module V2 {
+        async function score(v: Integer): Task<Float> {
+            return to_float(v) + 10.0;
+        }
+    }
+}
+"#,
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            r#"
+package app;
+import std.io.*;
+import demo.analytics as analytics;
+
+function main(): Integer {
+    f: (Integer) -> Task<Float> = analytics.Api.V2.score;
+    score: Float = await(f(10));
+    println("score={score}");
+    return if (score == 20.0) { 0 } else { 1 };
+}
+"#,
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support dotted-package async function values");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled dotted-package async function value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "score=20.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_inline_mixed_numeric_if_interpolation_runtime() {
+        let temp_root = make_temp_project_root("inline-mixed-if-interpolation-runtime");
+        let source_path = temp_root.join("inline_mixed_if_interpolation_runtime.apex");
+        let output_path = temp_root.join("inline_mixed_if_interpolation_runtime");
+        let source = r#"
+            import std.io.*;
+            function main(): Integer {
+                println("value={if (true) { 1 } else { 2.5 }}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("inline mixed numeric if interpolation should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled inline mixed numeric if interpolation binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_inline_mixed_numeric_match_interpolation_runtime() {
+        let temp_root = make_temp_project_root("inline-mixed-match-interpolation-runtime");
+        let source_path = temp_root.join("inline_mixed_match_interpolation_runtime.apex");
+        let output_path = temp_root.join("inline_mixed_match_interpolation_runtime");
+        let source = r#"
+            import std.io.*;
+            enum Kind { A, B }
+            function main(): Integer {
+                println("value={match (Kind.A) { Kind.A => { 1 } Kind.B => { 2.5 } }}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("inline mixed numeric match interpolation should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled inline mixed numeric match interpolation binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_if_expression_builtin_function_value_runtime() {
+        let temp_root = make_temp_project_root("if-expression-builtin-function-value-runtime");
+        let source_path = temp_root.join("if_expression_builtin_function_value_runtime.apex");
+        let output_path = temp_root.join("if_expression_builtin_function_value_runtime");
+        let source = r#"
+            import std.io.*;
+            function choose(flag: Boolean): (Integer) -> Float {
+                return if (flag) { to_float } else { to_float };
+            }
+            function main(): Integer {
+                println("value={choose(true)(1)}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("if-expression builtin function value should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled if-expression builtin function value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_match_expression_builtin_function_value_runtime() {
+        let temp_root = make_temp_project_root("match-expression-builtin-function-value-runtime");
+        let source_path = temp_root.join("match_expression_builtin_function_value_runtime.apex");
+        let output_path = temp_root.join("match_expression_builtin_function_value_runtime");
+        let source = r#"
+            import std.io.*;
+            enum Mode { A, B }
+            function choose(mode: Mode): (Integer) -> Float {
+                return match (mode) { Mode.A => { to_float } Mode.B => { to_float } };
+            }
+            function main(): Integer {
+                println("value={choose(Mode.A)(1)}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("match-expression builtin function value should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled match-expression builtin function value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_option_some_builtin_function_value_runtime() {
+        let temp_root = make_temp_project_root("option-some-builtin-function-value-runtime");
+        let source_path = temp_root.join("option_some_builtin_function_value_runtime.apex");
+        let output_path = temp_root.join("option_some_builtin_function_value_runtime");
+        let source = r#"
+            import std.io.*;
+            function choose(): Option<(Integer) -> Float> {
+                return Option.some(to_float);
+            }
+            function main(): Integer {
+                println("value={choose().unwrap()(1)}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Option.some builtin function value should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled Option.some builtin function value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_if_expression_option_some_builtin_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("if-expression-option-some-builtin-function-value-runtime");
+        let source_path =
+            temp_root.join("if_expression_option_some_builtin_function_value_runtime.apex");
+        let output_path =
+            temp_root.join("if_expression_option_some_builtin_function_value_runtime");
+        let source = r#"
+            import std.io.*;
+            function choose(flag: Boolean): Option<(Integer) -> Float> {
+                return if (flag) { Option.some(to_float) } else { Option.some(to_float) };
+            }
+            function main(): Integer {
+                println("value={choose(true).unwrap()(1)}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("if-expression Option.some builtin function value should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled if-expression Option.some builtin function value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_match_expression_option_some_builtin_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("match-expression-option-some-builtin-function-value-runtime");
+        let source_path =
+            temp_root.join("match_expression_option_some_builtin_function_value_runtime.apex");
+        let output_path =
+            temp_root.join("match_expression_option_some_builtin_function_value_runtime");
+        let source = r#"
+            import std.io.*;
+            enum Mode { A, B }
+            function choose(mode: Mode): Option<(Integer) -> Float> {
+                return match (mode) {
+                    Mode.A => { Option.some(to_float) }
+                    Mode.B => { Option.some(to_float) }
+                };
+            }
+            function main(): Integer {
+                println("value={choose(Mode.A).unwrap()(1)}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("match-expression Option.some builtin function value should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled match-expression Option.some builtin function value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_result_ok_builtin_function_value_runtime() {
+        let temp_root = make_temp_project_root("result-ok-builtin-function-value-runtime");
+        let source_path = temp_root.join("result_ok_builtin_function_value_runtime.apex");
+        let output_path = temp_root.join("result_ok_builtin_function_value_runtime");
+        let source = r#"
+            import std.io.*;
+            function choose(): Result<(Integer) -> Float, String> {
+                return Result.ok(to_float);
+            }
+            function main(): Integer {
+                println("value={choose().unwrap()(1)}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Result.ok builtin function value should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled Result.ok builtin function value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_result_error_builtin_function_value_runtime() {
+        let temp_root = make_temp_project_root("result-error-builtin-function-value-runtime");
+        let source_path = temp_root.join("result_error_builtin_function_value_runtime.apex");
+        let output_path = temp_root.join("result_error_builtin_function_value_runtime");
+        let source = r#"
+            import std.io.*;
+            function choose(): Result<String, (Integer) -> Float> {
+                return Result.error(to_float);
+            }
+            function main(): Integer {
+                errf: (Integer) -> Float = match (choose()) {
+                    Result.Error(f) => f,
+                    _ => to_float,
+                };
+                println("value={errf(1)}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Result.error builtin function value should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled Result.error builtin function value binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_constructor_builtin_function_value_runtime() {
+        let temp_root = make_temp_project_root("constructor-builtin-function-value-runtime");
+        let source_path = temp_root.join("constructor_builtin_function_value_runtime.apex");
+        let output_path = temp_root.join("constructor_builtin_function_value_runtime");
+        let source = r#"
+            class Box {
+                f: (Integer) -> Float;
+                constructor(f: (Integer) -> Float) { this.f = f; }
+            }
+            function main(): Integer {
+                return if (Box(to_float).f(1) == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("constructor builtin function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled constructor builtin function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_generic_constructor_builtin_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("generic-constructor-builtin-function-value-runtime");
+        let source_path = temp_root.join("generic_constructor_builtin_function_value_runtime.apex");
+        let output_path = temp_root.join("generic_constructor_builtin_function_value_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+            function main(): Integer {
+                return if (Box<(Integer) -> Float>(to_float).value(1) == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("generic constructor builtin function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled generic constructor builtin function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_async_block_integer_tail_for_float_task_runtime() {
         let temp_root = make_temp_project_root("async-int-tail-float-task-runtime");
         let source_path = temp_root.join("async_int_tail_float_task_runtime.apex");

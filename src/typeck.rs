@@ -82,6 +82,27 @@ impl ResolvedType {
             _ => None,
         }
     }
+
+    pub fn contains_function_type(&self) -> bool {
+        match self {
+            ResolvedType::Function(_, _) => true,
+            ResolvedType::Option(inner)
+            | ResolvedType::List(inner)
+            | ResolvedType::Set(inner)
+            | ResolvedType::Ref(inner)
+            | ResolvedType::MutRef(inner)
+            | ResolvedType::Box(inner)
+            | ResolvedType::Rc(inner)
+            | ResolvedType::Arc(inner)
+            | ResolvedType::Ptr(inner)
+            | ResolvedType::Task(inner)
+            | ResolvedType::Range(inner) => inner.contains_function_type(),
+            ResolvedType::Result(ok, err) | ResolvedType::Map(ok, err) => {
+                ok.contains_function_type() || err.contains_function_type()
+            }
+            _ => false,
+        }
+    }
 }
 
 impl std::fmt::Display for ResolvedType {
@@ -3914,6 +3935,55 @@ impl TypeChecker {
         span: Span,
         expected: Option<&ResolvedType>,
     ) -> ResolvedType {
+        if let (
+            Expr::Call {
+                callee,
+                args,
+                type_args,
+            },
+            Some(expected_ty),
+        ) = (expr, expected)
+        {
+            if let Some(container_ty) = self.check_static_container_call_with_expected_type(
+                &callee.node,
+                args,
+                type_args,
+                span.clone(),
+                expected_ty,
+            ) {
+                return container_ty;
+            }
+        }
+        if let (Expr::Block(body), Some(expected_ty)) = (expr, expected) {
+            return self.check_block_expr_with_expected_type(body, expected_ty);
+        }
+        if let (
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            },
+            Some(expected_ty),
+        ) = (expr, expected)
+        {
+            return self.check_if_expr_with_expected_type(
+                &condition.node,
+                condition.span.clone(),
+                then_branch,
+                else_branch.as_ref(),
+                span,
+                expected_ty,
+            );
+        }
+        if let (Expr::Match { expr, arms }, Some(expected_ty)) = (expr, expected) {
+            return self.check_match_expr_with_expected_type(
+                &expr.node,
+                expr.span.clone(),
+                arms,
+                span,
+                expected_ty,
+            );
+        }
         if let Some(expected_ty) = expected {
             if matches!(expected_ty, ResolvedType::Function(_, _)) {
                 if let Some(name) = self.resolve_contextual_function_value_name(expr) {
@@ -3938,6 +4008,218 @@ impl TypeChecker {
             return self.check_async_block_expr(body, span, Some(expected_inner.as_ref()));
         }
         self.check_expr(expr, span)
+    }
+
+    fn check_static_container_call_with_expected_type(
+        &mut self,
+        callee: &Expr,
+        args: &[Spanned<Expr>],
+        type_args: &[Type],
+        span: Span,
+        expected: &ResolvedType,
+    ) -> Option<ResolvedType> {
+        let Expr::Field { object, field } = callee else {
+            return None;
+        };
+        let Expr::Ident(owner_name) = &object.node else {
+            return None;
+        };
+
+        match (owner_name.as_str(), field.as_str(), expected) {
+            ("Option", "some", ResolvedType::Option(inner)) => {
+                if !inner.contains_function_type() {
+                    return None;
+                }
+                if !type_args.is_empty() {
+                    self.error(
+                        "Option static methods do not accept explicit type arguments".to_string(),
+                        span.clone(),
+                    );
+                }
+                self.check_arg_count("Option.some", args, 1, span.clone());
+                if let Some(arg) = args.first() {
+                    let actual = self.check_expr_with_expected_type(
+                        &arg.node,
+                        arg.span.clone(),
+                        Some(inner),
+                    );
+                    if !self.types_compatible(inner, &actual) {
+                        self.error(
+                            format!(
+                                "Option.some argument type mismatch: expected {}, got {}",
+                                inner, actual
+                            ),
+                            arg.span.clone(),
+                        );
+                    }
+                }
+                Some(expected.clone())
+            }
+            ("Result", "ok", ResolvedType::Result(ok_ty, _)) => {
+                if !ok_ty.contains_function_type() {
+                    return None;
+                }
+                if !type_args.is_empty() {
+                    self.error(
+                        "Result static methods do not accept explicit type arguments".to_string(),
+                        span.clone(),
+                    );
+                }
+                self.check_arg_count("Result.ok", args, 1, span.clone());
+                if let Some(arg) = args.first() {
+                    let actual = self.check_expr_with_expected_type(
+                        &arg.node,
+                        arg.span.clone(),
+                        Some(ok_ty),
+                    );
+                    if !self.types_compatible(ok_ty, &actual) {
+                        self.error(
+                            format!(
+                                "Result.ok argument type mismatch: expected {}, got {}",
+                                ok_ty, actual
+                            ),
+                            arg.span.clone(),
+                        );
+                    }
+                }
+                Some(expected.clone())
+            }
+            ("Result", "error", ResolvedType::Result(_, err_ty)) => {
+                if !err_ty.contains_function_type() {
+                    return None;
+                }
+                if !type_args.is_empty() {
+                    self.error(
+                        "Result static methods do not accept explicit type arguments".to_string(),
+                        span.clone(),
+                    );
+                }
+                self.check_arg_count("Result.error", args, 1, span.clone());
+                if let Some(arg) = args.first() {
+                    let actual = self.check_expr_with_expected_type(
+                        &arg.node,
+                        arg.span.clone(),
+                        Some(err_ty),
+                    );
+                    if !self.types_compatible(err_ty, &actual) {
+                        self.error(
+                            format!(
+                                "Result.error argument type mismatch: expected {}, got {}",
+                                err_ty, actual
+                            ),
+                            arg.span.clone(),
+                        );
+                    }
+                }
+                Some(expected.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn check_block_expr_with_expected_type(
+        &mut self,
+        body: &[Spanned<Stmt>],
+        expected: &ResolvedType,
+    ) -> ResolvedType {
+        self.enter_scope();
+        let mut result_type = ResolvedType::None;
+        for stmt in body {
+            match &stmt.node {
+                Stmt::Expr(expr) => {
+                    result_type = self.check_expr_with_expected_type(
+                        &expr.node,
+                        expr.span.clone(),
+                        Some(expected),
+                    );
+                }
+                _ => self.check_stmt(&stmt.node, stmt.span.clone()),
+            }
+        }
+        self.exit_scope();
+        result_type
+    }
+
+    fn check_if_expr_with_expected_type(
+        &mut self,
+        condition: &Expr,
+        condition_span: Span,
+        then_branch: &[Spanned<Stmt>],
+        else_branch: Option<&Vec<Spanned<Stmt>>>,
+        span: Span,
+        expected: &ResolvedType,
+    ) -> ResolvedType {
+        let cond_type = self.check_expr(condition, condition_span.clone());
+        if !matches!(cond_type, ResolvedType::Boolean) {
+            self.error(
+                format!("If condition must be Boolean, got {}", cond_type),
+                condition_span,
+            );
+        }
+
+        let then_type = self.check_block_expr_with_expected_type(then_branch, expected);
+        let else_type =
+            else_branch.map(|branch| self.check_block_expr_with_expected_type(branch, expected));
+
+        match else_type {
+            Some(else_type) => self
+                .common_compatible_type(&then_type, &else_type)
+                .unwrap_or_else(|| {
+                    self.error(
+                        format!(
+                            "If expression branch type mismatch: then is {}, else is {}",
+                            then_type, else_type
+                        ),
+                        span,
+                    );
+                    ResolvedType::Unknown
+                }),
+            None => ResolvedType::None,
+        }
+    }
+
+    fn check_match_expr_with_expected_type(
+        &mut self,
+        expr: &Expr,
+        expr_span: Span,
+        arms: &[MatchArm],
+        span: Span,
+        expected: &ResolvedType,
+    ) -> ResolvedType {
+        let match_type = self.check_expr(expr, expr_span);
+        let mut result_type: Option<ResolvedType> = None;
+
+        for arm in arms {
+            self.enter_scope();
+            self.check_pattern(&arm.pattern, &match_type, span.clone());
+            let arm_type = self.check_block_expr_with_expected_type(&arm.body, expected);
+            self.exit_scope();
+
+            if let Some(current) = &result_type {
+                if let Some(common_type) = self.common_compatible_type(current, &arm_type) {
+                    result_type = Some(common_type);
+                } else {
+                    self.error(
+                        format!(
+                            "Match expression arm type mismatch: expected {}, got {}",
+                            current, arm_type
+                        ),
+                        span.clone(),
+                    );
+                }
+            } else {
+                result_type = Some(arm_type);
+            }
+        }
+
+        if !self.match_expression_exhaustive(&match_type, arms) {
+            self.error(
+                format!("Non-exhaustive match expression for type {}", match_type),
+                span,
+            );
+        }
+
+        result_type.unwrap_or(ResolvedType::None)
     }
 
     fn check_async_block_expr(
@@ -4273,7 +4555,11 @@ impl TypeChecker {
                                 );
                             } else {
                                 for (arg, expected_ty) in args.iter().zip(field_types.iter()) {
-                                    let actual = self.check_expr(&arg.node, arg.span.clone());
+                                    let actual = self.check_expr_with_expected_type(
+                                        &arg.node,
+                                        arg.span.clone(),
+                                        Some(expected_ty),
+                                    );
                                     if !self.types_compatible(expected_ty, &actual) {
                                         self.error(
                                             format!(
@@ -4345,7 +4631,11 @@ impl TypeChecker {
                             );
                         } else {
                             for (arg, (_, expected)) in args.iter().zip(ctor_params.iter()) {
-                                let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                                let arg_type = self.check_expr_with_expected_type(
+                                    &arg.node,
+                                    arg.span.clone(),
+                                    Some(expected),
+                                );
                                 if !self.types_compatible(expected, &arg_type) {
                                     self.error(
                                         format!(
