@@ -150,9 +150,17 @@ Source Files:
 
 4. **Documentation**: Add README.md to explain project structure
 
-## Example Project
+## Example Projects
 
-See `examples/multi_file_project/` for a complete example.
+See `examples/multi_file_project/` for the minimal starter example.
+
+See `examples/insane_showcase_project/` for a larger project-mode showcase that combines:
+- cross-file packages
+- nested modules
+- interfaces and inheritance
+- generics and enums
+- async/await plus `await_timeout`
+- file I/O and interpolation-heavy reporting
 
 ```toml
 # apex.toml

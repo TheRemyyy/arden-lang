@@ -1,0 +1,90 @@
+package domain;
+
+import std.string.*;
+
+function domain_cat(a: String, b: String): String {
+    return Str.concat(a, b);
+}
+
+interface Pretty {
+    function pretty(): String;
+}
+
+interface Named extends Pretty {
+    function pretty(): String;
+    function name(): String;
+}
+
+enum Event {
+    Boot(String),
+    Metric(String, Float),
+    Snapshot(Integer),
+    Done
+}
+
+class Box<T> {
+    value: T;
+
+    constructor(value: T) {
+        this.value = value;
+    }
+
+    function get(): T {
+        return this.value;
+    }
+}
+
+class Counter implements Named {
+    label: String;
+    value: Integer;
+
+    constructor(label: String, value: Integer) {
+        this.label = label;
+        this.value = value;
+    }
+
+    function inc(): Integer {
+        this.value = this.value + 1;
+        return this.value;
+    }
+
+    function add(delta: Integer): Integer {
+        this.value = this.value + delta;
+        return this.value;
+    }
+
+    function pretty(): String {
+        return domain_cat(
+            domain_cat(domain_cat("Counter(", this.label), ", "),
+            domain_cat(to_string(this.value), ")")
+        );
+    }
+
+    function name(): String {
+        return this.label;
+    }
+}
+
+class FancyCounter extends Counter {
+    constructor(label: String, value: Integer) {
+        this.label = label;
+        this.value = value;
+    }
+
+    function scaled(factor: Float): Float {
+        return to_float(this.value) * factor;
+    }
+}
+
+function describe_named(value: Named): String {
+    return domain_cat(domain_cat(value.pretty(), " | name="), value.name());
+}
+
+function describe_event(event: Event): String {
+    return match (event) {
+        Event.Boot(name) => "boot:" + name,
+        Event.Metric(name, score) => "metric:" + name + ":" + to_string(score),
+        Event.Snapshot(value) => "snapshot:" + to_string(value),
+        Event.Done => "done",
+    };
+}

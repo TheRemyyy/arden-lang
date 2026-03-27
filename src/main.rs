@@ -18709,6 +18709,119 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_float_interpolation_from_nested_module_runtime() {
+        let temp_root = make_temp_project_root("float-interpolation-nested-module-runtime");
+        let source_path = temp_root.join("float_interpolation_nested_module_runtime.apex");
+        let output_path = temp_root.join("float_interpolation_nested_module_runtime");
+        let source = r#"
+            import std.io.*;
+
+            module Metrics {
+                module Api {
+                    function ratio(value: Integer): Float {
+                        return to_float(value) / 2.0;
+                    }
+                }
+            }
+
+            function main(): Integer {
+                println("ratio={Metrics.Api.ratio(3)}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested module float interpolation should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled nested module float interpolation binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("ratio=1.500000"),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_runs_float_interpolation_from_aliased_async_module_runtime() {
+        let temp_root = make_temp_project_root("float-interpolation-aliased-async-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            r#"
+package util;
+module Api {
+    module V1 {
+        function promote(value: Integer): Float {
+            return to_float(value) / 2.0;
+        }
+
+        async function measure(value: Integer): Task<Float> {
+            return promote(value) + 0.25;
+        }
+    }
+}
+"#,
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            r#"
+package app;
+import std.io.*;
+import util as u;
+
+function main(): Integer {
+    println("async_value={await(u.Api.V1.measure(3))}");
+    println("direct_value={u.Api.V1.promote(3)}");
+    return 0;
+}
+"#,
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support aliased async float interpolation");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled aliased async float interpolation binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("async_value=1.750000"), "stdout={stdout}");
+        assert!(stdout.contains("direct_value=1.500000"), "stdout={stdout}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_async_block_integer_tail_for_float_task_runtime() {
         let temp_root = make_temp_project_root("async-int-tail-float-task-runtime");
         let source_path = temp_root.join("async_int_tail_float_task_runtime.apex");

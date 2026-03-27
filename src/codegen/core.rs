@@ -10211,8 +10211,20 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
                 let buffer = self.extract_call_value(buffer_call).into_pointer_value();
 
-                let (fmt, print_arg): (&str, BasicMetadataValueEnum) = match &display_ty {
-                    Type::Integer => {
+                let (fmt, print_arg): (&str, BasicMetadataValueEnum) = if value.is_float_value() {
+                    ("%f", value.into())
+                } else if value.is_int_value() {
+                    if matches!(display_ty, Type::Float) {
+                        let promoted = self
+                            .builder
+                            .build_signed_int_to_float(
+                                value.into_int_value(),
+                                self.context.f64_type(),
+                                "display_f64",
+                            )
+                            .unwrap();
+                        ("%f", promoted.into())
+                    } else {
                         let promoted = self
                             .builder
                             .build_int_s_extend(
@@ -10223,8 +10235,11 @@ impl<'ctx> Codegen<'ctx> {
                             .unwrap();
                         ("%lld", promoted.into())
                     }
-                    Type::Float => ("%f", value.into()),
-                    _ => unreachable!(),
+                } else {
+                    return Err(CodegenError::new(format!(
+                        "display formatting expected numeric runtime value for {}, got LLVM value kind mismatch",
+                        Self::format_type_string(&display_ty)
+                    )));
                 };
 
                 let fmt_val = self.context.const_string(fmt.as_bytes(), true);
@@ -10652,7 +10667,12 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(result.into());
         }
 
-        Err(CodegenError::new("Type mismatch in binary operation"))
+        Err(CodegenError::new(format!(
+            "Type mismatch in binary operation {:?}: left={}, right={}",
+            op,
+            Self::format_type_string(left_ty),
+            Self::format_type_string(right_ty)
+        )))
     }
 
     fn guard_nonzero_integer_divisor(

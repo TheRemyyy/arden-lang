@@ -1,0 +1,12 @@
+name = "insane_showcase_project"
+version = "1.0.0"
+entry = "src/main.apex"
+files = [
+    "src/domain.apex",
+    "src/analytics.apex",
+    "src/score.apex",
+    "src/runtime.apex",
+    "src/main.apex"
+]
+output = "insane_showcase_project"
+output_kind = "bin"

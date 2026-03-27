@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed numeric display formatting for `to_string(...)`, `print(...)`, and string interpolation:
+  - display lowering now prefers the actual LLVM runtime value shape instead of trusting only the inferred Apex numeric type
+  - float-backed values flowing through mixed numeric inference, async/task paths, or cross-file wrappers no longer panic or mis-lower when rendered as strings
+  - backend diagnostics for unsupported numeric binary ops now include the operator and the resolved left/right types instead of the opaque `Type mismatch in binary operation`
 - Fixed unsound nested `Integer -> Float` compatibility for wrapped types:
   - wrapper/container types such as `Range<T>`, `Option<T>`, `Task<T>`, `List<T>`, and `Map<K, V>` no longer inherit scalar numeric promotion for their inner payloads
   - assignments, arguments, returns, and branch joins like `Range<Float> = range(1, 3)` or `take(Option.some(1))` are now rejected during typechecking instead of compiling and then reading integer-backed data through float runtime paths

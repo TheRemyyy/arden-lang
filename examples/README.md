@@ -58,6 +58,7 @@ This folder is the executable language feature gallery.
 
 - `multi_file_project/`
 - `multi_file_depth_project/`
+- `insane_showcase_project/`
 - `test_no_import/`
 
 ## Run all examples

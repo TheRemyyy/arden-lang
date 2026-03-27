@@ -1,0 +1,84 @@
+package app;
+
+import analytics as analytics;
+import domain.Box;
+import domain.Counter;
+import domain.Event;
+import domain.FancyCounter;
+import domain.describe_event;
+import domain.describe_named;
+import runtime as runtime;
+import std.args.*;
+import std.io.*;
+import std.math as math;
+import std.string.*;
+import std.string as strings;
+
+function app_cat(a: String, b: String): String {
+    return Str.concat(a, b);
+}
+
+function render_numbers(values: &List<Integer>): String {
+    mut out: String = "";
+    for (value in values) {
+        if (out != "") {
+            out = app_cat(out, ",");
+        }
+        out = app_cat(out, to_string(value));
+    }
+    return out;
+}
+
+function main(): Integer {
+    println("== Insane Showcase Project ==");
+
+    mut counter: Counter = Counter("apex-project", 6);
+    preview_counter: Counter = Counter("apex-project", 6);
+    fancy: FancyCounter = FancyCounter("fancy-project", 8);
+    println(describe_named(preview_counter));
+    println("fancy_scaled={fancy.scaled(1.25)}");
+
+    total: Integer = analytics.sum_history(counter.value);
+    event: Event = analytics.Api.V2.build_event("apex-project", total);
+    println(describe_event(event));
+    println(describe_event(Event.Snapshot(total)));
+
+    chooser: (Integer, Integer) -> Float = (left: Integer, right: Integer) => analytics.Api.V2.weighted_ratio(left + right, 2.0);
+    combined: Float = analytics.transform_pair<Integer, Float>(counter.value, total, chooser);
+    println("combined={combined}");
+
+    mut history: List<Integer> = List<Integer>();
+    history.push(counter.inc());
+    history.push(counter.add(3));
+    history.push(total);
+    println(app_cat("history=[", app_cat(render_numbers(&history), "]")));
+
+    snapshot: Result<Option<Box<Float>>, String> = analytics.build_snapshot(true, counter.value);
+    nested_value: Float = match (snapshot) {
+        Result.Ok(value) => match (value) {
+            Some(boxed) => boxed.get(),
+            None => 0.0,
+        },
+        Result.Error(_) => -1.0,
+    };
+    println("nested_value={nested_value}");
+
+    report_label: String = "apex-project";
+    report_value: Integer = counter.value;
+    report_task: Task<String> = runtime.render_report(report_label, report_value);
+    maybe_report: Option<String> = report_task.await_timeout(5000);
+    report: String = match (maybe_report) {
+        Some(text) => text,
+        None => "timeout",
+    };
+    println("report={report}");
+
+    persisted: String = runtime.persist_report("insane_showcase_report.txt", report);
+    trimmed_ok: Boolean = strings.trim("  apex  ") == "apex";
+    println("persisted={persisted}");
+    println("trimmed_ok={trimmed_ok}");
+    println("sqrt_ok={math.sqrt(81) == 9.0}");
+    println("args={Args.count()}");
+    println("showcase complete");
+    return 0;
+}
