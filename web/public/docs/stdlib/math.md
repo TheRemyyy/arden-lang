@@ -18,6 +18,15 @@ import std.math.abs as abs;
 f: (Integer) -> Integer = abs;
 ```
 
+Direct `Math.*` members can also be stored as typed function values:
+
+```apex
+root: (Integer) -> Float = Math.sqrt;
+rand: () -> Float = Math.random;
+pow_ints: (Integer, Integer) -> Float = Math.pow;
+pick: (Integer, Float) -> Float = Math.min;
+```
+
 ## Constants
 
 ### `Math.pi(): Float`

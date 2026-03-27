@@ -5247,7 +5247,20 @@ impl<'ctx> Codegen<'ctx> {
                 | "Math__abs"
                 | "Math__min"
                 | "Math__max"
+                | "Math__sqrt"
+                | "Math__sin"
+                | "Math__cos"
+                | "Math__tan"
                 | "Math__pow"
+                | "Math__floor"
+                | "Math__ceil"
+                | "Math__round"
+                | "Math__log"
+                | "Math__log10"
+                | "Math__exp"
+                | "Math__pi"
+                | "Math__e"
+                | "Math__random"
                 | "to_float"
                 | "to_int"
                 | "to_string"
@@ -5266,7 +5279,12 @@ impl<'ctx> Codegen<'ctx> {
                 | "System__getenv"
                 | "System__shell"
                 | "System__exec"
+                | "System__cwd"
+                | "System__os"
+                | "Time__unix"
+                | "Time__sleep"
                 | "Time__now"
+                | "Args__count"
                 | "Args__get"
                 | "Str__len"
                 | "Str__compare"
@@ -5389,15 +5407,20 @@ impl<'ctx> Codegen<'ctx> {
                     && matches!(params[0], Type::Integer | Type::Float)
             }
             "Math__min" | "Math__max" => {
-                params.len() == 2
+                (params.len() == 2
                     && params[0] == params[1]
                     && params[0] == ret.as_ref().clone()
-                    && matches!(params[0], Type::Integer | Type::Float)
+                    && matches!(params[0], Type::Integer | Type::Float))
+                    || (params.len() == 2
+                        && matches!(params[0], Type::Integer | Type::Float)
+                        && matches!(params[1], Type::Integer | Type::Float)
+                        && params[0] != params[1]
+                        && matches!(ret.as_ref(), Type::Float))
             }
             "Math__pow" => {
                 params.len() == 2
-                    && matches!(params[0], Type::Float)
-                    && matches!(params[1], Type::Float)
+                    && matches!(params[0], Type::Integer | Type::Float)
+                    && matches!(params[1], Type::Integer | Type::Float)
                     && matches!(ret.as_ref(), Type::Float)
             }
             "Math__sqrt" | "Math__sin" | "Math__cos" | "Math__tan" | "Math__floor"
@@ -5470,7 +5493,11 @@ impl<'ctx> Codegen<'ctx> {
                     && matches!(ret.as_ref(), Type::None)
             }
             "assert_eq" | "assert_ne" => {
-                params.len() == 2 && params[0] == params[1] && matches!(ret.as_ref(), Type::None)
+                params.len() == 2
+                    && (params[0] == params[1]
+                        || (matches!(params[0], Type::Integer) && matches!(params[1], Type::Float))
+                        || (matches!(params[0], Type::Float) && matches!(params[1], Type::Integer)))
+                    && matches!(ret.as_ref(), Type::None)
             }
             "range" => {
                 ((params.len() == 2 || params.len() == 3)

@@ -78,3 +78,11 @@ The global builtin `exit` is also available without import and can be assigned t
 ```apex
 stop: (Integer) -> None = exit;
 ```
+
+Direct `System.*` members can be stored as typed function values too:
+
+```apex
+cwd: () -> String = System.cwd;
+platform: () -> String = System.os;
+run_shell: (String) -> Integer = System.shell;
+```

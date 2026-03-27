@@ -33,6 +33,12 @@ import std.args.get as get;
 fetch: (Integer) -> String = get;
 ```
 
+The direct stdlib member works as a typed function value too:
+
+```apex
+argc: () -> Integer = Args.count;
+```
+
 ### `Args.get(index: Integer): String`
 
 Returns the argument at the specified index as a `String`. 

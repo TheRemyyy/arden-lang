@@ -3652,15 +3652,20 @@ impl TypeChecker {
                     && matches!(params[0], ResolvedType::Integer | ResolvedType::Float)
             }
             "Math__min" | "Math__max" => {
-                params.len() == 2
+                (params.len() == 2
                     && params[0] == params[1]
                     && params[0] == ret.as_ref().clone()
-                    && matches!(params[0], ResolvedType::Integer | ResolvedType::Float)
+                    && matches!(params[0], ResolvedType::Integer | ResolvedType::Float))
+                    || (params.len() == 2
+                        && matches!(params[0], ResolvedType::Integer | ResolvedType::Float)
+                        && matches!(params[1], ResolvedType::Integer | ResolvedType::Float)
+                        && params[0] != params[1]
+                        && matches!(ret.as_ref(), ResolvedType::Float))
             }
             "Math__pow" => {
                 params.len() == 2
-                    && matches!(params[0], ResolvedType::Float)
-                    && matches!(params[1], ResolvedType::Float)
+                    && matches!(params[0], ResolvedType::Integer | ResolvedType::Float)
+                    && matches!(params[1], ResolvedType::Integer | ResolvedType::Float)
                     && matches!(ret.as_ref(), ResolvedType::Float)
             }
             "Math__sqrt" | "Math__sin" | "Math__cos" | "Math__tan" | "Math__floor"
@@ -3730,7 +3735,11 @@ impl TypeChecker {
             }
             "assert_eq" | "assert_ne" => {
                 params.len() == 2
-                    && params[0] == params[1]
+                    && (params[0] == params[1]
+                        || (matches!(params[0], ResolvedType::Integer)
+                            && matches!(params[1], ResolvedType::Float))
+                        || (matches!(params[0], ResolvedType::Float)
+                            && matches!(params[1], ResolvedType::Integer)))
                     && matches!(ret.as_ref(), ResolvedType::None)
             }
             "range" => {
@@ -3797,7 +3806,7 @@ impl TypeChecker {
                 Box::new(ResolvedType::Unknown),
             )),
             "Math__pow" => Some(ResolvedType::Function(
-                vec![ResolvedType::Float, ResolvedType::Float],
+                vec![ResolvedType::Unknown, ResolvedType::Unknown],
                 Box::new(ResolvedType::Float),
             )),
             "Math__sqrt" | "Math__sin" | "Math__cos" | "Math__tan" | "Math__floor"

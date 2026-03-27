@@ -19209,6 +19209,302 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_stdlib_math_min_mixed_numeric_function_value_runtime() {
+        let temp_root = make_temp_project_root("stdlib-math-min-mixed-fn-value-runtime");
+        let source_path = temp_root.join("stdlib_math_min_mixed_fn_value_runtime.apex");
+        let output_path = temp_root.join("stdlib_math_min_mixed_fn_value_runtime");
+        let source = r#"
+            import std.math as math;
+
+            function main(): Integer {
+                pick: (Integer, Float) -> Float = math.min;
+                return if (pick(3, 1.5) == 1.5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric Math.min function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric Math.min function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_stdlib_math_max_mixed_numeric_function_value_runtime() {
+        let temp_root = make_temp_project_root("stdlib-math-max-mixed-fn-value-runtime");
+        let source_path = temp_root.join("stdlib_math_max_mixed_fn_value_runtime.apex");
+        let output_path = temp_root.join("stdlib_math_max_mixed_fn_value_runtime");
+        let source = r#"
+            import std.math as math;
+
+            function main(): Integer {
+                pick: (Float, Integer) -> Float = math.max;
+                return if (pick(1.5, 3) == 3.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric Math.max function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric Math.max function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_math_pow_integer_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-math-pow-int-fn-value-runtime");
+        let source_path = temp_root.join("builtin_math_pow_int_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_math_pow_int_fn_value_runtime");
+        let source = r#"
+            import std.math as math;
+
+            function main(): Integer {
+                pow_ints: (Integer, Integer) -> Float = math.pow;
+                return if (pow_ints(2, 3) == 8.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer Math.pow function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled integer Math.pow function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_math_pow_mixed_numeric_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-math-pow-mixed-fn-value-runtime");
+        let source_path = temp_root.join("builtin_math_pow_mixed_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_math_pow_mixed_fn_value_runtime");
+        let source = r#"
+            import std.math as math;
+
+            function main(): Integer {
+                pow_mixed: (Integer, Float) -> Float = math.pow;
+                return if (pow_mixed(9, 0.5) == 3.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric Math.pow function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric Math.pow function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_math_random_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-math-random-fn-value-runtime");
+        let source_path = temp_root.join("direct_math_random_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_math_random_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                f: () -> Float = Math.random;
+                return if (f() >= 0.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Math.random function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Math.random function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_math_pi_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-math-pi-fn-value-runtime");
+        let source_path = temp_root.join("direct_math_pi_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_math_pi_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                f: () -> Float = Math.pi;
+                return if (f() > 3.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Math.pi function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Math.pi function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_math_sqrt_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-math-sqrt-fn-value-runtime");
+        let source_path = temp_root.join("direct_math_sqrt_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_math_sqrt_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                f: (Integer) -> Float = Math.sqrt;
+                return if (f(9) == 3.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Math.sqrt function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Math.sqrt function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_system_cwd_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-system-cwd-fn-value-runtime");
+        let source_path = temp_root.join("direct_system_cwd_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_system_cwd_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                f: () -> String = System.cwd;
+                return if (f() != "") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct System.cwd function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct System.cwd function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_system_os_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-system-os-fn-value-runtime");
+        let source_path = temp_root.join("direct_system_os_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_system_os_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                f: () -> String = System.os;
+                return if (f() != "") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct System.os function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct System.os function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_time_unix_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-time-unix-fn-value-runtime");
+        let source_path = temp_root.join("direct_time_unix_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_time_unix_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                f: () -> Integer = Time.unix;
+                return if (f() >= 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Time.unix function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Time.unix function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_time_sleep_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-time-sleep-fn-value-runtime");
+        let source_path = temp_root.join("direct_time_sleep_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_time_sleep_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                f: (Integer) -> None = Time.sleep;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Time.sleep function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Time.sleep function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_args_count_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-args-count-fn-value-runtime");
+        let source_path = temp_root.join("direct_args_count_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_args_count_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                f: () -> Integer = Args.count;
+                return if (f() >= 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Args.count function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Args.count function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_builtin_to_float_function_value_runtime() {
         let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
         let source_path = temp_root.join("builtin_to_float_fn_value_runtime.apex");
@@ -19275,6 +19571,56 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled to_string function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_mixed_numeric_assert_eq_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-mixed-assert-eq-fn-value-runtime");
+        let source_path = temp_root.join("builtin_mixed_assert_eq_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_mixed_assert_eq_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                check: (Integer, Float) -> None = assert_eq;
+                check(4, 4.0);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric assert_eq function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric assert_eq function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_mixed_numeric_assert_ne_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-mixed-assert-ne-fn-value-runtime");
+        let source_path = temp_root.join("builtin_mixed_assert_ne_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_mixed_assert_ne_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                check: (Float, Integer) -> None = assert_ne;
+                check(4.5, 4);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric assert_ne function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric assert_ne function value binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);

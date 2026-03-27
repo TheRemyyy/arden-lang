@@ -48,4 +48,12 @@ check: (Integer, Integer) -> None = assert_eq;
 stop: (Integer) -> None = exit;
 ```
 
+The same also applies to direct stdlib object members:
+
+```apex
+cwd: () -> String = System.cwd;
+now_unix: () -> Integer = Time.unix;
+rand: () -> Float = Math.random;
+```
+
 Backward compatibility: direct `Module__function()` calls are still accepted.
