@@ -9378,15 +9378,79 @@ impl<'ctx> Codegen<'ctx> {
         name: &str,
         expected_ty: &Type,
     ) -> Result<Option<BasicValueEnum<'ctx>>> {
-        if !Self::builtin_matches_expected_function_type(name, expected_ty) {
-            return Ok(None);
-        }
-
-        let Type::Function(param_types, ret_type) = expected_ty else {
+        let actual_ty = if Self::builtin_matches_expected_function_type(name, expected_ty) {
+            expected_ty.clone()
+        } else if let Some(actual_ty) =
+            Self::builtin_function_value_concrete_type_for_expected(name, expected_ty)
+        {
+            actual_ty
+        } else {
             return Ok(None);
         };
 
-        let wrapper_name = format!("__builtin_fn_value_{}", name.replace("__", "_"));
+        let actual_closure = self.compile_builtin_function_value_with_type(name, &actual_ty)?;
+        if &actual_ty == expected_ty {
+            return Ok(Some(actual_closure));
+        }
+
+        self.compile_function_value_adapter_from_closure(actual_closure, &actual_ty, expected_ty)
+    }
+
+    fn builtin_function_value_concrete_type_for_expected(
+        name: &str,
+        expected: &Type,
+    ) -> Option<Type> {
+        match (name, expected) {
+            ("Math__abs", Type::Function(params, ret))
+                if params.len() == 1
+                    && matches!(params[0], Type::Integer)
+                    && matches!(ret.as_ref(), Type::Float) =>
+            {
+                Some(Type::Function(vec![Type::Integer], Box::new(Type::Integer)))
+            }
+            ("Math__min" | "Math__max", Type::Function(params, ret))
+                if params.len() == 2
+                    && matches!(params[0], Type::Integer)
+                    && matches!(params[1], Type::Integer)
+                    && matches!(ret.as_ref(), Type::Float) =>
+            {
+                Some(Type::Function(
+                    vec![Type::Integer, Type::Integer],
+                    Box::new(Type::Integer),
+                ))
+            }
+            ("Math__pow", Type::Function(params, ret))
+                if params.len() == 2
+                    && params
+                        .iter()
+                        .all(|param| matches!(param, Type::Integer | Type::Float))
+                    && matches!(ret.as_ref(), Type::Float) =>
+            {
+                Some(Type::Function(
+                    vec![Type::Float, Type::Float],
+                    Box::new(Type::Float),
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    fn compile_builtin_function_value_with_type(
+        &mut self,
+        name: &str,
+        function_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let Type::Function(param_types, ret_type) = function_ty else {
+            return Err(CodegenError::new(
+                "builtin function value requires function type",
+            ));
+        };
+
+        let wrapper_name = format!(
+            "__builtin_fn_value_{}_{}",
+            name.replace("__", "_"),
+            Self::type_specialization_suffix(function_ty)
+        );
         let wrapper_fn = if let Some(existing) = self.module.get_function(&wrapper_name) {
             existing
         } else {
@@ -9412,7 +9476,7 @@ impl<'ctx> Codegen<'ctx> {
             let saved_variables = self.variables.clone();
 
             self.current_function = Some(wrapper_fn);
-            self.current_return_type = Some(expected_ty.clone());
+            self.current_return_type = Some(function_ty.clone());
             self.variables.clear();
 
             let entry = self.context.append_basic_block(wrapper_fn, "entry");
@@ -9492,7 +9556,7 @@ impl<'ctx> Codegen<'ctx> {
             .build_insert_value(closure, ptr_type.const_null(), 1, "builtin_env")
             .unwrap()
             .into_struct_value();
-        Ok(Some(closure.into()))
+        Ok(closure.into())
     }
 
     fn compile_function_value_adapter_from_closure(

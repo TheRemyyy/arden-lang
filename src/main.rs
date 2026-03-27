@@ -19261,6 +19261,249 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_direct_math_abs_widened_return_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-math-abs-widened-return-fn-value-runtime");
+        let source_path = temp_root.join("direct_math_abs_widened_return_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_math_abs_widened_return_fn_value_runtime");
+        let source = r#"
+            import std.math.*;
+
+            function main(): Integer {
+                f: (Integer) -> Float = Math.abs;
+                return if (f(-2) == 2.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Math.abs widened return function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Math.abs widened return function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_alias_math_abs_widened_return_function_value_runtime() {
+        let temp_root = make_temp_project_root("alias-math-abs-widened-return-fn-value-runtime");
+        let source_path = temp_root.join("alias_math_abs_widened_return_fn_value_runtime.apex");
+        let output_path = temp_root.join("alias_math_abs_widened_return_fn_value_runtime");
+        let source = r#"
+            import std.math.abs as abs;
+
+            function main(): Integer {
+                f: (Integer) -> Float = abs;
+                return if (f(-2) == 2.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("alias Math.abs widened return function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled alias Math.abs widened return function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_namespace_alias_math_abs_widened_return_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("namespace-alias-math-abs-widened-return-fn-value-runtime");
+        let source_path =
+            temp_root.join("namespace_alias_math_abs_widened_return_fn_value_runtime.apex");
+        let output_path =
+            temp_root.join("namespace_alias_math_abs_widened_return_fn_value_runtime");
+        let source = r#"
+            import std.math as math;
+
+            function main(): Integer {
+                f: (Integer) -> Float = math.abs;
+                return if (f(-2) == 2.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("namespace alias Math.abs widened return function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled namespace alias Math.abs widened return function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_math_min_widened_return_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-math-min-widened-return-fn-value-runtime");
+        let source_path = temp_root.join("direct_math_min_widened_return_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_math_min_widened_return_fn_value_runtime");
+        let source = r#"
+            import std.math.*;
+
+            function main(): Integer {
+                f: (Integer, Integer) -> Float = Math.min;
+                return if (f(3, 1) == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Math.min widened return function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Math.min widened return function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_alias_math_min_widened_return_function_value_runtime() {
+        let temp_root = make_temp_project_root("alias-math-min-widened-return-fn-value-runtime");
+        let source_path = temp_root.join("alias_math_min_widened_return_fn_value_runtime.apex");
+        let output_path = temp_root.join("alias_math_min_widened_return_fn_value_runtime");
+        let source = r#"
+            import std.math.min as min;
+
+            function main(): Integer {
+                f: (Integer, Integer) -> Float = min;
+                return if (f(3, 1) == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("alias Math.min widened return function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled alias Math.min widened return function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_namespace_alias_math_min_widened_return_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("namespace-alias-math-min-widened-return-fn-value-runtime");
+        let source_path =
+            temp_root.join("namespace_alias_math_min_widened_return_fn_value_runtime.apex");
+        let output_path =
+            temp_root.join("namespace_alias_math_min_widened_return_fn_value_runtime");
+        let source = r#"
+            import std.math as math;
+
+            function main(): Integer {
+                f: (Integer, Integer) -> Float = math.min;
+                return if (f(3, 1) == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("namespace alias Math.min widened return function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled namespace alias Math.min widened return function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_math_max_widened_return_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-math-max-widened-return-fn-value-runtime");
+        let source_path = temp_root.join("direct_math_max_widened_return_fn_value_runtime.apex");
+        let output_path = temp_root.join("direct_math_max_widened_return_fn_value_runtime");
+        let source = r#"
+            import std.math.*;
+
+            function main(): Integer {
+                f: (Integer, Integer) -> Float = Math.max;
+                return if (f(3, 1) == 3.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Math.max widened return function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Math.max widened return function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_alias_math_max_widened_return_function_value_runtime() {
+        let temp_root = make_temp_project_root("alias-math-max-widened-return-fn-value-runtime");
+        let source_path = temp_root.join("alias_math_max_widened_return_fn_value_runtime.apex");
+        let output_path = temp_root.join("alias_math_max_widened_return_fn_value_runtime");
+        let source = r#"
+            import std.math.max as max;
+
+            function main(): Integer {
+                f: (Integer, Integer) -> Float = max;
+                return if (f(3, 1) == 3.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("alias Math.max widened return function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled alias Math.max widened return function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_namespace_alias_math_max_widened_return_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("namespace-alias-math-max-widened-return-fn-value-runtime");
+        let source_path =
+            temp_root.join("namespace_alias_math_max_widened_return_fn_value_runtime.apex");
+        let output_path =
+            temp_root.join("namespace_alias_math_max_widened_return_fn_value_runtime");
+        let source = r#"
+            import std.math as math;
+
+            function main(): Integer {
+                f: (Integer, Integer) -> Float = math.max;
+                return if (f(3, 1) == 3.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("namespace alias Math.max widened return function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled namespace alias Math.max widened return function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_builtin_math_pow_integer_function_value_runtime() {
         let temp_root = make_temp_project_root("builtin-math-pow-int-fn-value-runtime");
         let source_path = temp_root.join("builtin_math_pow_int_fn_value_runtime.apex");

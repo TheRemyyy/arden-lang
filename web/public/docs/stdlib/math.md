@@ -25,7 +25,10 @@ root: (Integer) -> Float = Math.sqrt;
 rand: () -> Float = Math.random;
 pow_ints: (Integer, Integer) -> Float = Math.pow;
 pick: (Integer, Float) -> Float = Math.min;
+widened_abs: (Integer) -> Float = Math.abs;
 ```
+
+Safe higher-order numeric adaptation applies there too, so `Math.abs`, `Math.min`, and `Math.max` can widen an `Integer` result to `Float` in typed function-value contexts just like named functions can.
 
 ## Constants
 

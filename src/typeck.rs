@@ -3865,6 +3865,48 @@ impl TypeChecker {
         }
     }
 
+    fn builtin_function_value_concrete_type_for_expected(
+        name: &str,
+        expected: &ResolvedType,
+    ) -> Option<ResolvedType> {
+        match (name, expected) {
+            ("Math__abs", ResolvedType::Function(params, ret))
+                if params.len() == 1
+                    && matches!(params[0], ResolvedType::Integer)
+                    && matches!(ret.as_ref(), ResolvedType::Float) =>
+            {
+                Some(ResolvedType::Function(
+                    vec![ResolvedType::Integer],
+                    Box::new(ResolvedType::Integer),
+                ))
+            }
+            ("Math__min" | "Math__max", ResolvedType::Function(params, ret))
+                if params.len() == 2
+                    && matches!(params[0], ResolvedType::Integer)
+                    && matches!(params[1], ResolvedType::Integer)
+                    && matches!(ret.as_ref(), ResolvedType::Float) =>
+            {
+                Some(ResolvedType::Function(
+                    vec![ResolvedType::Integer, ResolvedType::Integer],
+                    Box::new(ResolvedType::Integer),
+                ))
+            }
+            ("Math__pow", ResolvedType::Function(params, ret))
+                if params.len() == 2
+                    && params.iter().all(|param| {
+                        matches!(param, ResolvedType::Integer | ResolvedType::Float)
+                    })
+                    && matches!(ret.as_ref(), ResolvedType::Float) =>
+            {
+                Some(ResolvedType::Function(
+                    vec![ResolvedType::Float, ResolvedType::Float],
+                    Box::new(ResolvedType::Float),
+                ))
+            }
+            _ => Self::builtin_function_value_type(name),
+        }
+    }
+
     /// Check an expression and return its type
     fn check_expr_with_expected_type(
         &mut self,
@@ -3880,6 +3922,13 @@ impl TypeChecker {
                     }
                     if Self::builtin_matches_expected_function_type(&name, expected_ty) {
                         return expected_ty.clone();
+                    }
+                    if let Some(actual_ty) =
+                        Self::builtin_function_value_concrete_type_for_expected(&name, expected_ty)
+                    {
+                        if self.types_compatible(expected_ty, &actual_ty) {
+                            return actual_ty;
+                        }
                     }
                 }
             }
