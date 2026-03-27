@@ -17957,6 +17957,8 @@ function main(): Integer {
         let source_path = temp_root.join("mixed_numeric_branch_math_runtime.apex");
         let output_path = temp_root.join("mixed_numeric_branch_math_runtime");
         let source = r#"
+            import std.math.*;
+
             function main(): Integer {
                 branch: Float = if (true) { 1 } else { 2.5 };
                 min_value: Float = Math.min(1, 2.5);
@@ -19069,6 +19071,564 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled Args.count alias call binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_stdlib_function_alias_value_runtime() {
+        let temp_root = make_temp_project_root("stdlib-fn-alias-value-runtime");
+        let source_path = temp_root.join("stdlib_fn_alias_value_runtime.apex");
+        let output_path = temp_root.join("stdlib_fn_alias_value_runtime");
+        let source = r#"
+            import std.math.abs as abs;
+
+            function main(): Integer {
+                f: (Integer) -> Integer = abs;
+                return if (f(-5) == 5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("stdlib alias function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled stdlib alias function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_stdlib_namespace_alias_function_value_runtime() {
+        let temp_root = make_temp_project_root("stdlib-namespace-alias-value-runtime");
+        let source_path = temp_root.join("stdlib_namespace_alias_value_runtime.apex");
+        let output_path = temp_root.join("stdlib_namespace_alias_value_runtime");
+        let source = r#"
+            import std.math as math;
+
+            function main(): Integer {
+                f: (Integer) -> Integer = math.abs;
+                return if (f(-9) == 9) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("stdlib namespace alias function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled stdlib namespace alias function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_stdlib_function_alias_callback_runtime() {
+        let temp_root = make_temp_project_root("stdlib-fn-alias-callback-runtime");
+        let source_path = temp_root.join("stdlib_fn_alias_callback_runtime.apex");
+        let output_path = temp_root.join("stdlib_fn_alias_callback_runtime");
+        let source = r#"
+            import std.math.abs as abs;
+
+            function apply_twice(f: (Integer) -> Integer, x: Integer): Integer {
+                return f(f(x));
+            }
+
+            function main(): Integer {
+                return if (apply_twice(abs, -2) == 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("stdlib alias callback should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled stdlib alias callback binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_stdlib_math_min_alias_call_runtime() {
+        let temp_root = make_temp_project_root("stdlib-math-min-alias-call-runtime");
+        let source_path = temp_root.join("stdlib_math_min_alias_call_runtime.apex");
+        let output_path = temp_root.join("stdlib_math_min_alias_call_runtime");
+        let source = r#"
+            import std.math.min as min;
+
+            function main(): Integer {
+                return if (min(3, 1) == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Math.min alias call should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Math.min alias call binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_stdlib_math_min_alias_value_runtime() {
+        let temp_root = make_temp_project_root("stdlib-math-min-alias-value-runtime");
+        let source_path = temp_root.join("stdlib_math_min_alias_value_runtime.apex");
+        let output_path = temp_root.join("stdlib_math_min_alias_value_runtime");
+        let source = r#"
+            import std.math.min as min;
+
+            function main(): Integer {
+                pick: (Integer, Integer) -> Integer = min;
+                return if (pick(3, 1) == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Math.min alias value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Math.min alias value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_to_float_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
+        let source_path = temp_root.join("builtin_to_float_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_to_float_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                conv: (Integer) -> Float = to_float;
+                return if (conv(3) == 3.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_float function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_float function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_to_int_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-to-int-fn-value-runtime");
+        let source_path = temp_root.join("builtin_to_int_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_to_int_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                conv: (Float) -> Integer = to_int;
+                return if (conv(3.9) == 3) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_int function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_int function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_to_string_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-to-string-fn-value-runtime");
+        let source_path = temp_root.join("builtin_to_string_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_to_string_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                render: (Boolean) -> String = to_string;
+                return if (render(true) == "true") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_string function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_string function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_assert_eq_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-assert-eq-fn-value-runtime");
+        let source_path = temp_root.join("builtin_assert_eq_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_assert_eq_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                check: (Integer, Integer) -> None = assert_eq;
+                check(4, 4);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("assert_eq function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled assert_eq function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_assert_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-assert-fn-value-runtime");
+        let source_path = temp_root.join("builtin_assert_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_assert_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                ensure: (Boolean) -> None = assert;
+                ensure(true);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("assert function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled assert function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_assert_ne_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-assert-ne-fn-value-runtime");
+        let source_path = temp_root.join("builtin_assert_ne_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_assert_ne_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                check: (Integer, Integer) -> None = assert_ne;
+                check(4, 5);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("assert_ne function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled assert_ne function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_assert_true_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-assert-true-fn-value-runtime");
+        let source_path = temp_root.join("builtin_assert_true_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_assert_true_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                ensure_true: (Boolean) -> None = assert_true;
+                ensure_true(true);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("assert_true function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled assert_true function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_assert_false_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-assert-false-fn-value-runtime");
+        let source_path = temp_root.join("builtin_assert_false_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_assert_false_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                ensure_false: (Boolean) -> None = assert_false;
+                ensure_false(false);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("assert_false function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled assert_false function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_fail_no_arg_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-fail-no-arg-fn-value-runtime");
+        let source_path = temp_root.join("builtin_fail_no_arg_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_fail_no_arg_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                stop_now: () -> None = fail;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fail() no-arg function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled fail() no-arg function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_fail_string_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-fail-string-fn-value-runtime");
+        let source_path = temp_root.join("builtin_fail_string_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_fail_string_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                stop_with: (String) -> None = fail;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fail(String) function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled fail(String) function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_exit_function_value_check_runtime() {
+        let temp_root = make_temp_project_root("builtin-exit-fn-value-runtime");
+        let source_path = temp_root.join("builtin_exit_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_exit_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                terminate: (Integer) -> None = exit;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("exit function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled exit function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_builtin_assert_function_value_with_string_parameter() {
+        let temp_root = make_temp_project_root("reject-builtin-assert-fn-string-param");
+        let source_path = temp_root.join("reject_builtin_assert_fn_string_param.apex");
+        let output_path = temp_root.join("reject_builtin_assert_fn_string_param");
+        let source = r#"
+            function main(): Integer {
+                ensure: (String) -> None = assert;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("assert(String) function value should fail");
+        assert!(
+            err.contains("Type mismatch") || err.contains("assert"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_builtin_fail_function_value_with_integer_parameter() {
+        let temp_root = make_temp_project_root("reject-builtin-fail-fn-integer-param");
+        let source_path = temp_root.join("reject_builtin_fail_fn_integer_param.apex");
+        let output_path = temp_root.join("reject_builtin_fail_fn_integer_param");
+        let source = r#"
+            function main(): Integer {
+                stop_with: (Integer) -> None = fail;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("fail(Integer) function value should fail");
+        assert!(
+            err.contains("Type mismatch") || err.contains("fail"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_integer_range_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-int-range-fn-value-runtime");
+        let source_path = temp_root.join("builtin_int_range_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_int_range_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                build: (Integer, Integer) -> Range<Integer> = range;
+                mut values: Range<Integer> = build(1, 4);
+                mut total: Integer = 0;
+                while (values.has_next()) {
+                    total = total + values.next();
+                }
+                return if (total == 6) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer range function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled integer range function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_builtin_float_range_step_function_value_runtime() {
+        let temp_root = make_temp_project_root("builtin-float-range-step-fn-value-runtime");
+        let source_path = temp_root.join("builtin_float_range_step_fn_value_runtime.apex");
+        let output_path = temp_root.join("builtin_float_range_step_fn_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                build: (Float, Float, Float) -> Range<Float> = range;
+                mut values: Range<Float> = build(0.0, 1.0, 0.25);
+                mut total: Float = 0.0;
+                while (values.has_next()) {
+                    total = total + values.next();
+                }
+                return if (total == 1.5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("float range function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled float range function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_read_line_alias_function_value_check_runtime() {
+        let temp_root = make_temp_project_root("read-line-alias-fn-value-runtime");
+        let source_path = temp_root.join("read_line_alias_fn_value_runtime.apex");
+        let output_path = temp_root.join("read_line_alias_fn_value_runtime");
+        let source = r#"
+            import std.io.read_line as read_line;
+
+            function main(): Integer {
+                reader: () -> String = read_line;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("read_line alias function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled read_line alias function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_args_get_alias_value_runtime() {
+        let temp_root = make_temp_project_root("args-get-alias-value-runtime");
+        let source_path = temp_root.join("args_get_alias_value_runtime.apex");
+        let output_path = temp_root.join("args_get_alias_value_runtime");
+        let source = r#"
+            import std.args.get as get;
+
+            function main(): Integer {
+                fetch: (Integer) -> String = get;
+                value: String = fetch(0);
+                return if (value != "") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Args.get alias function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Args.get alias function value binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);

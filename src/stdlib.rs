@@ -62,6 +62,8 @@ impl StdLib {
         functions.insert("Math__tan".to_string(), "std.math".to_string());
         functions.insert("Math__pow".to_string(), "std.math".to_string());
         functions.insert("Math__abs".to_string(), "std.math".to_string());
+        functions.insert("Math__min".to_string(), "std.math".to_string());
+        functions.insert("Math__max".to_string(), "std.math".to_string());
         functions.insert("Math__floor".to_string(), "std.math".to_string());
         functions.insert("Math__ceil".to_string(), "std.math".to_string());
         functions.insert("Math__round".to_string(), "std.math".to_string());

@@ -3451,6 +3451,411 @@ impl TypeChecker {
         }
     }
 
+    fn resolve_builtin_module_alias(&self, name: &str) -> String {
+        let Some(path) = self.import_aliases.get(name) else {
+            return name.to_string();
+        };
+        let mut owner: Option<String> = None;
+        for (func, ns) in stdlib_registry().get_functions() {
+            if ns == path {
+                if let Some((candidate_owner, _)) = func.split_once("__") {
+                    let candidate_owner = candidate_owner.to_string();
+                    if let Some(existing) = &owner {
+                        if existing != &candidate_owner {
+                            return name.to_string();
+                        }
+                    } else {
+                        owner = Some(candidate_owner);
+                    }
+                }
+            }
+        }
+        owner.unwrap_or_else(|| name.to_string())
+    }
+
+    fn resolve_contextual_function_value_name(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Ident(name) => self
+                .resolve_import_alias_symbol(name)
+                .or_else(|| {
+                    self.resolve_function_value_name(name)
+                        .map(|resolved| resolved.to_string())
+                })
+                .or_else(|| Self::builtin_function_value_type(name).map(|_| name.clone())),
+            Expr::Field { object, field } => {
+                if let Some(path_parts) = Self::flatten_field_chain(expr) {
+                    if path_parts.len() >= 2 {
+                        if let Some(path) = self.import_aliases.get(&path_parts[0]) {
+                            let namespace_path = if path_parts.len() == 2 {
+                                path.clone()
+                            } else {
+                                format!(
+                                    "{}.{}",
+                                    path,
+                                    path_parts[1..path_parts.len() - 1].join(".")
+                                )
+                            };
+                            if let Some(canonical) = stdlib_registry()
+                                .resolve_alias_call(&namespace_path, path_parts.last()?)
+                            {
+                                return Some(canonical);
+                            }
+                            let candidate = format!(
+                                "{}__{}",
+                                path.replace('.', "__"),
+                                path_parts[1..].join("__")
+                            );
+                            let resolved = self
+                                .resolve_function_value_name(&candidate)
+                                .unwrap_or(&candidate);
+                            if self.functions.contains_key(resolved) {
+                                return Some(resolved.to_string());
+                            }
+                        }
+
+                        if path_parts.len() == 2 {
+                            let builtin_owner = self.resolve_builtin_module_alias(&path_parts[0]);
+                            let builtin_name = format!("{}__{}", builtin_owner, field);
+                            if Self::builtin_matches_expected_function_type(
+                                &builtin_name,
+                                &ResolvedType::Unknown,
+                            ) {
+                                return Some(builtin_name);
+                            }
+                        }
+
+                        let mangled = path_parts.join("__");
+                        let resolved = self
+                            .resolve_function_value_name(&mangled)
+                            .unwrap_or(&mangled);
+                        if self.functions.contains_key(resolved) {
+                            return Some(resolved.to_string());
+                        }
+                    }
+                }
+                if let Expr::Ident(owner_name) = &object.node {
+                    let resolved_owner = self.resolve_builtin_module_alias(owner_name);
+                    let builtin_name = format!("{}__{}", resolved_owner, field);
+                    if Self::builtin_matches_expected_function_type(
+                        &builtin_name,
+                        &ResolvedType::Unknown,
+                    ) {
+                        return Some(builtin_name);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn builtin_matches_expected_function_type(name: &str, expected: &ResolvedType) -> bool {
+        let ResolvedType::Function(params, ret) = expected else {
+            return matches!(
+                name,
+                "read_line"
+                    | "File__read"
+                    | "File__write"
+                    | "File__exists"
+                    | "File__delete"
+                    | "System__getenv"
+                    | "System__shell"
+                    | "System__exec"
+                    | "System__cwd"
+                    | "System__os"
+                    | "System__exit"
+                    | "Time__now"
+                    | "Time__unix"
+                    | "Time__sleep"
+                    | "Args__count"
+                    | "Args__get"
+                    | "Math__abs"
+                    | "Math__min"
+                    | "Math__max"
+                    | "Math__sqrt"
+                    | "Math__sin"
+                    | "Math__cos"
+                    | "Math__tan"
+                    | "Math__pow"
+                    | "Math__floor"
+                    | "Math__ceil"
+                    | "Math__round"
+                    | "Math__log"
+                    | "Math__log10"
+                    | "Math__exp"
+                    | "Math__pi"
+                    | "Math__e"
+                    | "Math__random"
+                    | "Str__len"
+                    | "Str__compare"
+                    | "Str__concat"
+                    | "Str__upper"
+                    | "Str__lower"
+                    | "Str__trim"
+                    | "Str__contains"
+                    | "Str__startsWith"
+                    | "Str__endsWith"
+                    | "to_float"
+                    | "to_int"
+                    | "to_string"
+                    | "assert"
+                    | "assert_eq"
+                    | "assert_ne"
+                    | "assert_true"
+                    | "assert_false"
+                    | "fail"
+                    | "exit"
+                    | "range"
+            );
+        };
+
+        match name {
+            "read_line" | "System__cwd" | "System__os" => {
+                params.is_empty() && matches!(ret.as_ref(), ResolvedType::String)
+            }
+            "File__read" | "System__getenv" | "System__shell" | "System__exec" | "Time__now" => {
+                params.len() == 1
+                    && matches!(params[0], ResolvedType::String)
+                    && matches!(ret.as_ref(), ResolvedType::String | ResolvedType::Integer)
+                    && match name {
+                        "System__shell" => matches!(ret.as_ref(), ResolvedType::Integer),
+                        _ => matches!(ret.as_ref(), ResolvedType::String),
+                    }
+            }
+            "File__write" => {
+                params.len() == 2
+                    && matches!(params[0], ResolvedType::String)
+                    && matches!(params[1], ResolvedType::String)
+                    && matches!(ret.as_ref(), ResolvedType::Boolean)
+            }
+            "File__exists" | "File__delete" => {
+                params.len() == 1
+                    && matches!(params[0], ResolvedType::String)
+                    && matches!(ret.as_ref(), ResolvedType::Boolean)
+            }
+            "System__exit" | "exit" | "Time__sleep" => {
+                params.len() == 1
+                    && matches!(params[0], ResolvedType::Integer)
+                    && matches!(ret.as_ref(), ResolvedType::None)
+            }
+            "Time__unix" | "Args__count" => {
+                params.is_empty() && matches!(ret.as_ref(), ResolvedType::Integer)
+            }
+            "Args__get" => {
+                params.len() == 1
+                    && matches!(params[0], ResolvedType::Integer)
+                    && matches!(ret.as_ref(), ResolvedType::String)
+            }
+            "Math__abs" => {
+                params.len() == 1
+                    && params[0] == ret.as_ref().clone()
+                    && matches!(params[0], ResolvedType::Integer | ResolvedType::Float)
+            }
+            "Math__min" | "Math__max" => {
+                params.len() == 2
+                    && params[0] == params[1]
+                    && params[0] == ret.as_ref().clone()
+                    && matches!(params[0], ResolvedType::Integer | ResolvedType::Float)
+            }
+            "Math__pow" => {
+                params.len() == 2
+                    && matches!(params[0], ResolvedType::Float)
+                    && matches!(params[1], ResolvedType::Float)
+                    && matches!(ret.as_ref(), ResolvedType::Float)
+            }
+            "Math__sqrt" | "Math__sin" | "Math__cos" | "Math__tan" | "Math__floor"
+            | "Math__ceil" | "Math__round" | "Math__log" | "Math__log10" | "Math__exp" => {
+                params.len() == 1
+                    && matches!(params[0], ResolvedType::Integer | ResolvedType::Float)
+                    && matches!(ret.as_ref(), ResolvedType::Float)
+            }
+            "Math__pi" | "Math__e" | "Math__random" => {
+                params.is_empty() && matches!(ret.as_ref(), ResolvedType::Float)
+            }
+            "Str__len" => {
+                params.len() == 1
+                    && matches!(params[0], ResolvedType::String)
+                    && matches!(ret.as_ref(), ResolvedType::Integer)
+            }
+            "Str__compare" => {
+                params.len() == 2
+                    && matches!(params[0], ResolvedType::String)
+                    && matches!(params[1], ResolvedType::String)
+                    && matches!(ret.as_ref(), ResolvedType::Integer)
+            }
+            "Str__concat" => {
+                params.len() == 2
+                    && matches!(params[0], ResolvedType::String)
+                    && matches!(params[1], ResolvedType::String)
+                    && matches!(ret.as_ref(), ResolvedType::String)
+            }
+            "Str__upper" | "Str__lower" | "Str__trim" => {
+                params.len() == 1
+                    && matches!(params[0], ResolvedType::String)
+                    && matches!(ret.as_ref(), ResolvedType::String)
+            }
+            "Str__contains" | "Str__startsWith" | "Str__endsWith" => {
+                params.len() == 2
+                    && matches!(params[0], ResolvedType::String)
+                    && matches!(params[1], ResolvedType::String)
+                    && matches!(ret.as_ref(), ResolvedType::Boolean)
+            }
+            "to_float" => {
+                params.len() == 1
+                    && matches!(params[0], ResolvedType::Integer | ResolvedType::Float)
+                    && matches!(ret.as_ref(), ResolvedType::Float)
+            }
+            "to_int" => {
+                params.len() == 1
+                    && matches!(
+                        params[0],
+                        ResolvedType::Integer | ResolvedType::Float | ResolvedType::String
+                    )
+                    && matches!(ret.as_ref(), ResolvedType::Integer)
+            }
+            "to_string" => {
+                params.len() == 1
+                    && Self::supports_display_scalar(&params[0])
+                    && matches!(ret.as_ref(), ResolvedType::String)
+            }
+            "assert" | "assert_true" | "assert_false" => {
+                params.len() == 1
+                    && matches!(params[0], ResolvedType::Boolean | ResolvedType::Integer)
+                    && matches!(ret.as_ref(), ResolvedType::None)
+            }
+            "fail" => {
+                (params.is_empty()
+                    || (params.len() == 1 && matches!(params[0], ResolvedType::String)))
+                    && matches!(ret.as_ref(), ResolvedType::None)
+            }
+            "assert_eq" | "assert_ne" => {
+                params.len() == 2
+                    && params[0] == params[1]
+                    && matches!(ret.as_ref(), ResolvedType::None)
+            }
+            "range" => {
+                (params.len() == 2 || params.len() == 3)
+                    && params
+                        .iter()
+                        .all(|param| matches!(param, ResolvedType::Integer))
+                    && matches!(
+                        ret.as_ref(),
+                        ResolvedType::Range(inner) if matches!(inner.as_ref(), ResolvedType::Integer)
+                    )
+                    || (params.len() == 2 || params.len() == 3)
+                        && params
+                            .iter()
+                            .all(|param| matches!(param, ResolvedType::Float))
+                        && matches!(
+                            ret.as_ref(),
+                            ResolvedType::Range(inner) if matches!(inner.as_ref(), ResolvedType::Float)
+                        )
+            }
+            _ => false,
+        }
+    }
+
+    fn builtin_function_value_type(name: &str) -> Option<ResolvedType> {
+        match name {
+            "read_line" | "System__cwd" | "System__os" => Some(ResolvedType::Function(
+                vec![],
+                Box::new(ResolvedType::String),
+            )),
+            "File__read" | "System__getenv" | "System__exec" | "Time__now" => Some(
+                ResolvedType::Function(vec![ResolvedType::String], Box::new(ResolvedType::String)),
+            ),
+            "System__shell" => Some(ResolvedType::Function(
+                vec![ResolvedType::String],
+                Box::new(ResolvedType::Integer),
+            )),
+            "File__write" => Some(ResolvedType::Function(
+                vec![ResolvedType::String, ResolvedType::String],
+                Box::new(ResolvedType::Boolean),
+            )),
+            "File__exists" | "File__delete" => Some(ResolvedType::Function(
+                vec![ResolvedType::String],
+                Box::new(ResolvedType::Boolean),
+            )),
+            "System__exit" | "exit" | "Time__sleep" => Some(ResolvedType::Function(
+                vec![ResolvedType::Integer],
+                Box::new(ResolvedType::None),
+            )),
+            "Time__unix" | "Args__count" => Some(ResolvedType::Function(
+                vec![],
+                Box::new(ResolvedType::Integer),
+            )),
+            "Args__get" => Some(ResolvedType::Function(
+                vec![ResolvedType::Integer],
+                Box::new(ResolvedType::String),
+            )),
+            "Math__abs" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown],
+                Box::new(ResolvedType::Unknown),
+            )),
+            "Math__min" | "Math__max" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown, ResolvedType::Unknown],
+                Box::new(ResolvedType::Unknown),
+            )),
+            "Math__pow" => Some(ResolvedType::Function(
+                vec![ResolvedType::Float, ResolvedType::Float],
+                Box::new(ResolvedType::Float),
+            )),
+            "Math__sqrt" | "Math__sin" | "Math__cos" | "Math__tan" | "Math__floor"
+            | "Math__ceil" | "Math__round" | "Math__log" | "Math__log10" | "Math__exp" => Some(
+                ResolvedType::Function(vec![ResolvedType::Unknown], Box::new(ResolvedType::Float)),
+            ),
+            "Math__pi" | "Math__e" | "Math__random" => Some(ResolvedType::Function(
+                vec![],
+                Box::new(ResolvedType::Float),
+            )),
+            "Str__len" => Some(ResolvedType::Function(
+                vec![ResolvedType::String],
+                Box::new(ResolvedType::Integer),
+            )),
+            "Str__compare" => Some(ResolvedType::Function(
+                vec![ResolvedType::String, ResolvedType::String],
+                Box::new(ResolvedType::Integer),
+            )),
+            "Str__concat" => Some(ResolvedType::Function(
+                vec![ResolvedType::String, ResolvedType::String],
+                Box::new(ResolvedType::String),
+            )),
+            "Str__upper" | "Str__lower" | "Str__trim" => Some(ResolvedType::Function(
+                vec![ResolvedType::String],
+                Box::new(ResolvedType::String),
+            )),
+            "Str__contains" | "Str__startsWith" | "Str__endsWith" => Some(ResolvedType::Function(
+                vec![ResolvedType::String, ResolvedType::String],
+                Box::new(ResolvedType::Boolean),
+            )),
+            "to_float" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown],
+                Box::new(ResolvedType::Float),
+            )),
+            "to_int" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown],
+                Box::new(ResolvedType::Integer),
+            )),
+            "to_string" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown],
+                Box::new(ResolvedType::String),
+            )),
+            "assert" | "assert_true" | "assert_false" | "fail" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown],
+                Box::new(ResolvedType::None),
+            )),
+            "assert_eq" | "assert_ne" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown, ResolvedType::Unknown],
+                Box::new(ResolvedType::None),
+            )),
+            "range" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown, ResolvedType::Unknown],
+                Box::new(ResolvedType::Unknown),
+            )),
+            _ => None,
+        }
+    }
+
     /// Check an expression and return its type
     fn check_expr_with_expected_type(
         &mut self,
@@ -3458,6 +3863,18 @@ impl TypeChecker {
         span: Span,
         expected: Option<&ResolvedType>,
     ) -> ResolvedType {
+        if let Some(expected_ty) = expected {
+            if matches!(expected_ty, ResolvedType::Function(_, _)) {
+                if let Some(name) = self.resolve_contextual_function_value_name(expr) {
+                    if self.functions.contains_key(&name) {
+                        return self.function_value_type_or_error(&name, span);
+                    }
+                    if Self::builtin_matches_expected_function_type(&name, expected_ty) {
+                        return expected_ty.clone();
+                    }
+                }
+            }
+        }
         if let (Expr::AsyncBlock(body), Some(ResolvedType::Task(expected_inner))) = (expr, expected)
         {
             return self.check_async_block_expr(body, span, Some(expected_inner.as_ref()));
@@ -3553,6 +3970,13 @@ impl TypeChecker {
                     .filter(|canonical_name| self.functions.contains_key(canonical_name))
                 {
                     self.function_value_type_or_error(&canonical_name, span)
+                } else if let Some(canonical_name) = self.resolve_import_alias_symbol(name) {
+                    if let Some(ty) = Self::builtin_function_value_type(&canonical_name) {
+                        ty
+                    } else {
+                        self.error(format!("Undefined variable: {}", name), span);
+                        ResolvedType::Unknown
+                    }
                 } else if let Some((enum_name, variant_name)) =
                     self.resolve_import_alias_variant(name)
                 {
@@ -3694,6 +4118,9 @@ impl TypeChecker {
                         if self.functions.contains_key(resolved) {
                             let resolved = resolved.to_owned();
                             return self.function_value_type_or_error(&resolved, span.clone());
+                        }
+                        if let Some(ty) = Self::builtin_function_value_type(&mangled) {
+                            return ty;
                         }
                     }
                 }
@@ -4538,7 +4965,11 @@ impl TypeChecker {
                             );
                         } else {
                             for (arg, expected_ty) in args.iter().zip(field_types.iter()) {
-                                let actual = self.check_expr(&arg.node, arg.span.clone());
+                                let actual = self.check_expr_with_expected_type(
+                                    &arg.node,
+                                    arg.span.clone(),
+                                    Some(expected_ty),
+                                );
                                 if !self.types_compatible(expected_ty, &actual) {
                                     self.error(
                                         format!(
@@ -4617,7 +5048,11 @@ impl TypeChecker {
                                 );
                             } else {
                                 for (arg, (_, param_type)) in args.iter().zip(inst_params.iter()) {
-                                    let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                                    let arg_type = self.check_expr_with_expected_type(
+                                        &arg.node,
+                                        arg.span.clone(),
+                                        Some(param_type),
+                                    );
                                     if !self.types_compatible(param_type, &arg_type) {
                                         self.error(
                                             format!(
@@ -4671,7 +5106,11 @@ impl TypeChecker {
                             );
                         } else {
                             for (arg, (_, param_type)) in args.iter().zip(inst_params.iter()) {
-                                let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                                let arg_type = self.check_expr_with_expected_type(
+                                    &arg.node,
+                                    arg.span.clone(),
+                                    Some(param_type),
+                                );
                                 if !self.types_compatible(param_type, &arg_type) {
                                     self.error(
                                         format!(
@@ -4820,7 +5259,11 @@ impl TypeChecker {
                             );
                         } else {
                             for (arg, expected_ty) in args.iter().zip(field_types.iter()) {
-                                let actual = self.check_expr(&arg.node, arg.span.clone());
+                                let actual = self.check_expr_with_expected_type(
+                                    &arg.node,
+                                    arg.span.clone(),
+                                    Some(expected_ty),
+                                );
                                 if !self.types_compatible(expected_ty, &actual) {
                                     self.error(
                                         format!(
@@ -4867,7 +5310,11 @@ impl TypeChecker {
                         );
                     } else {
                         for (arg, (_, param_type)) in args.iter().zip(inst_params.iter()) {
-                            let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                            let arg_type = self.check_expr_with_expected_type(
+                                &arg.node,
+                                arg.span.clone(),
+                                Some(param_type),
+                            );
                             if !self.types_compatible(param_type, &arg_type) {
                                 self.error(
                                     format!(
@@ -4915,7 +5362,11 @@ impl TypeChecker {
                             );
                         } else {
                             for (arg, param_type) in args.iter().zip(param_types.iter()) {
-                                let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                                let arg_type = self.check_expr_with_expected_type(
+                                    &arg.node,
+                                    arg.span.clone(),
+                                    Some(param_type),
+                                );
                                 if !self.types_compatible(param_type, &arg_type) {
                                     self.error(
                                         format!(
@@ -4966,7 +5417,11 @@ impl TypeChecker {
                     );
                 } else {
                     for (arg, (_, param_type)) in args.iter().zip(inst_params.iter()) {
-                        let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                        let arg_type = self.check_expr_with_expected_type(
+                            &arg.node,
+                            arg.span.clone(),
+                            Some(param_type),
+                        );
                         if !self.types_compatible(param_type, &arg_type) {
                             self.error(
                                 format!(
@@ -5004,7 +5459,11 @@ impl TypeChecker {
                 );
             } else {
                 for (arg, param_type) in args.iter().zip(param_types.iter()) {
-                    let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                    let arg_type = self.check_expr_with_expected_type(
+                        &arg.node,
+                        arg.span.clone(),
+                        Some(param_type),
+                    );
                     if !self.types_compatible(param_type, &arg_type) {
                         self.error(
                             format!(
@@ -5809,7 +6268,11 @@ impl TypeChecker {
                             );
                         } else {
                             for (arg, (_, param_type)) in args.iter().zip(sig.params.iter()) {
-                                let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                                let arg_type = self.check_expr_with_expected_type(
+                                    &arg.node,
+                                    arg.span.clone(),
+                                    Some(param_type),
+                                );
                                 if !self.types_compatible(param_type, &arg_type) {
                                     self.error(
                                         format!(
@@ -5879,7 +6342,11 @@ impl TypeChecker {
                         );
                     } else {
                         for (arg, (_, param_type)) in args.iter().zip(inst_params.iter()) {
-                            let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                            let arg_type = self.check_expr_with_expected_type(
+                                &arg.node,
+                                arg.span.clone(),
+                                Some(param_type),
+                            );
                             if !self.types_compatible(param_type, &arg_type) {
                                 self.error(
                                     format!(
@@ -5974,7 +6441,11 @@ impl TypeChecker {
                         );
                     } else {
                         for (arg, (_, param_type)) in args.iter().zip(sig.params.iter()) {
-                            let arg_type = self.check_expr(&arg.node, arg.span.clone());
+                            let arg_type = self.check_expr_with_expected_type(
+                                &arg.node,
+                                arg.span.clone(),
+                                Some(param_type),
+                            );
                             if !self.types_compatible(param_type, &arg_type) {
                                 self.error(
                                     format!(

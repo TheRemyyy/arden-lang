@@ -32,4 +32,20 @@ value: Integer = math.abs(-5);
 io.println("{value}");
 ```
 
+Aliases also work for typed function values:
+
+```apex
+import std.math as math;
+
+f: (Integer) -> Integer = math.abs;
+```
+
+Builtin free functions with no import requirement can be used the same way:
+
+```apex
+make: (Integer, Integer) -> Range<Integer> = range;
+check: (Integer, Integer) -> None = assert_eq;
+stop: (Integer) -> None = exit;
+```
+
 Backward compatibility: direct `Module__function()` calls are still accepted.

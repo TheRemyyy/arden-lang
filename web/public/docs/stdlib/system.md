@@ -72,3 +72,9 @@ if (error_occurred) {
     System.exit(1);
 }
 ```
+
+The global builtin `exit` is also available without import and can be assigned to a typed function value:
+
+```apex
+stop: (Integer) -> None = exit;
+```

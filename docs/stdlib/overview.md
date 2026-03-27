@@ -21,5 +21,6 @@ The stdlib is implemented as **compiler intrinsics**, but import behavior is spl
   - `import std.io.*;` (or specific function imports).
 - Module-style APIs such as `Math.*`, `Str.*`, `Time.*`, `System.*`, `File.*`, and `Args.*` are intrinsic objects and are available directly in the current compiler.
 - Builtins like `to_string`, `range`, `exit`, and assertion helpers (`assert*`, `fail`) are available without import.
+- Those builtins can also be stored in typed function values, for example `conv: (Integer) -> Float = to_float`, `build: (Integer, Integer) -> Range<Integer> = range`, `check: (Integer, Integer) -> None = assert_eq`, `stop: (Integer) -> None = exit`, and `fail_now: () -> None = fail`.
 
 There are no external `.apex` stdlib source files; calls are lowered directly by the compiler/codegen pipeline.

@@ -30,6 +30,13 @@ r = range(0.5, 2.0, 0.5); // 0.5, 1.0, 1.5
 
 `range()` accepts either all-`Integer` arguments or all-`Float` arguments. Mixed numeric types are rejected. The optional `step` must be non-zero.
 
+`range` is also a first-class builtin function value when a typed function is expected:
+
+```apex
+build_ints: (Integer, Integer) -> Range<Integer> = range;
+build_floats: (Float, Float, Float) -> Range<Float> = range;
+```
+
 ## Type Annotation
 
 Explicitly type your range variables:

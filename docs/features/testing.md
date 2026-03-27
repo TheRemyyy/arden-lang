@@ -101,6 +101,15 @@ assert_eq(2 + 2, 4);
 assert_eq("hello", greeting);
 ```
 
+Assertion helpers can also be stored in typed function values:
+
+```apex
+check: (Integer, Integer) -> None = assert_eq;
+ensure_false: (Boolean) -> None = assert_false;
+```
+
+Those typed function values keep the same parameter rules as direct calls. For example, `assert` / `assert_true` / `assert_false` still require `Boolean` or `Integer`, and `fail` can be used as either `() -> None` or `(String) -> None`.
+
 ### assert_ne(a, b)
 Panics if `a` equals `b`:
 

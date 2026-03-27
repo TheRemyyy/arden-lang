@@ -25,6 +25,14 @@ import std.args.count as count;
 println("argc = {count()}");
 ```
 
+That direct symbol alias can also be stored in a typed function value:
+
+```apex
+import std.args.get as get;
+
+fetch: (Integer) -> String = get;
+```
+
 ### `Args.get(index: Integer): String`
 
 Returns the argument at the specified index as a `String`. 

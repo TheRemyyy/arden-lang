@@ -11,6 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unsound nested `Integer -> Float` compatibility for wrapped types:
   - wrapper/container types such as `Range<T>`, `Option<T>`, `Task<T>`, `List<T>`, and `Map<K, V>` no longer inherit scalar numeric promotion for their inner payloads
   - assignments, arguments, returns, and branch joins like `Range<Float> = range(1, 3)` or `take(Option.some(1))` are now rejected during typechecking instead of compiling and then reading integer-backed data through float runtime paths
+- Fixed stdlib aliases used as first-class function values in typed contexts:
+  - direct symbol aliases like `import std.math.abs as abs; f: (Integer) -> Integer = abs;` now typecheck and codegen instead of failing as undefined variables
+  - namespace aliases like `import std.math as math; f: (Integer) -> Integer = math.abs;` now resolve the same way for function values as they already did for direct calls
+  - callback sites with an expected function type, such as `apply(abs, -2)` or `fetch: (Integer) -> String = get`, now lower through generated builtin wrappers for stdlib functions like `Math.abs` and `Args.get`
+  - `Math.min` and `Math.max` now follow those same alias rules too, because the stdlib registry finally exports `Math__min` / `Math__max` instead of silently omitting them from alias resolution
+  - plain builtin conversion functions and imported `read_line` now work as typed function values too, so assignments like `f: (Integer) -> Float = to_float`, `f: (Boolean) -> String = to_string`, and `reader: () -> String = read_line` no longer fail late as undefined variables or unknown codegen variables
+  - builtin first-class values now also cover `range`, `exit`, and assertion helpers, so typed assignments such as `make: (Integer, Integer) -> Range<Integer> = range`, `check: (Integer, Integer) -> None = assert_eq`, `ensure: (Boolean) -> None = assert_false`, and `stop: (Integer) -> None = exit` no longer typecheck/codegen inconsistently
+  - assertion-helper function values now preserve their real parameter contracts too, so invalid rebindings like `bad: (String) -> None = assert` and `bad: (Integer) -> None = fail` are rejected during typechecking instead of slipping through the wrapper path with an unsound signature
 - Fixed borrow-check receiver-mode enforcement for built-in methods on borrowed values:
   - immutable references now correctly reject mutating built-in receiver calls instead of silently allowing `List.push`, `List.set`, `List.pop`, `Map.set` / `Map.insert`, `Set.add`, `Set.remove`, `Range.next`, and `Task.cancel`
   - mutable references now correctly allow those same mutating receiver calls without requiring the reference binding itself to be declared `mut`

@@ -10,6 +10,14 @@ import std.math.*;
 
 Calls like `Math.abs(...)` are import-checked and require `std.math` to be imported.
 
+Typed function-value aliases work too:
+
+```apex
+import std.math.abs as abs;
+
+f: (Integer) -> Integer = abs;
+```
+
 ## Constants
 
 ### `Math.pi(): Float`

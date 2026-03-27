@@ -5168,6 +5168,328 @@ impl<'ctx> Codegen<'ctx> {
         name.to_string()
     }
 
+    fn resolve_contextual_function_value_name(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Ident(name) => {
+                let resolved = self.resolve_function_alias(name);
+                if resolved != *name {
+                    Some(resolved)
+                } else if self.functions.contains_key(name)
+                    || Self::is_supported_builtin_function_name(name)
+                {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            }
+            Expr::Field { object, field } => {
+                if let Some(path_parts) = Self::flatten_field_chain(expr) {
+                    if path_parts.len() >= 2 {
+                        if let Some(path) = self.import_aliases.get(&path_parts[0]) {
+                            let namespace_path = if path_parts.len() == 2 {
+                                path.clone()
+                            } else {
+                                format!(
+                                    "{}.{}",
+                                    path,
+                                    path_parts[1..path_parts.len() - 1].join(".")
+                                )
+                            };
+                            if let Some(canonical) = stdlib_registry()
+                                .resolve_alias_call(&namespace_path, path_parts.last()?)
+                            {
+                                return Some(canonical);
+                            }
+                            let candidate = format!(
+                                "{}__{}",
+                                path.replace('.', "__"),
+                                path_parts[1..].join("__")
+                            );
+                            if self.functions.contains_key(&candidate) {
+                                return Some(candidate);
+                            }
+                        }
+
+                        if path_parts.len() == 2 {
+                            let owner = self.resolve_module_alias(&path_parts[0]);
+                            let builtin_name = format!("{}__{}", owner, field);
+                            if Self::is_supported_builtin_function_name(&builtin_name) {
+                                return Some(builtin_name);
+                            }
+                        }
+
+                        let mangled = path_parts.join("__");
+                        if self.functions.contains_key(&mangled) {
+                            return Some(mangled);
+                        }
+                    }
+                }
+                if let Expr::Ident(owner_name) = &object.node {
+                    let owner = self.resolve_module_alias(owner_name);
+                    let builtin_name = format!("{}__{}", owner, field);
+                    if Self::is_supported_builtin_function_name(&builtin_name) {
+                        return Some(builtin_name);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn is_supported_builtin_function_name(name: &str) -> bool {
+        Self::builtin_matches_expected_function_type(
+            name,
+            &Type::Function(vec![], Box::new(Type::None)),
+        ) || matches!(
+            name,
+            "read_line"
+                | "Math__abs"
+                | "Math__min"
+                | "Math__max"
+                | "Math__pow"
+                | "to_float"
+                | "to_int"
+                | "to_string"
+                | "assert"
+                | "assert_eq"
+                | "assert_ne"
+                | "assert_true"
+                | "assert_false"
+                | "fail"
+                | "exit"
+                | "range"
+                | "File__read"
+                | "File__write"
+                | "File__exists"
+                | "File__delete"
+                | "System__getenv"
+                | "System__shell"
+                | "System__exec"
+                | "Time__now"
+                | "Args__get"
+                | "Str__len"
+                | "Str__compare"
+                | "Str__concat"
+                | "Str__upper"
+                | "Str__lower"
+                | "Str__trim"
+                | "Str__contains"
+                | "Str__startsWith"
+                | "Str__endsWith"
+        )
+    }
+
+    fn builtin_matches_expected_function_type(name: &str, expected: &Type) -> bool {
+        let Type::Function(params, ret) = expected else {
+            return matches!(
+                name,
+                "read_line"
+                    | "File__read"
+                    | "File__write"
+                    | "File__exists"
+                    | "File__delete"
+                    | "System__getenv"
+                    | "System__shell"
+                    | "System__exec"
+                    | "System__cwd"
+                    | "System__os"
+                    | "System__exit"
+                    | "Time__now"
+                    | "Time__unix"
+                    | "Time__sleep"
+                    | "Args__count"
+                    | "Args__get"
+                    | "Math__abs"
+                    | "Math__min"
+                    | "Math__max"
+                    | "Math__sqrt"
+                    | "Math__sin"
+                    | "Math__cos"
+                    | "Math__tan"
+                    | "Math__pow"
+                    | "Math__floor"
+                    | "Math__ceil"
+                    | "Math__round"
+                    | "Math__log"
+                    | "Math__log10"
+                    | "Math__exp"
+                    | "Math__pi"
+                    | "Math__e"
+                    | "Math__random"
+                    | "Str__len"
+                    | "Str__compare"
+                    | "Str__concat"
+                    | "Str__upper"
+                    | "Str__lower"
+                    | "Str__trim"
+                    | "Str__contains"
+                    | "Str__startsWith"
+                    | "Str__endsWith"
+                    | "to_float"
+                    | "to_int"
+                    | "to_string"
+                    | "assert"
+                    | "assert_eq"
+                    | "assert_ne"
+                    | "assert_true"
+                    | "assert_false"
+                    | "fail"
+                    | "exit"
+                    | "range"
+            );
+        };
+
+        match name {
+            "read_line" | "System__cwd" | "System__os" => {
+                params.is_empty() && matches!(ret.as_ref(), Type::String)
+            }
+            "File__read" | "System__getenv" | "Time__now" => {
+                params.len() == 1
+                    && matches!(params[0], Type::String)
+                    && matches!(ret.as_ref(), Type::String)
+            }
+            "System__shell" => {
+                params.len() == 1
+                    && matches!(params[0], Type::String)
+                    && matches!(ret.as_ref(), Type::Integer)
+            }
+            "System__exec" => {
+                params.len() == 1
+                    && matches!(params[0], Type::String)
+                    && matches!(ret.as_ref(), Type::String)
+            }
+            "File__write" => {
+                params.len() == 2
+                    && matches!(params[0], Type::String)
+                    && matches!(params[1], Type::String)
+                    && matches!(ret.as_ref(), Type::Boolean)
+            }
+            "File__exists" | "File__delete" => {
+                params.len() == 1
+                    && matches!(params[0], Type::String)
+                    && matches!(ret.as_ref(), Type::Boolean)
+            }
+            "System__exit" | "exit" | "Time__sleep" => {
+                params.len() == 1
+                    && matches!(params[0], Type::Integer)
+                    && matches!(ret.as_ref(), Type::None)
+            }
+            "Time__unix" | "Args__count" => {
+                params.is_empty() && matches!(ret.as_ref(), Type::Integer)
+            }
+            "Args__get" => {
+                params.len() == 1
+                    && matches!(params[0], Type::Integer)
+                    && matches!(ret.as_ref(), Type::String)
+            }
+            "Math__abs" => {
+                params.len() == 1
+                    && params[0] == ret.as_ref().clone()
+                    && matches!(params[0], Type::Integer | Type::Float)
+            }
+            "Math__min" | "Math__max" => {
+                params.len() == 2
+                    && params[0] == params[1]
+                    && params[0] == ret.as_ref().clone()
+                    && matches!(params[0], Type::Integer | Type::Float)
+            }
+            "Math__pow" => {
+                params.len() == 2
+                    && matches!(params[0], Type::Float)
+                    && matches!(params[1], Type::Float)
+                    && matches!(ret.as_ref(), Type::Float)
+            }
+            "Math__sqrt" | "Math__sin" | "Math__cos" | "Math__tan" | "Math__floor"
+            | "Math__ceil" | "Math__round" | "Math__log" | "Math__log10" | "Math__exp" => {
+                params.len() == 1
+                    && matches!(params[0], Type::Integer | Type::Float)
+                    && matches!(ret.as_ref(), Type::Float)
+            }
+            "Math__pi" | "Math__e" | "Math__random" => {
+                params.is_empty() && matches!(ret.as_ref(), Type::Float)
+            }
+            "Str__len" => {
+                params.len() == 1
+                    && matches!(params[0], Type::String)
+                    && matches!(ret.as_ref(), Type::Integer)
+            }
+            "Str__compare" => {
+                params.len() == 2
+                    && matches!(params[0], Type::String)
+                    && matches!(params[1], Type::String)
+                    && matches!(ret.as_ref(), Type::Integer)
+            }
+            "Str__concat" => {
+                params.len() == 2
+                    && matches!(params[0], Type::String)
+                    && matches!(params[1], Type::String)
+                    && matches!(ret.as_ref(), Type::String)
+            }
+            "Str__upper" | "Str__lower" | "Str__trim" => {
+                params.len() == 1
+                    && matches!(params[0], Type::String)
+                    && matches!(ret.as_ref(), Type::String)
+            }
+            "Str__contains" | "Str__startsWith" | "Str__endsWith" => {
+                params.len() == 2
+                    && matches!(params[0], Type::String)
+                    && matches!(params[1], Type::String)
+                    && matches!(ret.as_ref(), Type::Boolean)
+            }
+            "to_float" => {
+                params.len() == 1
+                    && matches!(params[0], Type::Integer | Type::Float)
+                    && matches!(ret.as_ref(), Type::Float)
+            }
+            "to_int" => {
+                params.len() == 1
+                    && matches!(params[0], Type::Integer | Type::Float | Type::String)
+                    && matches!(ret.as_ref(), Type::Integer)
+            }
+            "to_string" => {
+                params.len() == 1
+                    && matches!(
+                        params[0],
+                        Type::Integer
+                            | Type::Float
+                            | Type::Boolean
+                            | Type::String
+                            | Type::Char
+                            | Type::None
+                    )
+                    && matches!(ret.as_ref(), Type::String)
+            }
+            "assert" | "assert_true" | "assert_false" => {
+                params.len() == 1
+                    && matches!(params[0], Type::Boolean | Type::Integer)
+                    && matches!(ret.as_ref(), Type::None)
+            }
+            "fail" => {
+                (params.is_empty() || (params.len() == 1 && matches!(params[0], Type::String)))
+                    && matches!(ret.as_ref(), Type::None)
+            }
+            "assert_eq" | "assert_ne" => {
+                params.len() == 2 && params[0] == params[1] && matches!(ret.as_ref(), Type::None)
+            }
+            "range" => {
+                ((params.len() == 2 || params.len() == 3)
+                    && params.iter().all(|param| matches!(param, Type::Integer))
+                    && matches!(
+                        ret.as_ref(),
+                        Type::Range(inner) if matches!(inner.as_ref(), Type::Integer)
+                    ))
+                    || ((params.len() == 2 || params.len() == 3)
+                        && params.iter().all(|param| matches!(param, Type::Float))
+                        && matches!(
+                            ret.as_ref(),
+                            Type::Range(inner) if matches!(inner.as_ref(), Type::Float)
+                        ))
+            }
+            _ => false,
+        }
+    }
+
     pub(crate) fn resolve_method_function_name(
         &self,
         class_name: &str,
@@ -8843,10 +9165,15 @@ impl<'ctx> Codegen<'ctx> {
                 return self.compile_lambda(params, body, Some(expected_ty));
             }
         }
-        if let Expr::Ident(name) = expr {
-            if matches!(expected_ty, Type::Function(_, _)) {
+        if matches!(expected_ty, Type::Function(_, _)) {
+            if let Some(name) = self.resolve_contextual_function_value_name(expr) {
                 if let Some(adapted) =
-                    self.compile_named_function_value_with_expected_type(name, expected_ty)?
+                    self.compile_named_function_value_with_expected_type(&name, expected_ty)?
+                {
+                    return Ok(adapted);
+                }
+                if let Some(adapted) =
+                    self.compile_builtin_function_value_with_expected_type(&name, expected_ty)?
                 {
                     return Ok(adapted);
                 }
@@ -9014,6 +9341,128 @@ impl<'ctx> Codegen<'ctx> {
         closure = self
             .builder
             .build_insert_value(closure, ptr_type.const_null(), 1, "env")
+            .unwrap()
+            .into_struct_value();
+        Ok(Some(closure.into()))
+    }
+
+    fn compile_builtin_function_value_with_expected_type(
+        &mut self,
+        name: &str,
+        expected_ty: &Type,
+    ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        if !Self::builtin_matches_expected_function_type(name, expected_ty) {
+            return Ok(None);
+        }
+
+        let Type::Function(param_types, ret_type) = expected_ty else {
+            return Ok(None);
+        };
+
+        let wrapper_name = format!("__builtin_fn_value_{}", name.replace("__", "_"));
+        let wrapper_fn = if let Some(existing) = self.module.get_function(&wrapper_name) {
+            existing
+        } else {
+            let ptr_type = self.context.ptr_type(AddressSpace::default());
+            let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
+            for param_ty in param_types {
+                llvm_params.push(self.llvm_type(param_ty).into());
+            }
+            let wrapper_fn_type = match self.llvm_type(ret_type) {
+                BasicTypeEnum::IntType(i) => i.fn_type(&llvm_params, false),
+                BasicTypeEnum::FloatType(f) => f.fn_type(&llvm_params, false),
+                BasicTypeEnum::PointerType(p) => p.fn_type(&llvm_params, false),
+                BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
+                _ => self.context.i8_type().fn_type(&llvm_params, false),
+            };
+            let wrapper_fn = self
+                .module
+                .add_function(&wrapper_name, wrapper_fn_type, None);
+
+            let saved_function = self.current_function;
+            let saved_return_type = self.current_return_type.clone();
+            let saved_insert_block = self.builder.get_insert_block();
+            let saved_variables = self.variables.clone();
+
+            self.current_function = Some(wrapper_fn);
+            self.current_return_type = Some(expected_ty.clone());
+            self.variables.clear();
+
+            let entry = self.context.append_basic_block(wrapper_fn, "entry");
+            self.builder.position_at_end(entry);
+
+            let mut synthetic_args = Vec::with_capacity(param_types.len());
+            for (index, param_ty) in param_types.iter().enumerate() {
+                let param_name = format!("__builtin_arg_{index}");
+                let llvm_param = wrapper_fn
+                    .get_nth_param((index + 1) as u32)
+                    .ok_or_else(|| CodegenError::new("missing builtin wrapper parameter"))?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.llvm_type(param_ty), &param_name)
+                    .map_err(|e| {
+                        CodegenError::new(format!("builtin wrapper alloca failed: {}", e))
+                    })?;
+                self.builder.build_store(alloca, llvm_param).map_err(|e| {
+                    CodegenError::new(format!("builtin wrapper store failed: {}", e))
+                })?;
+                self.variables.insert(
+                    param_name.clone(),
+                    Variable {
+                        ptr: alloca,
+                        ty: param_ty.clone(),
+                    },
+                );
+                synthetic_args.push(Spanned::new(Expr::Ident(param_name), Span::default()));
+            }
+
+            let result = self.compile_stdlib_function(name, &synthetic_args)?;
+            if matches!(ret_type.as_ref(), Type::None) {
+                self.builder
+                    .build_return(Some(&self.context.i8_type().const_int(0, false)))
+                    .map_err(|e| {
+                        CodegenError::new(format!("builtin wrapper return failed: {}", e))
+                    })?;
+            } else {
+                let value = result.ok_or_else(|| {
+                    CodegenError::new(format!(
+                        "builtin wrapper '{}' produced no value for non-void function",
+                        name
+                    ))
+                })?;
+                self.builder.build_return(Some(&value)).map_err(|e| {
+                    CodegenError::new(format!("builtin wrapper return failed: {}", e))
+                })?;
+            }
+
+            self.current_function = saved_function;
+            self.current_return_type = saved_return_type;
+            self.variables = saved_variables;
+            if let Some(block) = saved_insert_block {
+                self.builder.position_at_end(block);
+            }
+
+            wrapper_fn
+        };
+
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let closure_ty = self
+            .context
+            .struct_type(&[ptr_type.into(), ptr_type.into()], false);
+        let mut closure = closure_ty.get_undef();
+        closure = self
+            .builder
+            .build_insert_value(
+                closure,
+                wrapper_fn.as_global_value().as_pointer_value(),
+                0,
+                "builtin_fn",
+            )
+            .unwrap()
+            .into_struct_value();
+        closure = self
+            .builder
+            .build_insert_value(closure, ptr_type.const_null(), 1, "builtin_env")
             .unwrap()
             .into_struct_value();
         Ok(Some(closure.into()))
