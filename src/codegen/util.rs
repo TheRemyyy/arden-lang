@@ -1038,6 +1038,19 @@ impl<'ctx> Codegen<'ctx> {
         arms: &[MatchArm],
         expected_result_ty: Option<&Type>,
     ) -> Result<BasicValueEnum<'ctx>> {
+        let imported_variant = |this: &Self, name: &str| -> Option<(String, String, bool)> {
+            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
+            let variant_info = this.enums.get(&enum_name)?.variants.get(&variant_name)?;
+            Some((enum_name, variant_name, variant_info.fields.is_empty()))
+        };
+        let imported_unit_variant = |this: &Self, name: &str| -> Option<(String, String, u8)> {
+            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
+            let variant_info = this.enums.get(&enum_name)?.variants.get(&variant_name)?;
+            variant_info
+                .fields
+                .is_empty()
+                .then_some((enum_name, variant_name, variant_info.tag))
+        };
         fn pattern_variant_leaf(name: &str) -> &str {
             name.rsplit('.').next().unwrap_or(name)
         }
@@ -1075,8 +1088,42 @@ impl<'ctx> Codegen<'ctx> {
 
             self.builder.position_at_end(dispatch_bb);
             match &arm.pattern {
-                Pattern::Wildcard | Pattern::Ident(_) => {
+                Pattern::Wildcard => {
                     self.builder.build_unconditional_branch(arm_bb).unwrap();
+                }
+                Pattern::Ident(name) => {
+                    if let Some((enum_name, variant_name, variant_tag)) =
+                        imported_unit_variant(self, name)
+                    {
+                        let is_builtin_variant =
+                            matches!(variant_name.as_str(), "Some" | "None" | "Ok" | "Error");
+                        let enum_matches = enum_match_name
+                            .as_ref()
+                            .is_some_and(|expected_enum| expected_enum == &enum_name);
+                        if is_builtin_variant || enum_matches {
+                            let tag = self
+                                .builder
+                                .build_extract_value(val.into_struct_value(), 0, "tag")
+                                .unwrap()
+                                .into_int_value();
+                            let cond = self
+                                .builder
+                                .build_int_compare(
+                                    IntPredicate::EQ,
+                                    tag,
+                                    self.context.i8_type().const_int(variant_tag as u64, false),
+                                    "match_expr_ident_variant_eq",
+                                )
+                                .unwrap();
+                            self.builder
+                                .build_conditional_branch(cond, arm_bb, next_bb)
+                                .unwrap();
+                        } else {
+                            self.builder.build_unconditional_branch(next_bb).unwrap();
+                        }
+                    } else {
+                        self.builder.build_unconditional_branch(arm_bb).unwrap();
+                    }
                 }
                 Pattern::Literal(lit) => {
                     let pattern_val = self.compile_literal(lit)?;
@@ -1150,7 +1197,17 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap();
                 }
                 Pattern::Variant(variant_name, _) => {
-                    let variant_leaf = pattern_variant_leaf(variant_name);
+                    let resolved_variant = if !variant_name.contains('.') {
+                        imported_variant(self, variant_name)
+                    } else {
+                        None
+                    };
+                    let variant_leaf = resolved_variant
+                        .as_ref()
+                        .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
+                        .unwrap_or_else(|| pattern_variant_leaf(variant_name));
+                    let resolved_enum_name =
+                        resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
                     if matches!(variant_leaf, "Some" | "None" | "Ok" | "Error") {
                         let expected_tag = match variant_leaf {
                             "Some" | "Ok" => 1u64,
@@ -1173,7 +1230,8 @@ impl<'ctx> Codegen<'ctx> {
                         self.builder
                             .build_conditional_branch(cond, arm_bb, next_bb)
                             .unwrap();
-                    } else if let Some(enum_name) = &enum_match_name {
+                    } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
+                    {
                         if let Some(enum_info) = self.enums.get(enum_name) {
                             if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
                                 let tag = self
@@ -1210,18 +1268,30 @@ impl<'ctx> Codegen<'ctx> {
             self.builder.position_at_end(arm_bb);
             match &arm.pattern {
                 Pattern::Ident(binding) => {
-                    let alloca = self.builder.build_alloca(val.get_type(), binding).unwrap();
-                    self.builder.build_store(alloca, val).unwrap();
-                    self.variables.insert(
-                        binding.clone(),
-                        Variable {
-                            ptr: alloca,
-                            ty: match_ty.clone(),
-                        },
-                    );
+                    if imported_unit_variant(self, binding).is_none() {
+                        let alloca = self.builder.build_alloca(val.get_type(), binding).unwrap();
+                        self.builder.build_store(alloca, val).unwrap();
+                        self.variables.insert(
+                            binding.clone(),
+                            Variable {
+                                ptr: alloca,
+                                ty: match_ty.clone(),
+                            },
+                        );
+                    }
                 }
                 Pattern::Variant(variant_name, bindings) => {
-                    let variant_leaf = pattern_variant_leaf(variant_name);
+                    let resolved_variant = if !variant_name.contains('.') {
+                        imported_variant(self, variant_name)
+                    } else {
+                        None
+                    };
+                    let variant_leaf = resolved_variant
+                        .as_ref()
+                        .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
+                        .unwrap_or_else(|| pattern_variant_leaf(variant_name));
+                    let resolved_enum_name =
+                        resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
                     if variant_leaf == "Some" && !bindings.is_empty() {
                         let inner = self
                             .builder
@@ -1279,7 +1349,8 @@ impl<'ctx> Codegen<'ctx> {
                                     .unwrap_or(Type::String),
                             },
                         );
-                    } else if let Some(enum_name) = &enum_match_name {
+                    } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
+                    {
                         if let Some(enum_info) = self.enums.get(enum_name) {
                             if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
                                 for (idx, binding) in bindings.iter().enumerate() {
@@ -2082,12 +2153,25 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn add_pattern_bindings(
+        &self,
         pattern: &Pattern,
         local_names: &mut std::collections::HashSet<String>,
     ) {
         match pattern {
             Pattern::Ident(name) => {
-                local_names.insert(name.clone());
+                let is_imported_unit_variant = self
+                    .resolve_import_alias_variant(name)
+                    .and_then(|(enum_name, variant_name)| {
+                        self.enums
+                            .get(&enum_name)
+                            .and_then(|enum_info| enum_info.variants.get(&variant_name))
+                            .is_some_and(|variant_info| variant_info.fields.is_empty())
+                            .then_some(())
+                    })
+                    .is_some();
+                if !is_imported_unit_variant {
+                    local_names.insert(name.clone());
+                }
             }
             Pattern::Variant(_, bindings) => {
                 for binding in bindings {
@@ -2193,7 +2277,7 @@ impl<'ctx> Codegen<'ctx> {
                 self.walk_expr_for_captures(&expr.node, local_names, captures, seen);
                 for arm in arms {
                     let mut arm_locals = local_names.clone();
-                    Self::add_pattern_bindings(&arm.pattern, &mut arm_locals);
+                    self.add_pattern_bindings(&arm.pattern, &mut arm_locals);
                     self.walk_block_for_captures(&arm.body, &mut arm_locals, captures, seen);
                 }
             }
@@ -2279,7 +2363,7 @@ impl<'ctx> Codegen<'ctx> {
                 self.walk_expr_for_captures(&expr.node, local_names, captures, seen);
                 for arm in arms {
                     let mut arm_locals = local_names.clone();
-                    Self::add_pattern_bindings(&arm.pattern, &mut arm_locals);
+                    self.add_pattern_bindings(&arm.pattern, &mut arm_locals);
                     self.walk_block_for_captures(&arm.body, &mut arm_locals, captures, seen);
                 }
             }
@@ -2314,6 +2398,16 @@ impl<'ctx> Codegen<'ctx> {
                 if resolved_name != *name {
                     if let Some((_, ty)) = self.functions.get(&resolved_name) {
                         return ty.clone();
+                    }
+                }
+                if let Some((enum_name, variant_name)) = self.resolve_import_alias_variant(name) {
+                    if self
+                        .enums
+                        .get(&enum_name)
+                        .and_then(|enum_info| enum_info.variants.get(&variant_name))
+                        .is_some_and(|variant_info| variant_info.fields.is_empty())
+                    {
+                        return Type::Named(enum_name);
                     }
                 }
                 Type::Integer
@@ -2442,6 +2536,9 @@ impl<'ctx> Codegen<'ctx> {
                     if let Some((_, ty)) = self.functions.get(&function_name) {
                         return ty.clone();
                     }
+                }
+                if let Some(canonical_owner) = self.resolve_unit_enum_variant_owner(expr) {
+                    return Type::Named(canonical_owner);
                 }
                 let obj_ty = self.infer_expr_type(&object.node, params);
                 if let Some(class_name) = self.type_to_class_name(&obj_ty) {

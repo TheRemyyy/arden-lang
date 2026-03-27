@@ -184,7 +184,17 @@ Async borrowed-capture diagnostics are now shadowing-aware too. A local name re-
 
 The same shadowing-aware async analysis now applies to `match` pattern bindings as well, so enum payload names introduced by an arm safely shadow unrelated outer borrowed locals with the same identifier.
 
-Project-mode type errors now also render demangled module paths in diagnostics. When a build fails on a generic bound or branch mismatch, the reported types use source-style names like `lib.Plain` or `lib.Api.Person` instead of internal rewritten symbols.
+Project-mode type errors now also render demangled module paths in diagnostics. That now covers generic bound failures, branch mismatches, assignment mismatches, unknown-field errors, non-function-call errors, bad condition/index/await operand errors, pattern and enum-variant mismatches, return/call-site type mismatches, unknown declared types in function/interface/extern/enum signatures, and other type-driven diagnostics, so reported types use source-style names like `lib.Plain`, `lib.Box<lib.Named>`, `u.Api.Missing`, or `lib.Api.Person` instead of internal rewritten symbols. Qualified enum patterns like `lib.Choice.Left` are also parsed as real variant patterns even without payload bindings, so invalid variants fail predictably during project analysis.
+
+The same qualified-path handling now also reaches codegen-side enum value inference for unit variants. Project and single-file flows like `match (Kind.A) { ... }`, `match (util.E.A) { ... }`, and `match (u.E.A) { ... }` now keep the real enum type through codegen instead of degrading the scrutinee to the default integer fallback, which previously made every qualified unit-variant arm miss and could corrupt mixed-numeric `match` expression runtime results.
+
+That enum-alias fix also now covers exact imported unit variants on both the value side and the pattern side. Flows like `import E.A as A; value: E = A;` and `match (E.B) { A => ... }` now keep `A` as an enum variant alias all the way through typechecking, exhaustiveness checks, closure-capture analysis, and codegen instead of degrading into `Unknown variable` failures or accidental catch-all bindings.
+
+Single-file import validation now understands those same local type roots as valid import targets too. Exact alias imports such as `import E.A as First` no longer get rejected before typechecking/codegen, and payload alias patterns like `First(v)` now bind `v` through codegen the same way as spelled-out variants like `E.A(v)`.
+
+That alias-aware type resolution now also covers imported type names themselves, not just enum variants. Exact aliases such as `import Box as B`, `import M.Box as B`, or generic forms built on those names now flow through annotations and constructor expressions consistently, so `B(2)` and `b: B` resolve to the imported class instead of falling back to `Unknown type`.
+
+The same single-file alias path now stays intact once generics and enum-root constructors enter the picture too. Exact imported generic type aliases like `import Box as B; B<Integer>(2)` and nested forms like `import M.Box as B; B<Integer>(2)` now trigger the right generic specialization during codegen instead of failing as `Unknown type: B<Integer>`, and imported enum type aliases such as `import E as Alias; Alias.A(2)` now behave as real enum roots in both value construction and `match` patterns.
 
 ```toml
 # apex.toml

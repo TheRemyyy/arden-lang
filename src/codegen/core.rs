@@ -154,6 +154,18 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn resolve_alias_qualified_codegen_type_name(&self, name: &str) -> Option<String> {
+        if let Some(canonical) = self.canonical_codegen_type_name(name) {
+            return Some(canonical);
+        }
+
+        let path = self.import_aliases.get(name)?;
+        if path.ends_with(".*") {
+            return None;
+        }
+        self.canonical_codegen_type_name(path)
+    }
+
     pub(crate) fn type_specialization_suffix(ty: &Type) -> String {
         match ty {
             Type::Integer => "I64".to_string(),
@@ -2162,9 +2174,21 @@ impl<'ctx> Codegen<'ctx> {
     fn collect_generic_class_instantiation_from_type(
         ty: &Type,
         class_templates: &HashMap<String, GenericClassTemplate>,
+        import_aliases: &HashMap<String, String>,
         in_scope_generics: &HashSet<String>,
         instantiations: &mut HashMap<String, Vec<Type>>,
     ) {
+        let resolve_template_name = |name: &str| {
+            if class_templates.contains_key(name) {
+                return Some(name.to_string());
+            }
+            let path = import_aliases.get(name)?;
+            if class_templates.contains_key(path) {
+                return Some(path.clone());
+            }
+            let mangled = path.replace('.', "__");
+            class_templates.contains_key(&mangled).then_some(mangled)
+        };
         let maybe_record_builtin_like =
             |name: &str, args: &[Type], instantiations: &mut HashMap<String, Vec<Type>>| {
                 if class_templates.contains_key(name)
@@ -2183,24 +2207,27 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_type(
                         arg,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
                 }
-                if class_templates.contains_key(name)
-                    && !args
+                if let Some(resolved_name) = resolve_template_name(name) {
+                    if !args
                         .iter()
                         .any(|arg| Self::type_contains_generic_names(arg, in_scope_generics))
-                {
-                    instantiations
-                        .entry(Self::generic_class_spec_name(name, args))
-                        .or_insert_with(|| args.clone());
+                    {
+                        instantiations
+                            .entry(Self::generic_class_spec_name(&resolved_name, args))
+                            .or_insert_with(|| args.clone());
+                    }
                 }
             }
             Type::Option(inner) => {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2214,6 +2241,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2227,6 +2255,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2240,6 +2269,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2253,6 +2283,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2266,6 +2297,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2279,6 +2311,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2292,6 +2325,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2305,6 +2339,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2319,6 +2354,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_type(
                         param,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2326,6 +2362,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     ret,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2334,6 +2371,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     inner,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 )
@@ -2342,12 +2380,14 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     ok,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
                 Self::collect_generic_class_instantiation_from_type(
                     err,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2361,12 +2401,14 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     ok,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
                 Self::collect_generic_class_instantiation_from_type(
                     err,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2383,6 +2425,7 @@ impl<'ctx> Codegen<'ctx> {
     fn collect_generic_class_instantiation_from_expr(
         expr: &Expr,
         class_templates: &HashMap<String, GenericClassTemplate>,
+        import_aliases: &HashMap<String, String>,
         in_scope_generics: &HashSet<String>,
         instantiations: &mut HashMap<String, Vec<Type>>,
     ) {
@@ -2395,6 +2438,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &callee.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2402,6 +2446,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_expr(
                         &arg.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2410,6 +2455,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_type(
                         ty,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2417,20 +2463,34 @@ impl<'ctx> Codegen<'ctx> {
             }
             Expr::Construct { ty, args } => {
                 if let Ok(Type::Generic(name, type_args)) = parse_type_source(ty) {
-                    if class_templates.contains_key(&name)
-                        && !type_args
+                    let resolved_name = if class_templates.contains_key(&name) {
+                        Some(name.clone())
+                    } else {
+                        import_aliases.get(&name).and_then(|path| {
+                            if class_templates.contains_key(path) {
+                                Some(path.clone())
+                            } else {
+                                let mangled = path.replace('.', "__");
+                                class_templates.contains_key(&mangled).then_some(mangled)
+                            }
+                        })
+                    };
+                    if let Some(resolved_name) = resolved_name {
+                        if !type_args
                             .iter()
                             .any(|arg| Self::type_contains_generic_names(arg, in_scope_generics))
-                    {
-                        instantiations
-                            .entry(Self::generic_class_spec_name(&name, &type_args))
-                            .or_insert(type_args);
+                        {
+                            instantiations
+                                .entry(Self::generic_class_spec_name(&resolved_name, &type_args))
+                                .or_insert(type_args);
+                        }
                     }
                 }
                 for arg in args {
                     Self::collect_generic_class_instantiation_from_expr(
                         &arg.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2440,12 +2500,14 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &left.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
                 Self::collect_generic_class_instantiation_from_expr(
                     &right.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2460,6 +2522,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &expr.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2468,12 +2531,14 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &object.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
                 Self::collect_generic_class_instantiation_from_expr(
                     &index.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2483,6 +2548,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_type(
                         &param.ty,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2490,6 +2556,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &body.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2498,6 +2565,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &expr.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2506,6 +2574,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::collect_generic_class_instantiation_from_stmt(
                             &stmt.node,
                             class_templates,
+                            import_aliases,
                             in_scope_generics,
                             instantiations,
                         );
@@ -2518,6 +2587,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::collect_generic_class_instantiation_from_expr(
                             &expr.node,
                             class_templates,
+                            import_aliases,
                             in_scope_generics,
                             instantiations,
                         );
@@ -2532,6 +2602,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &condition.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2539,6 +2610,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_stmt(
                         &stmt.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2548,6 +2620,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::collect_generic_class_instantiation_from_stmt(
                             &stmt.node,
                             class_templates,
+                            import_aliases,
                             in_scope_generics,
                             instantiations,
                         );
@@ -2559,6 +2632,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_stmt(
                         &stmt.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2568,6 +2642,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &condition.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2575,6 +2650,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_expr(
                         &message.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2585,6 +2661,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_expr(
                         &start.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2593,6 +2670,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_expr(
                         &end.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2605,6 +2683,7 @@ impl<'ctx> Codegen<'ctx> {
     fn collect_generic_class_instantiation_from_stmt(
         stmt: &Stmt,
         class_templates: &HashMap<String, GenericClassTemplate>,
+        import_aliases: &HashMap<String, String>,
         in_scope_generics: &HashSet<String>,
         instantiations: &mut HashMap<String, Vec<Type>>,
     ) {
@@ -2613,12 +2692,14 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     ty,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
                 Self::collect_generic_class_instantiation_from_expr(
                     &value.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2627,12 +2708,14 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &target.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
                 Self::collect_generic_class_instantiation_from_expr(
                     &value.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2640,6 +2723,7 @@ impl<'ctx> Codegen<'ctx> {
             Stmt::Expr(expr) => Self::collect_generic_class_instantiation_from_expr(
                 &expr.node,
                 class_templates,
+                import_aliases,
                 in_scope_generics,
                 instantiations,
             ),
@@ -2648,6 +2732,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_expr(
                         &expr.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2661,6 +2746,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &condition.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2668,6 +2754,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_stmt(
                         &stmt.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2677,6 +2764,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::collect_generic_class_instantiation_from_stmt(
                             &stmt.node,
                             class_templates,
+                            import_aliases,
                             in_scope_generics,
                             instantiations,
                         );
@@ -2687,6 +2775,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &condition.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2694,6 +2783,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_stmt(
                         &stmt.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2709,6 +2799,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_type(
                         var_type,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2716,6 +2807,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &iterable.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2723,6 +2815,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_stmt(
                         &stmt.node,
                         class_templates,
+                        import_aliases,
                         in_scope_generics,
                         instantiations,
                     );
@@ -2732,6 +2825,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_expr(
                     &expr.node,
                     class_templates,
+                    import_aliases,
                     in_scope_generics,
                     instantiations,
                 );
@@ -2740,6 +2834,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::collect_generic_class_instantiation_from_stmt(
                             &stmt.node,
                             class_templates,
+                            import_aliases,
                             in_scope_generics,
                             instantiations,
                         );
@@ -4021,6 +4116,7 @@ impl<'ctx> Codegen<'ctx> {
     fn collect_generic_class_instantiations_from_decl_with_templates(
         decl: &Spanned<Decl>,
         class_templates: &HashMap<String, GenericClassTemplate>,
+        import_aliases: &HashMap<String, String>,
         discovered: &mut HashMap<String, Vec<Type>>,
     ) {
         match &decl.node {
@@ -4034,6 +4130,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_type(
                         &param.ty,
                         class_templates,
+                        import_aliases,
                         &generic_names,
                         discovered,
                     );
@@ -4041,6 +4138,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiation_from_type(
                     &func.return_type,
                     class_templates,
+                    import_aliases,
                     &generic_names,
                     discovered,
                 );
@@ -4048,6 +4146,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_stmt(
                         &stmt.node,
                         class_templates,
+                        import_aliases,
                         &generic_names,
                         discovered,
                     );
@@ -4063,6 +4162,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_type(
                         &field.ty,
                         class_templates,
+                        import_aliases,
                         &generic_names,
                         discovered,
                     );
@@ -4072,6 +4172,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::collect_generic_class_instantiation_from_type(
                             &param.ty,
                             class_templates,
+                            import_aliases,
                             &generic_names,
                             discovered,
                         );
@@ -4080,6 +4181,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::collect_generic_class_instantiation_from_stmt(
                             &stmt.node,
                             class_templates,
+                            import_aliases,
                             &generic_names,
                             discovered,
                         );
@@ -4093,6 +4195,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::collect_generic_class_instantiation_from_type(
                             &param.ty,
                             class_templates,
+                            import_aliases,
                             &method_generics,
                             discovered,
                         );
@@ -4100,6 +4203,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiation_from_type(
                         &method.return_type,
                         class_templates,
+                        import_aliases,
                         &method_generics,
                         discovered,
                     );
@@ -4107,6 +4211,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::collect_generic_class_instantiation_from_stmt(
                             &stmt.node,
                             class_templates,
+                            import_aliases,
                             &method_generics,
                             discovered,
                         );
@@ -4118,6 +4223,7 @@ impl<'ctx> Codegen<'ctx> {
                     Self::collect_generic_class_instantiations_from_decl_with_templates(
                         inner,
                         class_templates,
+                        import_aliases,
                         discovered,
                     );
                 }
@@ -4395,6 +4501,17 @@ impl<'ctx> Codegen<'ctx> {
         let mut emitted_classes: HashSet<String> = HashSet::new();
         let mut generated_classes: Vec<Spanned<Decl>> = Vec::new();
         let mut pending_decls = program.declarations.clone();
+        let import_aliases = program
+            .declarations
+            .iter()
+            .filter_map(|decl| match &decl.node {
+                Decl::Import(import) => import
+                    .alias
+                    .as_ref()
+                    .map(|alias| (alias.clone(), import.path.clone())),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>();
 
         loop {
             let mut discovered = HashMap::new();
@@ -4402,6 +4519,7 @@ impl<'ctx> Codegen<'ctx> {
                 Self::collect_generic_class_instantiations_from_decl_with_templates(
                     decl,
                     &class_templates,
+                    &import_aliases,
                     &mut discovered,
                 );
             }
@@ -5401,6 +5519,49 @@ impl<'ctx> Codegen<'ctx> {
         name.to_string()
     }
 
+    pub(crate) fn resolve_import_alias_variant(
+        &self,
+        alias_ident: &str,
+    ) -> Option<(String, String)> {
+        if self.variables.contains_key(alias_ident) {
+            return None;
+        }
+        let path = self.import_aliases.get(alias_ident)?;
+        if path.ends_with(".*") {
+            return None;
+        }
+        let (enum_path, variant_name) = path.rsplit_once('.')?;
+        let (namespace, enum_name) = enum_path
+            .rsplit_once('.')
+            .map_or((String::new(), enum_path.to_string()), |(ns, name)| {
+                (ns.to_string(), name.to_string())
+            });
+        if matches!(enum_name.as_str(), "Option" | "Result") {
+            return Some((enum_name, variant_name.to_string()));
+        }
+        if self.enums.contains_key(&enum_name) {
+            return Some((enum_name, variant_name.to_string()));
+        }
+        let mangled = if namespace.is_empty() {
+            enum_name.clone()
+        } else {
+            format!("{}__{}", namespace.replace('.', "__"), enum_name)
+        };
+        if self.enums.contains_key(&mangled) {
+            return Some((mangled, variant_name.to_string()));
+        }
+        let suffix = format!("__{}", enum_name);
+        let mut matches = self
+            .enums
+            .keys()
+            .filter(|candidate| *candidate == &enum_name || candidate.ends_with(&suffix))
+            .cloned()
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        (matches.len() == 1).then(|| (matches[0].clone(), variant_name.to_string()))
+    }
+
     pub(crate) fn resolve_contextual_function_value_name(&self, expr: &Expr) -> Option<String> {
         match expr {
             Expr::Ident(name) => {
@@ -5784,6 +5945,36 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    pub(crate) fn resolve_unit_enum_variant_owner(&self, expr: &Expr) -> Option<String> {
+        let path_parts = Self::flatten_field_chain(expr)?;
+        if path_parts.len() < 2 {
+            return None;
+        }
+
+        let owner_path = if let Some(alias_path) = self.import_aliases.get(&path_parts[0]) {
+            if path_parts.len() == 2 {
+                alias_path.clone()
+            } else {
+                format!(
+                    "{}.{}",
+                    alias_path,
+                    path_parts[1..path_parts.len() - 1].join(".")
+                )
+            }
+        } else if path_parts.len() == 2 {
+            self.resolve_module_alias(&path_parts[0])
+        } else {
+            path_parts[..path_parts.len() - 1].join(".")
+        };
+        let variant_name = path_parts.last()?;
+        let canonical_owner = self.canonical_codegen_type_name(&owner_path)?;
+        self.enums
+            .get(&canonical_owner)
+            .and_then(|enum_info| enum_info.variants.get(variant_name))
+            .filter(|variant_info| variant_info.fields.is_empty())
+            .map(|_| canonical_owner)
+    }
+
     pub fn declare_enum(&mut self, en: &EnumDecl) -> Result<()> {
         let payload_slots = en
             .variants
@@ -6061,7 +6252,7 @@ impl<'ctx> Codegen<'ctx> {
     pub(crate) fn normalize_codegen_type(&self, ty: &Type) -> Type {
         match ty {
             Type::Named(name) => self
-                .canonical_codegen_type_name(name)
+                .resolve_alias_qualified_codegen_type_name(name)
                 .map(Type::Named)
                 .unwrap_or_else(|| ty.clone()),
             Type::Generic(name, args) => {
@@ -6069,8 +6260,11 @@ impl<'ctx> Codegen<'ctx> {
                     .iter()
                     .map(|arg| self.normalize_codegen_type(arg))
                     .collect::<Vec<_>>();
-                self.normalize_user_defined_generic_type(name, &normalized_args)
-                    .unwrap_or_else(|| Type::Generic(name.clone(), normalized_args))
+                let resolved_name = self
+                    .resolve_alias_qualified_codegen_type_name(name)
+                    .unwrap_or_else(|| name.clone());
+                self.normalize_user_defined_generic_type(&resolved_name, &normalized_args)
+                    .unwrap_or(Type::Generic(resolved_name, normalized_args))
             }
             Type::Function(params, ret) => Type::Function(
                 params
@@ -8422,6 +8616,19 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_match_stmt(&mut self, expr: &Spanned<Expr>, arms: &[MatchArm]) -> Result<()> {
+        let imported_variant = |this: &Self, name: &str| -> Option<(String, String, bool)> {
+            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
+            let variant_info = this.enums.get(&enum_name)?.variants.get(&variant_name)?;
+            Some((enum_name, variant_name, variant_info.fields.is_empty()))
+        };
+        let imported_unit_variant = |this: &Self, name: &str| -> Option<(String, String, u8)> {
+            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
+            let variant_info = this.enums.get(&enum_name)?.variants.get(&variant_name)?;
+            variant_info
+                .fields
+                .is_empty()
+                .then_some((enum_name, variant_name, variant_info.tag))
+        };
         let val = self.compile_expr(&expr.node)?;
         let func = self.current_function.unwrap();
         let merge_bb = self.context.append_basic_block(func, "match.merge");
@@ -8454,8 +8661,43 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             match &arm.pattern {
-                Pattern::Wildcard | Pattern::Ident(_) => {
+                Pattern::Wildcard => {
                     self.builder.build_unconditional_branch(arm_bb).unwrap();
+                }
+                Pattern::Ident(name) => {
+                    if let Some((enum_name, variant_name, variant_tag)) =
+                        imported_unit_variant(self, name)
+                    {
+                        let is_builtin_variant = (is_option_match
+                            && matches!(variant_name.as_str(), "Some" | "None"))
+                            || (is_result_match && matches!(variant_name.as_str(), "Ok" | "Error"));
+                        let enum_matches = enum_match_name
+                            .as_ref()
+                            .is_some_and(|expected_enum| expected_enum == &enum_name);
+                        if is_builtin_variant || enum_matches {
+                            let tag = self
+                                .builder
+                                .build_extract_value(val.into_struct_value(), 0, "tag")
+                                .unwrap()
+                                .into_int_value();
+                            let cond = self
+                                .builder
+                                .build_int_compare(
+                                    IntPredicate::EQ,
+                                    tag,
+                                    self.context.i8_type().const_int(variant_tag as u64, false),
+                                    "match_ident_variant_eq",
+                                )
+                                .unwrap();
+                            self.builder
+                                .build_conditional_branch(cond, arm_bb, next_bb)
+                                .unwrap();
+                        } else {
+                            self.builder.build_unconditional_branch(next_bb).unwrap();
+                        }
+                    } else {
+                        self.builder.build_unconditional_branch(arm_bb).unwrap();
+                    }
                 }
                 Pattern::Literal(lit) => {
                     let pattern_val = self.compile_literal(lit)?;
@@ -8529,7 +8771,17 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap();
                 }
                 Pattern::Variant(variant_name, _) => {
-                    let variant_leaf = pattern_variant_leaf(variant_name);
+                    let resolved_variant = if !variant_name.contains('.') {
+                        imported_variant(self, variant_name)
+                    } else {
+                        None
+                    };
+                    let variant_leaf = resolved_variant
+                        .as_ref()
+                        .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
+                        .unwrap_or_else(|| pattern_variant_leaf(variant_name));
+                    let resolved_enum_name =
+                        resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
                     // Built-in Option / Result matching
                     if (is_option_match && matches!(variant_leaf, "Some" | "None"))
                         || (is_result_match && matches!(variant_leaf, "Ok" | "Error"))
@@ -8555,7 +8807,8 @@ impl<'ctx> Codegen<'ctx> {
                         self.builder
                             .build_conditional_branch(cond, arm_bb, next_bb)
                             .unwrap();
-                    } else if let Some(enum_name) = &enum_match_name {
+                    } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
+                    {
                         if let Some(enum_info) = self.enums.get(enum_name) {
                             if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
                                 let tag = self
@@ -8592,18 +8845,30 @@ impl<'ctx> Codegen<'ctx> {
             self.builder.position_at_end(arm_bb);
             match &arm.pattern {
                 Pattern::Ident(binding) => {
-                    let alloca = self.builder.build_alloca(val.get_type(), binding).unwrap();
-                    self.builder.build_store(alloca, val).unwrap();
-                    self.variables.insert(
-                        binding.clone(),
-                        Variable {
-                            ptr: alloca,
-                            ty: match_ty.clone(),
-                        },
-                    );
+                    if imported_unit_variant(self, binding).is_none() {
+                        let alloca = self.builder.build_alloca(val.get_type(), binding).unwrap();
+                        self.builder.build_store(alloca, val).unwrap();
+                        self.variables.insert(
+                            binding.clone(),
+                            Variable {
+                                ptr: alloca,
+                                ty: match_ty.clone(),
+                            },
+                        );
+                    }
                 }
                 Pattern::Variant(variant_name, bindings) => {
-                    let variant_leaf = pattern_variant_leaf(variant_name);
+                    let resolved_variant = if !variant_name.contains('.') {
+                        imported_variant(self, variant_name)
+                    } else {
+                        None
+                    };
+                    let variant_leaf = resolved_variant
+                        .as_ref()
+                        .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
+                        .unwrap_or_else(|| pattern_variant_leaf(variant_name));
+                    let resolved_enum_name =
+                        resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
                     if is_option_match && variant_leaf == "Some" && !bindings.is_empty() {
                         let inner = self
                             .builder
@@ -8661,7 +8926,8 @@ impl<'ctx> Codegen<'ctx> {
                                     .unwrap_or(Type::String),
                             },
                         );
-                    } else if let Some(enum_name) = &enum_match_name {
+                    } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
+                    {
                         if let Some(enum_info) = self.enums.get(enum_name) {
                             if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
                                 for (idx, binding) in bindings.iter().enumerate() {
@@ -9190,6 +9456,30 @@ impl<'ctx> Codegen<'ctx> {
                             .into_struct_value();
 
                         Ok(closure.into())
+                    } else if let Some((enum_name, variant_name)) =
+                        self.resolve_import_alias_variant(name)
+                    {
+                        if let Some(enum_info) = self.enums.get(&enum_name) {
+                            if let Some(variant_info) =
+                                enum_info.variants.get(&variant_name).cloned()
+                            {
+                                if variant_info.fields.is_empty() {
+                                    self.build_enum_value(&enum_name, &variant_info, &[])
+                                } else {
+                                    Err(CodegenError::new(format!(
+                                        "Enum variant '{}.{}' requires constructor arguments",
+                                        enum_name, variant_name
+                                    )))
+                                }
+                            } else {
+                                Err(CodegenError::new(format!(
+                                    "Unknown variant '{}' for enum '{}'",
+                                    variant_name, enum_name
+                                )))
+                            }
+                        } else {
+                            Err(CodegenError::new(format!("Unknown enum '{}'", enum_name)))
+                        }
                     } else {
                         Err(CodegenError::new(format!("Unknown variable: {}", name)))
                     }
@@ -11095,7 +11385,9 @@ impl<'ctx> Codegen<'ctx> {
         // Check for enum variant constructors and module-qualified functions.
         if let Expr::Field { object, field } = callee {
             if let Expr::Ident(owner_name) = &object.node {
-                let resolved_owner = self.resolve_module_alias(owner_name);
+                let resolved_owner = self
+                    .resolve_alias_qualified_codegen_type_name(owner_name)
+                    .unwrap_or_else(|| self.resolve_module_alias(owner_name));
                 // Enum constructor: `MyEnum.Variant(...)`
                 if let Some(enum_info) = self.enums.get(&resolved_owner) {
                     if let Some(variant_info) = enum_info.variants.get(field).cloned() {
@@ -12308,7 +12600,9 @@ impl<'ctx> Codegen<'ctx> {
 
     pub fn compile_field(&mut self, object: &Expr, field: &str) -> Result<BasicValueEnum<'ctx>> {
         if let Expr::Ident(owner_name) = object {
-            let resolved_owner = self.resolve_module_alias(owner_name);
+            let resolved_owner = self
+                .resolve_alias_qualified_codegen_type_name(owner_name)
+                .unwrap_or_else(|| self.resolve_module_alias(owner_name));
             if let Some(enum_info) = self.enums.get(&resolved_owner) {
                 if let Some(variant_info) = enum_info.variants.get(field).cloned() {
                     if variant_info.fields.is_empty() {

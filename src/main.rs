@@ -2331,6 +2331,18 @@ fn collect_known_namespace_paths_for_units(parsed_files: &[ParsedProjectUnit]) -
     let mut paths = HashSet::new();
     for unit in parsed_files {
         paths.insert(unit.namespace.clone());
+        for class_name in &unit.class_names {
+            let class_path = class_name.replace("__", ".");
+            paths.insert(format!("{}.{}", unit.namespace, class_path));
+        }
+        for interface_name in &unit.interface_names {
+            let interface_path = interface_name.replace("__", ".");
+            paths.insert(format!("{}.{}", unit.namespace, interface_path));
+        }
+        for enum_name in &unit.enum_names {
+            let enum_path = enum_name.replace("__", ".");
+            paths.insert(format!("{}.{}", unit.namespace, enum_path));
+        }
         for module_name in &unit.module_names {
             let module_path = module_name.replace("__", ".");
             paths.insert(format!("{}.{}", unit.namespace, module_path));
@@ -14374,6 +14386,534 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_reports_demangled_assignment_type_mismatch() {
+        let temp_root = make_temp_project_root("project-demangled-assignment-mismatch");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Named { constructor() {} }\nclass Plain { constructor() {} }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib as u;\nfunction main(): Integer {\n    value: u.Named = u.Plain();\n    return 0;\n}\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with assignment mismatch should fail");
+            assert!(
+                err.contains("cannot assign lib.Plain to variable of type lib.Named"),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Plain"), "{err}");
+            assert!(!err.contains("lib__Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_unknown_field_class_name() {
+        let temp_root = make_temp_project_root("project-demangled-unknown-field-class");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Named { constructor() {} }\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib as u;\nfunction main(): Integer {\n    return u.Box<u.Named>(u.Named()).missing;\n}\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with unknown field should fail");
+            assert!(
+                err.contains("Unknown field 'missing' on class 'lib.Box<lib.Named>'"),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Box"), "{err}");
+            assert!(!err.contains("lib__Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_non_function_call_type() {
+        let temp_root = make_temp_project_root("project-demangled-non-function-call-type");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib as u;\nfunction main(): Integer {\n    value: u.Box<Integer> = u.Box<Integer>(1);\n    return value(2);\n}\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with non-function call should fail");
+            assert!(
+                err.contains("Cannot call non-function type lib.Box<Integer>"),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Box"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_if_condition_type_mismatch() {
+        let temp_root = make_temp_project_root("project-demangled-if-condition-type");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Flag { constructor() {} }\nfunction bad(): Integer {\n    if (Flag()) { return 1; }\n    return 0;\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with non-boolean if condition should fail");
+            assert!(
+                err.contains("Condition must be Boolean, found lib.Flag"),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Flag"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_index_type_mismatch() {
+        let temp_root = make_temp_project_root("project-demangled-index-type-mismatch");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Key { constructor() {} }\nfunction bad(): Integer {\n    xs: List<Integer> = List<Integer>();\n    xs.push(1);\n    return xs[Key()];\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with bad index type should fail");
+            assert!(
+                err.contains("Index must be Integer, found lib.Key"),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Key"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_await_operand_type_mismatch() {
+        let temp_root = make_temp_project_root("project-demangled-await-operand-type");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Job { constructor() {} }\nfunction bad(): Integer {\n    return await(Job());\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with non-task await operand should fail");
+            assert!(
+                err.contains("'await' can only be used on Task types, got lib.Job"),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Job"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_match_arm_type_mismatch() {
+        let temp_root = make_temp_project_root("project-demangled-match-arm-type-mismatch");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Left { constructor() {} }\nclass Right { constructor() {} }\nfunction bad(flag: Boolean): Integer {\n    value: Integer = match (flag) {\n        true => Left(),\n        false => Right(),\n    };\n    return value;\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(true); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with match arm mismatch should fail");
+            assert!(
+                err.contains(
+                    "Match expression arm type mismatch: expected lib.Left, got lib.Right"
+                ),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Left"), "{err}");
+            assert!(!err.contains("lib__Right"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_pattern_type_mismatch() {
+        let temp_root = make_temp_project_root("project-demangled-pattern-type-mismatch");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Token { constructor() {} }\nfunction bad(value: Token): Integer {\n    return match (value) {\n        1 => 0,\n        _ => 1,\n    };\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib.bad as bad;\nimport lib.Token as Token;\nfunction main(): Integer { return bad(Token()); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with pattern type mismatch should fail");
+            assert!(
+                err.contains("Pattern type mismatch: expected lib.Token, found Integer"),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Token"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_option_some_argument_mismatch() {
+        let temp_root = make_temp_project_root("project-demangled-option-some-arg-mismatch");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Token { constructor() {} }\nfunction wrap(flag: Boolean): Option<Token> {\n    if (flag) {\n        return Option.some(1);\n    }\n    return Option.none();\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib.wrap as wrap;\nfunction main(): Integer { return if (wrap(true).is_some()) { 1 } else { 0 }; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with Option.some argument mismatch should fail");
+            assert!(
+                err.contains(
+                    "Return type mismatch: expected Option<lib.Token>, found Option<Integer>"
+                ),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Token"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_unknown_type_name() {
+        let temp_root = make_temp_project_root("project-demangled-unknown-type-name");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nmodule Api {\n    class Token { constructor() {} }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib as u;\nfunction read(value: u.Api.Missing): Integer {\n    return 0;\n}\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with unknown type should fail");
+            assert!(err.contains("Unknown type: u.Api.Missing"), "{err}");
+            assert!(!err.contains("lib__Api__Missing"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_list_constructor_capacity_type_mismatch() {
+        let temp_root = make_temp_project_root("project-demangled-list-constructor-capacity");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nclass Token { constructor() {} }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib.Token as Token;\nfunction main(): Integer {\n    xs: List<Integer> = List<Integer>(Token());\n    return xs.length();\n}\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with non-integer list capacity should fail");
+            assert!(
+                err.contains(
+                    "Constructor List<Integer> expects optional Integer capacity, got lib.Token"
+                ),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Token"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_rejects_unknown_interface_signature_types() {
+        let temp_root = make_temp_project_root("project-unknown-interface-signature-types");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\ninterface Api {\n    function decode(value: Missing): Missing;\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with unknown interface signature types should fail");
+            assert!(err.contains("Unknown type: Missing"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_rejects_unknown_extern_signature_types() {
+        let temp_root = make_temp_project_root("project-unknown-extern-signature-types");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nextern(c) function host(value: Missing): Missing;\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with unknown extern signature types should fail");
+            assert!(err.contains("Unknown type: Missing"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_rejects_unknown_enum_payload_types() {
+        let temp_root = make_temp_project_root("project-unknown-enum-payload-types");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nenum Message { Value(Missing) }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with unknown enum payload type should fail");
+            assert!(err.contains("Unknown type: Missing"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_unknown_implemented_interface() {
+        let temp_root = make_temp_project_root("project-demangled-unknown-implemented-interface");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nmodule Api {\n    class Report implements Missing {\n        constructor() {}\n    }\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with unknown implemented interface should fail");
+            assert!(
+                err.contains("Class 'lib.Api.Report' implements unknown interface 'Missing'"),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Api__Report"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_demangled_unknown_variant_enum_name() {
+        let temp_root = make_temp_project_root("project-demangled-unknown-variant-enum-name");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nenum Choice { Left, Right }\nfunction read(): Integer {\n    return match (Choice.Left) {\n        Choice.Missing => 0,\n        _ => 1,\n    };\n}\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport lib.read as read;\nfunction main(): Integer { return read(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("project build with unknown variant should fail");
+            assert!(
+                err.contains("Unknown variant 'Choice.Missing' for enum 'lib.Choice'"),
+                "{err}"
+            );
+            assert!(!err.contains("lib__Choice"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_async_block_tail_expression_runtime() {
         let temp_root = make_temp_project_root("async-block-tail-expression-runtime");
         let source_path = temp_root.join("async_block_tail_expression_runtime.apex");
@@ -19102,6 +19642,346 @@ function main(): Integer {
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_unit_enum_match_expression_runtime() {
+        let temp_root = make_temp_project_root("unit-enum-match-expression-runtime");
+        let source_path = temp_root.join("unit_enum_match_expression_runtime.apex");
+        let output_path = temp_root.join("unit_enum_match_expression_runtime");
+        let source = r#"
+            enum Kind { A, B }
+            function main(): Integer {
+                value: Integer = match (Kind.A) { Kind.A => { 1 } Kind.B => { 2 } };
+                require(value == 1);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("unit enum match expression should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled unit enum match expression binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_namespace_alias_unit_enum_match_expressions() {
+        let temp_root =
+            make_temp_project_root("namespace-alias-unit-enum-match-expression-runtime");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(src_dir.join("lib.apex"), "package util;\nenum E { A, B }\n").expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util as u;\nfunction main(): Integer { value: Integer = match (u.E.A) { u.E.A => { 1 } u.E.B => { 2 } }; require(value == 1); return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("namespace alias unit enum match expression should build");
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled namespace alias unit enum match expression binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_unit_enum_variant_alias_match_expression_runtime() {
+        let temp_root = make_temp_project_root("imported-unit-enum-variant-alias-match-runtime");
+        let source_path = temp_root.join("imported_unit_enum_variant_alias_match_runtime.apex");
+        let output_path = temp_root.join("imported_unit_enum_variant_alias_match_runtime");
+        let source = r#"
+            import std.io.*;
+            enum E { A, B }
+            import E.A as A;
+            function main(): Integer {
+                println("value={match (A) { A => { 1 } E.B => { 2.5 } }}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported unit enum variant alias match interpolation should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled imported unit enum variant alias match binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_unit_enum_variant_alias_patterns_runtime() {
+        let temp_root = make_temp_project_root("imported-unit-enum-variant-alias-pattern-runtime");
+        let source_path = temp_root.join("imported_unit_enum_variant_alias_pattern_runtime.apex");
+        let output_path = temp_root.join("imported_unit_enum_variant_alias_pattern_runtime");
+        let source = r#"
+            import std.io.*;
+            enum E { A, B }
+            import E.A as A;
+            function main(): Integer {
+                println("value={match (E.B) { A => { 1 } E.B => { 2 } }}");
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported unit enum variant alias pattern should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled imported unit enum variant alias pattern binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "value=2\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn check_source_rejects_non_exhaustive_imported_unit_enum_variant_alias_pattern() {
+        let temp_root =
+            make_temp_project_root("imported-unit-enum-variant-alias-pattern-non-exhaustive");
+        let source_path =
+            temp_root.join("imported_unit_enum_variant_alias_pattern_non_exhaustive.apex");
+        let output_path = temp_root.join("imported_unit_enum_variant_alias_pattern_non_exhaustive");
+        let source = r#"
+            enum E { A, B }
+            import E.A as A;
+            function main(): Integer {
+                return match (E.B) { A => { 1 } };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("alias unit variant pattern should not act as catch-all");
+        assert!(
+            err.contains("Non-exhaustive match expression"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_payload_enum_variant_alias_patterns_runtime() {
+        let temp_root =
+            make_temp_project_root("imported-payload-enum-variant-alias-pattern-runtime");
+        let source_path =
+            temp_root.join("imported_payload_enum_variant_alias_pattern_runtime.apex");
+        let output_path = temp_root.join("imported_payload_enum_variant_alias_pattern_runtime");
+        let source = r#"
+            enum E { A(Integer), B(Integer) }
+            import E.A as First;
+            function main(): Integer {
+                value: Integer = match (E.B(2)) { First(v) => { v } E.B(v) => { v + 1 } };
+                require(value == 3);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported payload enum variant alias patterns should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled imported payload enum variant alias pattern binary");
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_top_level_type_alias_runtime() {
+        let temp_root = make_temp_project_root("imported-top-level-type-alias-runtime");
+        let source_path = temp_root.join("imported_top_level_type_alias_runtime.apex");
+        let output_path = temp_root.join("imported_top_level_type_alias_runtime");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function get(): Integer { return this.value; }
+            }
+            import Box as B;
+            function main(): Integer {
+                return B(2).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported top-level type alias should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported top-level type alias binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_nested_type_alias_runtime() {
+        let temp_root = make_temp_project_root("imported-nested-type-alias-runtime");
+        let source_path = temp_root.join("imported_nested_type_alias_runtime.apex");
+        let output_path = temp_root.join("imported_nested_type_alias_runtime");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                    function get(): Integer { return this.value; }
+                }
+            }
+            import M.Box as B;
+            function main(): Integer {
+                return B(2).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported nested type alias should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported nested type alias binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_generic_top_level_type_alias_runtime() {
+        let temp_root = make_temp_project_root("imported-generic-top-level-type-alias-runtime");
+        let source_path = temp_root.join("imported_generic_top_level_type_alias_runtime.apex");
+        let output_path = temp_root.join("imported_generic_top_level_type_alias_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+            import Box as B;
+            function main(): Integer {
+                return B<Integer>(2).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported generic top-level type alias should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported generic top-level type alias binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_generic_nested_type_alias_runtime() {
+        let temp_root = make_temp_project_root("imported-generic-nested-type-alias-runtime");
+        let source_path = temp_root.join("imported_generic_nested_type_alias_runtime.apex");
+        let output_path = temp_root.join("imported_generic_nested_type_alias_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                    function get(): T { return this.value; }
+                }
+            }
+            import M.Box as B;
+            function main(): Integer {
+                return B<Integer>(2).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported generic nested type alias should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported generic nested type alias binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_enum_type_alias_variant_runtime() {
+        let temp_root = make_temp_project_root("imported-enum-type-alias-variant-runtime");
+        let source_path = temp_root.join("imported_enum_type_alias_variant_runtime.apex");
+        let output_path = temp_root.join("imported_enum_type_alias_variant_runtime");
+        let source = r#"
+            enum E { A(Integer) }
+            import E as Alias;
+            function main(): Integer {
+                value: Alias = Alias.A(2);
+                return match (value) {
+                    Alias.A(v) => { v }
+                };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported enum type alias variant should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported enum type alias variant binary");
+        assert_eq!(status.code(), Some(2));
 
         let _ = fs::remove_dir_all(temp_root);
     }

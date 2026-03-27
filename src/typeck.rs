@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 use crate::ast::*;
+use crate::parse_type_source;
 use crate::stdlib::stdlib_registry;
 use std::collections::HashMap;
 
@@ -726,7 +727,7 @@ impl TypeChecker {
         name: &str,
         args: &[ResolvedType],
     ) -> Option<ResolvedType> {
-        let resolved_name = self.resolve_known_type_name(name)?;
+        let resolved_name = self.resolve_nominal_reference_name(name)?;
         let rendered_args = args
             .iter()
             .map(std::string::ToString::to_string)
@@ -980,7 +981,7 @@ impl TypeChecker {
                         return ResolvedType::Class(self_key.to_string());
                     }
                 }
-                if let Some(resolved_name) = self.resolve_known_type_name(name) {
+                if let Some(resolved_name) = self.resolve_nominal_reference_name(name) {
                     return ResolvedType::Class(resolved_name);
                 }
                 match name.as_str() {
@@ -1351,22 +1352,27 @@ impl TypeChecker {
 
         for param in &func.params {
             let resolved = self.resolve_type(&param.ty);
+            self.validate_resolved_type_exists(&resolved, span.clone());
             if !self.is_ffi_safe_type(&resolved) {
                 self.error(
                     format!(
                         "Extern function '{}' has non-FFI-safe parameter '{}: {}'",
-                        func.name, param.name, resolved
+                        func.name,
+                        param.name,
+                        Self::format_resolved_type_for_diagnostic(&resolved)
                     ),
                     span.clone(),
                 );
             }
         }
         let ret = self.resolve_type(&func.return_type);
+        self.validate_resolved_type_exists(&ret, span.clone());
         if !self.is_ffi_safe_type(&ret) {
             self.error(
                 format!(
                     "Extern function '{}' has non-FFI-safe return type '{}'",
-                    func.name, ret
+                    func.name,
+                    Self::format_resolved_type_for_diagnostic(&ret)
                 ),
                 span,
             );
@@ -1910,7 +1916,10 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Interface '{}' inherits incompatible signatures for method '{}' from '{}' and '{}'",
-                                key, method_name, existing_parent, resolved_parent
+                                Self::format_diagnostic_class_name(key),
+                                method_name,
+                                Self::format_diagnostic_class_name(existing_parent),
+                                Self::format_diagnostic_class_name(&resolved_parent)
                             ),
                             span.clone(),
                         );
@@ -1944,7 +1953,9 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Interface '{}.{}' overrides inherited method from '{}' with an incompatible signature",
-                            key, method.name, parent_name
+                            Self::format_diagnostic_class_name(key),
+                            method.name,
+                            Self::format_diagnostic_class_name(parent_name)
                         ),
                         span.clone(),
                     );
@@ -2867,6 +2878,7 @@ impl TypeChecker {
                 for variant in &en.variants {
                     for field in &variant.fields {
                         let ty = self.resolve_type(&field.ty);
+                        self.validate_resolved_type_exists(&ty, span.clone());
                         if !self.enum_payload_supported_for_codegen(&ty) {
                             self.error(
                                 format!(
@@ -2915,9 +2927,11 @@ impl TypeChecker {
             let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
             for param in &method.params {
                 let ty = self.resolve_type(&param.ty);
+                self.validate_resolved_type_exists(&ty, span.clone());
                 self.check_type_visibility(&ty, span.clone());
             }
             let ret_ty = self.resolve_type(&method.return_type);
+            self.validate_resolved_type_exists(&ret_ty, span.clone());
             self.check_type_visibility(&ret_ty, span.clone());
             self.current_generic_type_bindings = saved_generic_bindings;
         }
@@ -2935,9 +2949,12 @@ impl TypeChecker {
             self.current_is_pure = false;
             for param in &method.params {
                 let ty = self.resolve_type(&param.ty);
+                self.validate_resolved_type_exists(&ty, span.clone());
                 self.declare_variable(&param.name, ty, param.mutable, span.clone());
             }
-            self.current_return_type = Some(self.resolve_type(&method.return_type));
+            let return_type = self.resolve_type(&method.return_type);
+            self.validate_resolved_type_exists(&return_type, span.clone());
+            self.current_return_type = Some(return_type);
             self.check_block(body);
             self.current_return_type = None;
             self.current_effects = saved_effects;
@@ -3015,12 +3032,14 @@ impl TypeChecker {
         // Add parameters to scope
         for param in &func.params {
             let ty = self.resolve_type(&param.ty);
+            self.validate_resolved_type_exists(&ty, span.clone());
             self.check_type_visibility(&ty, span.clone());
             if func.is_async && Self::type_contains_borrowed_reference(&ty) {
                 self.error(
                     format!(
                         "Async function '{}' cannot accept a parameter containing borrowed references: {}",
-                        func.name, ty
+                        func.name,
+                        Self::format_resolved_type_for_diagnostic(&ty)
                     ),
                     span.clone(),
                 );
@@ -3030,6 +3049,7 @@ impl TypeChecker {
 
         // Set current return type
         let return_type = self.resolve_type(&func.return_type);
+        self.validate_resolved_type_exists(&return_type, span.clone());
         self.check_type_visibility(&return_type, span.clone());
         let mut inner_return_type = return_type.clone();
         if func.is_async {
@@ -3078,19 +3098,28 @@ impl TypeChecker {
                 .unwrap_or_else(|| parent.clone());
             if self.interfaces.contains_key(&resolved_parent) {
                 self.error(
-                    format!("Class '{}' cannot extend interface '{}'", class_key, parent),
+                    format!(
+                        "Class '{}' cannot extend interface '{}'",
+                        Self::format_diagnostic_class_name(class_key),
+                        Self::format_diagnostic_class_name(parent)
+                    ),
                     span.clone(),
                 );
             } else if !self.classes.contains_key(&resolved_parent) {
                 self.error(
-                    format!("Class '{}' extends unknown class '{}'", class_key, parent),
+                    format!(
+                        "Class '{}' extends unknown class '{}'",
+                        Self::format_diagnostic_class_name(class_key),
+                        Self::format_diagnostic_class_name(parent)
+                    ),
                     span.clone(),
                 );
             } else if self.is_same_or_subclass_of(&resolved_parent, class_key) {
                 self.error(
                     format!(
                         "Inheritance cycle detected: '{}' cannot extend '{}'",
-                        class_key, parent
+                        Self::format_diagnostic_class_name(class_key),
+                        Self::format_diagnostic_class_name(parent)
                     ),
                     span.clone(),
                 );
@@ -3101,6 +3130,7 @@ impl TypeChecker {
 
         for field in &class.fields {
             let ty = self.resolve_type(&field.ty);
+            self.validate_resolved_type_exists(&ty, span.clone());
             self.check_type_visibility(&ty, span.clone());
         }
 
@@ -3112,7 +3142,8 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Class '{}' implements unknown interface '{}'",
-                        class_key, interface_name
+                        Self::format_diagnostic_class_name(class_key),
+                        Self::format_diagnostic_class_name(interface_name)
                     ),
                     span.clone(),
                 );
@@ -3134,7 +3165,10 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Class '{}' implements incompatible interface requirements for method '{}' from '{}' and '{}'",
-                                class_key, method_name, existing_interface, resolved_interface
+                                Self::format_diagnostic_class_name(class_key),
+                                method_name,
+                                Self::format_diagnostic_class_name(existing_interface),
+                                Self::format_diagnostic_class_name(&resolved_interface)
                             ),
                             span.clone(),
                         );
@@ -3151,7 +3185,8 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Class '{}' must implement interface method '{}'",
-                        class_key, method_name
+                        Self::format_diagnostic_class_name(class_key),
+                        method_name
                     ),
                     span.clone(),
                 );
@@ -3161,7 +3196,8 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Method '{}.{}' does not match interface signature",
-                        owner, method_name
+                        Self::format_diagnostic_class_name(&owner),
+                        method_name
                     ),
                     actual_sig.span.clone(),
                 );
@@ -3194,6 +3230,7 @@ impl TypeChecker {
             // Add parameters
             for param in &ctor.params {
                 let ty = self.resolve_type(&param.ty);
+                self.validate_resolved_type_exists(&ty, span.clone());
                 self.check_type_visibility(&ty, span.clone());
                 self.declare_variable(&param.name, ty, param.mutable, span.clone());
             }
@@ -3278,11 +3315,13 @@ impl TypeChecker {
             // Add parameters
             for param in &method.params {
                 let ty = self.resolve_type(&param.ty);
+                self.validate_resolved_type_exists(&ty, span.clone());
                 self.check_type_visibility(&ty, span.clone());
                 self.declare_variable(&param.name, ty, param.mutable, span.clone());
             }
 
             let return_type = self.resolve_type(&method.return_type);
+            self.validate_resolved_type_exists(&return_type, span.clone());
             self.check_type_visibility(&return_type, span.clone());
             self.current_return_type = Some(return_type);
 
@@ -3340,7 +3379,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Type mismatch: cannot assign {} to variable of type {}",
-                            value_type, declared_type
+                            Self::format_resolved_type_for_diagnostic(&value_type),
+                            Self::format_resolved_type_for_diagnostic(&declared_type)
                         ),
                         value.span.clone(),
                     );
@@ -3364,7 +3404,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Type mismatch in assignment: expected {}, found {}",
-                            target_type, value_type
+                            Self::format_resolved_type_for_diagnostic(&target_type),
+                            Self::format_resolved_type_for_diagnostic(&value_type)
                         ),
                         value.span.clone(),
                     );
@@ -3398,7 +3439,8 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Return type mismatch: expected {}, found {}",
-                                expected, return_type
+                                Self::format_resolved_type_for_diagnostic(expected),
+                                Self::format_resolved_type_for_diagnostic(&return_type)
                             ),
                             span,
                         );
@@ -3414,7 +3456,10 @@ impl TypeChecker {
                 let cond_type = self.check_expr(&condition.node, condition.span.clone());
                 if !matches!(cond_type, ResolvedType::Boolean) {
                     self.error(
-                        format!("Condition must be Boolean, found {}", cond_type),
+                        format!(
+                            "Condition must be Boolean, found {}",
+                            Self::format_resolved_type_for_diagnostic(&cond_type)
+                        ),
                         condition.span.clone(),
                     );
                 }
@@ -3434,7 +3479,10 @@ impl TypeChecker {
                 let cond_type = self.check_expr(&condition.node, condition.span.clone());
                 if !matches!(cond_type, ResolvedType::Boolean) {
                     self.error(
-                        format!("Condition must be Boolean, found {}", cond_type),
+                        format!(
+                            "Condition must be Boolean, found {}",
+                            Self::format_resolved_type_for_diagnostic(&cond_type)
+                        ),
                         condition.span.clone(),
                     );
                 }
@@ -3461,7 +3509,10 @@ impl TypeChecker {
                     ResolvedType::Integer => ResolvedType::Integer,
                     _ => {
                         self.error(
-                            format!("Cannot iterate over {}", iter_type),
+                            format!(
+                                "Cannot iterate over {}",
+                                Self::format_resolved_type_for_diagnostic(&iter_type)
+                            ),
                             iterable.span.clone(),
                         );
                         ResolvedType::Unknown
@@ -3475,7 +3526,8 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Loop variable type mismatch: declared {}, but iterating over {}",
-                                declared_type, iter_type
+                                Self::format_resolved_type_for_diagnostic(&declared_type),
+                                Self::format_resolved_type_for_diagnostic(&iter_type)
                             ),
                             iterable.span.clone(),
                         );
@@ -3504,7 +3556,10 @@ impl TypeChecker {
 
                 if !self.match_expression_exhaustive(&match_type, arms) {
                     self.error(
-                        format!("Non-exhaustive match statement for type {}", match_type),
+                        format!(
+                            "Non-exhaustive match statement for type {}",
+                            Self::format_resolved_type_for_diagnostic(&match_type)
+                        ),
                         span,
                     );
                 }
@@ -3567,10 +3622,51 @@ impl TypeChecker {
             name.rsplit('.').next().unwrap_or(name)
         }
 
+        let imported_unit_variant = |this: &Self, name: &str| -> Option<(String, String)> {
+            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
+            let enum_info = this.enums.get(&enum_name)?;
+            enum_info
+                .variants
+                .get(&variant_name)
+                .is_some_and(|fields| fields.is_empty())
+                .then_some((enum_name, variant_name))
+        };
+
         match pattern {
             Pattern::Wildcard => {}
             Pattern::Ident(name) => {
-                self.declare_variable(name, expected_type.clone(), false, span);
+                if let Some((enum_name, variant_name)) = imported_unit_variant(self, name) {
+                    match expected_type {
+                        ResolvedType::Option(_) | ResolvedType::Result(_, _) => {
+                            self.check_pattern(
+                                &Pattern::Variant(variant_name, vec![]),
+                                expected_type,
+                                span,
+                            );
+                        }
+                        ResolvedType::Class(expected_enum) if expected_enum == &enum_name => {
+                            self.check_pattern(
+                                &Pattern::Variant(name.clone(), vec![]),
+                                expected_type,
+                                span,
+                            );
+                        }
+                        ResolvedType::Class(expected_enum) => {
+                            self.error(
+                                format!("Cannot match variant {} on type {}", name, expected_enum),
+                                span,
+                            );
+                        }
+                        _ => {
+                            self.error(
+                                format!("Cannot match variant {} on type {}", name, expected_type),
+                                span,
+                            );
+                        }
+                    }
+                } else {
+                    self.declare_variable(name, expected_type.clone(), false, span);
+                }
             }
             Pattern::Literal(lit) => {
                 let lit_type = self.literal_type(lit);
@@ -3581,7 +3677,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Pattern type mismatch: expected {}, found {}",
-                            expected_type, lit_type
+                            Self::format_resolved_type_for_diagnostic(expected_type),
+                            Self::format_resolved_type_for_diagnostic(&lit_type)
                         ),
                         span,
                     );
@@ -3652,7 +3749,11 @@ impl TypeChecker {
                                 }
                             } else {
                                 self.error(
-                                    format!("Unknown variant '{}' for enum '{}'", name, enum_name),
+                                    format!(
+                                        "Unknown variant '{}' for enum '{}'",
+                                        name,
+                                        Self::format_diagnostic_class_name(enum_name)
+                                    ),
                                     span,
                                 );
                             }
@@ -3685,9 +3786,19 @@ impl TypeChecker {
     }
 
     fn match_expression_exhaustive(&self, match_type: &ResolvedType, arms: &[MatchArm]) -> bool {
-        let has_catch_all = arms
-            .iter()
-            .any(|arm| matches!(arm.pattern, Pattern::Wildcard | Pattern::Ident(_)));
+        let imported_unit_variant = |name: &str| -> Option<(String, String)> {
+            let (enum_name, variant_name) = self.resolve_import_alias_variant(name)?;
+            self.enums
+                .get(&enum_name)
+                .and_then(|enum_info| enum_info.variants.get(&variant_name))
+                .is_some_and(|fields| fields.is_empty())
+                .then_some((enum_name, variant_name))
+        };
+        let has_catch_all = arms.iter().any(|arm| match &arm.pattern {
+            Pattern::Wildcard => true,
+            Pattern::Ident(name) => imported_unit_variant(name).is_none(),
+            _ => false,
+        });
         if has_catch_all {
             return true;
         }
@@ -3704,6 +3815,8 @@ impl TypeChecker {
             }
             ResolvedType::Option(_) => {
                 let has_some = arms.iter().any(|arm| match &arm.pattern {
+                    Pattern::Ident(name) => imported_unit_variant(name)
+                        .is_some_and(|(owner_enum, variant)| owner_enum == "Option" && variant == "Some"),
                     Pattern::Variant(name, _) => {
                         name.rsplit('.').next().is_some_and(|leaf| leaf == "Some")
                             || self
@@ -3713,6 +3826,8 @@ impl TypeChecker {
                     _ => false,
                 });
                 let has_none = arms.iter().any(|arm| match &arm.pattern {
+                    Pattern::Ident(name) => imported_unit_variant(name)
+                        .is_some_and(|(owner_enum, variant)| owner_enum == "Option" && variant == "None"),
                     Pattern::Variant(name, _) => {
                         name.rsplit('.').next().is_some_and(|leaf| leaf == "None")
                             || self
@@ -3725,6 +3840,8 @@ impl TypeChecker {
             }
             ResolvedType::Result(_, _) => {
                 let has_ok = arms.iter().any(|arm| match &arm.pattern {
+                    Pattern::Ident(name) => imported_unit_variant(name)
+                        .is_some_and(|(owner_enum, variant)| owner_enum == "Result" && variant == "Ok"),
                     Pattern::Variant(name, _) => {
                         name.rsplit('.').next().is_some_and(|leaf| leaf == "Ok")
                             || self
@@ -3734,6 +3851,8 @@ impl TypeChecker {
                     _ => false,
                 });
                 let has_err = arms.iter().any(|arm| match &arm.pattern {
+                    Pattern::Ident(name) => imported_unit_variant(name)
+                        .is_some_and(|(owner_enum, variant)| owner_enum == "Result" && variant == "Error"),
                     Pattern::Variant(name, _) => {
                         name.rsplit('.').next().is_some_and(|leaf| leaf == "Error")
                             || self
@@ -3750,6 +3869,11 @@ impl TypeChecker {
                 .is_some_and(|enum_info| {
                     enum_info.variants.keys().all(|variant_name| {
                         arms.iter().any(|arm| {
+                            matches!(&arm.pattern, Pattern::Ident(name)
+                                if imported_unit_variant(name).is_some_and(|(owner_enum, imported_variant)| {
+                                    owner_enum == *enum_name && imported_variant == *variant_name
+                                }))
+                                ||
                             matches!(&arm.pattern, Pattern::Variant(name, _)
                                 if (!name.contains('.')
                                     && self
@@ -4363,7 +4487,8 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Option.some argument type mismatch: expected {}, got {}",
-                                inner, actual
+                                Self::format_resolved_type_for_diagnostic(inner),
+                                Self::format_resolved_type_for_diagnostic(&actual)
                             ),
                             arg.span.clone(),
                         );
@@ -4392,7 +4517,8 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Result.ok argument type mismatch: expected {}, got {}",
-                                ok_ty, actual
+                                Self::format_resolved_type_for_diagnostic(ok_ty),
+                                Self::format_resolved_type_for_diagnostic(&actual)
                             ),
                             arg.span.clone(),
                         );
@@ -4421,7 +4547,8 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Result.error argument type mismatch: expected {}, got {}",
-                                err_ty, actual
+                                Self::format_resolved_type_for_diagnostic(err_ty),
+                                Self::format_resolved_type_for_diagnostic(&actual)
                             ),
                             arg.span.clone(),
                         );
@@ -4468,7 +4595,10 @@ impl TypeChecker {
         let cond_type = self.check_expr(condition, condition_span.clone());
         if !matches!(cond_type, ResolvedType::Boolean) {
             self.error(
-                format!("If condition must be Boolean, got {}", cond_type),
+                format!(
+                    "If condition must be Boolean, got {}",
+                    Self::format_resolved_type_for_diagnostic(&cond_type)
+                ),
                 condition_span,
             );
         }
@@ -4519,7 +4649,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Match expression arm type mismatch: expected {}, got {}",
-                            current, arm_type
+                            Self::format_resolved_type_for_diagnostic(current),
+                            Self::format_resolved_type_for_diagnostic(&arm_type)
                         ),
                         span.clone(),
                     );
@@ -4531,7 +4662,10 @@ impl TypeChecker {
 
         if !self.match_expression_exhaustive(&match_type, arms) {
             self.error(
-                format!("Non-exhaustive match expression for type {}", match_type),
+                format!(
+                    "Non-exhaustive match expression for type {}",
+                    Self::format_resolved_type_for_diagnostic(&match_type)
+                ),
                 span,
             );
         }
@@ -4592,7 +4726,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Async block cannot capture '{}' because its type contains borrowed references: {}",
-                            name, var.ty
+                            name,
+                            Self::format_resolved_type_for_diagnostic(&var.ty)
                         ),
                         span.clone(),
                     );
@@ -4611,7 +4746,8 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Async block return type mismatch: expected {}, found {}",
-                        expected_inner, return_type
+                        Self::format_resolved_type_for_diagnostic(expected_inner),
+                        Self::format_resolved_type_for_diagnostic(&return_type)
                     ),
                     span,
                 );
@@ -4664,7 +4800,8 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "Unknown variant '{}' for enum '{}'",
-                                    variant_name, enum_name
+                                    variant_name,
+                                    Self::format_diagnostic_class_name(&enum_name)
                                 ),
                                 span,
                             );
@@ -4713,7 +4850,10 @@ impl TypeChecker {
                     UnaryOp::Neg => {
                         if !inner_type.is_numeric() {
                             self.error(
-                                format!("Cannot negate non-numeric type {}", inner_type),
+                                format!(
+                                    "Cannot negate non-numeric type {}",
+                                    Self::format_resolved_type_for_diagnostic(&inner_type)
+                                ),
                                 span,
                             );
                         }
@@ -4722,7 +4862,10 @@ impl TypeChecker {
                     UnaryOp::Not => {
                         if !matches!(inner_type, ResolvedType::Boolean) {
                             self.error(
-                                format!("Cannot apply '!' to non-boolean type {}", inner_type),
+                                format!(
+                                    "Cannot apply '!' to non-boolean type {}",
+                                    Self::format_resolved_type_for_diagnostic(&inner_type)
+                                ),
                                 span,
                             );
                         }
@@ -4741,6 +4884,7 @@ impl TypeChecker {
                 if let Expr::Ident(owner_name) = &object.node {
                     let resolved_owner = self
                         .resolve_import_alias_symbol(owner_name)
+                        .or_else(|| self.resolve_nominal_reference_name(owner_name))
                         .or_else(|| self.resolve_enum_name(owner_name))
                         .unwrap_or_else(|| owner_name.clone());
                     if let Some(enum_info) = self.enums.get(&resolved_owner) {
@@ -4801,7 +4945,10 @@ impl TypeChecker {
                     ResolvedType::List(inner) => {
                         if !matches!(idx_type, ResolvedType::Integer) {
                             self.error(
-                                format!("Index must be Integer, found {}", idx_type),
+                                format!(
+                                    "Index must be Integer, found {}",
+                                    Self::format_resolved_type_for_diagnostic(&idx_type)
+                                ),
                                 index.span.clone(),
                             );
                         } else {
@@ -4816,7 +4963,10 @@ impl TypeChecker {
                     ResolvedType::String => {
                         if !matches!(idx_type, ResolvedType::Integer) {
                             self.error(
-                                format!("Index must be Integer, found {}", idx_type),
+                                format!(
+                                    "Index must be Integer, found {}",
+                                    Self::format_resolved_type_for_diagnostic(&idx_type)
+                                ),
                                 index.span.clone(),
                             );
                         } else {
@@ -4844,7 +4994,8 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "Map index type mismatch: expected {}, got {}",
-                                    k, idx_type
+                                    Self::format_resolved_type_for_diagnostic(k),
+                                    Self::format_resolved_type_for_diagnostic(&idx_type)
                                 ),
                                 index.span.clone(),
                             );
@@ -4852,16 +5003,20 @@ impl TypeChecker {
                         (**v).clone()
                     }
                     _ => {
-                        self.error(format!("Cannot index type {}", obj_type), span);
+                        self.error(
+                            format!(
+                                "Cannot index type {}",
+                                Self::format_resolved_type_for_diagnostic(&obj_type)
+                            ),
+                            span,
+                        );
                         ResolvedType::Unknown
                     }
                 }
             }
 
             Expr::Construct { ty, args } => {
-                let scoped_ty = self
-                    .module_scoped_type_name(ty)
-                    .unwrap_or_else(|| ty.clone());
+                let scoped_ty = self.resolve_type_source_string(ty);
 
                 if let Some((enum_name, variant_name)) = self.resolve_import_alias_variant(ty) {
                     if let Some(enum_info) = self.enums.get(&enum_name).cloned() {
@@ -4888,7 +5043,8 @@ impl TypeChecker {
                                         self.error(
                                             format!(
                                                 "Enum variant argument type mismatch: expected {}, got {}",
-                                                expected_ty, actual
+                                                Self::format_resolved_type_for_diagnostic(expected_ty),
+                                                Self::format_resolved_type_for_diagnostic(&actual)
                                             ),
                                             arg.span.clone(),
                                         );
@@ -4924,7 +5080,10 @@ impl TypeChecker {
                     || self.interfaces.contains_key(&class_name)
                 {
                     self.error(
-                        format!("Cannot construct interface type '{}'", scoped_ty),
+                        format!(
+                            "Cannot construct interface type '{}'",
+                            Self::format_diagnostic_class_name(&scoped_ty)
+                        ),
                         span,
                     );
                     return ResolvedType::Unknown;
@@ -4962,12 +5121,13 @@ impl TypeChecker {
                                 );
                                 if !self.types_compatible(expected, &arg_type) {
                                     self.error(
-                                        format!(
-                                            "Constructor argument type mismatch: expected {}, got {}",
-                                            expected, arg_type
-                                        ),
-                                        arg.span.clone(),
-                                    );
+                                            format!(
+                                                "Constructor argument type mismatch: expected {}, got {}",
+                                                Self::format_resolved_type_for_diagnostic(expected),
+                                                Self::format_resolved_type_for_diagnostic(&arg_type)
+                                            ),
+                                            arg.span.clone(),
+                                        );
                                 }
                             }
                         }
@@ -4990,7 +5150,13 @@ impl TypeChecker {
                     // Non-parameterized version - needs inference
                     self.fresh_type_var()
                 } else {
-                    self.error(format!("Unknown type: {}", scoped_ty), span);
+                    self.error(
+                        format!(
+                            "Unknown type: {}",
+                            Self::format_diagnostic_class_name(&scoped_ty)
+                        ),
+                        span,
+                    );
                     ResolvedType::Unknown
                 }
             }
@@ -5032,12 +5198,12 @@ impl TypeChecker {
                         let ty = self.check_expr(&e.node, e.span.clone());
                         if !Self::supports_display_scalar(&ty) {
                             self.error(
-                                format!(
-                                    "String interpolation currently supports Integer, Float, Boolean, String, Char, and None, got {}",
-                                    ty
-                                ),
-                                e.span.clone(),
-                            );
+                        format!(
+                            "String interpolation currently supports Integer, Float, Boolean, String, Char, and None, got {}",
+                            Self::format_resolved_type_for_diagnostic(&ty)
+                        ),
+                        e.span.clone(),
+                    );
                         }
                     }
                 }
@@ -5065,7 +5231,8 @@ impl TypeChecker {
                                     self.error(
                                         format!(
                                             "'?' error type mismatch: cannot propagate Result error {} into {}",
-                                            err, outer_err
+                                            Self::format_resolved_type_for_diagnostic(&err),
+                                            Self::format_resolved_type_for_diagnostic(outer_err)
                                         ),
                                         span,
                                     );
@@ -5087,7 +5254,7 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "'?' operator can only be used on Option or Result, got {}",
-                                inner_type
+                                Self::format_resolved_type_for_diagnostic(&inner_type)
                             ),
                             span,
                         );
@@ -5125,7 +5292,10 @@ impl TypeChecker {
                     ResolvedType::Ref(inner) | ResolvedType::MutRef(inner) => *inner,
                     _ => {
                         self.error(
-                            format!("Cannot dereference non-reference type {}", inner_type),
+                            format!(
+                                "Cannot dereference non-reference type {}",
+                                Self::format_resolved_type_for_diagnostic(&inner_type)
+                            ),
                             span,
                         );
                         ResolvedType::Unknown
@@ -5159,7 +5329,8 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "Match expression arm type mismatch: expected {}, got {}",
-                                    expected, arm_type
+                                    Self::format_resolved_type_for_diagnostic(expected),
+                                    Self::format_resolved_type_for_diagnostic(&arm_type)
                                 ),
                                 span.clone(),
                             );
@@ -5171,7 +5342,10 @@ impl TypeChecker {
 
                 if !self.match_expression_exhaustive(&match_type, arms) {
                     self.error(
-                        format!("Non-exhaustive match expression for type {}", match_type),
+                        format!(
+                            "Non-exhaustive match expression for type {}",
+                            Self::format_resolved_type_for_diagnostic(&match_type)
+                        ),
                         span,
                     );
                 }
@@ -5186,7 +5360,10 @@ impl TypeChecker {
                     ResolvedType::Task(inner) => *inner,
                     _ => {
                         self.error(
-                            format!("'await' can only be used on Task types, got {}", inner_type),
+                            format!(
+                                "'await' can only be used on Task types, got {}",
+                                Self::format_resolved_type_for_diagnostic(&inner_type)
+                            ),
                             span,
                         );
                         ResolvedType::Unknown
@@ -5200,7 +5377,10 @@ impl TypeChecker {
                 let cond_type = self.check_expr(&condition.node, condition.span.clone());
                 if !matches!(cond_type, ResolvedType::Boolean) {
                     self.error(
-                        format!("require() condition must be Boolean, got {}", cond_type),
+                        format!(
+                            "require() condition must be Boolean, got {}",
+                            Self::format_resolved_type_for_diagnostic(&cond_type)
+                        ),
                         condition.span.clone(),
                     );
                 }
@@ -5208,7 +5388,10 @@ impl TypeChecker {
                     let msg_type = self.check_expr(&msg.node, msg.span.clone());
                     if !matches!(msg_type, ResolvedType::String) {
                         self.error(
-                            format!("require() message must be String, got {}", msg_type),
+                            format!(
+                                "require() message must be String, got {}",
+                                Self::format_resolved_type_for_diagnostic(&msg_type)
+                            ),
                             msg.span.clone(),
                         );
                     }
@@ -5225,7 +5408,10 @@ impl TypeChecker {
                     let start_type = self.check_expr(&s.node, s.span.clone());
                     if !matches!(start_type, ResolvedType::Integer) {
                         self.error(
-                            format!("Range start must be Integer, got {}", start_type),
+                            format!(
+                                "Range start must be Integer, got {}",
+                                Self::format_resolved_type_for_diagnostic(&start_type)
+                            ),
                             s.span.clone(),
                         );
                     }
@@ -5234,7 +5420,10 @@ impl TypeChecker {
                     let end_type = self.check_expr(&e.node, e.span.clone());
                     if !matches!(end_type, ResolvedType::Integer) {
                         self.error(
-                            format!("Range end must be Integer, got {}", end_type),
+                            format!(
+                                "Range end must be Integer, got {}",
+                                Self::format_resolved_type_for_diagnostic(&end_type)
+                            ),
                             e.span.clone(),
                         );
                     }
@@ -5250,7 +5439,10 @@ impl TypeChecker {
                 let cond_type = self.check_expr(&condition.node, condition.span.clone());
                 if !matches!(cond_type, ResolvedType::Boolean) {
                     self.error(
-                        format!("If condition must be Boolean, got {}", cond_type),
+                        format!(
+                            "If condition must be Boolean, got {}",
+                            Self::format_resolved_type_for_diagnostic(&cond_type)
+                        ),
                         condition.span.clone(),
                     );
                 }
@@ -5342,7 +5534,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Constructor {} expects optional Integer capacity, got {}",
-                            ty_name, other
+                            Self::format_diagnostic_class_name(ty_name),
+                            Self::format_resolved_type_for_diagnostic(other)
                         ),
                         span,
                     );
@@ -5398,7 +5591,10 @@ impl TypeChecker {
                     && !self.interfaces.contains_key(base_name)
                     && !self.enums.contains_key(base_name)
                 {
-                    self.error(format!("Unknown type: {}", name), span);
+                    self.error(
+                        format!("Unknown type: {}", Self::format_diagnostic_class_name(name)),
+                        span,
+                    );
                 }
             }
             ResolvedType::Option(inner)
@@ -5649,7 +5845,8 @@ impl TypeChecker {
                                     self.error(
                                         format!(
                                             "Enum variant argument type mismatch: expected {}, got {}",
-                                            expected_ty, actual
+                                            Self::format_resolved_type_for_diagnostic(expected_ty),
+                                            Self::format_resolved_type_for_diagnostic(&actual)
                                         ),
                                         arg.span.clone(),
                                     );
@@ -5732,7 +5929,12 @@ impl TypeChecker {
                                         self.error(
                                             format!(
                                                 "Argument type mismatch: expected {}, got {}",
-                                                param_type, arg_type
+                                                Self::format_resolved_type_for_diagnostic(
+                                                    param_type
+                                                ),
+                                                Self::format_resolved_type_for_diagnostic(
+                                                    &arg_type
+                                                )
                                             ),
                                             arg.span.clone(),
                                         );
@@ -5790,7 +5992,8 @@ impl TypeChecker {
                                     self.error(
                                         format!(
                                             "Argument type mismatch: expected {}, got {}",
-                                            param_type, arg_type
+                                            Self::format_resolved_type_for_diagnostic(param_type),
+                                            Self::format_resolved_type_for_diagnostic(&arg_type)
                                         ),
                                         arg.span.clone(),
                                     );
@@ -5883,6 +6086,7 @@ impl TypeChecker {
 
                 let resolved_module = self
                     .resolve_import_alias_symbol(name)
+                    .or_else(|| self.resolve_nominal_reference_name(name))
                     .or_else(|| self.resolve_enum_name(name))
                     .unwrap_or_else(|| name.clone());
 
@@ -5943,7 +6147,8 @@ impl TypeChecker {
                                     self.error(
                                         format!(
                                             "Enum variant argument type mismatch: expected {}, got {}",
-                                            expected_ty, actual
+                                            Self::format_resolved_type_for_diagnostic(expected_ty),
+                                            Self::format_resolved_type_for_diagnostic(&actual)
                                         ),
                                         arg.span.clone(),
                                     );
@@ -5994,7 +6199,8 @@ impl TypeChecker {
                                 self.error(
                                     format!(
                                         "Argument type mismatch: expected {}, got {}",
-                                        param_type, arg_type
+                                        Self::format_resolved_type_for_diagnostic(param_type),
+                                        Self::format_resolved_type_for_diagnostic(&arg_type)
                                     ),
                                     arg.span.clone(),
                                 );
@@ -6046,7 +6252,8 @@ impl TypeChecker {
                                     self.error(
                                         format!(
                                             "Argument type mismatch: expected {}, got {}",
-                                            param_type, arg_type
+                                            Self::format_resolved_type_for_diagnostic(param_type),
+                                            Self::format_resolved_type_for_diagnostic(&arg_type)
                                         ),
                                         arg.span.clone(),
                                     );
@@ -6101,7 +6308,8 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "Argument type mismatch: expected {}, got {}",
-                                    param_type, arg_type
+                                    Self::format_resolved_type_for_diagnostic(param_type),
+                                    Self::format_resolved_type_for_diagnostic(&arg_type)
                                 ),
                                 arg.span.clone(),
                             );
@@ -6143,7 +6351,8 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Argument type mismatch: expected {}, got {}",
-                                param_type, arg_type
+                                Self::format_resolved_type_for_diagnostic(param_type),
+                                Self::format_resolved_type_for_diagnostic(&arg_type)
                             ),
                             arg.span.clone(),
                         );
@@ -6155,7 +6364,10 @@ impl TypeChecker {
 
         if callee_type != ResolvedType::Unknown {
             self.error(
-                format!("Cannot call non-function type {}", callee_type),
+                format!(
+                    "Cannot call non-function type {}",
+                    Self::format_resolved_type_for_diagnostic(&callee_type)
+                ),
                 span,
             );
         }
@@ -6174,7 +6386,8 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Variadic extern call '{}' received non-FFI-safe variadic argument type {}",
-                        callee, t
+                        callee,
+                        Self::format_resolved_type_for_diagnostic(&t)
                     ),
                     arg.span.clone(),
                 );
@@ -6197,7 +6410,8 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "{}() currently supports Integer, Float, Boolean, String, Char, and None arguments, got {}",
-                                name, ty
+                                name,
+                                Self::format_resolved_type_for_diagnostic(&ty)
                             ),
                             arg.span.clone(),
                         );
@@ -6214,7 +6428,13 @@ impl TypeChecker {
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
                     if !t.is_numeric() {
-                        self.error(format!("Math.abs() requires numeric type, got {}", t), span);
+                        self.error(
+                            format!(
+                                "Math.abs() requires numeric type, got {}",
+                                Self::format_resolved_type_for_diagnostic(&t)
+                            ),
+                            span,
+                        );
                     }
                     Some(t)
                 } else {
@@ -6237,7 +6457,9 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "{}() arguments must have same type: {} vs {}",
-                                func_name, t1, t2
+                                func_name,
+                                Self::format_resolved_type_for_diagnostic(&t1),
+                                Self::format_resolved_type_for_diagnostic(&t2)
                             ),
                             span,
                         );
@@ -6257,7 +6479,7 @@ impl TypeChecker {
                             format!(
                                 "{}() requires numeric type, got {}",
                                 name.replace("__", "."),
-                                t
+                                Self::format_resolved_type_for_diagnostic(&t)
                             ),
                             span,
                         );
@@ -6282,7 +6504,10 @@ impl TypeChecker {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::Integer | ResolvedType::Float) {
                         self.error(
-                            format!("to_float() requires Integer or Float, got {}", t),
+                            format!(
+                                "to_float() requires Integer or Float, got {}",
+                                Self::format_resolved_type_for_diagnostic(&t)
+                            ),
                             span,
                         );
                     }
@@ -6298,7 +6523,10 @@ impl TypeChecker {
                         ResolvedType::Integer | ResolvedType::Float | ResolvedType::String
                     ) {
                         self.error(
-                            format!("to_int() requires Integer, Float, or String, got {}", t),
+                            format!(
+                                "to_int() requires Integer, Float, or String, got {}",
+                                Self::format_resolved_type_for_diagnostic(&t)
+                            ),
                             span,
                         );
                     }
@@ -6313,7 +6541,7 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "to_string() currently supports Integer, Float, Boolean, String, Char, and None, got {}",
-                                t
+                                Self::format_resolved_type_for_diagnostic(&t)
                             ),
                             span,
                         );
@@ -6326,7 +6554,13 @@ impl TypeChecker {
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::String) {
-                        self.error(format!("Str.len() requires String, got {}", t), span);
+                        self.error(
+                            format!(
+                                "Str.len() requires String, got {}",
+                                Self::format_resolved_type_for_diagnostic(&t)
+                            ),
+                            span,
+                        );
                     }
                 }
                 Some(ResolvedType::Integer)
@@ -6461,7 +6695,8 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "range() arguments must use the same numeric type, got {} and {}",
-                                    range_ty, arg_ty
+                                    Self::format_resolved_type_for_diagnostic(&range_ty),
+                                    Self::format_resolved_type_for_diagnostic(&arg_ty)
                                 ),
                                 arg.span.clone(),
                             );
@@ -6482,7 +6717,13 @@ impl TypeChecker {
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::String) {
-                        self.error(format!("File.read() requires String path, got {}", t), span);
+                        self.error(
+                            format!(
+                                "File.read() requires String path, got {}",
+                                Self::format_resolved_type_for_diagnostic(&t)
+                            ),
+                            span,
+                        );
                     }
                 }
                 Some(ResolvedType::String)
@@ -6513,7 +6754,10 @@ impl TypeChecker {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::String) {
                         self.error(
-                            format!("File.exists() requires String path, got {}", t),
+                            format!(
+                                "File.exists() requires String path, got {}",
+                                Self::format_resolved_type_for_diagnostic(&t)
+                            ),
                             span,
                         );
                     }
@@ -6526,7 +6770,10 @@ impl TypeChecker {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::String) {
                         self.error(
-                            format!("File.delete() requires String path, got {}", t),
+                            format!(
+                                "File.delete() requires String path, got {}",
+                                Self::format_resolved_type_for_diagnostic(&t)
+                            ),
                             span,
                         );
                     }
@@ -6677,7 +6924,9 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "{}() arguments must have compatible types: {} vs {}",
-                                name, t1, t2
+                                name,
+                                Self::format_resolved_type_for_diagnostic(&t1),
+                                Self::format_resolved_type_for_diagnostic(&t2)
                             ),
                             span,
                         );
@@ -6736,7 +6985,8 @@ impl TypeChecker {
             self.error(
                 format!(
                     "Method '{}' on type '{}' does not accept explicit type arguments",
-                    method, obj_type
+                    method,
+                    Self::format_resolved_type_for_diagnostic(obj_type)
                 ),
                 span.clone(),
             );
@@ -6752,7 +7002,8 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "List.push() type mismatch: expected {}, got {}",
-                                    inner, arg_type
+                                    Self::format_resolved_type_for_diagnostic(inner),
+                                    Self::format_resolved_type_for_diagnostic(&arg_type)
                                 ),
                                 args[0].span.clone(),
                             );
@@ -6766,7 +7017,10 @@ impl TypeChecker {
                         let idx_type = self.check_expr(&args[0].node, args[0].span.clone());
                         if !matches!(idx_type, ResolvedType::Integer) {
                             self.error(
-                                format!("List.get() index must be Integer, got {}", idx_type),
+                                format!(
+                                    "List.get() index must be Integer, got {}",
+                                    Self::format_resolved_type_for_diagnostic(&idx_type)
+                                ),
                                 args[0].span.clone(),
                             );
                         } else {
@@ -6800,7 +7054,8 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "List.set() value type mismatch: expected {}, got {}",
-                                    inner, val_type
+                                    Self::format_resolved_type_for_diagnostic(inner),
+                                    Self::format_resolved_type_for_diagnostic(&val_type)
                                 ),
                                 args[1].span.clone(),
                             );
@@ -6874,7 +7129,9 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "Set.{}() type mismatch: expected {}, got {}",
-                                    method, inner, arg_type
+                                    method,
+                                    Self::format_resolved_type_for_diagnostic(inner),
+                                    Self::format_resolved_type_for_diagnostic(&arg_type)
                                 ),
                                 args[0].span.clone(),
                             );
@@ -6952,7 +7209,8 @@ impl TypeChecker {
                                     self.error(
                                         format!(
                                             "Argument type mismatch: expected {}, got {}",
-                                            param_type, arg_type
+                                            Self::format_resolved_type_for_diagnostic(param_type),
+                                            Self::format_resolved_type_for_diagnostic(&arg_type)
                                         ),
                                         arg.span.clone(),
                                     );
@@ -6962,7 +7220,11 @@ impl TypeChecker {
                         sig.return_type.clone()
                     } else {
                         self.error(
-                            format!("Unknown method '{}' on interface '{}'", method, base_name),
+                            format!(
+                                "Unknown method '{}' on interface '{}'",
+                                method,
+                                Self::format_diagnostic_class_name(&base_name)
+                            ),
                             span,
                         );
                         ResolvedType::Unknown
@@ -7026,7 +7288,8 @@ impl TypeChecker {
                                 self.error(
                                     format!(
                                         "Argument type mismatch: expected {}, got {}",
-                                        param_type, arg_type
+                                        Self::format_resolved_type_for_diagnostic(param_type),
+                                        Self::format_resolved_type_for_diagnostic(&arg_type)
                                     ),
                                     arg.span.clone(),
                                 );
@@ -7035,7 +7298,13 @@ impl TypeChecker {
                     }
                     inst_return_type
                 } else {
-                    self.error(format!("Unknown class: {}", name), span);
+                    self.error(
+                        format!(
+                            "Unknown class: {}",
+                            Self::format_diagnostic_class_name(name)
+                        ),
+                        span,
+                    );
                     ResolvedType::Unknown
                 }
             }
@@ -7080,7 +7349,7 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "Task.await_timeout() expects Integer milliseconds, got {}",
-                                    t
+                                    Self::format_resolved_type_for_diagnostic(&t)
                                 ),
                                 arg.span.clone(),
                             );
@@ -7125,7 +7394,8 @@ impl TypeChecker {
                                 self.error(
                                     format!(
                                         "Argument type mismatch: expected {}, got {}",
-                                        param_type, arg_type
+                                        Self::format_resolved_type_for_diagnostic(param_type),
+                                        Self::format_resolved_type_for_diagnostic(&arg_type)
                                     ),
                                     arg.span.clone(),
                                 );
@@ -7135,7 +7405,13 @@ impl TypeChecker {
                     sig.return_type
                 }
                 Ok(None) => {
-                    self.error(format!("Cannot call method on type {}", obj_type), span);
+                    self.error(
+                        format!(
+                            "Cannot call method on type {}",
+                            Self::format_resolved_type_for_diagnostic(obj_type)
+                        ),
+                        span,
+                    );
                     ResolvedType::Unknown
                 }
                 Err(message) => {
@@ -7144,7 +7420,13 @@ impl TypeChecker {
                 }
             },
             _ => {
-                self.error(format!("Cannot call method on type {}", obj_type), span);
+                self.error(
+                    format!(
+                        "Cannot call method on type {}",
+                        Self::format_resolved_type_for_diagnostic(obj_type)
+                    ),
+                    span,
+                );
                 ResolvedType::Unknown
             }
         }
@@ -7174,14 +7456,24 @@ impl TypeChecker {
                     return Self::substitute_type_vars(&field_type, &class_substitutions);
                 }
                 self.error(
-                    format!("Unknown field '{}' on class '{}'", field, name),
+                    format!(
+                        "Unknown field '{}' on class '{}'",
+                        field,
+                        Self::format_diagnostic_class_name(name)
+                    ),
                     span,
                 );
                 ResolvedType::Unknown
             }
             ResolvedType::Unknown => ResolvedType::Unknown,
             _ => {
-                self.error(format!("Cannot access field on type {}", obj_type), span);
+                self.error(
+                    format!(
+                        "Cannot access field on type {}",
+                        Self::format_resolved_type_for_diagnostic(obj_type)
+                    ),
+                    span,
+                );
                 ResolvedType::Unknown
             }
         }
@@ -7208,7 +7500,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Arithmetic operator requires numeric types, got {} and {}",
-                            left, right
+                            Self::format_resolved_type_for_diagnostic(left),
+                            Self::format_resolved_type_for_diagnostic(right)
                         ),
                         span,
                     );
@@ -7223,7 +7516,14 @@ impl TypeChecker {
             }
             BinOp::Eq | BinOp::NotEq => {
                 if self.common_compatible_type(left, right).is_none() {
-                    self.error(format!("Cannot compare {} and {}", left, right), span);
+                    self.error(
+                        format!(
+                            "Cannot compare {} and {}",
+                            Self::format_resolved_type_for_diagnostic(left),
+                            Self::format_resolved_type_for_diagnostic(right)
+                        ),
+                        span,
+                    );
                 }
                 ResolvedType::Boolean
             }
@@ -7232,7 +7532,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Comparison requires numeric types, got {} and {}",
-                            left, right
+                            Self::format_resolved_type_for_diagnostic(left),
+                            Self::format_resolved_type_for_diagnostic(right)
                         ),
                         span,
                     );
@@ -7245,7 +7546,8 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Logical operator requires Boolean types, got {} and {}",
-                            left, right
+                            Self::format_resolved_type_for_diagnostic(left),
+                            Self::format_resolved_type_for_diagnostic(right)
                         ),
                         span,
                     );
@@ -7284,7 +7586,7 @@ impl TypeChecker {
                 if let Some(bound) = self.current_generic_type_bindings.get(name) {
                     return bound.clone();
                 }
-                if let Some(resolved_name) = self.resolve_known_type_name(name) {
+                if let Some(resolved_name) = self.resolve_nominal_reference_name(name) {
                     return ResolvedType::Class(resolved_name);
                 }
                 // Check for built-in types that might be parsed as Named
@@ -7782,20 +8084,35 @@ impl TypeChecker {
                                     ResolvedType::Unknown
                                 }
                             }
-                            _ => ResolvedType::Class(s.to_string()),
+                            _ => self
+                                .resolve_nominal_reference_name(s)
+                                .map(ResolvedType::Class)
+                                .unwrap_or_else(|| ResolvedType::Class(s.to_string())),
                         }
                     } else {
-                        self.resolve_known_type_name(s)
+                        self.resolve_nominal_reference_name(s)
                             .map(ResolvedType::Class)
                             .unwrap_or_else(|| ResolvedType::Class(s.to_string()))
                     }
                 } else {
-                    self.resolve_known_type_name(s)
+                    self.resolve_nominal_reference_name(s)
                         .map(ResolvedType::Class)
                         .unwrap_or_else(|| ResolvedType::Class(s.to_string()))
                 }
             }
         }
+    }
+
+    fn resolve_type_source_string(&self, s: &str) -> String {
+        parse_type_source(s)
+            .ok()
+            .map(|parsed| self.resolve_type(&parsed).to_string())
+            .unwrap_or_else(|| {
+                self.resolve_nominal_reference_name(s).unwrap_or_else(|| {
+                    self.module_scoped_type_name(s)
+                        .unwrap_or_else(|| s.to_string())
+                })
+            })
     }
 
     fn parse_function_type_string(&self, s: &str) -> Option<(Vec<String>, String)> {

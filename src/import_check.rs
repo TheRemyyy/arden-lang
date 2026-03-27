@@ -156,10 +156,16 @@ impl<'a> ImportChecker<'a> {
                     let mut parts = path.split('.').collect::<Vec<_>>();
                     let symbol = parts.pop().unwrap_or_default();
                     let symbol_ns = parts.join(".");
+                    let current_qualified_symbol_ns = if current_namespace.is_empty() {
+                        symbol_ns.clone()
+                    } else {
+                        format!("{}.{}", current_namespace, symbol_ns)
+                    };
                     let is_known_symbol_alias = function_namespaces
                         .get(symbol)
                         .is_some_and(|ns| ns == &symbol_ns)
                         || known_namespaces.contains(&symbol_ns)
+                        || known_namespaces.contains(&current_qualified_symbol_ns)
                         || Self::path_has_known_namespace_prefix(&known_namespace_paths, &path)
                         || stdlib
                             .get_namespace(symbol)
@@ -175,7 +181,16 @@ impl<'a> ImportChecker<'a> {
                         invalid_namespace_aliases.insert(alias_name);
                     }
                 } else {
-                    invalid_namespace_aliases.insert(alias_name);
+                    let current_qualified_path = if current_namespace.is_empty() {
+                        path.clone()
+                    } else {
+                        format!("{}.{}", current_namespace, path)
+                    };
+                    if known_namespaces.contains(&current_qualified_path) {
+                        namespace_aliases.insert(alias_name, current_qualified_path);
+                    } else {
+                        invalid_namespace_aliases.insert(alias_name);
+                    }
                 }
                 continue;
             }
@@ -939,6 +954,30 @@ pub fn extract_known_namespace_paths(program: &Program, namespace: &str) -> Hash
         module_prefix: Option<String>,
     ) {
         match decl {
+            Decl::Class(class) => {
+                let path = if let Some(prefix) = module_prefix {
+                    format!("{}.{}", prefix, class.name)
+                } else {
+                    format!("{}.{}", namespace, class.name)
+                };
+                out.insert(path);
+            }
+            Decl::Enum(en) => {
+                let path = if let Some(prefix) = module_prefix {
+                    format!("{}.{}", prefix, en.name)
+                } else {
+                    format!("{}.{}", namespace, en.name)
+                };
+                out.insert(path);
+            }
+            Decl::Interface(interface) => {
+                let path = if let Some(prefix) = module_prefix {
+                    format!("{}.{}", prefix, interface.name)
+                } else {
+                    format!("{}.{}", namespace, interface.name)
+                };
+                out.insert(path);
+            }
             Decl::Module(module) => {
                 let next_prefix = if let Some(prefix) = module_prefix {
                     format!("{}.{}", prefix, module.name)
@@ -950,11 +989,7 @@ pub fn extract_known_namespace_paths(program: &Program, namespace: &str) -> Hash
                     walk_decl(out, &inner.node, namespace, Some(next_prefix.clone()));
                 }
             }
-            Decl::Function(_)
-            | Decl::Class(_)
-            | Decl::Enum(_)
-            | Decl::Interface(_)
-            | Decl::Import(_) => {}
+            Decl::Function(_) | Decl::Import(_) => {}
         }
     }
 
@@ -1723,6 +1758,39 @@ function main(): Integer {
         );
 
         let errors = checker.check_program(&program).err().unwrap_or_default();
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn exact_imported_enum_variant_alias_pattern_is_not_flagged_as_unknown_namespace_alias() {
+        let source = r#"
+enum E { A(Integer), B(Integer) }
+import E.A as First;
+function main(): Integer {
+    return match (E.B(2)) {
+        First(v) => v,
+        E.B(v) => v + 1
+    };
+}
+"#;
+        let errors = check_import_errors(source);
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn exact_imported_top_level_type_alias_is_not_flagged_as_unknown_namespace_alias() {
+        let source = r#"
+class Box {
+    value: Integer;
+    constructor(value: Integer) { this.value = value; }
+}
+import Box as B;
+function main(): Integer {
+    b: B = B(2);
+    return b.value;
+}
+"#;
+        let errors = check_import_errors(source);
         assert!(errors.is_empty(), "{errors:?}");
     }
 }

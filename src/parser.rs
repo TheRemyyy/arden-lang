@@ -1843,6 +1843,8 @@ impl<'src> Parser<'src> {
                     }
                     self.eat(&Token::RParen)?;
                     Ok(Pattern::Variant(name, bindings))
+                } else if name.contains('.') {
+                    Ok(Pattern::Variant(name, vec![]))
                 } else if self.check(&Token::Lt) {
                     Err(ParseError::new(
                         format!("Expected pattern, found {:?}", self.current()),
@@ -3261,7 +3263,9 @@ mod tests {
         "#;
         let err = parse_source(source).expect_err("nested malformed match should fail");
         assert!(
-            err.message.contains("Expected RBrace") || err.message.contains("Expected pattern"),
+            err.message.contains("Expected RBrace")
+                || err.message.contains("Expected pattern")
+                || err.message.contains("Expected FatArrow"),
             "{}",
             err.message
         );
@@ -4612,6 +4616,32 @@ mod tests {
         );
         assert!(
             matches!(&arms[1].pattern, Pattern::Variant(name, bindings) if name == "util.E.B" && bindings == &vec!["w".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_parse_qualified_enum_patterns_without_bindings() {
+        let source = r#"
+            function main(): None {
+                match (x) {
+                    Enum.A => { return None; },
+                    util.E.B => { return None; }
+                }
+            }
+        "#;
+        let program =
+            parse_source(source).expect("qualified enum patterns without bindings should parse");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("expected function declaration");
+        };
+        let Stmt::Match { arms, .. } = &func.body[0].node else {
+            panic!("expected match statement");
+        };
+        assert!(
+            matches!(&arms[0].pattern, Pattern::Variant(name, bindings) if name == "Enum.A" && bindings.is_empty())
+        );
+        assert!(
+            matches!(&arms[1].pattern, Pattern::Variant(name, bindings) if name == "util.E.B" && bindings.is_empty())
         );
     }
 
