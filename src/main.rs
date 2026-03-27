@@ -19987,6 +19987,165 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_namespace_alias_nested_generic_class_constructor_runtime() {
+        let temp_root =
+            make_temp_project_root("namespace-alias-nested-generic-class-constructor-runtime");
+        let source_path =
+            temp_root.join("namespace_alias_nested_generic_class_constructor_runtime.apex");
+        let output_path =
+            temp_root.join("namespace_alias_nested_generic_class_constructor_runtime");
+        let source = r#"
+            module U {
+                module M {
+                    class Box<T> {
+                        value: T;
+                        constructor(value: T) { this.value = value; }
+                        function get(): T { return this.value; }
+                    }
+                }
+            }
+            import U as u;
+            function main(): Integer {
+                return u.M.Box<Integer>(2).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("namespace alias nested generic class constructor should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled namespace alias nested generic class constructor binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_namespace_alias_enum_variant_constructor_runtime() {
+        let temp_root = make_temp_project_root("namespace-alias-enum-variant-constructor-runtime");
+        let source_path = temp_root.join("namespace_alias_enum_variant_constructor_runtime.apex");
+        let output_path = temp_root.join("namespace_alias_enum_variant_constructor_runtime");
+        let source = r#"
+            module U {
+                enum E { A(Integer), B }
+            }
+            import U as u;
+            function main(): Integer {
+                value: u.E = u.E.A(2);
+                return match (value) { u.E.A(v) => { v } u.E.B => { 0 } };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("namespace alias enum variant constructor should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled namespace alias enum variant constructor binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_namespace_alias_nested_enum_variant_constructor_runtime() {
+        let temp_root =
+            make_temp_project_root("namespace-alias-nested-enum-variant-constructor-runtime");
+        let source_path =
+            temp_root.join("namespace_alias_nested_enum_variant_constructor_runtime.apex");
+        let output_path = temp_root.join("namespace_alias_nested_enum_variant_constructor_runtime");
+        let source = r#"
+            module U {
+                module M {
+                    enum E { A(Integer), B }
+                }
+            }
+            import U as u;
+            function main(): Integer {
+                value: u.M.E = u.M.E.A(2);
+                return match (value) { u.M.E.A(v) => { v } u.M.E.B => { 0 } };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("namespace alias nested enum variant constructor should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled namespace alias nested enum variant constructor binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_generic_function_alias_returning_generic_class_runtime() {
+        let temp_root = make_temp_project_root(
+            "imported-generic-function-alias-returning-generic-class-runtime",
+        );
+        let source_path =
+            temp_root.join("imported_generic_function_alias_returning_generic_class_runtime.apex");
+        let output_path =
+            temp_root.join("imported_generic_function_alias_returning_generic_class_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                    function get(): T { return this.value; }
+                }
+                function mk<T>(value: T): Box<T> { return Box<T>(value); }
+            }
+            import M.mk as mk;
+            function main(): Integer {
+                return mk<Integer>(2).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported generic function alias returning generic class should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported generic function alias returning generic class binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_generic_function_alias_runtime() {
+        let temp_root = make_temp_project_root("imported-generic-function-alias-runtime");
+        let source_path = temp_root.join("imported_generic_function_alias_runtime.apex");
+        let output_path = temp_root.join("imported_generic_function_alias_runtime");
+        let source = r#"
+            module M {
+                function id<T>(value: T): T { return value; }
+            }
+            import M.id as id;
+            function main(): Integer {
+                return id<Integer>(2);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported generic function alias should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported generic function alias binary");
+        assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_if_expression_builtin_function_value_runtime() {
         let temp_root = make_temp_project_root("if-expression-builtin-function-value-runtime");
         let source_path = temp_root.join("if_expression_builtin_function_value_runtime.apex");

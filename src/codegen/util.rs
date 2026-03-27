@@ -1724,6 +1724,56 @@ impl<'ctx> Codegen<'ctx> {
                     self.infer_builtin_call_type(&callee.node, args)
                 }
                 Expr::Field { object, field } => {
+                    if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
+                        let full_path = path_parts.join(".");
+                        let explicit_type_args = match expr {
+                            Expr::Call { type_args, .. } => type_args,
+                            _ => unreachable!(),
+                        };
+                        if !explicit_type_args.is_empty() {
+                            let normalized = self
+                                .resolve_alias_qualified_codegen_type_name(&full_path)
+                                .and_then(|resolved| {
+                                    self.normalize_user_defined_generic_type(
+                                        &resolved,
+                                        explicit_type_args,
+                                    )
+                                })
+                                .unwrap_or_else(|| {
+                                    self.normalize_codegen_type(&Type::Generic(
+                                        full_path.clone(),
+                                        explicit_type_args.clone(),
+                                    ))
+                                });
+                            if self.type_to_class_name(&normalized).is_some() {
+                                return Some(normalized);
+                            }
+                        }
+                        if let Some(resolved_type_name) =
+                            self.resolve_alias_qualified_codegen_type_name(&full_path)
+                        {
+                            if self.classes.contains_key(&resolved_type_name) {
+                                return Some(Type::Named(resolved_type_name));
+                            }
+                        }
+
+                        if path_parts.len() >= 2 {
+                            let owner_source = path_parts[..path_parts.len() - 1].join(".");
+                            let variant_name = path_parts.last().cloned().unwrap_or_default();
+                            if let Some(resolved_owner) =
+                                self.resolve_alias_qualified_codegen_type_name(&owner_source)
+                            {
+                                if self
+                                    .enums
+                                    .get(&resolved_owner)
+                                    .and_then(|info| info.variants.get(&variant_name))
+                                    .is_some()
+                                {
+                                    return Some(Type::Named(resolved_owner));
+                                }
+                            }
+                        }
+                    }
                     if let Some(function_name) =
                         self.resolve_contextual_function_value_name(&callee.node)
                     {
@@ -2442,6 +2492,59 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
                 _ => {
+                    if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
+                        let full_path = path_parts.join(".");
+                        let explicit_type_args = match expr {
+                            Expr::Call { type_args, .. } => type_args,
+                            _ => unreachable!(),
+                        };
+                        if !explicit_type_args.is_empty() {
+                            let normalized = self
+                                .resolve_alias_qualified_codegen_type_name(&full_path)
+                                .and_then(|resolved| {
+                                    self.normalize_user_defined_generic_type(
+                                        &resolved,
+                                        explicit_type_args,
+                                    )
+                                })
+                                .unwrap_or_else(|| {
+                                    self.normalize_codegen_type(&Type::Generic(
+                                        full_path.clone(),
+                                        explicit_type_args.clone(),
+                                    ))
+                                });
+                            if let Some((class_name, _)) = self.unwrap_class_like_type(&normalized)
+                            {
+                                if self.classes.contains_key(&class_name) {
+                                    return normalized;
+                                }
+                            }
+                        }
+                        if let Some(resolved_type_name) =
+                            self.resolve_alias_qualified_codegen_type_name(&full_path)
+                        {
+                            if self.classes.contains_key(&resolved_type_name) {
+                                return Type::Named(resolved_type_name);
+                            }
+                        }
+
+                        if path_parts.len() >= 2 {
+                            let owner_source = path_parts[..path_parts.len() - 1].join(".");
+                            let variant_name = path_parts.last().cloned().unwrap_or_default();
+                            if let Some(resolved_owner) =
+                                self.resolve_alias_qualified_codegen_type_name(&owner_source)
+                            {
+                                if self
+                                    .enums
+                                    .get(&resolved_owner)
+                                    .and_then(|info| info.variants.get(&variant_name))
+                                    .is_some()
+                                {
+                                    return Type::Named(resolved_owner);
+                                }
+                            }
+                        }
+                    }
                     if let Some(function_name) =
                         self.resolve_contextual_function_value_name(&callee.node)
                     {

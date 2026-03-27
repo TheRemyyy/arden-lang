@@ -196,6 +196,10 @@ That alias-aware type resolution now also covers imported type names themselves,
 
 The same single-file alias path now stays intact once generics and enum-root constructors enter the picture too. Exact imported generic type aliases like `import Box as B; B<Integer>(2)` and nested forms like `import M.Box as B; B<Integer>(2)` now trigger the right generic specialization during codegen instead of failing as `Unknown type: B<Integer>`, and imported enum type aliases such as `import E as Alias; Alias.A(2)` now behave as real enum roots in both value construction and `match` patterns.
 
+Namespace aliases now reach those same constructor-style single-file paths too. Flows like `import U as u; u.M.Box<Integer>(2)`, `u.E.A(2)`, and `u.M.E.A(2)` now resolve through typechecking, specialization discovery, enum-value inference, and codegen as real type/enum roots instead of degrading into variable lookups on `u`.
+
+The same explicit-generic pipeline now also finishes the second half of imported generic free-function aliases that return generic classes. Single-file and project flows like `import M.mk as mk; mk<Integer>(2).get()` now re-run generic class specialization after emitting the function `__spec__`, so the generated body constructs and calls the specialized class layout instead of mixing a specialized function wrapper with the unspecialized class ABI.
+
 ```toml
 # apex.toml
 name = "multi_file_demo"

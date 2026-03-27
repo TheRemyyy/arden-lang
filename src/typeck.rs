@@ -372,6 +372,56 @@ impl TypeChecker {
         }
     }
 
+    fn format_ast_type_source(ty: &Type) -> String {
+        match ty {
+            Type::Integer => "Integer".to_string(),
+            Type::Float => "Float".to_string(),
+            Type::Boolean => "Boolean".to_string(),
+            Type::String => "String".to_string(),
+            Type::Char => "Char".to_string(),
+            Type::None => "None".to_string(),
+            Type::Named(name) => name.clone(),
+            Type::Generic(name, args) => format!(
+                "{}<{}>",
+                name,
+                args.iter()
+                    .map(Self::format_ast_type_source)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Type::Function(params, ret) => format!(
+                "({}) -> {}",
+                params
+                    .iter()
+                    .map(Self::format_ast_type_source)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                Self::format_ast_type_source(ret)
+            ),
+            Type::Option(inner) => format!("Option<{}>", Self::format_ast_type_source(inner)),
+            Type::Result(ok, err) => format!(
+                "Result<{}, {}>",
+                Self::format_ast_type_source(ok),
+                Self::format_ast_type_source(err)
+            ),
+            Type::List(inner) => format!("List<{}>", Self::format_ast_type_source(inner)),
+            Type::Map(k, v) => format!(
+                "Map<{}, {}>",
+                Self::format_ast_type_source(k),
+                Self::format_ast_type_source(v)
+            ),
+            Type::Set(inner) => format!("Set<{}>", Self::format_ast_type_source(inner)),
+            Type::Ref(inner) => format!("&{}", Self::format_ast_type_source(inner)),
+            Type::MutRef(inner) => format!("&mut {}", Self::format_ast_type_source(inner)),
+            Type::Box(inner) => format!("Box<{}>", Self::format_ast_type_source(inner)),
+            Type::Rc(inner) => format!("Rc<{}>", Self::format_ast_type_source(inner)),
+            Type::Arc(inner) => format!("Arc<{}>", Self::format_ast_type_source(inner)),
+            Type::Ptr(inner) => format!("Ptr<{}>", Self::format_ast_type_source(inner)),
+            Type::Task(inner) => format!("Task<{}>", Self::format_ast_type_source(inner)),
+            Type::Range(inner) => format!("Range<{}>", Self::format_ast_type_source(inner)),
+        }
+    }
+
     fn peel_reference_type(ty: &ResolvedType) -> &ResolvedType {
         match ty {
             ResolvedType::Ref(inner) | ResolvedType::MutRef(inner) => {
@@ -4881,6 +4931,24 @@ impl TypeChecker {
             } => self.check_call(&callee.node, args, type_args, span),
 
             Expr::Field { object, field } => {
+                if let Some(path_parts) = Self::flatten_field_chain(expr) {
+                    if path_parts.len() >= 2 {
+                        let owner_source = path_parts[..path_parts.len() - 1].join(".");
+                        if let Some(resolved_owner) =
+                            self.resolve_nominal_reference_name(&owner_source)
+                        {
+                            if let Some(enum_info) = self.enums.get(&resolved_owner) {
+                                if let Some(variant_fields) =
+                                    enum_info.variants.get(path_parts.last().unwrap())
+                                {
+                                    if variant_fields.is_empty() {
+                                        return ResolvedType::Class(resolved_owner);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if let Expr::Ident(owner_name) = &object.node {
                     let resolved_owner = self
                         .resolve_import_alias_symbol(owner_name)
@@ -5879,6 +5947,86 @@ impl TypeChecker {
         if let Expr::Field { object, field } = callee {
             if let Some(path_parts) = Self::flatten_field_chain(callee) {
                 if path_parts.len() >= 2 {
+                    let full_path = path_parts.join(".");
+                    let call_type_source = if type_args.is_empty() {
+                        full_path.clone()
+                    } else {
+                        format!(
+                            "{}<{}>",
+                            full_path,
+                            type_args
+                                .iter()
+                                .map(Self::format_ast_type_source)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    };
+                    if self
+                        .resolve_nominal_reference_name(&full_path)
+                        .is_some_and(|resolved| {
+                            self.classes.contains_key(&resolved)
+                                || self.interfaces.contains_key(&resolved)
+                        })
+                    {
+                        return self.check_expr(
+                            &Expr::Construct {
+                                ty: call_type_source,
+                                args: args.to_vec(),
+                            },
+                            span.clone(),
+                        );
+                    }
+
+                    let owner_source = path_parts[..path_parts.len() - 1].join(".");
+                    if let Some(resolved_owner) = self.resolve_nominal_reference_name(&owner_source)
+                    {
+                        if let Some(enum_info) = self.enums.get(&resolved_owner).cloned() {
+                            if let Some(field_types) = enum_info.variants.get(field) {
+                                if !type_args.is_empty() {
+                                    self.error(
+                                        format!(
+                                            "Enum variant '{}.{}' does not accept type arguments",
+                                            owner_source, field
+                                        ),
+                                        span.clone(),
+                                    );
+                                    return ResolvedType::Unknown;
+                                }
+                                if args.len() != field_types.len() {
+                                    self.error(
+                                        format!(
+                                            "Enum variant '{}.{}' expects {} argument(s), got {}",
+                                            owner_source,
+                                            field,
+                                            field_types.len(),
+                                            args.len()
+                                        ),
+                                        span.clone(),
+                                    );
+                                } else {
+                                    for (arg, expected_ty) in args.iter().zip(field_types.iter()) {
+                                        let actual = self.check_expr_with_expected_type(
+                                            &arg.node,
+                                            arg.span.clone(),
+                                            Some(expected_ty),
+                                        );
+                                        if !self.types_compatible(expected_ty, &actual) {
+                                            self.error(
+                                                format!(
+                                                    "Enum variant argument type mismatch: expected {}, got {}",
+                                                    Self::format_resolved_type_for_diagnostic(expected_ty),
+                                                    Self::format_resolved_type_for_diagnostic(&actual)
+                                                ),
+                                                arg.span.clone(),
+                                            );
+                                        }
+                                    }
+                                }
+                                return ResolvedType::Class(resolved_owner);
+                            }
+                        }
+                    }
+
                     if let Some(candidate) =
                         self.resolve_import_alias_module_candidate(&path_parts[0], &path_parts[1..])
                     {
