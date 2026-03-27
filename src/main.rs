@@ -19079,6 +19079,233 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_borrowed_list_iteration_runtime() {
+        let temp_root = make_temp_project_root("borrowed-list-iteration-runtime");
+        let source_path = temp_root.join("borrowed_list_iteration_runtime.apex");
+        let output_path = temp_root.join("borrowed_list_iteration_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                xs.push(2);
+                view: &List<Integer> = &xs;
+                mut total: Integer = 0;
+                for (x in view) {
+                    total = total + x;
+                }
+                return if (total == 3) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed list iteration should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed list iteration binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_range_iteration_runtime() {
+        let temp_root = make_temp_project_root("borrowed-range-iteration-runtime");
+        let source_path = temp_root.join("borrowed_range_iteration_runtime.apex");
+        let output_path = temp_root.join("borrowed_range_iteration_runtime");
+        let source = r#"
+            function main(): Integer {
+                r: Range<Integer> = range(0, 3);
+                rr: &Range<Integer> = &r;
+                mut total: Integer = 0;
+                for (x in rr) {
+                    total = total + x;
+                }
+                return if (total == 3) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed range iteration should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed range iteration binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_iteration_runtime() {
+        let temp_root = make_temp_project_root("string-iteration-runtime");
+        let source_path = temp_root.join("string_iteration_runtime.apex");
+        let output_path = temp_root.join("string_iteration_runtime");
+        let source = r#"
+            function main(): Integer {
+                s: String = "abc";
+                mut total: Integer = 0;
+                for (ch in s) {
+                    total = total + 1;
+                }
+                return if (total == 3) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string iteration should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string iteration binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_string_iteration_runtime() {
+        let temp_root = make_temp_project_root("borrowed-string-iteration-runtime");
+        let source_path = temp_root.join("borrowed_string_iteration_runtime.apex");
+        let output_path = temp_root.join("borrowed_string_iteration_runtime");
+        let source = r#"
+            function main(): Integer {
+                text: String = "Ahoj";
+                view: &String = &text;
+                mut total: Integer = 0;
+                for (ch in view) {
+                    total = total + 1;
+                }
+                return if (total == 4) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed string iteration should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed string iteration binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutably_borrowed_string_iteration_runtime() {
+        let temp_root = make_temp_project_root("mut-borrowed-string-iteration-runtime");
+        let source_path = temp_root.join("mut_borrowed_string_iteration_runtime.apex");
+        let output_path = temp_root.join("mut_borrowed_string_iteration_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut text: String = "a";
+                view: &mut String = &mut text;
+                mut total: Integer = 0;
+                for (ch in view) {
+                    total = total + 1;
+                }
+                return if (total == 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutably borrowed string iteration should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutably borrowed string iteration binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_for_loop_sugar_runtime() {
+        let temp_root = make_temp_project_root("integer-for-loop-sugar-runtime");
+        let source_path = temp_root.join("integer_for_loop_sugar_runtime.apex");
+        let output_path = temp_root.join("integer_for_loop_sugar_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut total: Integer = 0;
+                for (x in 4) {
+                    total = total + x;
+                }
+                return if (total == 6) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer for-loop sugar should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled integer for-loop sugar binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_float_typed_integer_for_loop_sugar_runtime() {
+        let temp_root = make_temp_project_root("float-typed-integer-for-loop-sugar-runtime");
+        let source_path = temp_root.join("float_typed_integer_for_loop_sugar_runtime.apex");
+        let output_path = temp_root.join("float_typed_integer_for_loop_sugar_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut total: Float = 0.0;
+                for (x: Float in 4) {
+                    total = total + x;
+                }
+                return if (total == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("typed integer for-loop sugar should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled typed integer for-loop sugar binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_zero_length_integer_for_loop_sugar_runtime() {
+        let temp_root = make_temp_project_root("zero-length-integer-for-loop-sugar-runtime");
+        let source_path = temp_root.join("zero_length_integer_for_loop_sugar_runtime.apex");
+        let output_path = temp_root.join("zero_length_integer_for_loop_sugar_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut total: Integer = 0;
+                for (x in 0) {
+                    total = total + 1;
+                }
+                return if (total == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("zero-length integer for-loop sugar should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled zero-length integer for-loop sugar binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_fails_fast_on_out_of_bounds_list_index_assignment() {
         let temp_root = make_temp_project_root("list-index-assign-oob-runtime");
         let source_path = temp_root.join("list_index_assign_oob_runtime.apex");

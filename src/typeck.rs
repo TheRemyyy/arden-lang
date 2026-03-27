@@ -3099,9 +3099,10 @@ impl TypeChecker {
                 body,
             } => {
                 let iter_type = self.check_expr(&iterable.node, iterable.span.clone());
+                let iter_item_type = Self::peel_reference_type(&iter_type);
 
                 // Determine element type
-                let elem_type = match &iter_type {
+                let elem_type = match iter_item_type {
                     ResolvedType::List(inner) => (**inner).clone(),
                     ResolvedType::Range(inner) => (**inner).clone(),
                     ResolvedType::String => ResolvedType::Char,

@@ -52,6 +52,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed typed `for`-loop bindings over integer iterables:
   - loops like `for (x: Float in range(1, 4))` and `for (x: Float in xs)` for `List<Integer>` now bind real `Float` values each iteration instead of either panicking in codegen or storing raw integer bits into a `Float` loop variable
   - the loop variable now also typechecks inside the body as its declared type instead of silently staying at the iterable element type
+- Fixed `for` iteration parity for borrowed and string iterables:
+  - `for (x in view)` now works for `&List<T>` and `&Range<T>` instead of being rejected during typechecking even though borrowed container/range receiver paths already worked elsewhere
+  - iterating plain `String` values now lowers over UTF-8 character indices instead of crashing in codegen by treating the string pointer like an integer upper bound
+  - borrowed string iteration over `&String` / `&mut String` now reads the actual pointee string instead of iterating the reference cell and producing the wrong runtime length
+  - integer `for` sugar like `for (x in 4)` and typed variants such as `for (x: Float in 4)` now use the integer-counter lowering path again instead of crashing through the range-object iterator path
 - Fixed direct stdlib symbol import aliases:
   - `import std.math.abs as abs; abs(-5)` now resolves through import checking, typechecking, and codegen consistently instead of being accepted as an import but later failing as an undefined variable
   - `import std.args.count as count; count()` now resolves too because the stdlib registry and codegen builtin table no longer disagree on `Args__count` versus the stale `Args__len` name

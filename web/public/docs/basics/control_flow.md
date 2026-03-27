@@ -51,6 +51,10 @@ for (i in 5) {
     println("Iteration {i}");
 }
 
+for (i: Float in 5) {
+    println("Iteration {i}");
+}
+
 // Using Range<T> explicitly
 r: Range<Integer> = range(1, 10, 2);  // 1, 3, 5, 7, 9
 while (r.has_next()) {
@@ -68,6 +72,21 @@ numbers: List<Integer> = List<Integer>();
 // ... add items ...
 for (n in numbers) {
     println("{n}");
+}
+
+view: &List<Integer> = &numbers;
+for (n in view) {
+    println("{n}");
+}
+
+text: String = "Ahoj";
+for (ch in text) {
+    println("{ch}");
+}
+
+view: &String = &text;
+for (ch in view) {
+    println("{ch}");
 }
 ```
 

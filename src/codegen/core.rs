@@ -7252,8 +7252,170 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<()> {
         let func = self.current_function.unwrap();
         let iterable_ty = self.infer_expr_type(&iterable.node, &[]);
+        let deref_iterable_ty = self.deref_codegen_type(&iterable_ty).clone();
 
-        if let Type::Range(inner) = iterable_ty.clone() {
+        if let Type::List(inner) = deref_iterable_ty.clone() {
+            let iter_ty = var_type.cloned().unwrap_or((*inner).clone());
+            let var_alloca = self
+                .builder
+                .build_alloca(self.llvm_type(&iter_ty), var)
+                .unwrap();
+            self.variables.insert(
+                var.to_string(),
+                Variable {
+                    ptr: var_alloca,
+                    ty: iter_ty.clone(),
+                },
+            );
+
+            let list_value = self.compile_expr(&iterable.node)?;
+            let list_ptr = self.materialize_value_pointer_for_type(
+                list_value,
+                &deref_iterable_ty,
+                "for_list_tmp",
+            )?;
+            let i64_type = self.context.i64_type();
+            let i32_type = self.context.i32_type();
+            let zero_i64 = i64_type.const_zero();
+            let one_i64 = i64_type.const_int(1, false);
+            let elem_size = if matches!(*inner, Type::Boolean) {
+                1
+            } else {
+                8
+            };
+            let elem_llvm = self.llvm_type(&inner);
+            let list_type = self.context.struct_type(
+                &[
+                    i64_type.into(),
+                    i64_type.into(),
+                    self.context.ptr_type(AddressSpace::default()).into(),
+                ],
+                false,
+            );
+
+            let idx_alloca = self.builder.build_alloca(i64_type, "for_list_idx").unwrap();
+            self.builder.build_store(idx_alloca, zero_i64).unwrap();
+
+            let len_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        list_type.as_basic_type_enum(),
+                        list_ptr,
+                        &[i32_type.const_int(0, false), i32_type.const_int(1, false)],
+                        "list_len_ptr",
+                    )
+                    .unwrap()
+            };
+            let data_ptr_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        list_type.as_basic_type_enum(),
+                        list_ptr,
+                        &[i32_type.const_int(0, false), i32_type.const_int(2, false)],
+                        "list_data_ptr_ptr",
+                    )
+                    .unwrap()
+            };
+
+            let cond_bb = self.context.append_basic_block(func, "for_list.cond");
+            let body_bb = self.context.append_basic_block(func, "for_list.body");
+            let inc_bb = self.context.append_basic_block(func, "for_list.inc");
+            let after_bb = self.context.append_basic_block(func, "for_list.after");
+            self.builder.build_unconditional_branch(cond_bb).unwrap();
+
+            self.builder.position_at_end(cond_bb);
+            let idx_val = self
+                .builder
+                .build_load(i64_type, idx_alloca, "for_list_idx_val")
+                .unwrap()
+                .into_int_value();
+            let len_val = self
+                .builder
+                .build_load(i64_type, len_ptr, "for_list_len")
+                .unwrap()
+                .into_int_value();
+            let cond = self
+                .builder
+                .build_int_compare(IntPredicate::SLT, idx_val, len_val, "for_list_cmp")
+                .unwrap();
+            self.builder
+                .build_conditional_branch(cond, body_bb, after_bb)
+                .unwrap();
+
+            self.builder.position_at_end(body_bb);
+            let data_ptr = self
+                .builder
+                .build_load(
+                    self.context.ptr_type(AddressSpace::default()),
+                    data_ptr_ptr,
+                    "for_list_data",
+                )
+                .unwrap()
+                .into_pointer_value();
+            let byte_offset = self
+                .builder
+                .build_int_mul(
+                    idx_val,
+                    i64_type.const_int(elem_size, false),
+                    "for_list_off",
+                )
+                .unwrap();
+            let elem_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        self.context.i8_type(),
+                        data_ptr,
+                        &[byte_offset],
+                        "for_list_elem_ptr",
+                    )
+                    .unwrap()
+            };
+            let typed_ptr = self
+                .builder
+                .build_pointer_cast(
+                    elem_ptr,
+                    self.context.ptr_type(AddressSpace::default()),
+                    "for_list_typed_ptr",
+                )
+                .unwrap();
+            let elem_val = self
+                .builder
+                .build_load(elem_llvm, typed_ptr, "for_list_elem")
+                .unwrap();
+            let iter_val =
+                self.adapt_for_loop_binding_value(elem_val, &inner, &iter_ty, "for_list_iter")?;
+            self.builder.build_store(var_alloca, iter_val).unwrap();
+
+            self.loop_stack.push(LoopContext {
+                loop_block: inc_bb,
+                after_block: after_bb,
+            });
+            for stmt in body {
+                self.compile_stmt(&stmt.node)?;
+            }
+            self.loop_stack.pop();
+            if self.needs_terminator() {
+                self.builder.build_unconditional_branch(inc_bb).unwrap();
+            }
+
+            self.builder.position_at_end(inc_bb);
+            let next_idx = self
+                .builder
+                .build_int_add(idx_val, one_i64, "for_list_next")
+                .unwrap();
+            self.builder.build_store(idx_alloca, next_idx).unwrap();
+            self.builder.build_unconditional_branch(cond_bb).unwrap();
+
+            self.builder.position_at_end(after_bb);
+            return Ok(());
+        }
+
+        if !matches!(iterable.node, Expr::Range { .. })
+            && matches!(deref_iterable_ty, Type::Range(_))
+        {
+            let Type::Range(inner) = deref_iterable_ty.clone() else {
+                unreachable!();
+            };
             let iter_ty = var_type.cloned().unwrap_or((*inner).clone());
             let var_alloca = self
                 .builder
@@ -7271,7 +7433,11 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_alloca(self.llvm_type(&iterable_ty), &format!("{var}_range"))
                 .unwrap();
-            let range_value = self.compile_expr(&iterable.node)?;
+            let range_value = if matches!(iterable_ty, Type::Ref(_) | Type::MutRef(_)) {
+                self.compile_deref(&iterable.node)?
+            } else {
+                self.compile_expr(&iterable.node)?
+            };
             self.builder.build_store(range_alloca, range_value).unwrap();
 
             let cond_bb = self.context.append_basic_block(func, "for_range_obj.cond");
@@ -7331,162 +7497,100 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(());
         }
 
-        if let Expr::Ident(list_name) = &iterable.node {
-            if let Some(list_var) = self.variables.get(list_name).cloned() {
-                if let Type::List(inner) = list_var.ty {
-                    let iter_ty = var_type.cloned().unwrap_or((*inner).clone());
-                    let var_alloca = self
-                        .builder
-                        .build_alloca(self.llvm_type(&iter_ty), var)
-                        .unwrap();
-                    self.variables.insert(
-                        var.to_string(),
-                        Variable {
-                            ptr: var_alloca,
-                            ty: iter_ty.clone(),
-                        },
-                    );
+        if matches!(deref_iterable_ty, Type::String) {
+            let iter_ty = var_type.cloned().unwrap_or(Type::Char);
+            let var_alloca = self
+                .builder
+                .build_alloca(self.llvm_type(&iter_ty), var)
+                .unwrap();
+            self.variables.insert(
+                var.to_string(),
+                Variable {
+                    ptr: var_alloca,
+                    ty: iter_ty.clone(),
+                },
+            );
 
-                    let i64_type = self.context.i64_type();
-                    let i32_type = self.context.i32_type();
-                    let zero_i64 = i64_type.const_zero();
-                    let one_i64 = i64_type.const_int(1, false);
-                    let elem_size = if matches!(*inner, Type::Boolean) {
-                        1
-                    } else {
-                        8
-                    };
-                    let elem_llvm = self.llvm_type(&inner);
-                    let list_type = self.context.struct_type(
-                        &[
-                            i64_type.into(),
-                            i64_type.into(),
-                            self.context.ptr_type(AddressSpace::default()).into(),
-                        ],
-                        false,
-                    );
+            let string_value = if matches!(iterable_ty, Type::Ref(_) | Type::MutRef(_)) {
+                self.compile_deref(&iterable.node)?.into_pointer_value()
+            } else {
+                self.compile_expr(&iterable.node)?.into_pointer_value()
+            };
+            let len_alloca = self
+                .builder
+                .build_alloca(self.context.i64_type(), &format!("{var}_string_len"))
+                .unwrap();
+            let idx_alloca = self
+                .builder
+                .build_alloca(self.context.i64_type(), &format!("{var}_string_idx"))
+                .unwrap();
+            let length = self.compile_utf8_string_length_runtime(string_value)?;
+            self.builder.build_store(len_alloca, length).unwrap();
+            self.builder
+                .build_store(idx_alloca, self.context.i64_type().const_zero())
+                .unwrap();
 
-                    let idx_alloca = self.builder.build_alloca(i64_type, "for_list_idx").unwrap();
-                    self.builder.build_store(idx_alloca, zero_i64).unwrap();
+            let cond_bb = self.context.append_basic_block(func, "for_string.cond");
+            let body_bb = self.context.append_basic_block(func, "for_string.body");
+            let inc_bb = self.context.append_basic_block(func, "for_string.inc");
+            let after_bb = self.context.append_basic_block(func, "for_string.after");
+            self.builder.build_unconditional_branch(cond_bb).unwrap();
 
-                    let len_ptr = unsafe {
-                        self.builder
-                            .build_gep(
-                                list_type.as_basic_type_enum(),
-                                list_var.ptr,
-                                &[i32_type.const_int(0, false), i32_type.const_int(1, false)],
-                                "list_len_ptr",
-                            )
-                            .unwrap()
-                    };
-                    let data_ptr_ptr = unsafe {
-                        self.builder
-                            .build_gep(
-                                list_type.as_basic_type_enum(),
-                                list_var.ptr,
-                                &[i32_type.const_int(0, false), i32_type.const_int(2, false)],
-                                "list_data_ptr_ptr",
-                            )
-                            .unwrap()
-                    };
+            self.builder.position_at_end(cond_bb);
+            let idx_val = self
+                .builder
+                .build_load(self.context.i64_type(), idx_alloca, "for_string_idx")
+                .unwrap()
+                .into_int_value();
+            let len_val = self
+                .builder
+                .build_load(self.context.i64_type(), len_alloca, "for_string_len")
+                .unwrap()
+                .into_int_value();
+            let cond = self
+                .builder
+                .build_int_compare(IntPredicate::SLT, idx_val, len_val, "for_string_cmp")
+                .unwrap();
+            self.builder
+                .build_conditional_branch(cond, body_bb, after_bb)
+                .unwrap();
 
-                    let cond_bb = self.context.append_basic_block(func, "for_list.cond");
-                    let body_bb = self.context.append_basic_block(func, "for_list.body");
-                    let inc_bb = self.context.append_basic_block(func, "for_list.inc");
-                    let after_bb = self.context.append_basic_block(func, "for_list.after");
-                    self.builder.build_unconditional_branch(cond_bb).unwrap();
+            self.builder.position_at_end(body_bb);
+            let ch = self.compile_utf8_string_index_runtime(string_value, idx_val)?;
+            let iter_val = self.adapt_for_loop_binding_value(
+                ch.into(),
+                &Type::Char,
+                &iter_ty,
+                "for_string_iter",
+            )?;
+            self.builder.build_store(var_alloca, iter_val).unwrap();
 
-                    self.builder.position_at_end(cond_bb);
-                    let idx_val = self
-                        .builder
-                        .build_load(i64_type, idx_alloca, "for_list_idx_val")
-                        .unwrap()
-                        .into_int_value();
-                    let len_val = self
-                        .builder
-                        .build_load(i64_type, len_ptr, "for_list_len")
-                        .unwrap()
-                        .into_int_value();
-                    let cond = self
-                        .builder
-                        .build_int_compare(IntPredicate::SLT, idx_val, len_val, "for_list_cmp")
-                        .unwrap();
-                    self.builder
-                        .build_conditional_branch(cond, body_bb, after_bb)
-                        .unwrap();
-
-                    self.builder.position_at_end(body_bb);
-                    let data_ptr = self
-                        .builder
-                        .build_load(
-                            self.context.ptr_type(AddressSpace::default()),
-                            data_ptr_ptr,
-                            "for_list_data",
-                        )
-                        .unwrap()
-                        .into_pointer_value();
-                    let byte_offset = self
-                        .builder
-                        .build_int_mul(
-                            idx_val,
-                            i64_type.const_int(elem_size, false),
-                            "for_list_off",
-                        )
-                        .unwrap();
-                    let elem_ptr = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.context.i8_type(),
-                                data_ptr,
-                                &[byte_offset],
-                                "for_list_elem_ptr",
-                            )
-                            .unwrap()
-                    };
-                    let typed_ptr = self
-                        .builder
-                        .build_pointer_cast(
-                            elem_ptr,
-                            self.context.ptr_type(AddressSpace::default()),
-                            "for_list_typed_ptr",
-                        )
-                        .unwrap();
-                    let elem_val = self
-                        .builder
-                        .build_load(elem_llvm, typed_ptr, "for_list_elem")
-                        .unwrap();
-                    let iter_val = self.adapt_for_loop_binding_value(
-                        elem_val,
-                        &inner,
-                        &iter_ty,
-                        "for_list_iter",
-                    )?;
-                    self.builder.build_store(var_alloca, iter_val).unwrap();
-
-                    self.loop_stack.push(LoopContext {
-                        loop_block: inc_bb,
-                        after_block: after_bb,
-                    });
-                    for stmt in body {
-                        self.compile_stmt(&stmt.node)?;
-                    }
-                    self.loop_stack.pop();
-                    if self.needs_terminator() {
-                        self.builder.build_unconditional_branch(inc_bb).unwrap();
-                    }
-
-                    self.builder.position_at_end(inc_bb);
-                    let next_idx = self
-                        .builder
-                        .build_int_add(idx_val, one_i64, "for_list_next")
-                        .unwrap();
-                    self.builder.build_store(idx_alloca, next_idx).unwrap();
-                    self.builder.build_unconditional_branch(cond_bb).unwrap();
-
-                    self.builder.position_at_end(after_bb);
-                    return Ok(());
-                }
+            self.loop_stack.push(LoopContext {
+                loop_block: inc_bb,
+                after_block: after_bb,
+            });
+            for stmt in body {
+                self.compile_stmt(&stmt.node)?;
             }
+            self.loop_stack.pop();
+            if self.needs_terminator() {
+                self.builder.build_unconditional_branch(inc_bb).unwrap();
+            }
+
+            self.builder.position_at_end(inc_bb);
+            let next_idx = self
+                .builder
+                .build_int_add(
+                    idx_val,
+                    self.context.i64_type().const_int(1, false),
+                    "for_string_next",
+                )
+                .unwrap();
+            self.builder.build_store(idx_alloca, next_idx).unwrap();
+            self.builder.build_unconditional_branch(cond_bb).unwrap();
+
+            self.builder.position_at_end(after_bb);
+            return Ok(());
         }
 
         let ty = var_type.cloned().unwrap_or(Type::Integer);
