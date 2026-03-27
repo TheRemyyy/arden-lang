@@ -37,6 +37,8 @@ nestedTask: Task<Float> = async { if (flag) { return 1; } return 2.5; }; // Nest
 for (x: Float in range(1, 4)) { println(x); } // Typed loop bindings widen Integer iterables too
 ```
 
+This promotion is scalar-only. Wrapped/container types stay invariant, so `Option<Integer>` does not implicitly become `Option<Float>`, and `Range<Integer>` does not implicitly become `Range<Float>`.
+
 ### Booleans
 
 Used in conditional logic.

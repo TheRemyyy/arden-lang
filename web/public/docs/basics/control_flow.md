@@ -55,6 +55,11 @@ for (i: Float in 5) {
     println("Iteration {i}");
 }
 
+end: Integer = 5;
+for (i in end) {
+    println("Iteration {i}");
+}
+
 // Using Range<T> explicitly
 r: Range<Integer> = range(1, 10, 2);  // 1, 3, 5, 7, 9
 while (r.has_next()) {
@@ -62,6 +67,8 @@ while (r.has_next()) {
     println(to_string(val));
 }
 ```
+
+`for (i: Float in 5)` widens each loop binding to `Float`, but the iterable itself still keeps its original type. For example, `Range<Integer>` does not implicitly become `Range<Float>`.
 
 See [Range Types](../features/ranges.md) for more details on ranges.
 

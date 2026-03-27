@@ -18291,10 +18291,10 @@ function main(): Integer {
     }
 
     #[test]
-    fn compile_source_runs_integer_payloads_for_float_option_and_result_runtime() {
-        let temp_root = make_temp_project_root("int-to-float-option-result-runtime");
-        let source_path = temp_root.join("int_to_float_option_result_runtime.apex");
-        let output_path = temp_root.join("int_to_float_option_result_runtime");
+    fn compile_source_rejects_integer_payloads_for_float_option_and_result() {
+        let temp_root = make_temp_project_root("reject-int-to-float-option-result");
+        let source_path = temp_root.join("reject_int_to_float_option_result.apex");
+        let output_path = temp_root.join("reject_int_to_float_option_result");
         let source = r#"
             function main(): Integer {
                 maybe: Option<Float> = Option.some(1);
@@ -18313,13 +18313,9 @@ function main(): Integer {
         "#;
 
         fs::write(&source_path, source).expect("write source");
-        compile_source(source, &source_path, &output_path, false, true, None, None)
-            .expect("integer payloads for float option/result should codegen");
-
-        let status = std::process::Command::new(&output_path)
-            .status()
-            .expect("run compiled int-to-float option/result binary");
-        assert_eq!(status.code(), Some(0));
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("Option/Result payloads should stay invariant across Integer/Float");
+        assert!(err.contains("Type mismatch"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -19301,6 +19297,258 @@ function main(): Integer {
             .status()
             .expect("run compiled zero-length integer for-loop sugar binary");
         assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_expression_for_loop_sugar_runtime() {
+        let temp_root = make_temp_project_root("integer-expression-for-loop-sugar-runtime");
+        let source_path = temp_root.join("integer_expression_for_loop_sugar_runtime.apex");
+        let output_path = temp_root.join("integer_expression_for_loop_sugar_runtime");
+        let source = r#"
+            function main(): Integer {
+                end: Integer = 4;
+                mut total: Integer = 0;
+                for (x in end) {
+                    total = total + x;
+                }
+                return if (total == 6) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer expression for-loop sugar should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled integer expression for-loop sugar binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_call_for_loop_sugar_runtime() {
+        let temp_root = make_temp_project_root("integer-call-for-loop-sugar-runtime");
+        let source_path = temp_root.join("integer_call_for_loop_sugar_runtime.apex");
+        let output_path = temp_root.join("integer_call_for_loop_sugar_runtime");
+        let source = r#"
+            function make_end(): Integer {
+                return 4;
+            }
+
+            function main(): Integer {
+                mut total: Integer = 0;
+                for (x in make_end()) {
+                    total = total + x;
+                }
+                return if (total == 6) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer call for-loop sugar should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled integer call for-loop sugar binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_range_integer_to_float_assignment() {
+        let temp_root = make_temp_project_root("reject-range-int-float-assignment");
+        let source_path = temp_root.join("reject_range_int_float_assignment.apex");
+        let output_path = temp_root.join("reject_range_int_float_assignment");
+        let source = r#"
+            function main(): None {
+                values: Range<Float> = range(1, 3);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("Range<Integer> should not typecheck as Range<Float>");
+        assert!(
+            err.contains("Type mismatch"),
+            "unexpected error output: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_option_integer_to_float_argument() {
+        let temp_root = make_temp_project_root("reject-option-int-float-argument");
+        let source_path = temp_root.join("reject_option_int_float_argument.apex");
+        let output_path = temp_root.join("reject_option_int_float_argument");
+        let source = r#"
+            function take(value: Option<Float>): None {
+                return None;
+            }
+
+            function main(): None {
+                take(Option.some(1));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("Option<Integer> should not typecheck as Option<Float>");
+        assert!(
+            err.contains("Argument type mismatch"),
+            "unexpected error output: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_task_integer_to_float_argument() {
+        let temp_root = make_temp_project_root("reject-task-int-float-argument");
+        let source_path = temp_root.join("reject_task_int_float_argument.apex");
+        let output_path = temp_root.join("reject_task_int_float_argument");
+        let source = r#"
+            async function take(value: Task<Float>): Task<None> {
+                return None;
+            }
+
+            async function main_async(): Task<None> {
+                pending: Task<Integer> = async { 1 };
+                await take(pending);
+                return None;
+            }
+
+            function main(): None {
+                await main_async();
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("Task<Integer> should not typecheck as Task<Float>");
+        assert!(
+            err.contains("Argument type mismatch"),
+            "unexpected error output: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_map_integer_to_float_argument() {
+        let temp_root = make_temp_project_root("reject-map-int-float-argument");
+        let source_path = temp_root.join("reject_map_int_float_argument.apex");
+        let output_path = temp_root.join("reject_map_int_float_argument");
+        let source = r#"
+            function take(values: Map<String, Float>): None {
+                return None;
+            }
+
+            function main(): None {
+                ints: Map<String, Integer> = Map<String, Integer>();
+                ints.insert("a", 1);
+                take(ints);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("Map<String, Integer> should not typecheck as Map<String, Float>");
+        assert!(
+            err.contains("Argument type mismatch"),
+            "unexpected error output: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_list_integer_to_float_argument() {
+        let temp_root = make_temp_project_root("reject-list-int-float-argument");
+        let source_path = temp_root.join("reject_list_int_float_argument.apex");
+        let output_path = temp_root.join("reject_list_int_float_argument");
+        let source = r#"
+            function take(values: List<Float>): None {
+                return None;
+            }
+
+            function main(): None {
+                ints: List<Integer> = List<Integer>();
+                ints.push(1);
+                take(ints);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("List<Integer> should not typecheck as List<Float>");
+        assert!(
+            err.contains("Argument type mismatch"),
+            "unexpected error output: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_option_integer_to_float_return() {
+        let temp_root = make_temp_project_root("reject-option-int-float-return");
+        let source_path = temp_root.join("reject_option_int_float_return.apex");
+        let output_path = temp_root.join("reject_option_int_float_return");
+        let source = r#"
+            function produce(): Option<Float> {
+                return Option.some(1);
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("Option<Integer> return should not typecheck as Option<Float>");
+        assert!(
+            err.contains("Return type mismatch"),
+            "unexpected error output: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_if_expression_join_between_integer_and_float_ranges() {
+        let temp_root = make_temp_project_root("reject-if-range-join-int-float");
+        let source_path = temp_root.join("reject_if_range_join_int_float.apex");
+        let output_path = temp_root.join("reject_if_range_join_int_float");
+        let source = r#"
+            function main(): None {
+                cond: Boolean = true;
+                values: Range<Float> = if (cond) { range(1, 3); } else { range(2.0, 4.0); };
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("Range<Integer> and Range<Float> branches should not join");
+        assert!(
+            err.contains("Type mismatch")
+                || err.contains("Mismatched branch types")
+                || err.contains("If expression branch type mismatch"),
+            "unexpected error output: {err}"
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }

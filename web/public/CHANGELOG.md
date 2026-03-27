@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed unsound nested `Integer -> Float` compatibility for wrapped types:
+  - wrapper/container types such as `Range<T>`, `Option<T>`, `Task<T>`, `List<T>`, and `Map<K, V>` no longer inherit scalar numeric promotion for their inner payloads
+  - assignments, arguments, returns, and branch joins like `Range<Float> = range(1, 3)` or `take(Option.some(1))` are now rejected during typechecking instead of compiling and then reading integer-backed data through float runtime paths
 - Fixed borrow-check receiver-mode enforcement for built-in methods on borrowed values:
   - immutable references now correctly reject mutating built-in receiver calls instead of silently allowing `List.push`, `List.set`, `List.pop`, `Map.set` / `Map.insert`, `Set.add`, `Set.remove`, `Range.next`, and `Task.cancel`
   - mutable references now correctly allow those same mutating receiver calls without requiring the reference binding itself to be declared `mut`
@@ -57,6 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - iterating plain `String` values now lowers over UTF-8 character indices instead of crashing in codegen by treating the string pointer like an integer upper bound
   - borrowed string iteration over `&String` / `&mut String` now reads the actual pointee string instead of iterating the reference cell and producing the wrong runtime length
   - integer `for` sugar like `for (x in 4)` and typed variants such as `for (x: Float in 4)` now use the integer-counter lowering path again instead of crashing through the range-object iterator path
+  - the same integer `for` sugar now also typechecks for non-literal integer expressions such as `for (x in end)` and `for (x in make_end())` instead of rejecting them even though codegen already treated any integer iterable as `0..N`
 - Fixed direct stdlib symbol import aliases:
   - `import std.math.abs as abs; abs(-5)` now resolves through import checking, typechecking, and codegen consistently instead of being accepted as an import but later failing as an undefined variable
   - `import std.args.count as count; count()` now resolves too because the stdlib registry and codegen builtin table no longer disagree on `Args__count` versus the stale `Args__len` name

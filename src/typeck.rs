@@ -2981,7 +2981,11 @@ impl TypeChecker {
             } => {
                 let declared_type = self.resolve_type(ty);
                 self.check_type_visibility(&declared_type, span.clone());
-                let value_type = self.check_expr(&value.node, value.span.clone());
+                let value_type = self.check_expr_with_expected_type(
+                    &value.node,
+                    value.span.clone(),
+                    Some(&declared_type),
+                );
 
                 // Check type compatibility. If the value is an if-expression that already
                 // produced a branch mismatch diagnostic, avoid cascading a second local
@@ -3010,7 +3014,11 @@ impl TypeChecker {
 
             Stmt::Assign { target, value } => {
                 let target_type = self.check_expr(&target.node, target.span.clone());
-                let value_type = self.check_expr(&value.node, value.span.clone());
+                let value_type = self.check_expr_with_expected_type(
+                    &value.node,
+                    value.span.clone(),
+                    Some(&target_type),
+                );
 
                 // Check if target is assignable (mutable)
                 self.check_assignment_target_mutability(&target.node, target.span.clone());
@@ -3031,9 +3039,16 @@ impl TypeChecker {
             }
 
             Stmt::Return(expr) => {
+                let expected_return_type = self.current_return_type.clone();
                 let return_type = expr
                     .as_ref()
-                    .map(|e| self.check_expr(&e.node, e.span.clone()))
+                    .map(|e| {
+                        self.check_expr_with_expected_type(
+                            &e.node,
+                            e.span.clone(),
+                            expected_return_type.as_ref(),
+                        )
+                    })
                     .unwrap_or(ResolvedType::None);
 
                 if self.current_async_return_type.is_some() {
@@ -3106,6 +3121,7 @@ impl TypeChecker {
                     ResolvedType::List(inner) => (**inner).clone(),
                     ResolvedType::Range(inner) => (**inner).clone(),
                     ResolvedType::String => ResolvedType::Char,
+                    ResolvedType::Integer => ResolvedType::Integer,
                     _ => {
                         self.error(
                             format!("Cannot iterate over {}", iter_type),
@@ -3436,6 +3452,95 @@ impl TypeChecker {
     }
 
     /// Check an expression and return its type
+    fn check_expr_with_expected_type(
+        &mut self,
+        expr: &Expr,
+        span: Span,
+        expected: Option<&ResolvedType>,
+    ) -> ResolvedType {
+        if let (Expr::AsyncBlock(body), Some(ResolvedType::Task(expected_inner))) = (expr, expected)
+        {
+            return self.check_async_block_expr(body, span, Some(expected_inner.as_ref()));
+        }
+        self.check_expr(expr, span)
+    }
+
+    fn check_async_block_expr(
+        &mut self,
+        body: &Block,
+        span: Span,
+        expected_inner: Option<&ResolvedType>,
+    ) -> ResolvedType {
+        let captured_outer_scopes = self.scopes.clone();
+        self.enter_scope();
+        let mut tail_expr_type = None;
+
+        let saved_return_type = self.current_return_type.clone();
+        let saved_async_return_type = self.current_async_return_type.clone();
+        self.current_return_type = None;
+        self.current_async_return_type = Some(ResolvedType::None);
+
+        for stmt in body {
+            match &stmt.node {
+                Stmt::Expr(expr) => {
+                    tail_expr_type = Some(self.check_expr(&expr.node, expr.span.clone()));
+                }
+                _ => {
+                    tail_expr_type = None;
+                    self.check_stmt(&stmt.node, stmt.span.clone());
+                }
+            }
+        }
+
+        let mut return_type = self
+            .current_async_return_type
+            .clone()
+            .unwrap_or(ResolvedType::None);
+        if matches!(return_type, ResolvedType::None) {
+            if let Some(tail_ty) = tail_expr_type {
+                return_type = tail_ty;
+            }
+        }
+
+        for scope in &captured_outer_scopes {
+            for (name, var) in &scope.variables {
+                if Self::type_contains_borrowed_reference(&var.ty)
+                    && body
+                        .iter()
+                        .any(|stmt| Self::stmt_mentions_ident(&stmt.node, name))
+                {
+                    self.error(
+                        format!(
+                            "Async block cannot capture '{}' because its type contains borrowed references: {}",
+                            name, var.ty
+                        ),
+                        span.clone(),
+                    );
+                }
+            }
+        }
+
+        self.current_return_type = saved_return_type;
+        self.current_async_return_type = saved_async_return_type;
+        self.exit_scope();
+        self.check_async_result_type(&return_type, "Async block", span.clone());
+
+        if let Some(expected_inner) = expected_inner {
+            if !self.types_compatible(expected_inner, &return_type) {
+                self.error(
+                    format!(
+                        "Async block return type mismatch: expected {}, found {}",
+                        expected_inner, return_type
+                    ),
+                    span,
+                );
+            }
+            return ResolvedType::Task(Box::new(expected_inner.clone()));
+        }
+
+        ResolvedType::Task(Box::new(return_type))
+    }
+
     fn check_expr(&mut self, expr: &Expr, span: Span) -> ResolvedType {
         match expr {
             Expr::Literal(lit) => self.literal_type(lit),
@@ -3990,63 +4095,7 @@ impl TypeChecker {
                 }
             }
 
-            Expr::AsyncBlock(body) => {
-                let captured_outer_scopes = self.scopes.clone();
-                self.enter_scope();
-                let mut tail_expr_type = None;
-
-                // For async blocks, we need to track return types specifically for this block
-                let saved_return_type = self.current_return_type.clone();
-                let saved_async_return_type = self.current_async_return_type.clone();
-                self.current_return_type = None;
-                self.current_async_return_type = Some(ResolvedType::None);
-
-                for stmt in body {
-                    match &stmt.node {
-                        Stmt::Expr(expr) => {
-                            tail_expr_type = Some(self.check_expr(&expr.node, expr.span.clone()));
-                        }
-                        _ => {
-                            tail_expr_type = None;
-                            self.check_stmt(&stmt.node, stmt.span.clone());
-                        }
-                    }
-                }
-
-                let mut return_type = self
-                    .current_async_return_type
-                    .clone()
-                    .unwrap_or(ResolvedType::None);
-                if matches!(return_type, ResolvedType::None) {
-                    if let Some(tail_ty) = tail_expr_type {
-                        return_type = tail_ty;
-                    }
-                }
-
-                for scope in &captured_outer_scopes {
-                    for (name, var) in &scope.variables {
-                        if Self::type_contains_borrowed_reference(&var.ty)
-                            && body
-                                .iter()
-                                .any(|stmt| Self::stmt_mentions_ident(&stmt.node, name))
-                        {
-                            self.error(
-                                format!(
-                                    "Async block cannot capture '{}' because its type contains borrowed references: {}",
-                                    name, var.ty
-                                ),
-                                span.clone(),
-                            );
-                        }
-                    }
-                }
-
-                self.current_return_type = saved_return_type;
-                self.current_async_return_type = saved_async_return_type;
-                self.exit_scope();
-                self.check_async_result_type(&return_type, "Async block", span.clone());
-                ResolvedType::Task(Box::new(return_type))
-            }
+            Expr::AsyncBlock(body) => self.check_async_block_expr(body, span, None),
 
             Expr::Require { condition, message } => {
                 let cond_type = self.check_expr(&condition.node, condition.span.clone());
@@ -6311,28 +6360,37 @@ impl TypeChecker {
 
         // Generic type compatibility
         match (expected, actual) {
-            (ResolvedType::Ref(e), ResolvedType::Ref(a)) => self.types_compatible(e, a),
-            (ResolvedType::MutRef(e), ResolvedType::MutRef(a)) => self.types_compatible(e, a),
-            (ResolvedType::Ptr(e), ResolvedType::Ptr(a)) => self.types_compatible(e, a),
-            (ResolvedType::Box(e), ResolvedType::Box(a)) => self.types_compatible(e, a),
-            (ResolvedType::Rc(e), ResolvedType::Rc(a)) => self.types_compatible(e, a),
-            (ResolvedType::Arc(e), ResolvedType::Arc(a)) => self.types_compatible(e, a),
+            (ResolvedType::Ref(e), ResolvedType::Ref(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::MutRef(e), ResolvedType::MutRef(a)) => {
+                self.types_compatible_invariant(e, a)
+            }
+            (ResolvedType::Ptr(e), ResolvedType::Ptr(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Box(e), ResolvedType::Box(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Rc(e), ResolvedType::Rc(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Arc(e), ResolvedType::Arc(a)) => self.types_compatible_invariant(e, a),
             // Can use &mut T where &T is expected
-            (ResolvedType::Ref(e), ResolvedType::MutRef(a)) => self.types_compatible(e, a),
+            (ResolvedType::Ref(e), ResolvedType::MutRef(a)) => {
+                self.types_compatible_invariant(e, a)
+            }
             // List compatibility
-            (ResolvedType::List(e), ResolvedType::List(a)) => self.types_compatible(e, a),
-            (ResolvedType::Set(e), ResolvedType::Set(a)) => self.types_compatible(e, a),
+            (ResolvedType::List(e), ResolvedType::List(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Set(e), ResolvedType::Set(a)) => self.types_compatible_invariant(e, a),
             // Option compatibility
-            (ResolvedType::Option(e), ResolvedType::Option(a)) => self.types_compatible(e, a),
-            (ResolvedType::Task(e), ResolvedType::Task(a)) => self.types_compatible(e, a),
-            (ResolvedType::Range(e), ResolvedType::Range(a)) => self.types_compatible(e, a),
+            (ResolvedType::Option(e), ResolvedType::Option(a)) => {
+                self.types_compatible_invariant(e, a)
+            }
+            (ResolvedType::Task(e), ResolvedType::Task(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Range(e), ResolvedType::Range(a)) => {
+                self.types_compatible_invariant(e, a)
+            }
             // Result compatibility
             (ResolvedType::Result(e_ok, e_err), ResolvedType::Result(a_ok, a_err)) => {
-                self.types_compatible(e_ok, a_ok) && self.types_compatible(e_err, a_err)
+                self.types_compatible_invariant(e_ok, a_ok)
+                    && self.types_compatible_invariant(e_err, a_err)
             }
             // Map compatibility
             (ResolvedType::Map(ek, ev), ResolvedType::Map(ak, av)) => {
-                self.types_compatible(ek, ak) && self.types_compatible(ev, av)
+                self.types_compatible_invariant(ek, ak) && self.types_compatible_invariant(ev, av)
             }
             (ResolvedType::Function(e_params, e_ret), ResolvedType::Function(a_params, a_ret)) => {
                 e_params.len() == a_params.len()
@@ -6341,6 +6399,61 @@ impl TypeChecker {
                         .zip(a_params.iter())
                         .all(|(e, a)| self.types_compatible(a, e))
                     && self.types_compatible(e_ret, a_ret)
+            }
+            _ => false,
+        }
+    }
+
+    fn types_compatible_invariant(&self, expected: &ResolvedType, actual: &ResolvedType) -> bool {
+        if expected == actual {
+            return true;
+        }
+
+        if let ResolvedType::TypeVar(id) = expected {
+            return self.type_var_satisfies_bounds(*id, actual);
+        }
+        if matches!(actual, ResolvedType::TypeVar(_)) {
+            return true;
+        }
+        if matches!(expected, ResolvedType::Unknown) || matches!(actual, ResolvedType::Unknown) {
+            return true;
+        }
+
+        match (expected, actual) {
+            (ResolvedType::Ref(e), ResolvedType::Ref(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::MutRef(e), ResolvedType::MutRef(a)) => {
+                self.types_compatible_invariant(e, a)
+            }
+            (ResolvedType::Ptr(e), ResolvedType::Ptr(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Box(e), ResolvedType::Box(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Rc(e), ResolvedType::Rc(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Arc(e), ResolvedType::Arc(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Ref(e), ResolvedType::MutRef(a)) => {
+                self.types_compatible_invariant(e, a)
+            }
+            (ResolvedType::List(e), ResolvedType::List(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Set(e), ResolvedType::Set(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Option(e), ResolvedType::Option(a)) => {
+                self.types_compatible_invariant(e, a)
+            }
+            (ResolvedType::Task(e), ResolvedType::Task(a)) => self.types_compatible_invariant(e, a),
+            (ResolvedType::Range(e), ResolvedType::Range(a)) => {
+                self.types_compatible_invariant(e, a)
+            }
+            (ResolvedType::Result(e_ok, e_err), ResolvedType::Result(a_ok, a_err)) => {
+                self.types_compatible_invariant(e_ok, a_ok)
+                    && self.types_compatible_invariant(e_err, a_err)
+            }
+            (ResolvedType::Map(ek, ev), ResolvedType::Map(ak, av)) => {
+                self.types_compatible_invariant(ek, ak) && self.types_compatible_invariant(ev, av)
+            }
+            (ResolvedType::Function(e_params, e_ret), ResolvedType::Function(a_params, a_ret)) => {
+                e_params.len() == a_params.len()
+                    && e_params
+                        .iter()
+                        .zip(a_params.iter())
+                        .all(|(e, a)| self.types_compatible_invariant(e, a))
+                    && self.types_compatible_invariant(e_ret, a_ret)
             }
             _ => false,
         }
