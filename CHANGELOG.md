@@ -49,6 +49,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - operations like `xs.push(1)` and `xs.set(0, 2)` now store real `Float` values instead of typechecking successfully but writing the raw integer representation into list storage
 - Fixed `Integer -> Float` coercion for typed lvalue assignment paths:
   - assignments like `xs[0] = 5`, `m["k"] = 6`, and nested writes such as `box.items[0] = 7` now honor the lvalue element type during codegen instead of storing the raw integer representation into `Float` storage
+- Fixed typed `for`-loop bindings over integer iterables:
+  - loops like `for (x: Float in range(1, 4))` and `for (x: Float in xs)` for `List<Integer>` now bind real `Float` values each iteration instead of either panicking in codegen or storing raw integer bits into a `Float` loop variable
+  - the loop variable now also typechecks inside the body as its declared type instead of silently staying at the iterable element type
+- Fixed direct stdlib symbol import aliases:
+  - `import std.math.abs as abs; abs(-5)` now resolves through import checking, typechecking, and codegen consistently instead of being accepted as an import but later failing as an undefined variable
+  - `import std.args.count as count; count()` now resolves too because the stdlib registry and codegen builtin table no longer disagree on `Args__count` versus the stale `Args__len` name
 - Fixed `Integer` arguments for unary float math helpers:
   - `Math.floor(2)`, `Math.ceil(2)`, and `Math.round(2)` now promote the integer argument before calling the runtime math intrinsic instead of returning the wrong value despite typechecking successfully
 - Fixed conversion builtin boundary validation and documented string parsing:
@@ -62,6 +68,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - string interpolation now formats `Boolean`, `Char`, and `None` using the same user-facing representation as `to_string(...)` instead of emitting `1`, codepoints, or sentinel integers
   - unsupported complex interpolation values such as `"{Option.some(1)}"` are now rejected during typechecking instead of compiling into unsafe `%s` formatting paths
   - `Math.abs()` on the minimum `Integer` value now fails fast with a direct runtime error instead of overflowing back to a negative result
+- Fixed scalar output formatting and contextual `Integer -> Float` return lowering for closures/tasks:
+  - `print(true)`, `print('🚀')`, and `print(None)` now emit `true`, `🚀`, and `None` instead of raw integer/sentinel representations
+  - unsupported complex `print(...)` / `println(...)` arguments such as `Option.some(1)` are now rejected during typechecking instead of compiling into unsafe `%s` formatting paths
+  - `task: Task<Float> = async { 1 }`, `f: () -> Float = () => 1`, `f: () -> Float = one`, and `f: () -> Float = g` now return real `Float` values at runtime instead of typechecking successfully but calling through a mismatched integer-return ABI
+  - higher-order retyping now also adapts safe `Integer -> Float` parameter widening for function values such as `f: (Integer) -> Float = scale`, while rejecting unsound narrower cases like `f: (Float) -> Integer = truncate` during typechecking instead of compiling a mismatched call ABI
 - Fixed incorrect unconditional tail-call marking on ordinary user-function calls:
   - non-tail calls are no longer emitted with LLVM `tail` hints, which had let the optimizer miscompile stack/reference-sensitive code paths
   - passing `&mut` locals into ordinary helper functions now preserves caller-visible mutations instead of being optimized into stale reads
@@ -86,6 +97,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - direct function import aliases like `import util.add1 as inc; async { inc(1) }` now preserve the aliased callee return type during tail inference instead of dropping back to `Task<None>`
   - expression-bodied async blocks returning first-class functions, such as `async { inc }` and `async { import_alias }`, now preserve the function value type instead of dropping to `Task<None>` because tail inference previously ignored global functions and alias-resolved functions in bare identifier form
   - expression-bodied async blocks returning enum unit values, such as `async { E.A }` and `async { u.E.A }`, now preserve the enum value type instead of dropping to `Task<None>` because tail inference previously ignored enum variant values in bare field form
+  - explicit `return` statements nested inside async-block control flow, such as `async { if (flag) { return 1; } return 2.5; }`, now merge to the correct inner task type instead of being checked against `None` or rejecting valid mixed-numeric returns
 - Fixed formatter semantics for expression-bodied blocks:
   - formatting `async`, `if`, `match`, and inline expression blocks no longer appends `;` to the final tail expression, so `format_source()` preserves runtime behavior instead of silently turning value-producing blocks into `None`
   - formatter roundtrips for expression-bodied async/if branches now preserve both syntax and runtime semantics instead of only staying parseable

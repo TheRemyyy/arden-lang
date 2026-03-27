@@ -51,6 +51,10 @@ impl StdLib {
         functions.insert("Time__unix".to_string(), "std.time".to_string());
         functions.insert("Time__sleep".to_string(), "std.time".to_string());
 
+        // std.args - Process arguments
+        functions.insert("Args__count".to_string(), "std.args".to_string());
+        functions.insert("Args__get".to_string(), "std.args".to_string());
+
         // std.math - Math functions (already in Math module)
         functions.insert("Math__sqrt".to_string(), "std.math".to_string());
         functions.insert("Math__sin".to_string(), "std.math".to_string());

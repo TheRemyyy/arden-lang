@@ -4763,7 +4763,7 @@ impl<'ctx> Codegen<'ctx> {
             // File functions
             "File__read" | "File__write" | "File__exists" | "File__delete" |
             // Args functions
-            "Args__get" | "Args__len" |
+            "Args__get" | "Args__count" |
             // Assertion functions
             "assert" | "assert_eq" | "assert_ne" | "assert_true" | "assert_false" | "fail" |
             // Range function
@@ -5149,6 +5149,14 @@ impl<'ctx> Codegen<'ctx> {
         };
         let namespace = parts.join(".");
 
+        if let Some(canonical) = stdlib_registry().resolve_alias_call(&namespace, symbol) {
+            return canonical;
+        }
+
+        let full_mangled = path.replace('.', "__");
+        if self.functions.contains_key(&full_mangled) {
+            return full_mangled;
+        }
         if stdlib_registry()
             .get_namespace(symbol)
             .is_some_and(|owner| owner == &namespace)
@@ -7243,6 +7251,85 @@ impl<'ctx> Codegen<'ctx> {
         body: &Block,
     ) -> Result<()> {
         let func = self.current_function.unwrap();
+        let iterable_ty = self.infer_expr_type(&iterable.node, &[]);
+
+        if let Type::Range(inner) = iterable_ty.clone() {
+            let iter_ty = var_type.cloned().unwrap_or((*inner).clone());
+            let var_alloca = self
+                .builder
+                .build_alloca(self.llvm_type(&iter_ty), var)
+                .unwrap();
+            self.variables.insert(
+                var.to_string(),
+                Variable {
+                    ptr: var_alloca,
+                    ty: iter_ty.clone(),
+                },
+            );
+
+            let range_alloca = self
+                .builder
+                .build_alloca(self.llvm_type(&iterable_ty), &format!("{var}_range"))
+                .unwrap();
+            let range_value = self.compile_expr(&iterable.node)?;
+            self.builder.build_store(range_alloca, range_value).unwrap();
+
+            let cond_bb = self.context.append_basic_block(func, "for_range_obj.cond");
+            let body_bb = self.context.append_basic_block(func, "for_range_obj.body");
+            let inc_bb = self.context.append_basic_block(func, "for_range_obj.inc");
+            let after_bb = self.context.append_basic_block(func, "for_range_obj.after");
+
+            self.builder.build_unconditional_branch(cond_bb).unwrap();
+
+            self.builder.position_at_end(cond_bb);
+            let loaded_range = self
+                .builder
+                .build_load(
+                    self.llvm_type(&iterable_ty),
+                    range_alloca,
+                    "for_range_obj_val",
+                )
+                .unwrap();
+            let has_next = self
+                .compile_range_method_on_value(loaded_range, &iterable_ty, "has_next")?
+                .into_int_value();
+            self.builder
+                .build_conditional_branch(has_next, body_bb, after_bb)
+                .unwrap();
+
+            self.builder.position_at_end(body_bb);
+            let loaded_range = self
+                .builder
+                .build_load(
+                    self.llvm_type(&iterable_ty),
+                    range_alloca,
+                    "for_range_obj_next",
+                )
+                .unwrap();
+            let next_value =
+                self.compile_range_method_on_value(loaded_range, &iterable_ty, "next")?;
+            let iter_value =
+                self.adapt_for_loop_binding_value(next_value, &inner, &iter_ty, "for_range_obj")?;
+            self.builder.build_store(var_alloca, iter_value).unwrap();
+
+            self.loop_stack.push(LoopContext {
+                loop_block: inc_bb,
+                after_block: after_bb,
+            });
+            for stmt in body {
+                self.compile_stmt(&stmt.node)?;
+            }
+            self.loop_stack.pop();
+            if self.needs_terminator() {
+                self.builder.build_unconditional_branch(inc_bb).unwrap();
+            }
+
+            self.builder.position_at_end(inc_bb);
+            self.builder.build_unconditional_branch(cond_bb).unwrap();
+
+            self.builder.position_at_end(after_bb);
+            return Ok(());
+        }
 
         if let Expr::Ident(list_name) = &iterable.node {
             if let Some(list_var) = self.variables.get(list_name).cloned() {
@@ -7368,7 +7455,13 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_load(elem_llvm, typed_ptr, "for_list_elem")
                         .unwrap();
-                    self.builder.build_store(var_alloca, elem_val).unwrap();
+                    let iter_val = self.adapt_for_loop_binding_value(
+                        elem_val,
+                        &inner,
+                        &iter_ty,
+                        "for_list_iter",
+                    )?;
+                    self.builder.build_store(var_alloca, iter_val).unwrap();
 
                     self.loop_stack.push(LoopContext {
                         loop_block: inc_bb,
@@ -7398,6 +7491,10 @@ impl<'ctx> Codegen<'ctx> {
 
         let ty = var_type.cloned().unwrap_or(Type::Integer);
         let var_alloca = self.builder.build_alloca(self.llvm_type(&ty), var).unwrap();
+        let counter_alloca = self
+            .builder
+            .build_alloca(self.context.i64_type(), &format!("{var}_counter"))
+            .unwrap();
 
         // Default range values
         let mut start_val = self.context.i64_type().const_int(0, false).into();
@@ -7424,8 +7521,9 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
+        let start_val = start_val.into_int_value();
         let end_val = end_val.into_int_value();
-        self.builder.build_store(var_alloca, start_val).unwrap();
+        self.builder.build_store(counter_alloca, start_val).unwrap();
 
         self.variables.insert(
             var.to_string(),
@@ -7446,7 +7544,11 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(cond_bb);
         let current = self
             .builder
-            .build_load(self.context.i64_type(), var_alloca, var)
+            .build_load(
+                self.context.i64_type(),
+                counter_alloca,
+                &format!("{var}_current"),
+            )
             .unwrap()
             .into_int_value();
 
@@ -7466,6 +7568,9 @@ impl<'ctx> Codegen<'ctx> {
 
         // Body
         self.builder.position_at_end(body_bb);
+        let iter_val =
+            self.adapt_for_loop_binding_value(current.into(), &Type::Integer, &ty, "for_range")?;
+        self.builder.build_store(var_alloca, iter_val).unwrap();
         self.loop_stack.push(LoopContext {
             loop_block: inc_bb,
             after_block: after_bb,
@@ -7482,16 +7587,44 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(inc_bb);
         let current = self
             .builder
-            .build_load(self.context.i64_type(), var_alloca, var)
+            .build_load(
+                self.context.i64_type(),
+                counter_alloca,
+                &format!("{var}_counter"),
+            )
             .unwrap()
             .into_int_value();
         let one = self.context.i64_type().const_int(1, false);
         let next = self.builder.build_int_add(current, one, "inc").unwrap();
-        self.builder.build_store(var_alloca, next).unwrap();
+        self.builder.build_store(counter_alloca, next).unwrap();
         self.builder.build_unconditional_branch(cond_bb).unwrap();
 
         self.builder.position_at_end(after_bb);
         Ok(())
+    }
+
+    fn adapt_for_loop_binding_value(
+        &self,
+        value: BasicValueEnum<'ctx>,
+        source_ty: &Type,
+        target_ty: &Type,
+        name: &str,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        if source_ty == target_ty {
+            return Ok(value);
+        }
+
+        match (source_ty, target_ty) {
+            (Type::Integer, Type::Float) if value.is_int_value() => Ok(self
+                .builder
+                .build_signed_int_to_float(value.into_int_value(), self.context.f64_type(), name)
+                .unwrap()
+                .into()),
+            _ => Err(CodegenError::new(format!(
+                "unsupported for-loop binding conversion: {:?} -> {:?}",
+                source_ty, target_ty
+            ))),
+        }
     }
 
     fn encode_enum_payload(
@@ -8001,7 +8134,11 @@ impl<'ctx> Codegen<'ctx> {
         self.infer_block_tail_type(body).unwrap_or(Type::None)
     }
 
-    fn compile_async_block(&mut self, body: &[Spanned<Stmt>]) -> Result<BasicValueEnum<'ctx>> {
+    fn compile_async_block(
+        &mut self,
+        body: &[Spanned<Stmt>],
+        expected_inner_return_type: Option<&Type>,
+    ) -> Result<BasicValueEnum<'ctx>> {
         let mut captures: Vec<(String, Type)> = Vec::new();
         let mut seen = std::collections::HashSet::new();
         let params = std::collections::HashSet::new();
@@ -8009,7 +8146,9 @@ impl<'ctx> Codegen<'ctx> {
             self.walk_stmt_for_captures(&stmt.node, &params, &mut captures, &mut seen);
         }
 
-        let inner_return_type = self.infer_async_block_return_type(body);
+        let inner_return_type = expected_inner_return_type
+            .cloned()
+            .unwrap_or_else(|| self.infer_async_block_return_type(body));
         let ptr_ty = self.context.ptr_type(AddressSpace::default());
         let mut env_fields = Vec::new();
         for (_, ty) in &captures {
@@ -8344,34 +8483,38 @@ impl<'ctx> Codegen<'ctx> {
                         .build_load(self.llvm_type(&var.ty), var.ptr, name)
                         .unwrap();
                     Ok(val)
-                } else if let Some((func, ty)) = self.functions.get(name) {
-                    if self.extern_functions.contains(name) {
-                        return Err(CodegenError::new(format!(
-                            "extern function '{}' cannot be used as a first-class value yet",
-                            name
-                        )));
-                    }
-                    // Create a closure struct { fn_ptr, null_env }
-                    let struct_ty = self.llvm_type(ty).into_struct_type();
-                    let mut closure = struct_ty.get_undef();
-
-                    let fn_ptr = func.as_global_value().as_pointer_value();
-                    let null_env = self.context.ptr_type(AddressSpace::default()).const_null();
-
-                    closure = self
-                        .builder
-                        .build_insert_value(closure, fn_ptr, 0, "fn")
-                        .unwrap()
-                        .into_struct_value();
-                    closure = self
-                        .builder
-                        .build_insert_value(closure, null_env, 1, "env")
-                        .unwrap()
-                        .into_struct_value();
-
-                    Ok(closure.into())
                 } else {
-                    Err(CodegenError::new(format!("Unknown variable: {}", name)))
+                    let resolved_name = self.resolve_function_alias(name);
+                    let lookup_name = resolved_name.as_str();
+                    if let Some((func, ty)) = self.functions.get(lookup_name) {
+                        if self.extern_functions.contains(lookup_name) {
+                            return Err(CodegenError::new(format!(
+                                "extern function '{}' cannot be used as a first-class value yet",
+                                lookup_name
+                            )));
+                        }
+                        // Create a closure struct { fn_ptr, null_env }
+                        let struct_ty = self.llvm_type(ty).into_struct_type();
+                        let mut closure = struct_ty.get_undef();
+
+                        let fn_ptr = func.as_global_value().as_pointer_value();
+                        let null_env = self.context.ptr_type(AddressSpace::default()).const_null();
+
+                        closure = self
+                            .builder
+                            .build_insert_value(closure, fn_ptr, 0, "fn")
+                            .unwrap()
+                            .into_struct_value();
+                        closure = self
+                            .builder
+                            .build_insert_value(closure, null_env, 1, "env")
+                            .unwrap()
+                            .into_struct_value();
+
+                        Ok(closure.into())
+                    } else {
+                        return Err(CodegenError::new(format!("Unknown variable: {}", name)));
+                    }
                 }
             }
 
@@ -8416,7 +8559,7 @@ impl<'ctx> Codegen<'ctx> {
 
             Expr::StringInterp(parts) => self.compile_string_interp(parts),
 
-            Expr::Lambda { params, body } => self.compile_lambda(params, body),
+            Expr::Lambda { params, body } => self.compile_lambda(params, body, None),
 
             Expr::Match { expr, arms } => self.compile_match_expr(&expr.node, arms, None),
 
@@ -8441,7 +8584,7 @@ impl<'ctx> Codegen<'ctx> {
                 self.await_task(task.into_pointer_value(), &inner_ty)
             }
 
-            Expr::AsyncBlock(body) => self.compile_async_block(body),
+            Expr::AsyncBlock(body) => self.compile_async_block(body, None),
 
             Expr::Require { condition, message } => {
                 // Compile require(condition) as an assert
@@ -8591,6 +8734,40 @@ impl<'ctx> Codegen<'ctx> {
                 Some(expected_ty),
             );
         }
+        if let Expr::Lambda { params, body } = expr {
+            if matches!(expected_ty, Type::Function(_, _)) {
+                return self.compile_lambda(params, body, Some(expected_ty));
+            }
+        }
+        if let Expr::Ident(name) = expr {
+            if matches!(expected_ty, Type::Function(_, _)) {
+                if let Some(adapted) =
+                    self.compile_named_function_value_with_expected_type(name, expected_ty)?
+                {
+                    return Ok(adapted);
+                }
+            }
+        }
+        if let Expr::AsyncBlock(body) = expr {
+            if let Type::Task(inner) = expected_ty {
+                return self.compile_async_block(body, Some(inner));
+            }
+        }
+
+        if matches!(expected_ty, Type::Function(_, _)) {
+            let actual_ty = self.infer_expr_type(expr, &[]);
+            if matches!(actual_ty, Type::Function(_, _)) {
+                let value = self.compile_expr(expr)?;
+                if let Some(adapted) = self.compile_function_value_adapter_from_closure(
+                    value,
+                    &actual_ty,
+                    expected_ty,
+                )? {
+                    return Ok(adapted);
+                }
+                return Ok(value);
+            }
+        }
 
         let value = self.compile_expr(expr)?;
         if matches!(expected_ty, Type::Float) && value.is_int_value() {
@@ -8618,6 +8795,383 @@ impl<'ctx> Codegen<'ctx> {
                 .into(),
             _ => value,
         })
+    }
+
+    fn compile_named_function_value_with_expected_type(
+        &mut self,
+        name: &str,
+        expected_ty: &Type,
+    ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        let Some((func, actual_ty)) = self.functions.get(name).cloned() else {
+            return Ok(None);
+        };
+        let (expected_params, expected_ret) = match expected_ty {
+            Type::Function(params, ret) => (params, ret),
+            _ => return Ok(None),
+        };
+        let (actual_params, actual_ret) = match actual_ty {
+            Type::Function(params, ret) => (params, ret),
+            _ => return Ok(None),
+        };
+        if actual_params.len() != expected_params.len() {
+            return Ok(None);
+        }
+        let params_need_adapter = expected_params
+            .iter()
+            .zip(actual_params.iter())
+            .any(|(expected, actual)| expected != actual);
+        let return_needs_adapter = actual_ret.as_ref() != expected_ret.as_ref();
+        if !params_need_adapter && !return_needs_adapter {
+            return Ok(None);
+        }
+        if expected_params
+            .iter()
+            .zip(actual_params.iter())
+            .any(|(expected, actual)| !Self::is_supported_function_adapter_param(expected, actual))
+        {
+            return Ok(None);
+        }
+        if !Self::is_supported_function_adapter_return(actual_ret.as_ref(), expected_ret.as_ref()) {
+            return Ok(None);
+        }
+
+        let adapter_name = format!("__fn_adapter_{}", self.lambda_counter);
+        self.lambda_counter += 1;
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let expected_ret_llvm = self.llvm_type(expected_ret);
+        let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
+        for param_ty in expected_params {
+            llvm_params.push(self.llvm_type(param_ty).into());
+        }
+        let adapter_fn_type = match expected_ret_llvm {
+            BasicTypeEnum::IntType(i) => i.fn_type(&llvm_params, false),
+            BasicTypeEnum::FloatType(f) => f.fn_type(&llvm_params, false),
+            BasicTypeEnum::PointerType(p) => p.fn_type(&llvm_params, false),
+            BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
+            _ => self.context.i8_type().fn_type(&llvm_params, false),
+        };
+        let adapter_fn = self
+            .module
+            .add_function(&adapter_name, adapter_fn_type, None);
+
+        let saved_function = self.current_function;
+        let saved_return_type = self.current_return_type.clone();
+        let saved_insert_block = self.builder.get_insert_block();
+
+        self.current_function = Some(adapter_fn);
+        self.current_return_type = Some(expected_ty.clone());
+        let entry = self.context.append_basic_block(adapter_fn, "entry");
+        self.builder.position_at_end(entry);
+
+        let mut call_args: Vec<BasicMetadataValueEnum> = Vec::new();
+        for (index, (expected_param_ty, actual_param_ty)) in
+            expected_params.iter().zip(actual_params.iter()).enumerate()
+        {
+            let param = adapter_fn
+                .get_nth_param((index + 1) as u32)
+                .ok_or_else(|| CodegenError::new("adapter parameter missing"))?;
+            let adapted_param =
+                self.adapt_function_adapter_param(param, expected_param_ty, actual_param_ty)?;
+            call_args.push(adapted_param.into());
+        }
+        let call = self
+            .builder
+            .build_call(func, &call_args, "fn_adapter_call")
+            .unwrap();
+        let result = self.extract_call_value(call);
+        let adapted = self.adapt_function_adapter_return(
+            result,
+            actual_ret.as_ref(),
+            expected_ret.as_ref(),
+            "fn_adapter_return",
+        )?;
+        self.builder.build_return(Some(&adapted)).unwrap();
+
+        self.current_function = saved_function;
+        self.current_return_type = saved_return_type;
+        if let Some(block) = saved_insert_block {
+            self.builder.position_at_end(block);
+        }
+
+        let closure_ty = self
+            .context
+            .struct_type(&[ptr_type.into(), ptr_type.into()], false);
+        let mut closure = closure_ty.get_undef();
+        closure = self
+            .builder
+            .build_insert_value(
+                closure,
+                adapter_fn.as_global_value().as_pointer_value(),
+                0,
+                "fn",
+            )
+            .unwrap()
+            .into_struct_value();
+        closure = self
+            .builder
+            .build_insert_value(closure, ptr_type.const_null(), 1, "env")
+            .unwrap()
+            .into_struct_value();
+        Ok(Some(closure.into()))
+    }
+
+    fn compile_function_value_adapter_from_closure(
+        &mut self,
+        closure_value: BasicValueEnum<'ctx>,
+        actual_ty: &Type,
+        expected_ty: &Type,
+    ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        let (expected_params, expected_ret) = match expected_ty {
+            Type::Function(params, ret) => (params, ret),
+            _ => return Ok(None),
+        };
+        let (actual_params, actual_ret) = match actual_ty {
+            Type::Function(params, ret) => (params, ret),
+            _ => return Ok(None),
+        };
+        if actual_params.len() != expected_params.len() {
+            return Ok(None);
+        }
+        let params_need_adapter = expected_params
+            .iter()
+            .zip(actual_params.iter())
+            .any(|(expected, actual)| expected != actual);
+        let return_needs_adapter = actual_ret.as_ref() != expected_ret.as_ref();
+        if !params_need_adapter && !return_needs_adapter {
+            return Ok(None);
+        }
+        if expected_params
+            .iter()
+            .zip(actual_params.iter())
+            .any(|(expected, actual)| !Self::is_supported_function_adapter_param(expected, actual))
+        {
+            return Ok(None);
+        }
+        if !Self::is_supported_function_adapter_return(actual_ret.as_ref(), expected_ret.as_ref()) {
+            return Ok(None);
+        }
+
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let closure_struct = closure_value.into_struct_value();
+        let closure_ty = closure_struct.get_type();
+        let env_struct_ty = self.context.struct_type(&[closure_ty.into()], false);
+        let malloc = self.get_or_declare_malloc();
+        let env_size = env_struct_ty
+            .size_of()
+            .ok_or_else(|| CodegenError::new("failed to size function adapter env"))?;
+        let env_alloc = self
+            .builder
+            .build_call(malloc, &[env_size.into()], "fn_adapter_env_alloc")
+            .unwrap()
+            .try_as_basic_value();
+        let env_ptr = match env_alloc {
+            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
+            _ => return Err(CodegenError::new("malloc failed for function adapter env")),
+        };
+        let stored_closure_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    env_struct_ty,
+                    env_ptr,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context.i32_type().const_int(0, false),
+                    ],
+                    "fn_adapter_closure_ptr",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(stored_closure_ptr, closure_struct)
+            .unwrap();
+
+        let adapter_name = format!("__fn_closure_adapter_{}", self.lambda_counter);
+        self.lambda_counter += 1;
+        let expected_ret_llvm = self.llvm_type(expected_ret);
+        let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
+        for param_ty in expected_params {
+            llvm_params.push(self.llvm_type(param_ty).into());
+        }
+        let adapter_fn_type = match expected_ret_llvm {
+            BasicTypeEnum::IntType(i) => i.fn_type(&llvm_params, false),
+            BasicTypeEnum::FloatType(f) => f.fn_type(&llvm_params, false),
+            BasicTypeEnum::PointerType(p) => p.fn_type(&llvm_params, false),
+            BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
+            _ => self.context.i8_type().fn_type(&llvm_params, false),
+        };
+        let adapter_fn = self
+            .module
+            .add_function(&adapter_name, adapter_fn_type, None);
+
+        let saved_function = self.current_function;
+        let saved_return_type = self.current_return_type.clone();
+        let saved_insert_block = self.builder.get_insert_block();
+
+        self.current_function = Some(adapter_fn);
+        self.current_return_type = Some(expected_ty.clone());
+        let entry = self.context.append_basic_block(adapter_fn, "entry");
+        self.builder.position_at_end(entry);
+
+        let adapter_env = adapter_fn
+            .get_nth_param(0)
+            .ok_or_else(|| CodegenError::new("function adapter env param missing"))?
+            .into_pointer_value();
+        let closure_field_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    env_struct_ty,
+                    adapter_env,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context.i32_type().const_int(0, false),
+                    ],
+                    "fn_adapter_env_closure_ptr",
+                )
+                .unwrap()
+        };
+        let loaded_closure = self
+            .builder
+            .build_load(closure_ty, closure_field_ptr, "fn_adapter_closure")
+            .unwrap()
+            .into_struct_value();
+        let loaded_fn_ptr = self
+            .builder
+            .build_extract_value(loaded_closure, 0, "fn_adapter_fn_ptr")
+            .unwrap()
+            .into_pointer_value();
+        let loaded_env_ptr = self
+            .builder
+            .build_extract_value(loaded_closure, 1, "fn_adapter_env_ptr")
+            .unwrap()
+            .into_pointer_value();
+
+        let mut actual_llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
+        for param_ty in actual_params {
+            actual_llvm_params.push(self.llvm_type(param_ty).into());
+        }
+        let actual_ret_llvm = self.llvm_type(actual_ret);
+        let actual_fn_type = match actual_ret_llvm {
+            BasicTypeEnum::IntType(i) => i.fn_type(&actual_llvm_params, false),
+            BasicTypeEnum::FloatType(f) => f.fn_type(&actual_llvm_params, false),
+            BasicTypeEnum::PointerType(p) => p.fn_type(&actual_llvm_params, false),
+            BasicTypeEnum::StructType(s) => s.fn_type(&actual_llvm_params, false),
+            _ => self.context.i8_type().fn_type(&actual_llvm_params, false),
+        };
+        let typed_fn_ptr = self
+            .builder
+            .build_pointer_cast(
+                loaded_fn_ptr,
+                self.context.ptr_type(AddressSpace::default()),
+                "fn_adapter_typed_fn_ptr",
+            )
+            .unwrap();
+        let mut call_args: Vec<BasicMetadataValueEnum> = vec![loaded_env_ptr.into()];
+        for (index, (expected_param_ty, actual_param_ty)) in
+            expected_params.iter().zip(actual_params.iter()).enumerate()
+        {
+            let param = adapter_fn
+                .get_nth_param((index + 1) as u32)
+                .ok_or_else(|| CodegenError::new("function adapter parameter missing"))?;
+            let adapted_param =
+                self.adapt_function_adapter_param(param, expected_param_ty, actual_param_ty)?;
+            call_args.push(adapted_param.into());
+        }
+        let call = self
+            .builder
+            .build_indirect_call(actual_fn_type, typed_fn_ptr, &call_args, "fn_adapter_call")
+            .unwrap();
+        let result = self.extract_call_value(call);
+        let adapted = self.adapt_function_adapter_return(
+            result,
+            actual_ret.as_ref(),
+            expected_ret.as_ref(),
+            "fn_adapter_return",
+        )?;
+        self.builder.build_return(Some(&adapted)).unwrap();
+
+        self.current_function = saved_function;
+        self.current_return_type = saved_return_type;
+        if let Some(block) = saved_insert_block {
+            self.builder.position_at_end(block);
+        }
+
+        let wrapper_closure_ty = self
+            .context
+            .struct_type(&[ptr_type.into(), ptr_type.into()], false);
+        let mut wrapper_closure = wrapper_closure_ty.get_undef();
+        wrapper_closure = self
+            .builder
+            .build_insert_value(
+                wrapper_closure,
+                adapter_fn.as_global_value().as_pointer_value(),
+                0,
+                "fn",
+            )
+            .unwrap()
+            .into_struct_value();
+        wrapper_closure = self
+            .builder
+            .build_insert_value(wrapper_closure, env_ptr, 1, "env")
+            .unwrap()
+            .into_struct_value();
+        Ok(Some(wrapper_closure.into()))
+    }
+
+    fn is_supported_function_adapter_param(expected: &Type, actual: &Type) -> bool {
+        expected == actual || matches!((expected, actual), (Type::Integer, Type::Float))
+    }
+
+    fn is_supported_function_adapter_return(actual: &Type, expected: &Type) -> bool {
+        actual == expected || matches!((actual, expected), (Type::Integer, Type::Float))
+    }
+
+    fn adapt_function_adapter_param(
+        &self,
+        value: BasicValueEnum<'ctx>,
+        expected_ty: &Type,
+        actual_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        if expected_ty == actual_ty {
+            return Ok(value);
+        }
+        match (expected_ty, actual_ty) {
+            (Type::Integer, Type::Float) if value.is_int_value() => Ok(self
+                .builder
+                .build_signed_int_to_float(
+                    value.into_int_value(),
+                    self.context.f64_type(),
+                    "fn_adapter_param_float",
+                )
+                .unwrap()
+                .into()),
+            _ => Err(CodegenError::new(format!(
+                "unsupported function adapter parameter conversion: {:?} -> {:?}",
+                expected_ty, actual_ty
+            ))),
+        }
+    }
+
+    fn adapt_function_adapter_return(
+        &self,
+        value: BasicValueEnum<'ctx>,
+        actual_ty: &Type,
+        expected_ty: &Type,
+        name: &str,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        if actual_ty == expected_ty {
+            return Ok(value);
+        }
+        match (actual_ty, expected_ty) {
+            (Type::Integer, Type::Float) if value.is_int_value() => Ok(self
+                .builder
+                .build_signed_int_to_float(value.into_int_value(), self.context.f64_type(), name)
+                .unwrap()
+                .into()),
+            _ => Err(CodegenError::new(format!(
+                "unsupported function adapter return conversion: {:?} -> {:?}",
+                actual_ty, expected_ty
+            ))),
+        }
     }
 
     fn compile_char_to_string(&mut self, codepoint: IntValue<'ctx>) -> Result<PointerValue<'ctx>> {
@@ -12232,15 +12786,10 @@ impl<'ctx> Codegen<'ctx> {
         let printf = self.get_or_declare_printf();
 
         for arg in args {
-            let val = self.compile_expr(&arg.node)?;
-
-            let (fmt, print_args): (&str, Vec<BasicMetadataValueEnum>) = if val.is_int_value() {
-                ("%lld", vec![val.into()])
-            } else if val.is_float_value() {
-                ("%f", vec![val.into()])
-            } else {
-                ("%s", vec![val.into()])
-            };
+            let arg_ty = self.infer_expr_type(&arg.node, &[]);
+            let val = self.compile_expr_with_expected_type(&arg.node, &arg_ty)?;
+            let display = self.compile_value_to_display_string(val, &arg_ty)?;
+            let fmt = "%s";
 
             let fmt_str = self.context.const_string(fmt.as_bytes(), true);
             let fmt_name = format!("fmt.{}", self.str_counter);
@@ -12249,9 +12798,8 @@ impl<'ctx> Codegen<'ctx> {
             fmt_global.set_linkage(Linkage::Private);
             fmt_global.set_initializer(&fmt_str);
 
-            let mut call_args: Vec<BasicMetadataValueEnum> =
-                vec![fmt_global.as_pointer_value().into()];
-            call_args.extend(print_args);
+            let call_args: Vec<BasicMetadataValueEnum> =
+                vec![fmt_global.as_pointer_value().into(), display.into()];
 
             self.builder
                 .build_call(printf, &call_args, "printf")

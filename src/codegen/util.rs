@@ -827,12 +827,16 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         params: &[Parameter],
         body: &Spanned<Expr>,
+        expected_fn_ty: Option<&Type>,
     ) -> Result<BasicValueEnum<'ctx>> {
         // 1. Identify captures
         let captures = self.identify_captures(&body.node, params);
 
         // 2. Infer return type
-        let ret_apex_ty = self.infer_expr_type(&body.node, params);
+        let ret_apex_ty = match expected_fn_ty {
+            Some(Type::Function(_, expected_ret)) => (**expected_ret).clone(),
+            _ => self.infer_expr_type(&body.node, params),
+        };
         let ret_llvm_ty = self.llvm_type(&ret_apex_ty);
 
         // 3. Create environment struct in outer scope
@@ -961,11 +965,10 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         // Compile body expression
-        let result = self.compile_expr(&body.node)?;
+        let result = self.compile_expr_with_expected_type(&body.node, &ret_apex_ty)?;
 
         // Build return with proper casting if needed
         let final_result = if result.get_type() != ret_llvm_ty {
-            // Handle i32 to i64 (like from println)
             if result.is_int_value() && ret_llvm_ty.is_int_type() {
                 let res_int = result.into_int_value();
                 let ret_int = ret_llvm_ty.into_int_type();

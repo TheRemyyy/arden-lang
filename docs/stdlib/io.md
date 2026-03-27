@@ -7,20 +7,23 @@ Apex provides built-in functions for console I/O operations. These are compiler 
 
 ## Output Functions
 
-### `print(message: String): None`
+### `print(message: Integer | Float | Boolean | String | Char | None, ...): None`
 
-Prints a message to standard output *without* a newline character at the end.
+Prints supported scalar values to standard output *without* a newline character at the end.
+Multiple arguments are printed in order with no separator.
+Complex values such as `Option<T>` are currently rejected until structured formatting exists.
 
 ```apex
 import std.io.*;
 
 print("Hello, ");
 println("World!"); // Output: Hello, World!
+print(true, " ", '🚀', " ", None); // Output: true 🚀 None
 ```
 
-### `println(message: String): None`
+### `println(message: Integer | Float | Boolean | String | Char | None, ...): None`
 
-Prints a message to standard output followed by a newline character.
+Prints supported scalar values to standard output followed by a newline character.
 
 ```apex
 import std.io.*;

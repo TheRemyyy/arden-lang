@@ -17,6 +17,14 @@ count: Integer = Args.count();
 println("Received {count} arguments");
 ```
 
+You can also import the function directly by symbol:
+
+```apex
+import std.args.count as count;
+
+println("argc = {count()}");
+```
+
 ### `Args.get(index: Integer): String`
 
 Returns the argument at the specified index as a `String`. 

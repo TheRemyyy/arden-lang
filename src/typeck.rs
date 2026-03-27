@@ -226,6 +226,8 @@ pub struct TypeChecker {
     errors: Vec<TypeError>,
     /// Current function return type (for checking returns)
     current_return_type: Option<ResolvedType>,
+    /// Current async-block inferred return type while checking nested explicit returns
+    current_async_return_type: Option<ResolvedType>,
     /// Current class context (for visibility checks)
     current_class: Option<String>,
     /// Import aliases (alias -> path)
@@ -355,6 +357,16 @@ impl TypeChecker {
         let mut parts = path.split('.').collect::<Vec<_>>();
         let symbol = parts.pop()?;
         let namespace = parts.join(".");
+        if let Some(canonical) = stdlib_registry().resolve_alias_call(&namespace, symbol) {
+            return Some(canonical);
+        }
+        let full_mangled = path.replace('.', "__");
+        if let Some(resolved) = self.resolve_function_value_name(&full_mangled) {
+            return Some(resolved.to_string());
+        }
+        if let Some(resolved) = self.resolve_function_value_name(symbol) {
+            return Some(resolved.to_string());
+        }
         if stdlib_registry()
             .get_namespace(symbol)
             .is_some_and(|owner| owner == &namespace)
@@ -493,6 +505,7 @@ impl TypeChecker {
             substitutions: HashMap::new(),
             errors: Vec::new(),
             current_return_type: None,
+            current_async_return_type: None,
             current_class: None,
             import_aliases: HashMap::new(),
             current_effects: Vec::new(),
@@ -3023,6 +3036,11 @@ impl TypeChecker {
                     .map(|e| self.check_expr(&e.node, e.span.clone()))
                     .unwrap_or(ResolvedType::None);
 
+                if self.current_async_return_type.is_some() {
+                    self.merge_async_return_type(&return_type, span.clone());
+                    return;
+                }
+
                 if let Some(expected) = &self.current_return_type {
                     if !self.types_compatible(expected, &return_type) {
                         self.error(
@@ -3111,7 +3129,11 @@ impl TypeChecker {
                 }
 
                 self.enter_scope();
-                self.declare_variable(var, elem_type, false, span);
+                let loop_var_type = var_type
+                    .as_ref()
+                    .map(|declared| self.resolve_type(declared))
+                    .unwrap_or(elem_type);
+                self.declare_variable(var, loop_var_type, false, span);
                 self.check_block(body);
                 self.exit_scope();
             }
@@ -3420,6 +3442,11 @@ impl TypeChecker {
             Expr::Ident(name) => {
                 if let Some(var) = self.lookup_variable(name) {
                     var.ty.clone()
+                } else if let Some(canonical_name) = self
+                    .resolve_import_alias_symbol(name)
+                    .filter(|canonical_name| self.functions.contains_key(canonical_name))
+                {
+                    self.function_value_type_or_error(&canonical_name, span)
                 } else if let Some((enum_name, variant_name)) =
                     self.resolve_import_alias_variant(name)
                 {
@@ -3965,34 +3992,16 @@ impl TypeChecker {
             Expr::AsyncBlock(body) => {
                 let captured_outer_scopes = self.scopes.clone();
                 self.enter_scope();
-                let mut return_type = ResolvedType::None;
                 let mut tail_expr_type = None;
 
                 // For async blocks, we need to track return types specifically for this block
                 let saved_return_type = self.current_return_type.clone();
-                // Start with None, or if we want to support inference, a fresh type var
-                self.current_return_type = Some(ResolvedType::None);
+                let saved_async_return_type = self.current_async_return_type.clone();
+                self.current_return_type = None;
+                self.current_async_return_type = Some(ResolvedType::None);
 
                 for stmt in body {
                     match &stmt.node {
-                        Stmt::Return(Some(expr)) => {
-                            let expr_type = self.check_expr(&expr.node, expr.span.clone());
-                            tail_expr_type = None;
-                            if matches!(self.current_return_type, Some(ResolvedType::None)) {
-                                self.current_return_type = Some(expr_type.clone());
-                                return_type = expr_type;
-                            } else if let Some(expected) = &self.current_return_type {
-                                if !self.types_compatible(expected, &expr_type) {
-                                    self.error(
-                                        format!(
-                                            "Mismatching return types in async block: {} vs {}",
-                                            expected, expr_type
-                                        ),
-                                        expr.span.clone(),
-                                    );
-                                }
-                            }
-                        }
                         Stmt::Expr(expr) => {
                             tail_expr_type = Some(self.check_expr(&expr.node, expr.span.clone()));
                         }
@@ -4003,6 +4012,10 @@ impl TypeChecker {
                     }
                 }
 
+                let mut return_type = self
+                    .current_async_return_type
+                    .clone()
+                    .unwrap_or(ResolvedType::None);
                 if matches!(return_type, ResolvedType::None) {
                     if let Some(tail_ty) = tail_expr_type {
                         return_type = tail_ty;
@@ -4028,6 +4041,7 @@ impl TypeChecker {
                 }
 
                 self.current_return_type = saved_return_type;
+                self.current_async_return_type = saved_async_return_type;
                 self.exit_scope();
                 self.check_async_result_type(&return_type, "Async block", span.clone());
                 ResolvedType::Task(Box::new(return_type))
@@ -4994,7 +5008,16 @@ impl TypeChecker {
         match name {
             "println" | "print" => {
                 for arg in args {
-                    self.check_expr(&arg.node, arg.span.clone());
+                    let ty = self.check_expr(&arg.node, arg.span.clone());
+                    if !Self::supports_display_scalar(&ty) {
+                        self.error(
+                            format!(
+                                "{}() currently supports Integer, Float, Boolean, String, Char, and None arguments, got {}",
+                                name, ty
+                            ),
+                            arg.span.clone(),
+                        );
+                    }
                 }
                 Some(ResolvedType::None)
             }
@@ -6315,7 +6338,7 @@ impl TypeChecker {
                     && e_params
                         .iter()
                         .zip(a_params.iter())
-                        .all(|(e, a)| self.types_compatible(e, a))
+                        .all(|(e, a)| self.types_compatible(a, e))
                     && self.types_compatible(e_ret, a_ret)
             }
             _ => false,
@@ -6343,6 +6366,29 @@ impl TypeChecker {
             );
         }
         None
+    }
+
+    fn merge_async_return_type(&mut self, return_type: &ResolvedType, span: Span) {
+        let Some(current) = self.current_async_return_type.clone() else {
+            return;
+        };
+
+        if matches!(current, ResolvedType::None) {
+            self.current_async_return_type = Some(return_type.clone());
+            return;
+        }
+
+        if let Some(common_type) = self.common_compatible_type(&current, return_type) {
+            self.current_async_return_type = Some(common_type);
+        } else {
+            self.error(
+                format!(
+                    "Mismatching return types in async block: {} vs {}",
+                    current, return_type
+                ),
+                span,
+            );
+        }
     }
 
     /// Fresh type variable for inference

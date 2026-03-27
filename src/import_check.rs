@@ -476,6 +476,27 @@ impl<'a> ImportChecker<'a> {
             return;
         }
 
+        if let Some(path) = self.namespace_aliases.get(name) {
+            if !path.ends_with(".*") {
+                let mut parts = path.split('.').collect::<Vec<_>>();
+                if let Some(symbol) = parts.pop() {
+                    let namespace = parts.join(".");
+                    if self
+                        .resolve_stdlib_call_in_namespace(&namespace, symbol)
+                        .is_some()
+                    {
+                        return;
+                    }
+                    if self
+                        .resolve_user_call_in_namespace_path(&namespace, symbol)
+                        .is_some()
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+
         // Local function in the same checked program/file always wins over stdlib names.
         if self.local_functions.contains(name) {
             return;

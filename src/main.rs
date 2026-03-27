@@ -18605,6 +18605,480 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_prints_boolean_with_user_facing_representation() {
+        let temp_root = make_temp_project_root("print-bool-runtime");
+        let source_path = temp_root.join("print_bool_runtime.apex");
+        let output_path = temp_root.join("print_bool_runtime");
+        let source = r#"
+            import std.io.*;
+
+            function main(): None {
+                print(true);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("print(Boolean) should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled print Boolean binary");
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(stdout, "true");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_prints_unicode_char_with_user_facing_representation() {
+        let temp_root = make_temp_project_root("print-char-runtime");
+        let source_path = temp_root.join("print_char_runtime.apex");
+        let output_path = temp_root.join("print_char_runtime");
+        let source = r#"
+            import std.io.*;
+
+            function main(): None {
+                print('🚀');
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("print(Char) should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled print Char binary");
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(stdout, "🚀");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_prints_none_with_user_facing_representation() {
+        let temp_root = make_temp_project_root("print-none-runtime");
+        let source_path = temp_root.join("print_none_runtime.apex");
+        let output_path = temp_root.join("print_none_runtime");
+        let source = r#"
+            import std.io.*;
+
+            function main(): None {
+                print(None);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("print(None) should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled print None binary");
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(stdout, "None");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_print_on_option_runtime() {
+        let temp_root = make_temp_project_root("print-option-runtime");
+        let source_path = temp_root.join("print_option_runtime.apex");
+        let output_path = temp_root.join("print_option_runtime");
+        let source = r#"
+            import std.io.*;
+
+            function main(): None {
+                print(Option.some(1));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("print on Option should fail until complex formatting exists");
+        assert!(err.contains("print()"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_block_integer_tail_for_float_task_runtime() {
+        let temp_root = make_temp_project_root("async-int-tail-float-task-runtime");
+        let source_path = temp_root.join("async_int_tail_float_task_runtime.apex");
+        let output_path = temp_root.join("async_int_tail_float_task_runtime");
+        let source = r#"
+            function main(): Integer {
+                task: Task<Float> = async { 1 };
+                value: Float = await(task);
+                return if (value == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async block Integer tail for Task<Float> should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async Integer tail Float task binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_tail_lambda_for_float_return_runtime() {
+        let temp_root = make_temp_project_root("lambda-int-tail-float-return-runtime");
+        let source_path = temp_root.join("lambda_int_tail_float_return_runtime.apex");
+        let output_path = temp_root.join("lambda_int_tail_float_return_runtime");
+        let source = r#"
+            function main(): Integer {
+                f: () -> Float = () => 1;
+                value: Float = f();
+                return if (value == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("lambda Integer tail for Float return should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled lambda Integer tail Float return binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_named_integer_function_value_for_float_return_runtime() {
+        let temp_root = make_temp_project_root("named-fn-int-to-float-runtime");
+        let source_path = temp_root.join("named_fn_int_to_float_runtime.apex");
+        let output_path = temp_root.join("named_fn_int_to_float_runtime");
+        let source = r#"
+            function one(): Integer {
+                return 1;
+            }
+
+            function main(): Integer {
+                f: () -> Float = one;
+                value: Float = f();
+                return if (value == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("named Integer function value for Float return should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled named Integer function value Float return binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_function_variable_retyped_to_float_return_runtime() {
+        let temp_root = make_temp_project_root("fn-var-retype-float-runtime");
+        let source_path = temp_root.join("fn_var_retype_float_runtime.apex");
+        let output_path = temp_root.join("fn_var_retype_float_runtime");
+        let source = r#"
+            function one(): Integer {
+                return 1;
+            }
+
+            function main(): Integer {
+                g: () -> Integer = one;
+                f: () -> Float = g;
+                value: Float = f();
+                return if (value == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("function variable retyped to Float return should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled function variable retyped Float return binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_named_function_value_retyped_to_integer_parameter_runtime() {
+        let temp_root = make_temp_project_root("named-fn-retype-int-param-runtime");
+        let source_path = temp_root.join("named_fn_retype_int_param_runtime.apex");
+        let output_path = temp_root.join("named_fn_retype_int_param_runtime");
+        let source = r#"
+            function scale(value: Float): Float {
+                return value * 2.0;
+            }
+
+            function main(): Integer {
+                f: (Integer) -> Float = scale;
+                result: Float = f(3);
+                return if (result == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("named function value retyped Integer parameter should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled named function value retyped Integer parameter binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_function_variable_retyped_to_integer_parameter_runtime() {
+        let temp_root = make_temp_project_root("fn-var-retype-int-param-runtime");
+        let source_path = temp_root.join("fn_var_retype_int_param_runtime.apex");
+        let output_path = temp_root.join("fn_var_retype_int_param_runtime");
+        let source = r#"
+            function scale(value: Float): Float {
+                return value * 2.0;
+            }
+
+            function main(): Integer {
+                g: (Float) -> Float = scale;
+                f: (Integer) -> Float = g;
+                result: Float = f(3);
+                return if (result == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("function variable retyped Integer parameter should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled function variable retyped Integer parameter binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_function_value_retyped_to_narrower_integer_parameter() {
+        let temp_root = make_temp_project_root("fn-retype-narrower-int-param");
+        let source_path = temp_root.join("fn_retype_narrower_int_param.apex");
+        let output_path = temp_root.join("fn_retype_narrower_int_param");
+        let source = r#"
+            function truncate(value: Integer): Integer {
+                return value;
+            }
+
+            function main(): Integer {
+                f: (Float) -> Integer = truncate;
+                return f(1.5);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("retyping function value to narrower Integer parameter should fail");
+        assert!(
+            err.contains("Type mismatch") || err.contains("cannot assign"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_block_nested_integer_return_for_float_task_runtime() {
+        let temp_root = make_temp_project_root("async-nested-int-return-float-task-runtime");
+        let source_path = temp_root.join("async_nested_int_return_float_task_runtime.apex");
+        let output_path = temp_root.join("async_nested_int_return_float_task_runtime");
+        let source = r#"
+            function main(): Integer {
+                task: Task<Float> = async {
+                    if (true) {
+                        return 1;
+                    }
+                    return 2.5;
+                };
+                value: Float = await(task);
+                return if (value == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested async Integer return for Task<Float> should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled nested async Integer return Float task binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_block_nested_mixed_numeric_returns_runtime() {
+        let temp_root = make_temp_project_root("async-nested-mixed-numeric-returns-runtime");
+        let source_path = temp_root.join("async_nested_mixed_numeric_returns_runtime.apex");
+        let output_path = temp_root.join("async_nested_mixed_numeric_returns_runtime");
+        let source = r#"
+            function main(): Integer {
+                task: Task<Float> = async {
+                    if (false) {
+                        return 1;
+                    } else {
+                        return 2.5;
+                    }
+                };
+                value: Float = await(task);
+                return if (value == 2.5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested async mixed numeric returns should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled nested async mixed numeric returns binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_float_loop_variable_over_integer_range_runtime() {
+        let temp_root = make_temp_project_root("float-loop-var-integer-range-runtime");
+        let source_path = temp_root.join("float_loop_var_integer_range_runtime.apex");
+        let output_path = temp_root.join("float_loop_var_integer_range_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut total: Float = 0.0;
+                for (x: Float in range(1, 4)) {
+                    total = total + x;
+                }
+                return if (total == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Float loop variable over Integer range should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Float loop variable Integer range binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_float_loop_variable_over_integer_list_runtime() {
+        let temp_root = make_temp_project_root("float-loop-var-integer-list-runtime");
+        let source_path = temp_root.join("float_loop_var_integer_list_runtime.apex");
+        let output_path = temp_root.join("float_loop_var_integer_list_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                xs.push(2);
+                xs.push(3);
+
+                mut total: Float = 0.0;
+                for (x: Float in xs) {
+                    total = total + x;
+                }
+
+                return if (total == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Float loop variable over Integer list should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Float loop variable Integer list binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_stdlib_function_alias_call_runtime() {
+        let temp_root = make_temp_project_root("stdlib-fn-alias-call-runtime");
+        let source_path = temp_root.join("stdlib_fn_alias_call_runtime.apex");
+        let output_path = temp_root.join("stdlib_fn_alias_call_runtime");
+        let source = r#"
+            import std.math.abs as abs;
+
+            function main(): Integer {
+                value: Integer = abs(-5);
+                return if (value == 5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("stdlib function alias call should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled stdlib function alias call binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_args_count_alias_call_runtime() {
+        let temp_root = make_temp_project_root("args-count-alias-call-runtime");
+        let source_path = temp_root.join("args_count_alias_call_runtime.apex");
+        let output_path = temp_root.join("args_count_alias_call_runtime");
+        let source = r#"
+            import std.args.count as count;
+
+            function main(): Integer {
+                value: Integer = count();
+                return if (value >= 1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Args.count alias call should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Args.count alias call binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_fails_fast_on_out_of_bounds_list_index_assignment() {
         let temp_root = make_temp_project_root("list-index-assign-oob-runtime");
         let source_path = temp_root.join("list_index_assign_oob_runtime.apex");
