@@ -155,5 +155,6 @@ The compiler enforces these edge cases explicitly:
 - index assignments through borrowed mutable containers now follow the same root borrow mutability, including nested chains like `ref.items[0] = 1` and `ref.map["k"] = 2`
 - methods that mutate `this` only via built-in field receivers, such as `this.items.push(1)`, `this.map.set("k", 2)`, or `this.inner.items.push(1)`, are treated as mutating methods for receiver borrow analysis too
 - dereference assignments like `*rx = 19` now compile as ordinary mutable lvalues when `rx` is a valid mutable reference
-- compound assignments on lvalues with side effects now evaluate the target only once, so patterns like `factory.make()[0] += 2`, `factory.make_box().value += 2`, and `factory.make_map()["k"] += 2` no longer re-run the receiver call path
+- compound assignments on lvalues with side effects now evaluate the target only once, so patterns like `factory.make()[0] += 2`, `factory.make_box().value += 2`, `factory.make_map()[key()] += 2`, and `factory.make_map()[key()] %= 4` no longer re-run either the receiver call path or the index/key expression
+- compound assignment syntax now includes `%=` alongside `+=`, `-=`, `*=`, and `/=`
 - ordinary user-function calls are no longer force-marked as LLVM tail calls, preventing optimizer miscompiles for stack-backed borrowed locals

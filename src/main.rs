@@ -16023,6 +16023,39 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_borrowed_map_object_field_reads_runtime() {
+        let temp_root = make_temp_project_root("borrowed-map-object-field-reads-runtime");
+        let source_path = temp_root.join("borrowed_map_object_field_reads_runtime.apex");
+        let output_path = temp_root.join("borrowed_map_object_field_reads_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                m: Map<Integer, Boxed> = Map<Integer, Boxed>();
+                m.set(1, Boxed(41));
+                rm: &Map<Integer, Boxed> = &m;
+                if (rm.get(1).value != 41) { return 1; }
+                if (rm[1].value != 41) { return 2; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed map object field reads should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed map object field reads binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_mutable_borrowed_builtin_methods_runtime() {
         let temp_root = make_temp_project_root("mutable-borrowed-builtin-methods-runtime");
         let source_path = temp_root.join("mutable_borrowed_builtin_methods_runtime.apex");
@@ -17659,6 +17692,286 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled map compound assignment call binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_map_index_compound_assignment_without_double_key_evaluation() {
+        let temp_root = make_temp_project_root("map-index-compound-assign-key-runtime");
+        let source_path = temp_root.join("map_index_compound_assign_key_runtime.apex");
+        let output_path = temp_root.join("map_index_compound_assign_key_runtime");
+        let source = r#"
+            class Counter {
+                mut calls: Integer;
+                constructor() { this.calls = 0; }
+                function key(): String {
+                    this.calls += 1;
+                    return "k";
+                }
+            }
+
+            function main(): Integer {
+                mut counter: Counter = Counter();
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                m["k"] = 1;
+                m[counter.key()] += 2;
+                return if (counter.calls == 1) { 0 } else { counter.calls };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("map index compound assignment with key side effects should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled map compound assignment key binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_list_index_compound_assignment_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-list-index-compound-runtime");
+        let source_path = temp_root.join("mutable_borrowed_list_index_compound_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_list_index_compound_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                rxs: &mut List<Integer> = &mut xs;
+                rxs[0] += 2;
+                return if (rxs[0] == 3 && xs[0] == 3) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed list compound assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed list compound assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_borrowed_map_index_compound_assignment_runtime() {
+        let temp_root = make_temp_project_root("mutable-borrowed-map-index-compound-runtime");
+        let source_path = temp_root.join("mutable_borrowed_map_index_compound_runtime.apex");
+        let output_path = temp_root.join("mutable_borrowed_map_index_compound_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                m["k"] = 1;
+                rm: &mut Map<String, Integer> = &mut m;
+                rm["k"] += 2;
+                return if (rm["k"] == 3 && m["k"] == 3) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable borrowed map compound assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable borrowed map compound assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mod_compound_assignment_runtime() {
+        let temp_root = make_temp_project_root("mod-compound-assign-runtime");
+        let source_path = temp_root.join("mod_compound_assign_runtime.apex");
+        let output_path = temp_root.join("mod_compound_assign_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut x: Integer = 17;
+                x %= 5;
+                return if (x == 2) { 0 } else { x };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mod compound assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mod compound assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_float_mod_runtime() {
+        let temp_root = make_temp_project_root("float-mod-runtime");
+        let source_path = temp_root.join("float_mod_runtime.apex");
+        let output_path = temp_root.join("float_mod_runtime");
+        let source = r#"
+            function main(): Integer {
+                value: Float = 5.5 % 2.0;
+                return if (value == 1.5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("float modulo should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled float modulo binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_float_mod_compound_assignment_runtime() {
+        let temp_root = make_temp_project_root("float-mod-compound-assign-runtime");
+        let source_path = temp_root.join("float_mod_compound_assign_runtime.apex");
+        let output_path = temp_root.join("float_mod_compound_assign_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut value: Float = 5.5;
+                value %= 2.0;
+                return if (value == 1.5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("float modulo compound assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled float modulo compound assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mod_compound_assignment_without_double_key_evaluation() {
+        let temp_root = make_temp_project_root("mod-compound-assign-key-runtime");
+        let source_path = temp_root.join("mod_compound_assign_key_runtime.apex");
+        let output_path = temp_root.join("mod_compound_assign_key_runtime");
+        let source = r#"
+            class Counter {
+                mut calls: Integer;
+                constructor() { this.calls = 0; }
+                function key(): String {
+                    this.calls += 1;
+                    return "k";
+                }
+            }
+
+            function main(): Integer {
+                mut counter: Counter = Counter();
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                m["k"] = 9;
+                m[counter.key()] %= 4;
+                return if (counter.calls == 1 && m["k"] == 1) { 0 } else { counter.calls };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mod compound assignment with key side effects should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mod compound assignment key binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mixed_numeric_arithmetic_runtime() {
+        let temp_root = make_temp_project_root("mixed-numeric-arithmetic-runtime");
+        let source_path = temp_root.join("mixed_numeric_arithmetic_runtime.apex");
+        let output_path = temp_root.join("mixed_numeric_arithmetic_runtime");
+        let source = r#"
+            function main(): Integer {
+                sum: Float = 1 + 2.5;
+                product: Float = 3.0 * 2;
+                less: Boolean = 1 < 1.5;
+                greater_or_equal: Boolean = 6.0 >= 6;
+                return if (sum == 3.5 && product == 6.0 && less && greater_or_equal) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric arithmetic should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric arithmetic binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mixed_numeric_equality_runtime() {
+        let temp_root = make_temp_project_root("mixed-numeric-equality-runtime");
+        let source_path = temp_root.join("mixed_numeric_equality_runtime.apex");
+        let output_path = temp_root.join("mixed_numeric_equality_runtime");
+        let source = r#"
+            function main(): Integer {
+                left_to_right: Boolean = 1 == 1.0;
+                right_to_left: Boolean = 1.0 == 1;
+                neq_left_to_right: Boolean = 1 != 2.0;
+                neq_right_to_left: Boolean = 2.0 != 1;
+                return if (left_to_right && right_to_left && neq_left_to_right && neq_right_to_left) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric equality binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mixed_numeric_branch_and_math_runtime() {
+        let temp_root = make_temp_project_root("mixed-numeric-branch-math-runtime");
+        let source_path = temp_root.join("mixed_numeric_branch_math_runtime.apex");
+        let output_path = temp_root.join("mixed_numeric_branch_math_runtime");
+        let source = r#"
+            function main(): Integer {
+                branch: Float = if (true) { 1 } else { 2.5 };
+                min_value: Float = Math.min(1, 2.5);
+                max_value: Float = Math.max(2, 1.5);
+                return if (branch == 1.0 && min_value == 1.0 && max_value == 2.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric branch and math should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric branch and math binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);

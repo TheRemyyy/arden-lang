@@ -26,6 +26,9 @@ x: Integer = 100_000; // Underscores can be used for readability
 ```apex
 f: Float = 1.0;
 // Note: implicit conversion from Integer to Float is not performed automatically in assignments
+sum: Float = 1 + 2.5; // Mixed numeric expressions promote Integer operands to Float
+same: Boolean = 1 == 1.0; // Mixed numeric comparisons and equality use the same promotion rule
+choice: Float = if (flag) { 1 } else { 2.5 }; // Branches also promote to the common numeric type
 ```
 
 ### Booleans

@@ -7015,9 +7015,8 @@ impl<'ctx> Codegen<'ctx> {
                                 _ => unreachable!(),
                             };
                             let key = self.compile_expr_with_expected_type(&index.node, &key_ty)?;
-                            let get_args = [Spanned::new(index.node.clone(), index.span.clone())];
-                            let current = self.compile_map_method_on_value(
-                                map_value, &map_ty, "get", &get_args,
+                            let current = self.compile_map_get_on_value_with_compiled_key(
+                                map_value, &map_ty, key,
                             )?;
                             let rhs_value =
                                 self.compile_expr_with_expected_type(&rhs.node, &val_ty)?;
@@ -7897,10 +7896,13 @@ impl<'ctx> Codegen<'ctx> {
         let Expr::Binary { op, left, right } = value else {
             return None;
         };
-        matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div)
-            .then_some(())
-            .filter(|_| Self::exprs_structurally_equal(target, &left.node))
-            .map(|_| (*op, right.as_ref()))
+        matches!(
+            op,
+            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod
+        )
+        .then_some(())
+        .filter(|_| Self::exprs_structurally_equal(target, &left.node))
+        .map(|_| (*op, right.as_ref()))
     }
 
     fn exprs_structurally_equal(left: &Expr, right: &Expr) -> bool {
@@ -8567,7 +8569,16 @@ impl<'ctx> Codegen<'ctx> {
             );
         }
 
-        self.compile_expr(expr)
+        let value = self.compile_expr(expr)?;
+        if matches!(expected_ty, Type::Float) && value.is_int_value() {
+            return Ok(self
+                .builder
+                .build_signed_int_to_float(value.into_int_value(), self.context.f64_type(), "ef")
+                .unwrap()
+                .into());
+        }
+
+        Ok(value)
     }
 
     pub fn compile_if_expr(
@@ -8731,6 +8742,66 @@ impl<'ctx> Codegen<'ctx> {
         left_ty: &Type,
         right_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
+        if left_ty.is_numeric()
+            && right_ty.is_numeric()
+            && (matches!(left_ty, Type::Float) || matches!(right_ty, Type::Float))
+        {
+            let l = if lhs.is_float_value() {
+                lhs.into_float_value()
+            } else {
+                self.builder
+                    .build_signed_int_to_float(lhs.into_int_value(), self.context.f64_type(), "lf")
+                    .unwrap()
+            };
+            let r = if rhs.is_float_value() {
+                rhs.into_float_value()
+            } else {
+                self.builder
+                    .build_signed_int_to_float(rhs.into_int_value(), self.context.f64_type(), "rf")
+                    .unwrap()
+            };
+
+            let result = match op {
+                BinOp::Add => self.builder.build_float_add(l, r, "fadd").unwrap().into(),
+                BinOp::Sub => self.builder.build_float_sub(l, r, "fsub").unwrap().into(),
+                BinOp::Mul => self.builder.build_float_mul(l, r, "fmul").unwrap().into(),
+                BinOp::Div => self.builder.build_float_div(l, r, "fdiv").unwrap().into(),
+                BinOp::Mod => self.builder.build_float_rem(l, r, "frem").unwrap().into(),
+                BinOp::Eq => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OEQ, l, r, "feq")
+                    .unwrap()
+                    .into(),
+                BinOp::NotEq => self
+                    .builder
+                    .build_float_compare(FloatPredicate::ONE, l, r, "fne")
+                    .unwrap()
+                    .into(),
+                BinOp::Lt => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OLT, l, r, "flt")
+                    .unwrap()
+                    .into(),
+                BinOp::LtEq => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OLE, l, r, "fle")
+                    .unwrap()
+                    .into(),
+                BinOp::Gt => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OGT, l, r, "fgt")
+                    .unwrap()
+                    .into(),
+                BinOp::GtEq => self
+                    .builder
+                    .build_float_compare(FloatPredicate::OGE, l, r, "fge")
+                    .unwrap()
+                    .into(),
+                _ => return Err(CodegenError::new("Invalid float operation")),
+            };
+            return Ok(result);
+        }
+
         // Integer operations
         if lhs.is_int_value() && rhs.is_int_value() {
             let l = lhs.into_int_value();
@@ -8798,6 +8869,7 @@ impl<'ctx> Codegen<'ctx> {
                 BinOp::Sub => self.builder.build_float_sub(l, r, "fsub").unwrap().into(),
                 BinOp::Mul => self.builder.build_float_mul(l, r, "fmul").unwrap().into(),
                 BinOp::Div => self.builder.build_float_div(l, r, "fdiv").unwrap().into(),
+                BinOp::Mod => self.builder.build_float_rem(l, r, "frem").unwrap().into(),
                 BinOp::Eq => self
                     .builder
                     .build_float_compare(FloatPredicate::OEQ, l, r, "feq")
@@ -11945,7 +12017,38 @@ impl<'ctx> Codegen<'ctx> {
             "Math__min" => {
                 let a = self.compile_expr(&args[0].node)?;
                 let b = self.compile_expr(&args[1].node)?;
-                if a.is_int_value() {
+                if a.is_float_value() || b.is_float_value() {
+                    let fmin = self.get_or_declare_math_func2("fmin");
+                    let av = if a.is_float_value() {
+                        a
+                    } else {
+                        self.builder
+                            .build_signed_int_to_float(
+                                a.into_int_value(),
+                                self.context.f64_type(),
+                                "tofloat",
+                            )
+                            .unwrap()
+                            .into()
+                    };
+                    let bv = if b.is_float_value() {
+                        b
+                    } else {
+                        self.builder
+                            .build_signed_int_to_float(
+                                b.into_int_value(),
+                                self.context.f64_type(),
+                                "tofloat",
+                            )
+                            .unwrap()
+                            .into()
+                    };
+                    let call = self
+                        .builder
+                        .build_call(fmin, &[av.into(), bv.into()], "min")
+                        .unwrap();
+                    Ok(Some(self.extract_call_value(call)))
+                } else {
                     let av = a.into_int_value();
                     let bv = b.into_int_value();
                     let cond = self
@@ -11954,19 +12057,43 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap();
                     let result = self.builder.build_select(cond, av, bv, "min").unwrap();
                     Ok(Some(result))
-                } else {
-                    let fmin = self.get_or_declare_math_func2("fmin");
-                    let call = self
-                        .builder
-                        .build_call(fmin, &[a.into(), b.into()], "min")
-                        .unwrap();
-                    Ok(Some(self.extract_call_value(call)))
                 }
             }
             "Math__max" => {
                 let a = self.compile_expr(&args[0].node)?;
                 let b = self.compile_expr(&args[1].node)?;
-                if a.is_int_value() {
+                if a.is_float_value() || b.is_float_value() {
+                    let fmax = self.get_or_declare_math_func2("fmax");
+                    let av = if a.is_float_value() {
+                        a
+                    } else {
+                        self.builder
+                            .build_signed_int_to_float(
+                                a.into_int_value(),
+                                self.context.f64_type(),
+                                "tofloat",
+                            )
+                            .unwrap()
+                            .into()
+                    };
+                    let bv = if b.is_float_value() {
+                        b
+                    } else {
+                        self.builder
+                            .build_signed_int_to_float(
+                                b.into_int_value(),
+                                self.context.f64_type(),
+                                "tofloat",
+                            )
+                            .unwrap()
+                            .into()
+                    };
+                    let call = self
+                        .builder
+                        .build_call(fmax, &[av.into(), bv.into()], "max")
+                        .unwrap();
+                    Ok(Some(self.extract_call_value(call)))
+                } else {
                     let av = a.into_int_value();
                     let bv = b.into_int_value();
                     let cond = self
@@ -11975,13 +12102,6 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap();
                     let result = self.builder.build_select(cond, av, bv, "max").unwrap();
                     Ok(Some(result))
-                } else {
-                    let fmax = self.get_or_declare_math_func2("fmax");
-                    let call = self
-                        .builder
-                        .build_call(fmax, &[a.into(), b.into()], "max")
-                        .unwrap();
-                    Ok(Some(self.extract_call_value(call)))
                 }
             }
             "Math__sqrt" => {

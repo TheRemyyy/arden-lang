@@ -4091,7 +4091,9 @@ impl TypeChecker {
                     }
                     self.exit_scope();
 
-                    if !self.types_compatible(&then_type, &else_type) {
+                    if let Some(common_type) = self.common_compatible_type(&then_type, &else_type) {
+                        then_type = common_type;
+                    } else {
                         self.error(
                             format!(
                                 "If expression branch type mismatch: then is {}, else is {}",
@@ -4099,6 +4101,7 @@ impl TypeChecker {
                             ),
                             condition.span.clone(),
                         );
+                        then_type = ResolvedType::Unknown;
                     }
                 }
 
@@ -4994,7 +4997,9 @@ impl TypeChecker {
                 if args.len() >= 2 {
                     let t1 = self.check_expr(&args[0].node, args[0].span.clone());
                     let t2 = self.check_expr(&args[1].node, args[1].span.clone());
-                    if !self.types_compatible(&t1, &t2) {
+                    if let Some(common_type) = self.common_compatible_type(&t1, &t2) {
+                        Some(common_type)
+                    } else {
                         self.error(
                             format!(
                                 "{}() arguments must have same type: {} vs {}",
@@ -5002,8 +5007,8 @@ impl TypeChecker {
                             ),
                             span,
                         );
+                        Some(ResolvedType::Unknown)
                     }
-                    Some(t1)
                 } else {
                     Some(ResolvedType::Unknown)
                 }
@@ -5401,7 +5406,7 @@ impl TypeChecker {
                 if args.len() >= 2 {
                     let t1 = self.check_expr(&args[0].node, args[0].span.clone());
                     let t2 = self.check_expr(&args[1].node, args[1].span.clone());
-                    if !self.types_compatible(&t1, &t2) {
+                    if self.common_compatible_type(&t1, &t2).is_none() {
                         self.error(
                             format!(
                                 "{}() arguments must have compatible types: {} vs {}",
@@ -5938,7 +5943,7 @@ impl TypeChecker {
                 }
             }
             BinOp::Eq | BinOp::NotEq => {
-                if !self.types_compatible(left, right) {
+                if self.common_compatible_type(left, right).is_none() {
                     self.error(format!("Cannot compare {} and {}", left, right), span);
                 }
                 ResolvedType::Boolean
@@ -6255,6 +6260,29 @@ impl TypeChecker {
             }
             _ => false,
         }
+    }
+
+    fn common_compatible_type(
+        &self,
+        left: &ResolvedType,
+        right: &ResolvedType,
+    ) -> Option<ResolvedType> {
+        if self.types_compatible(left, right) {
+            return Some(left.clone());
+        }
+        if self.types_compatible(right, left) {
+            return Some(right.clone());
+        }
+        if left.is_numeric() && right.is_numeric() {
+            return Some(
+                if matches!(left, ResolvedType::Float) || matches!(right, ResolvedType::Float) {
+                    ResolvedType::Float
+                } else {
+                    ResolvedType::Integer
+                },
+            );
+        }
+        None
     }
 
     /// Fresh type variable for inference

@@ -165,6 +165,8 @@ pub enum Token<'src> {
     StarEq,
     #[token("/=")]
     SlashEq,
+    #[token("%=")]
+    PercentEq,
 
     // Delimiters
     #[token("(")]
@@ -388,18 +390,19 @@ mod tests {
 
     #[test]
     fn tokenizes_tricky_operator_corpus() {
-        let tokens = token_kinds("a += b -= c *= d /= e .. f ..= g ... h :: i -> j => k");
+        let tokens = token_kinds("a += b -= c *= d /= e %= f .. g ..= h ... i :: j -> k => l");
         assert!(matches!(tokens[0], Token::Ident("a")));
         assert!(matches!(tokens[1], Token::PlusEq));
         assert!(matches!(tokens[3], Token::MinusEq));
         assert!(matches!(tokens[5], Token::StarEq));
         assert!(matches!(tokens[7], Token::SlashEq));
-        assert!(matches!(tokens[9], Token::DotDot));
-        assert!(matches!(tokens[11], Token::DotDotEq));
-        assert!(matches!(tokens[13], Token::Ellipsis));
-        assert!(matches!(tokens[15], Token::ColonColon));
-        assert!(matches!(tokens[17], Token::Arrow));
-        assert!(matches!(tokens[19], Token::FatArrow));
+        assert!(matches!(tokens[9], Token::PercentEq));
+        assert!(matches!(tokens[11], Token::DotDot));
+        assert!(matches!(tokens[13], Token::DotDotEq));
+        assert!(matches!(tokens[15], Token::Ellipsis));
+        assert!(matches!(tokens[17], Token::ColonColon));
+        assert!(matches!(tokens[19], Token::Arrow));
+        assert!(matches!(tokens[21], Token::FatArrow));
     }
 
     #[test]

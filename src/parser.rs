@@ -1595,6 +1595,7 @@ impl<'src> Parser<'src> {
             Token::MinusEq => Some(BinOp::Sub),
             Token::StarEq => Some(BinOp::Mul),
             Token::SlashEq => Some(BinOp::Div),
+            Token::PercentEq => Some(BinOp::Mod),
             _ => None,
         }
     }
@@ -3208,6 +3209,42 @@ mod tests {
             panic!("Expected integer rhs");
         };
         assert_eq!(rhs, 1);
+    }
+
+    #[test]
+    fn test_parse_compound_assign_mod_target() {
+        let source = r#"
+            function main(): None {
+                x: Integer = 7;
+                x %= 3;
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse modulo compound assignment");
+        let Decl::Function(func) = &program.declarations[0].node else {
+            panic!("Expected function declaration");
+        };
+
+        let Stmt::Assign { target, value } = &func.body[1].node else {
+            panic!("Expected assign statement");
+        };
+        let Expr::Ident(target_name) = &target.node else {
+            panic!("Expected assign target ident");
+        };
+        assert_eq!(target_name, "x");
+
+        let Expr::Binary { op, left, right } = &value.node else {
+            panic!("Expected desugared binary expression");
+        };
+        assert_eq!(*op, BinOp::Mod);
+        let Expr::Ident(left_name) = &left.node else {
+            panic!("Expected left ident");
+        };
+        let Expr::Literal(Literal::Integer(rhs)) = right.node else {
+            panic!("Expected integer rhs");
+        };
+        assert_eq!(left_name, "x");
+        assert_eq!(rhs, 3);
     }
 
     #[test]

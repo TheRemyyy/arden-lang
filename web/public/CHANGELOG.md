@@ -22,7 +22,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - immutable dereference assignments like `*r = 2` are now rejected consistently for `&T` instead of silently writing through a read-only reference path
   - indexed assignments through borrowed mutable containers, such as `rxs[0] = 2`, `rm["k"] = 7`, and nested forms like `rb.items[0] = 3`, now mutate the underlying storage correctly instead of being rejected or codegening against the reference slot
   - immutable borrowed container assignments like `view[0] = 2` and `lookup["k"] = 7` now fail with a dedicated immutable-reference diagnostic instead of incorrectly behaving like plain immutable-owner assignment
-  - compound assignments on side-effectful lvalues such as `factory.make()[0] += 2`, `factory.make_box().value += 2`, and `factory.make_map()["k"] += 2` now evaluate the target only once instead of re-running the call path for both the load and the store
+  - compound assignments on side-effectful lvalues such as `factory.make()[0] += 2`, `factory.make_box().value += 2`, and `factory.make_map()[key()] += 2` now evaluate both the receiver path and the index/key expression only once instead of re-running them for both the load and the store
+- Fixed missing modulo compound-assignment syntax support:
+  - `%=` now tokenizes, parses, and codegens like the other compound assignment operators instead of failing because the lexer/parser only supported `+=`, `-=`, `*=`, and `/=`
+- Fixed float modulo codegen parity with the accepted numeric operator surface:
+  - `Float` `%` and `%=` expressions such as `5.5 % 2.0` and `value %= 2.0` now lower to LLVM floating-point remainder instead of failing late with `Codegen error: Invalid float operation`
+- Fixed `%=` lowering for side-effectful lvalues:
+  - patterns like `factory.make_map()[key()] %= 4` now evaluate the receiver path and key expression only once instead of re-running them during the desugared load/store sequence
+- Fixed mixed `Integer`/`Float` binary operator codegen:
+  - expressions like `1 + 2.5`, `3.0 * 2`, and `1 < 1.5` now lower through the same numeric promotion rules already accepted by the typechecker instead of failing late with `Type mismatch in binary operation`
+- Fixed asymmetric mixed-numeric equality typechecking:
+  - `1 == 1.0` and `1 != 2.0` now typecheck the same way as `1.0 == 1` and `2.0 != 1` instead of rejecting only the `Integer`-on-the-left form
+- Fixed mixed-numeric common-type inference across `if` expressions and numeric stdlib helpers:
+  - `if (cond) { 1 } else { 2.5 }` now infers `Float` instead of failing with a branch type mismatch when the `Integer` branch appears first
+  - `Math.min(1, 2.5)` and `Math.max(2, 1.5)` now accept either operand order and infer `Float` consistently instead of rejecting only the `Integer, Float` form
 - Fixed incorrect unconditional tail-call marking on ordinary user-function calls:
   - non-tail calls are no longer emitted with LLVM `tail` hints, which had let the optimizer miscompile stack/reference-sensitive code paths
   - passing `&mut` locals into ordinary helper functions now preserves caller-visible mutations instead of being optimized into stale reads
