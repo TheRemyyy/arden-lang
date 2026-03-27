@@ -36,6 +36,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed mixed-numeric common-type inference across `if` expressions and numeric stdlib helpers:
   - `if (cond) { 1 } else { 2.5 }` now infers `Float` instead of failing with a branch type mismatch when the `Integer` branch appears first
   - `Math.min(1, 2.5)` and `Math.max(2, 1.5)` now accept either operand order and infer `Float` consistently instead of rejecting only the `Integer, Float` form
+- Fixed mixed-numeric `match` expression arm merging:
+  - `match` expressions such as `match (kind) { A => 1, B => 2.5 }` now infer `Float` instead of failing when the `Integer` arm appears first
+- Fixed mixed-numeric `assert_eq` / `assert_ne` runtime lowering:
+  - helpers like `assert_eq(1, 1.0)` and `assert_ne(1, 2.0)` now compare numerically instead of falling into the string-compare fallback and crashing the process
+- Fixed mixed-numeric literal pattern matching:
+  - `match (1.0) { 1 => ... }` and `match (1) { 1.0 => ... }` now both typecheck and compare numerically instead of either missing the arm at runtime or rejecting only one operand order
+- Fixed `Integer -> Float` coercion at ordinary function call boundaries:
+  - calls like `echo(1)` for `function echo(value: Float): Float` now pass a real `Float` argument at runtime instead of typechecking successfully but delivering the wrong value through the raw call ABI
+  - the same fix now also applies to constructors and class methods such as `Boxed(2)` and `box.scale(3)` when their parameters are declared as `Float`
+- Fixed `Integer -> Float` coercion for `List<Float>` mutation methods:
+  - operations like `xs.push(1)` and `xs.set(0, 2)` now store real `Float` values instead of typechecking successfully but writing the raw integer representation into list storage
+- Fixed `Integer -> Float` coercion for typed lvalue assignment paths:
+  - assignments like `xs[0] = 5`, `m["k"] = 6`, and nested writes such as `box.items[0] = 7` now honor the lvalue element type during codegen instead of storing the raw integer representation into `Float` storage
+- Fixed `Integer` arguments for unary float math helpers:
+  - `Math.floor(2)`, `Math.ceil(2)`, and `Math.round(2)` now promote the integer argument before calling the runtime math intrinsic instead of returning the wrong value despite typechecking successfully
+- Fixed conversion builtin boundary validation and documented string parsing:
+  - `to_int("100")` now parses decimal strings as documented instead of compiling successfully and returning the wrong runtime value
+  - invalid conversion calls such as `to_int(true)` and `to_float("8")` are now rejected during typechecking instead of being accepted with nonsensical runtime lowering
+- Fixed `to_string(...)` crash paths on complex values:
+  - unsupported complex values such as `Option.some(1)` are now rejected during typechecking instead of compiling successfully and crashing through the `%s` fallback at runtime
+  - `to_string(None)` now produces `"None"` instead of formatting the internal sentinel integer value
+- Fixed scalar display formatting for `Char`, string interpolation, and `Math.abs` overflow:
+  - `to_string('b')` and `to_string('🚀')` now produce the actual UTF-8 character instead of formatting the codepoint as an integer
+  - string interpolation now formats `Boolean`, `Char`, and `None` using the same user-facing representation as `to_string(...)` instead of emitting `1`, codepoints, or sentinel integers
+  - unsupported complex interpolation values such as `"{Option.some(1)}"` are now rejected during typechecking instead of compiling into unsafe `%s` formatting paths
+  - `Math.abs()` on the minimum `Integer` value now fails fast with a direct runtime error instead of overflowing back to a negative result
 - Fixed incorrect unconditional tail-call marking on ordinary user-function calls:
   - non-tail calls are no longer emitted with LLVM `tail` hints, which had let the optimizer miscompile stack/reference-sensitive code paths
   - passing `&mut` locals into ordinary helper functions now preserves caller-visible mutations instead of being optimized into stale reads

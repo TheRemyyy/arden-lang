@@ -527,6 +527,19 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, fn_type, None)
     }
 
+    pub fn get_or_declare_strtoll(&self) -> FunctionValue<'ctx> {
+        let name = "strtoll";
+        if let Some(f) = self.module.get_function(name) {
+            return f;
+        }
+        let ptr = self.context.ptr_type(AddressSpace::default());
+        let fn_type = self.context.i64_type().fn_type(
+            &[ptr.into(), ptr.into(), self.context.i32_type().into()],
+            false,
+        );
+        self.module.add_function(name, fn_type, None)
+    }
+
     pub fn get_or_declare_strncmp(&self) -> FunctionValue<'ctx> {
         let name = "strncmp";
         if let Some(f) = self.module.get_function(name) {
@@ -1070,22 +1083,44 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Pattern::Literal(lit) => {
                     let pattern_val = self.compile_literal(lit)?;
-                    let cond = if val.is_int_value() && pattern_val.is_int_value() {
+                    let cond = if val.is_float_value() || pattern_val.is_float_value() {
+                        let match_val = if val.is_float_value() {
+                            val.into_float_value()
+                        } else {
+                            self.builder
+                                .build_signed_int_to_float(
+                                    val.into_int_value(),
+                                    self.context.f64_type(),
+                                    "match_expr_lit_lf",
+                                )
+                                .unwrap()
+                        };
+                        let pattern_float = if pattern_val.is_float_value() {
+                            pattern_val.into_float_value()
+                        } else {
+                            self.builder
+                                .build_signed_int_to_float(
+                                    pattern_val.into_int_value(),
+                                    self.context.f64_type(),
+                                    "match_expr_lit_rf",
+                                )
+                                .unwrap()
+                        };
+                        self.builder
+                            .build_float_compare(
+                                FloatPredicate::OEQ,
+                                match_val,
+                                pattern_float,
+                                "match_expr_float_eq",
+                            )
+                            .unwrap()
+                    } else if val.is_int_value() && pattern_val.is_int_value() {
                         self.builder
                             .build_int_compare(
                                 IntPredicate::EQ,
                                 val.into_int_value(),
                                 pattern_val.into_int_value(),
                                 "match_expr_lit_eq",
-                            )
-                            .unwrap()
-                    } else if val.is_float_value() && pattern_val.is_float_value() {
-                        self.builder
-                            .build_float_compare(
-                                FloatPredicate::OEQ,
-                                val.into_float_value(),
-                                pattern_val.into_float_value(),
-                                "match_expr_float_eq",
                             )
                             .unwrap()
                     } else if val.is_pointer_value() && pattern_val.is_pointer_value() {

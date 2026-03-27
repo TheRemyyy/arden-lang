@@ -7036,7 +7036,8 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
 
-                let val = self.compile_expr(&value.node)?;
+                let target_ty = self.infer_expr_type(&target.node, &[]);
+                let val = self.compile_expr_with_expected_type(&value.node, &target_ty)?;
                 let ptr = self.compile_lvalue(&target.node)?;
                 self.builder.build_store(ptr, val).unwrap();
             }
@@ -7643,22 +7644,44 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Pattern::Literal(lit) => {
                     let pattern_val = self.compile_literal(lit)?;
-                    let cond = if val.is_int_value() && pattern_val.is_int_value() {
+                    let cond = if val.is_float_value() || pattern_val.is_float_value() {
+                        let match_val = if val.is_float_value() {
+                            val.into_float_value()
+                        } else {
+                            self.builder
+                                .build_signed_int_to_float(
+                                    val.into_int_value(),
+                                    self.context.f64_type(),
+                                    "match_lit_lf",
+                                )
+                                .unwrap()
+                        };
+                        let pattern_float = if pattern_val.is_float_value() {
+                            pattern_val.into_float_value()
+                        } else {
+                            self.builder
+                                .build_signed_int_to_float(
+                                    pattern_val.into_int_value(),
+                                    self.context.f64_type(),
+                                    "match_lit_rf",
+                                )
+                                .unwrap()
+                        };
+                        self.builder
+                            .build_float_compare(
+                                FloatPredicate::OEQ,
+                                match_val,
+                                pattern_float,
+                                "match_float_eq",
+                            )
+                            .unwrap()
+                    } else if val.is_int_value() && pattern_val.is_int_value() {
                         self.builder
                             .build_int_compare(
                                 IntPredicate::EQ,
                                 val.into_int_value(),
                                 pattern_val.into_int_value(),
                                 "match_lit_eq",
-                            )
-                            .unwrap()
-                    } else if val.is_float_value() && pattern_val.is_float_value() {
-                        self.builder
-                            .build_float_compare(
-                                FloatPredicate::OEQ,
-                                val.into_float_value(),
-                                pattern_val.into_float_value(),
-                                "match_float_eq",
                             )
                             .unwrap()
                     } else if val.is_pointer_value() && pattern_val.is_pointer_value() {
@@ -8581,6 +8604,452 @@ impl<'ctx> Codegen<'ctx> {
         Ok(value)
     }
 
+    fn compile_expr_for_llvm_param(
+        &mut self,
+        expr: &Expr,
+        expected_param_ty: BasicMetadataTypeEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let value = self.compile_expr(expr)?;
+        Ok(match expected_param_ty {
+            BasicMetadataTypeEnum::FloatType(_) if value.is_int_value() => self
+                .builder
+                .build_signed_int_to_float(value.into_int_value(), self.context.f64_type(), "apf")
+                .unwrap()
+                .into(),
+            _ => value,
+        })
+    }
+
+    fn compile_char_to_string(&mut self, codepoint: IntValue<'ctx>) -> Result<PointerValue<'ctx>> {
+        let malloc = self.get_or_declare_malloc();
+        let current_fn = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("char-to-string used outside function"))?;
+        let i8_type = self.context.i8_type();
+        let i32_type = self.context.i32_type();
+        let i64_type = self.context.i64_type();
+        let buf_call = self
+            .builder
+            .build_call(
+                malloc,
+                &[i64_type.const_int(5, false).into()],
+                "char_str_buf",
+            )
+            .unwrap();
+        let buffer = self.extract_call_value(buf_call).into_pointer_value();
+
+        let one_byte_bb = self.context.append_basic_block(current_fn, "char_str_one");
+        let two_byte_bb = self.context.append_basic_block(current_fn, "char_str_two");
+        let three_byte_bb = self
+            .context
+            .append_basic_block(current_fn, "char_str_three");
+        let four_byte_bb = self.context.append_basic_block(current_fn, "char_str_four");
+        let done_bb = self.context.append_basic_block(current_fn, "char_str_done");
+
+        let is_one_byte = self
+            .builder
+            .build_int_compare(
+                IntPredicate::ULT,
+                codepoint,
+                i32_type.const_int(0x80, false),
+                "char_str_is_one_byte",
+            )
+            .unwrap();
+        let is_two_byte = self
+            .builder
+            .build_int_compare(
+                IntPredicate::ULT,
+                codepoint,
+                i32_type.const_int(0x800, false),
+                "char_str_is_two_byte",
+            )
+            .unwrap();
+        let is_three_byte = self
+            .builder
+            .build_int_compare(
+                IntPredicate::ULT,
+                codepoint,
+                i32_type.const_int(0x10000, false),
+                "char_str_is_three_byte",
+            )
+            .unwrap();
+        let not_one_byte_bb = self
+            .context
+            .append_basic_block(current_fn, "char_str_not_one");
+        let not_two_byte_bb = self
+            .context
+            .append_basic_block(current_fn, "char_str_not_two");
+
+        self.builder
+            .build_conditional_branch(is_one_byte, one_byte_bb, not_one_byte_bb)
+            .unwrap();
+
+        self.builder.position_at_end(not_one_byte_bb);
+        self.builder
+            .build_conditional_branch(is_two_byte, two_byte_bb, not_two_byte_bb)
+            .unwrap();
+
+        self.builder.position_at_end(not_two_byte_bb);
+        self.builder
+            .build_conditional_branch(is_three_byte, three_byte_bb, four_byte_bb)
+            .unwrap();
+
+        self.builder.position_at_end(one_byte_bb);
+        let byte0 = self
+            .builder
+            .build_int_truncate(codepoint, i8_type, "char_str_b0")
+            .unwrap();
+        let byte0_ptr = unsafe {
+            self.builder
+                .build_gep(i8_type, buffer, &[i64_type.const_zero()], "char_str_b0_ptr")
+                .unwrap()
+        };
+        let byte1_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    i8_type,
+                    buffer,
+                    &[i64_type.const_int(1, false)],
+                    "char_str_term1_ptr",
+                )
+                .unwrap()
+        };
+        self.builder.build_store(byte0_ptr, byte0).unwrap();
+        self.builder
+            .build_store(byte1_ptr, i8_type.const_zero())
+            .unwrap();
+        self.builder.build_unconditional_branch(done_bb).unwrap();
+
+        self.builder.position_at_end(two_byte_bb);
+        let top5 = self
+            .builder
+            .build_right_shift(
+                codepoint,
+                i32_type.const_int(6, false),
+                false,
+                "char_str_top5",
+            )
+            .unwrap();
+        let byte0 = self
+            .builder
+            .build_or(top5, i32_type.const_int(0xC0, false), "char_str_two_b0")
+            .unwrap();
+        let low6 = self
+            .builder
+            .build_and(codepoint, i32_type.const_int(0x3F, false), "char_str_low6")
+            .unwrap();
+        let byte1 = self
+            .builder
+            .build_or(low6, i32_type.const_int(0x80, false), "char_str_two_b1")
+            .unwrap();
+        for (idx, byte) in [(0u64, byte0), (1u64, byte1)] {
+            let ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        i8_type,
+                        buffer,
+                        &[i64_type.const_int(idx, false)],
+                        "char_str_ptr",
+                    )
+                    .unwrap()
+            };
+            let stored = self
+                .builder
+                .build_int_truncate(byte, i8_type, "char_str_byte")
+                .unwrap();
+            self.builder.build_store(ptr, stored).unwrap();
+        }
+        let term_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    i8_type,
+                    buffer,
+                    &[i64_type.const_int(2, false)],
+                    "char_str_term2_ptr",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(term_ptr, i8_type.const_zero())
+            .unwrap();
+        self.builder.build_unconditional_branch(done_bb).unwrap();
+
+        self.builder.position_at_end(three_byte_bb);
+        let top4 = self
+            .builder
+            .build_right_shift(
+                codepoint,
+                i32_type.const_int(12, false),
+                false,
+                "char_str_top4",
+            )
+            .unwrap();
+        let byte0 = self
+            .builder
+            .build_or(top4, i32_type.const_int(0xE0, false), "char_str_three_b0")
+            .unwrap();
+        let mid6 = self
+            .builder
+            .build_and(
+                self.builder
+                    .build_right_shift(
+                        codepoint,
+                        i32_type.const_int(6, false),
+                        false,
+                        "char_str_mid_shift",
+                    )
+                    .unwrap(),
+                i32_type.const_int(0x3F, false),
+                "char_str_mid6",
+            )
+            .unwrap();
+        let byte1 = self
+            .builder
+            .build_or(mid6, i32_type.const_int(0x80, false), "char_str_three_b1")
+            .unwrap();
+        let low6 = self
+            .builder
+            .build_and(
+                codepoint,
+                i32_type.const_int(0x3F, false),
+                "char_str_three_low6",
+            )
+            .unwrap();
+        let byte2 = self
+            .builder
+            .build_or(low6, i32_type.const_int(0x80, false), "char_str_three_b2")
+            .unwrap();
+        for (idx, byte) in [(0u64, byte0), (1u64, byte1), (2u64, byte2)] {
+            let ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        i8_type,
+                        buffer,
+                        &[i64_type.const_int(idx, false)],
+                        "char_str_ptr",
+                    )
+                    .unwrap()
+            };
+            let stored = self
+                .builder
+                .build_int_truncate(byte, i8_type, "char_str_byte")
+                .unwrap();
+            self.builder.build_store(ptr, stored).unwrap();
+        }
+        let term_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    i8_type,
+                    buffer,
+                    &[i64_type.const_int(3, false)],
+                    "char_str_term3_ptr",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(term_ptr, i8_type.const_zero())
+            .unwrap();
+        self.builder.build_unconditional_branch(done_bb).unwrap();
+
+        self.builder.position_at_end(four_byte_bb);
+        let top3 = self
+            .builder
+            .build_right_shift(
+                codepoint,
+                i32_type.const_int(18, false),
+                false,
+                "char_str_top3",
+            )
+            .unwrap();
+        let byte0 = self
+            .builder
+            .build_or(top3, i32_type.const_int(0xF0, false), "char_str_four_b0")
+            .unwrap();
+        let high6 = self
+            .builder
+            .build_and(
+                self.builder
+                    .build_right_shift(
+                        codepoint,
+                        i32_type.const_int(12, false),
+                        false,
+                        "char_str_high_shift",
+                    )
+                    .unwrap(),
+                i32_type.const_int(0x3F, false),
+                "char_str_high6",
+            )
+            .unwrap();
+        let byte1 = self
+            .builder
+            .build_or(high6, i32_type.const_int(0x80, false), "char_str_four_b1")
+            .unwrap();
+        let mid6 = self
+            .builder
+            .build_and(
+                self.builder
+                    .build_right_shift(
+                        codepoint,
+                        i32_type.const_int(6, false),
+                        false,
+                        "char_str_four_mid_shift",
+                    )
+                    .unwrap(),
+                i32_type.const_int(0x3F, false),
+                "char_str_four_mid6",
+            )
+            .unwrap();
+        let byte2 = self
+            .builder
+            .build_or(mid6, i32_type.const_int(0x80, false), "char_str_four_b2")
+            .unwrap();
+        let low6 = self
+            .builder
+            .build_and(
+                codepoint,
+                i32_type.const_int(0x3F, false),
+                "char_str_four_low6",
+            )
+            .unwrap();
+        let byte3 = self
+            .builder
+            .build_or(low6, i32_type.const_int(0x80, false), "char_str_four_b3")
+            .unwrap();
+        for (idx, byte) in [(0u64, byte0), (1u64, byte1), (2u64, byte2), (3u64, byte3)] {
+            let ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        i8_type,
+                        buffer,
+                        &[i64_type.const_int(idx, false)],
+                        "char_str_ptr",
+                    )
+                    .unwrap()
+            };
+            let stored = self
+                .builder
+                .build_int_truncate(byte, i8_type, "char_str_byte")
+                .unwrap();
+            self.builder.build_store(ptr, stored).unwrap();
+        }
+        let term_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    i8_type,
+                    buffer,
+                    &[i64_type.const_int(4, false)],
+                    "char_str_term4_ptr",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(term_ptr, i8_type.const_zero())
+            .unwrap();
+        self.builder.build_unconditional_branch(done_bb).unwrap();
+
+        self.builder.position_at_end(done_bb);
+        Ok(buffer)
+    }
+
+    fn compile_value_to_display_string(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        source_ty: &Type,
+    ) -> Result<PointerValue<'ctx>> {
+        let display_ty = self.deref_codegen_type(source_ty).clone();
+        match &display_ty {
+            Type::String => Ok(value.into_pointer_value()),
+            Type::Boolean => {
+                let int_val = value.into_int_value();
+                let true_s = self.context.const_string(b"true", true);
+                let false_s = self.context.const_string(b"false", true);
+
+                let t_name = format!("str.bool.true.{}", self.str_counter);
+                let f_name = format!("str.bool.false.{}", self.str_counter);
+                self.str_counter += 1;
+
+                let t_glob = self.module.add_global(true_s.get_type(), None, &t_name);
+                t_glob.set_linkage(Linkage::Private);
+                t_glob.set_initializer(&true_s);
+                t_glob.set_constant(true);
+
+                let f_glob = self.module.add_global(false_s.get_type(), None, &f_name);
+                f_glob.set_linkage(Linkage::Private);
+                f_glob.set_initializer(&false_s);
+                f_glob.set_constant(true);
+
+                Ok(self
+                    .builder
+                    .build_select(
+                        int_val,
+                        t_glob.as_pointer_value(),
+                        f_glob.as_pointer_value(),
+                        "bool_str",
+                    )
+                    .unwrap()
+                    .into_pointer_value())
+            }
+            Type::None => {
+                let none_s = self.context.const_string(b"None", true);
+                let name = format!("str.none.{}", self.str_counter);
+                self.str_counter += 1;
+                let global = self.module.add_global(none_s.get_type(), None, &name);
+                global.set_linkage(Linkage::Private);
+                global.set_initializer(&none_s);
+                global.set_constant(true);
+                Ok(global.as_pointer_value())
+            }
+            Type::Char => self.compile_char_to_string(value.into_int_value()),
+            Type::Integer | Type::Float => {
+                let sprintf = self.get_or_declare_sprintf();
+                let malloc = self.get_or_declare_malloc();
+                let buffer_call = self
+                    .builder
+                    .build_call(
+                        malloc,
+                        &[self.context.i64_type().const_int(64, false).into()],
+                        "display_buf",
+                    )
+                    .unwrap();
+                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
+
+                let (fmt, print_arg): (&str, BasicMetadataValueEnum) = match &display_ty {
+                    Type::Integer => {
+                        let promoted = self
+                            .builder
+                            .build_int_s_extend(
+                                value.into_int_value(),
+                                self.context.i64_type(),
+                                "display_i64",
+                            )
+                            .unwrap();
+                        ("%lld", promoted.into())
+                    }
+                    Type::Float => ("%f", value.into()),
+                    _ => unreachable!(),
+                };
+
+                let fmt_val = self.context.const_string(fmt.as_bytes(), true);
+                let fmt_name = format!("fmt.{}", self.str_counter);
+                self.str_counter += 1;
+                let fmt_global = self.module.add_global(fmt_val.get_type(), None, &fmt_name);
+                fmt_global.set_linkage(Linkage::Private);
+                fmt_global.set_initializer(&fmt_val);
+                self.builder
+                    .build_call(
+                        sprintf,
+                        &[buffer.into(), fmt_global.as_pointer_value().into(), print_arg],
+                        "sprintf",
+                    )
+                    .unwrap();
+                Ok(buffer)
+            }
+            _ => Err(CodegenError::new(
+                "display formatting currently supports Integer, Float, Boolean, String, Char, and None",
+            )),
+        }
+    }
+
     pub fn compile_if_expr(
         &mut self,
         condition: &Expr,
@@ -9264,8 +9733,8 @@ impl<'ctx> Codegen<'ctx> {
                 };
 
                 let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
-                for a in args {
-                    compiled_args.push(self.compile_expr(&a.node)?);
+                for (arg, param_ty) in args.iter().zip(param_types.iter()) {
+                    compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
                 }
 
                 let args_meta: Vec<BasicMetadataValueEnum> =
@@ -9368,6 +9837,8 @@ impl<'ctx> Codegen<'ctx> {
                 // First check if it's a function pointer/local variable
                 if let Some(var) = self.variables.get(name) {
                     if let Type::Function(param_types, ret_type) = &var.ty {
+                        let param_types = param_types.clone();
+                        let ret_type = ret_type.clone();
                         let closure_val = self
                             .builder
                             .build_load(self.llvm_type(&var.ty), var.ptr, name)
@@ -9385,11 +9856,11 @@ impl<'ctx> Codegen<'ctx> {
                             .unwrap();
 
                         // Construct FunctionType (including env_ptr as first arg)
-                        let llvm_ret = self.llvm_type(ret_type);
+                        let llvm_ret = self.llvm_type(&ret_type);
                         let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![
                             self.context.ptr_type(AddressSpace::default()).into(), // env_ptr
                         ];
-                        for p in param_types {
+                        for p in &param_types {
                             llvm_params.push(self.llvm_type(p).into());
                         }
 
@@ -9405,8 +9876,9 @@ impl<'ctx> Codegen<'ctx> {
                         };
 
                         let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
-                        for a in args {
-                            compiled_args.push(self.compile_expr(&a.node)?);
+                        for (arg, param_ty) in args.iter().zip(param_types.iter()) {
+                            compiled_args
+                                .push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
                         }
 
                         let args_meta: Vec<BasicMetadataValueEnum> =
@@ -9464,8 +9936,18 @@ impl<'ctx> Codegen<'ctx> {
             );
         }
 
-        for a in args {
-            compiled_args.push(self.compile_expr(&a.node)?);
+        let expected_param_types = match self.infer_expr_type(callee, &[]) {
+            Type::Function(param_types, _) => Some(param_types),
+            _ => None,
+        };
+        if let Some(param_types) = expected_param_types {
+            for (arg, param_ty) in args.iter().zip(param_types.iter()) {
+                compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+            }
+        } else {
+            for a in args {
+                compiled_args.push(self.compile_expr(&a.node)?);
+            }
         }
 
         let args_meta: Vec<BasicMetadataValueEnum> =
@@ -9671,8 +10153,9 @@ impl<'ctx> Codegen<'ctx> {
                 .into(), // env_ptr
             obj_val, // this
         ];
-        for a in args {
-            compiled_args.push(self.compile_expr(&a.node)?);
+        let llvm_param_types = func.get_type().get_param_types();
+        for (arg, llvm_param_ty) in args.iter().zip(llvm_param_types.into_iter().skip(2)) {
+            compiled_args.push(self.compile_expr_for_llvm_param(&arg.node, llvm_param_ty)?);
         }
 
         let args_meta: Vec<BasicMetadataValueEnum> =
@@ -11726,8 +12209,9 @@ impl<'ctx> Codegen<'ctx> {
                 .const_null()
                 .into(), // env_ptr
         ];
-        for a in args {
-            compiled_args.push(self.compile_expr(&a.node)?);
+        let llvm_param_types = func.get_type().get_param_types();
+        for (arg, llvm_param_ty) in args.iter().zip(llvm_param_types.into_iter().skip(1)) {
+            compiled_args.push(self.compile_expr_for_llvm_param(&arg.node, llvm_param_ty)?);
         }
 
         let args_meta: Vec<BasicMetadataValueEnum> =
@@ -11801,17 +12285,11 @@ impl<'ctx> Codegen<'ctx> {
                     fmt_str.push_str(&s.replace('%', "%%"));
                 }
                 StringPart::Expr(expr) => {
-                    let val = self.compile_expr(&expr.node)?;
-                    if val.is_int_value() {
-                        fmt_str.push_str("%lld");
-                        args.push(val.into());
-                    } else if val.is_float_value() {
-                        fmt_str.push_str("%f");
-                        args.push(val.into());
-                    } else {
-                        fmt_str.push_str("%s");
-                        args.push(val.into());
-                    }
+                    let expr_ty = self.infer_expr_type(&expr.node, &[]);
+                    let val = self.compile_expr_with_expected_type(&expr.node, &expr_ty)?;
+                    let display = self.compile_value_to_display_string(val, &expr_ty)?;
+                    fmt_str.push_str("%s");
+                    args.push(display.into());
                 }
             }
         }
@@ -11996,6 +12474,29 @@ impl<'ctx> Codegen<'ctx> {
                 let val = self.compile_expr(&args[0].node)?;
                 if val.is_int_value() {
                     let v = val.into_int_value();
+                    let current_fn = self
+                        .current_function
+                        .ok_or_else(|| CodegenError::new("Math.abs used outside function"))?;
+                    let overflow_bb = self
+                        .context
+                        .append_basic_block(current_fn, "math_abs_overflow");
+                    let ok_bb = self.context.append_basic_block(current_fn, "math_abs_ok");
+                    let min_value = self.context.i64_type().const_int(i64::MIN as u64, true);
+                    let is_min_value = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, v, min_value, "math_abs_is_min")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(is_min_value, overflow_bb, ok_bb)
+                        .unwrap();
+
+                    self.builder.position_at_end(overflow_bb);
+                    self.emit_runtime_error(
+                        "Math.abs() overflow on minimum Integer",
+                        "math_abs_min_overflow",
+                    )?;
+
+                    self.builder.position_at_end(ok_bb);
                     let is_neg = self
                         .builder
                         .build_int_compare(
@@ -12225,27 +12726,63 @@ impl<'ctx> Codegen<'ctx> {
             "Math__floor" => {
                 let val = self.compile_expr(&args[0].node)?;
                 let floor_fn = self.get_or_declare_math_func("floor", true);
+                let fval = if val.is_int_value() {
+                    self.builder
+                        .build_signed_int_to_float(
+                            val.into_int_value(),
+                            self.context.f64_type(),
+                            "tofloat",
+                        )
+                        .unwrap()
+                        .into()
+                } else {
+                    val
+                };
                 let call = self
                     .builder
-                    .build_call(floor_fn, &[val.into()], "floor")
+                    .build_call(floor_fn, &[fval.into()], "floor")
                     .unwrap();
                 Ok(Some(self.extract_call_value(call)))
             }
             "Math__ceil" => {
                 let val = self.compile_expr(&args[0].node)?;
                 let ceil_fn = self.get_or_declare_math_func("ceil", true);
+                let fval = if val.is_int_value() {
+                    self.builder
+                        .build_signed_int_to_float(
+                            val.into_int_value(),
+                            self.context.f64_type(),
+                            "tofloat",
+                        )
+                        .unwrap()
+                        .into()
+                } else {
+                    val
+                };
                 let call = self
                     .builder
-                    .build_call(ceil_fn, &[val.into()], "ceil")
+                    .build_call(ceil_fn, &[fval.into()], "ceil")
                     .unwrap();
                 Ok(Some(self.extract_call_value(call)))
             }
             "Math__round" => {
                 let val = self.compile_expr(&args[0].node)?;
                 let round_fn = self.get_or_declare_math_func("round", true);
+                let fval = if val.is_int_value() {
+                    self.builder
+                        .build_signed_int_to_float(
+                            val.into_int_value(),
+                            self.context.f64_type(),
+                            "tofloat",
+                        )
+                        .unwrap()
+                        .into()
+                } else {
+                    val
+                };
                 let call = self
                     .builder
-                    .build_call(round_fn, &[val.into()], "round")
+                    .build_call(round_fn, &[fval.into()], "round")
                     .unwrap();
                 Ok(Some(self.extract_call_value(call)))
             }
@@ -12368,86 +12905,37 @@ impl<'ctx> Codegen<'ctx> {
                         )
                         .unwrap();
                     Ok(Some(result.into()))
-                } else {
+                } else if val.is_pointer_value() {
+                    let strtoll = self.get_or_declare_strtoll();
+                    let call = self
+                        .builder
+                        .build_call(
+                            strtoll,
+                            &[
+                                val.into(),
+                                self.context
+                                    .ptr_type(AddressSpace::default())
+                                    .const_null()
+                                    .into(),
+                                self.context.i32_type().const_int(10, false).into(),
+                            ],
+                            "toint",
+                        )
+                        .unwrap();
+                    Ok(Some(self.extract_call_value(call)))
+                } else if val.is_int_value() {
                     Ok(Some(val))
+                } else {
+                    Err(CodegenError::new(
+                        "to_int() requires Integer, Float, or String runtime value",
+                    ))
                 }
             }
             "to_string" => {
-                let val = self.compile_expr(&args[0].node)?;
-
-                // Special handling for Booleans (i1 in LLVM)
-                if val.is_int_value() && val.into_int_value().get_type().get_bit_width() == 1 {
-                    let int_val = val.into_int_value();
-                    let true_s = self.context.const_string(b"true", true);
-                    let false_s = self.context.const_string(b"false", true);
-
-                    let t_name = format!("str.bool.true.{}", self.str_counter);
-                    let f_name = format!("str.bool.false.{}", self.str_counter);
-                    self.str_counter += 1;
-
-                    let t_glob = self.module.add_global(true_s.get_type(), None, &t_name);
-                    t_glob.set_linkage(Linkage::Private);
-                    t_glob.set_initializer(&true_s);
-                    t_glob.set_constant(true);
-
-                    let f_glob = self.module.add_global(false_s.get_type(), None, &f_name);
-                    f_glob.set_linkage(Linkage::Private);
-                    f_glob.set_initializer(&false_s);
-                    f_glob.set_constant(true);
-
-                    let res = self
-                        .builder
-                        .build_select(
-                            int_val,
-                            t_glob.as_pointer_value(),
-                            f_glob.as_pointer_value(),
-                            "bool_str",
-                        )
-                        .unwrap();
-                    return Ok(Some(res));
-                }
-
-                let sprintf = self.get_or_declare_sprintf();
-                let malloc = self.get_or_declare_malloc();
-
-                // Allocate buffer
-                let buffer_size = self.context.i64_type().const_int(64, false);
-                let buffer_call = self
-                    .builder
-                    .build_call(malloc, &[buffer_size.into()], "strbuf")
-                    .unwrap();
-                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
-
-                // Format string based on type
-                let (fmt, print_args): (&str, Vec<BasicMetadataValueEnum>) = if val.is_int_value() {
-                    // Promote to i64 for %lld
-                    let int_val = val.into_int_value();
-                    let promoted = self
-                        .builder
-                        .build_int_s_extend(int_val, self.context.i64_type(), "promoted")
-                        .unwrap();
-                    ("%lld", vec![promoted.into()])
-                } else if val.is_float_value() {
-                    ("%f", vec![val.into()])
-                } else {
-                    ("%s", vec![val.into()])
-                };
-
-                let fmt_val = self.context.const_string(fmt.as_bytes(), true);
-                let fmt_name = format!("fmt.{}", self.str_counter);
-                self.str_counter += 1;
-                let fmt_global = self.module.add_global(fmt_val.get_type(), None, &fmt_name);
-                fmt_global.set_linkage(Linkage::Private);
-                fmt_global.set_initializer(&fmt_val);
-
-                let mut sprintf_args: Vec<BasicMetadataValueEnum> =
-                    vec![buffer.into(), fmt_global.as_pointer_value().into()];
-                sprintf_args.extend(print_args);
-                self.builder
-                    .build_call(sprintf, &sprintf_args, "sprintf")
-                    .unwrap();
-
-                Ok(Some(buffer.into()))
+                let arg_ty = self.infer_expr_type(&args[0].node, &[]);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
+                let rendered = self.compile_value_to_display_string(val, &arg_ty)?;
+                Ok(Some(rendered.into()))
             }
 
             // String functions
@@ -14665,7 +15153,33 @@ impl<'ctx> Codegen<'ctx> {
                 let a = self.compile_expr(&args[0].node)?;
                 let b = self.compile_expr(&args[1].node)?;
 
-                let equal = if a.is_int_value() && b.is_int_value() {
+                let equal = if a.is_float_value() || b.is_float_value() {
+                    let av = if a.is_float_value() {
+                        a.into_float_value()
+                    } else {
+                        self.builder
+                            .build_signed_int_to_float(
+                                a.into_int_value(),
+                                self.context.f64_type(),
+                                "assert_eq_lf",
+                            )
+                            .unwrap()
+                    };
+                    let bv = if b.is_float_value() {
+                        b.into_float_value()
+                    } else {
+                        self.builder
+                            .build_signed_int_to_float(
+                                b.into_int_value(),
+                                self.context.f64_type(),
+                                "assert_eq_rf",
+                            )
+                            .unwrap()
+                    };
+                    self.builder
+                        .build_float_compare(FloatPredicate::OEQ, av, bv, "eq_cmp")
+                        .unwrap()
+                } else if a.is_int_value() && b.is_int_value() {
                     self.builder
                         .build_int_compare(
                             IntPredicate::EQ,
@@ -14674,16 +15188,7 @@ impl<'ctx> Codegen<'ctx> {
                             "eq_cmp",
                         )
                         .unwrap()
-                } else if a.is_float_value() && b.is_float_value() {
-                    self.builder
-                        .build_float_compare(
-                            FloatPredicate::OEQ,
-                            a.into_float_value(),
-                            b.into_float_value(),
-                            "eq_cmp",
-                        )
-                        .unwrap()
-                } else {
+                } else if a.is_pointer_value() && b.is_pointer_value() {
                     // String comparison
                     let strcmp = self.get_or_declare_strcmp();
                     let res = self
@@ -14699,6 +15204,10 @@ impl<'ctx> Codegen<'ctx> {
                             "eq_cmp",
                         )
                         .unwrap()
+                } else {
+                    return Err(CodegenError::new(
+                        "assert_eq() arguments must lower to comparable runtime values",
+                    ));
                 };
 
                 let current_fn = self.current_function.unwrap();
@@ -14744,7 +15253,33 @@ impl<'ctx> Codegen<'ctx> {
                 let a = self.compile_expr(&args[0].node)?;
                 let b = self.compile_expr(&args[1].node)?;
 
-                let not_equal = if a.is_int_value() && b.is_int_value() {
+                let not_equal = if a.is_float_value() || b.is_float_value() {
+                    let av = if a.is_float_value() {
+                        a.into_float_value()
+                    } else {
+                        self.builder
+                            .build_signed_int_to_float(
+                                a.into_int_value(),
+                                self.context.f64_type(),
+                                "assert_ne_lf",
+                            )
+                            .unwrap()
+                    };
+                    let bv = if b.is_float_value() {
+                        b.into_float_value()
+                    } else {
+                        self.builder
+                            .build_signed_int_to_float(
+                                b.into_int_value(),
+                                self.context.f64_type(),
+                                "assert_ne_rf",
+                            )
+                            .unwrap()
+                    };
+                    self.builder
+                        .build_float_compare(FloatPredicate::ONE, av, bv, "ne_cmp")
+                        .unwrap()
+                } else if a.is_int_value() && b.is_int_value() {
                     self.builder
                         .build_int_compare(
                             IntPredicate::NE,
@@ -14753,16 +15288,7 @@ impl<'ctx> Codegen<'ctx> {
                             "ne_cmp",
                         )
                         .unwrap()
-                } else if a.is_float_value() && b.is_float_value() {
-                    self.builder
-                        .build_float_compare(
-                            FloatPredicate::ONE,
-                            a.into_float_value(),
-                            b.into_float_value(),
-                            "ne_cmp",
-                        )
-                        .unwrap()
-                } else {
+                } else if a.is_pointer_value() && b.is_pointer_value() {
                     let strcmp = self.get_or_declare_strcmp();
                     let res = self
                         .builder
@@ -14777,6 +15303,10 @@ impl<'ctx> Codegen<'ctx> {
                             "ne_cmp",
                         )
                         .unwrap()
+                } else {
+                    return Err(CodegenError::new(
+                        "assert_ne() arguments must lower to comparable runtime values",
+                    ));
                 };
 
                 let current_fn = self.current_function.unwrap();

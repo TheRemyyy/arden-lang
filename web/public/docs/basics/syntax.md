@@ -32,6 +32,14 @@ function main(): None {
 }
 ```
 
+String interpolation embeds supported scalar expressions directly inside string literals:
+
+```apex
+println("{10} {true} {'🚀'} {None}");
+```
+
+Interpolation currently supports `Integer`, `Float`, `Boolean`, `String`, `Char`, and `None`.
+
 ## Semicolons
 
 Semicolons `;` are required at the end of statements.

@@ -247,6 +247,18 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
+    fn supports_display_scalar(ty: &ResolvedType) -> bool {
+        matches!(
+            ty,
+            ResolvedType::Integer
+                | ResolvedType::Float
+                | ResolvedType::Boolean
+                | ResolvedType::String
+                | ResolvedType::Char
+                | ResolvedType::None
+        )
+    }
+
     fn peel_reference_type(ty: &ResolvedType) -> &ResolvedType {
         match ty {
             ResolvedType::Ref(inner) | ResolvedType::MutRef(inner) => {
@@ -3186,7 +3198,10 @@ impl TypeChecker {
             }
             Pattern::Literal(lit) => {
                 let lit_type = self.literal_type(lit);
-                if !self.types_compatible(expected_type, &lit_type) {
+                if self
+                    .common_compatible_type(expected_type, &lit_type)
+                    .is_none()
+                {
                     self.error(
                         format!(
                             "Pattern type mismatch: expected {}, found {}",
@@ -3782,7 +3797,16 @@ impl TypeChecker {
             Expr::StringInterp(parts) => {
                 for part in parts {
                     if let StringPart::Expr(e) = part {
-                        self.check_expr(&e.node, e.span.clone());
+                        let ty = self.check_expr(&e.node, e.span.clone());
+                        if !Self::supports_display_scalar(&ty) {
+                            self.error(
+                                format!(
+                                    "String interpolation currently supports Integer, Float, Boolean, String, Char, and None, got {}",
+                                    ty
+                                ),
+                                e.span.clone(),
+                            );
+                        }
                     }
                 }
                 ResolvedType::String
@@ -3896,7 +3920,10 @@ impl TypeChecker {
                     self.exit_scope();
 
                     if let Some(expected) = &result_type {
-                        if !self.types_compatible(expected, &arm_type) {
+                        if let Some(common_type) = self.common_compatible_type(expected, &arm_type)
+                        {
+                            result_type = Some(common_type);
+                        } else {
                             self.error(
                                 format!(
                                     "Match expression arm type mismatch: expected {}, got {}",
@@ -5043,15 +5070,48 @@ impl TypeChecker {
                 Some(ResolvedType::Float)
             }
             "to_float" => {
-                self.check_arg_count(name, args, 1, span);
+                self.check_arg_count(name, args, 1, span.clone());
+                if !args.is_empty() {
+                    let t = self.check_expr(&args[0].node, args[0].span.clone());
+                    if !matches!(t, ResolvedType::Integer | ResolvedType::Float) {
+                        self.error(
+                            format!("to_float() requires Integer or Float, got {}", t),
+                            span,
+                        );
+                    }
+                }
                 Some(ResolvedType::Float)
             }
             "to_int" => {
-                self.check_arg_count(name, args, 1, span);
+                self.check_arg_count(name, args, 1, span.clone());
+                if !args.is_empty() {
+                    let t = self.check_expr(&args[0].node, args[0].span.clone());
+                    if !matches!(
+                        t,
+                        ResolvedType::Integer | ResolvedType::Float | ResolvedType::String
+                    ) {
+                        self.error(
+                            format!("to_int() requires Integer, Float, or String, got {}", t),
+                            span,
+                        );
+                    }
+                }
                 Some(ResolvedType::Integer)
             }
             "to_string" => {
-                self.check_arg_count(name, args, 1, span);
+                self.check_arg_count(name, args, 1, span.clone());
+                if !args.is_empty() {
+                    let t = self.check_expr(&args[0].node, args[0].span.clone());
+                    if !Self::supports_display_scalar(&t) {
+                        self.error(
+                            format!(
+                                "to_string() currently supports Integer, Float, Boolean, String, Char, and None, got {}",
+                                t
+                            ),
+                            span,
+                        );
+                    }
+                }
                 Some(ResolvedType::String)
             }
             "Str__len" => {

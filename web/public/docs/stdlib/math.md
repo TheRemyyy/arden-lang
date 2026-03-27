@@ -38,9 +38,11 @@ Returns the value of Euler's number (~2.71828).
 | `Math.min` | `<T>(a: T, b: T) -> T` | Smaller of two values. |
 | `Math.max` | `<T>(a: T, b: T) -> T` | Larger of two values. |
 
+`Math.abs(Integer)` fails fast on the minimum signed `Integer` value because its positive counterpart cannot be represented in the same type.
+
 ## Conversions
 
 | Function | Type Signature | Description |
 | :--- | :--- | :--- |
-| `to_int` | `(x: Float) -> Integer` | Float to Integer (truncates). |
-| `to_float` | `(x: Integer) -> Float` | Integer to Float. |
+| `to_int` | `(x: Float | Integer | String) -> Integer` | Float to Integer (truncates), Integer identity, or decimal String to Integer. |
+| `to_float` | `(x: Integer | Float) -> Float` | Integer to Float, or Float identity. |

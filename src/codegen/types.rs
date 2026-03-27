@@ -2573,7 +2573,11 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
 
                 // Store the value
-                let value = self.compile_expr(&args[0].node)?;
+                let inner_ty = match self.deref_codegen_type(list_ty) {
+                    Type::List(inner) => &**inner,
+                    _ => return Err(CodegenError::new("Expected List type")),
+                };
+                let value = self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 // Increment length
@@ -2891,7 +2895,11 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
 
                 // Store the value
-                let value = self.compile_expr(&args[1].node)?;
+                let inner_ty = match self.deref_codegen_type(list_ty) {
+                    Type::List(inner) => &**inner,
+                    _ => return Err(CodegenError::new("Expected List type")),
+                };
+                let value = self.compile_expr_with_expected_type(&args[1].node, inner_ty)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 Ok(self.context.i8_type().const_int(0, false).into())
@@ -3024,7 +3032,11 @@ impl<'ctx> Codegen<'ctx> {
                     )
                     .unwrap();
 
-                let value = self.compile_expr(&args[0].node)?;
+                let inner_ty = match self.deref_codegen_type(list_ty) {
+                    Type::List(inner) => &**inner,
+                    _ => return Err(CodegenError::new("Expected List type")),
+                };
+                let value = self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 let new_length = self
@@ -3241,7 +3253,11 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
 
                 // Store the value
-                let value = self.compile_expr(&args[1].node)?;
+                let inner_ty = match self.deref_codegen_type(list_ty) {
+                    Type::List(inner) => &**inner,
+                    _ => return Err(CodegenError::new("Expected List type")),
+                };
+                let value = self.compile_expr_with_expected_type(&args[1].node, inner_ty)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 Ok(self.context.i8_type().const_int(0, false).into())

@@ -17978,6 +17978,633 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_mixed_numeric_match_expression_runtime() {
+        let temp_root = make_temp_project_root("mixed-numeric-match-runtime");
+        let source_path = temp_root.join("mixed_numeric_match_runtime.apex");
+        let output_path = temp_root.join("mixed_numeric_match_runtime");
+        let source = r#"
+            enum Kind {
+                IntCase,
+                FloatCase
+            }
+
+            function main(): Integer {
+                kind: Kind = Kind.IntCase;
+                value: Float = match (kind) {
+                    Kind.IntCase => 1,
+                    Kind.FloatCase => 2.5,
+                };
+                return if (value == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric match expression should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric match expression binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mixed_numeric_assert_runtime() {
+        let temp_root = make_temp_project_root("mixed-numeric-assert-runtime");
+        let source_path = temp_root.join("mixed_numeric_assert_runtime.apex");
+        let output_path = temp_root.join("mixed_numeric_assert_runtime");
+        let source = r#"
+            function main(): Integer {
+                assert_eq(1, 1.0);
+                assert_eq(1.0, 1);
+                assert_ne(1, 2.0);
+                assert_ne(2.0, 1);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric assert helpers should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric assert binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mixed_numeric_match_literal_runtime() {
+        let temp_root = make_temp_project_root("mixed-numeric-match-literal-runtime");
+        let source_path = temp_root.join("mixed_numeric_match_literal_runtime.apex");
+        let output_path = temp_root.join("mixed_numeric_match_literal_runtime");
+        let source = r#"
+            function main(): Integer {
+                first: Integer = match (1.0) {
+                    1 => 0,
+                    _ => 1,
+                };
+                second: Integer = match (1) {
+                    1.0 => 0,
+                    _ => 2,
+                };
+                return if (first == 0 && second == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mixed numeric match literal should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mixed numeric match literal binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_argument_to_float_parameter_runtime() {
+        let temp_root = make_temp_project_root("int-to-float-param-runtime");
+        let source_path = temp_root.join("int_to_float_param_runtime.apex");
+        let output_path = temp_root.join("int_to_float_param_runtime");
+        let source = r#"
+            function echo(value: Float): Float {
+                return value;
+            }
+
+            function main(): Integer {
+                value: Float = echo(1);
+                return if (value == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer argument to float parameter should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled int-to-float parameter binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_argument_to_float_method_and_constructor_runtime() {
+        let temp_root = make_temp_project_root("int-to-float-method-ctor-runtime");
+        let source_path = temp_root.join("int_to_float_method_ctor_runtime.apex");
+        let output_path = temp_root.join("int_to_float_method_ctor_runtime");
+        let source = r#"
+            class Boxed {
+                value: Float;
+                constructor(value: Float) {
+                    this.value = value;
+                }
+                function scale(factor: Float): Float {
+                    return this.value * factor;
+                }
+            }
+
+            function main(): Integer {
+                box: Boxed = Boxed(2);
+                scaled: Float = box.scale(3);
+                return if (box.value == 2.0 && scaled == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer argument to float method and constructor should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled int-to-float method/constructor binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_argument_to_float_function_value_runtime() {
+        let temp_root = make_temp_project_root("int-to-float-function-value-runtime");
+        let source_path = temp_root.join("int_to_float_function_value_runtime.apex");
+        let output_path = temp_root.join("int_to_float_function_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                scale: (Float) -> Float = (value: Float) => value * 2.0;
+                result: Float = scale(3);
+                return if (result == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer argument to float function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled int-to-float function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_argument_to_float_container_methods_runtime() {
+        let temp_root = make_temp_project_root("int-to-float-container-methods-runtime");
+        let source_path = temp_root.join("int_to_float_container_methods_runtime.apex");
+        let output_path = temp_root.join("int_to_float_container_methods_runtime");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Float> = List<Float>();
+                xs.push(1);
+                xs.set(0, 4);
+
+                m: Map<String, Float> = Map<String, Float>();
+                m.set("k", 2);
+
+                s: Set<Float> = Set<Float>();
+                s.add(3);
+
+                return if (xs[0] == 4.0 && m["k"] == 2.0 && s.contains(3.0)) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer argument to float container methods should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled int-to-float container methods binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_assignment_into_float_containers_runtime() {
+        let temp_root = make_temp_project_root("int-to-float-container-assign-runtime");
+        let source_path = temp_root.join("int_to_float_container_assign_runtime.apex");
+        let output_path = temp_root.join("int_to_float_container_assign_runtime");
+        let source = r#"
+            class Boxed {
+                mut items: List<Float>;
+                constructor() {
+                    this.items = List<Float>();
+                    this.items.push(1.0);
+                }
+            }
+
+            function main(): Integer {
+                mut xs: List<Float> = List<Float>();
+                xs.push(1.0);
+                xs[0] = 5;
+
+                mut m: Map<String, Float> = Map<String, Float>();
+                m["k"] = 6;
+
+                mut box: Boxed = Boxed();
+                box.items[0] = 7;
+
+                return if (xs[0] == 5.0 && m["k"] == 6.0 && box.items[0] == 7.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer assignment into float containers should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled int-to-float container assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_assignment_into_float_fields_runtime() {
+        let temp_root = make_temp_project_root("int-to-float-field-assign-runtime");
+        let source_path = temp_root.join("int_to_float_field_assign_runtime.apex");
+        let output_path = temp_root.join("int_to_float_field_assign_runtime");
+        let source = r#"
+            class Boxed {
+                mut value: Float;
+                constructor() {
+                    this.value = 1;
+                }
+            }
+
+            function main(): Integer {
+                mut box: Boxed = Boxed();
+                box.value = 2;
+                return if (box.value == 2.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer assignment into float fields should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled int-to-float field assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_arguments_to_float_math_unary_runtime() {
+        let temp_root = make_temp_project_root("int-to-float-math-unary-runtime");
+        let source_path = temp_root.join("int_to_float_math_unary_runtime.apex");
+        let output_path = temp_root.join("int_to_float_math_unary_runtime");
+        let source = r#"
+            import std.math.*;
+
+            function main(): Integer {
+                floorValue: Float = Math.floor(2);
+                ceilValue: Float = Math.ceil(2);
+                roundValue: Float = Math.round(2);
+                return if (floorValue == 2.0 && ceilValue == 2.0 && roundValue == 2.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer arguments to float math unary functions should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled int-to-float math unary binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_integer_payloads_for_float_option_and_result_runtime() {
+        let temp_root = make_temp_project_root("int-to-float-option-result-runtime");
+        let source_path = temp_root.join("int_to_float_option_result_runtime.apex");
+        let output_path = temp_root.join("int_to_float_option_result_runtime");
+        let source = r#"
+            function main(): Integer {
+                maybe: Option<Float> = Option.some(1);
+                okv: Result<Float, String> = Result.ok(2);
+                errv: Result<String, Float> = Result.error(3);
+                errValue: Float = match (errv) {
+                    Result.Error(v) => v,
+                    _ => 0.0,
+                };
+
+                if (!maybe.is_some() || maybe.unwrap() != 1.0) { return 1; }
+                if (!okv.is_ok() || okv.unwrap() != 2.0) { return 2; }
+                if (!errv.is_error() || errValue != 3.0) { return 3; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("integer payloads for float option/result should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled int-to-float option/result binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_invalid_to_int_and_to_float_argument_types() {
+        let temp_root = make_temp_project_root("invalid-to-int-to-float-types");
+        let source_path = temp_root.join("invalid_to_int_to_float_types.apex");
+        let output_path = temp_root.join("invalid_to_int_to_float_types");
+        let source = r#"
+            function main(): Integer {
+                a: Integer = to_int(true);
+                b: Float = to_float("8");
+                return a + to_int(b);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("invalid to_int/to_float argument types should fail");
+        assert!(err.contains("to_int") || err.contains("to_float"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_to_int_conversion_runtime() {
+        let temp_root = make_temp_project_root("string-to-int-runtime");
+        let source_path = temp_root.join("string_to_int_runtime.apex");
+        let output_path = temp_root.join("string_to_int_runtime");
+        let source = r#"
+            function main(): Integer {
+                input: String = "100";
+                value: Integer = to_int(input);
+                return if (value == 100) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string to int conversion should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string to int binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_to_string_on_option_runtime() {
+        let temp_root = make_temp_project_root("to-string-option-runtime");
+        let source_path = temp_root.join("to_string_option_runtime.apex");
+        let output_path = temp_root.join("to_string_option_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                value: String = to_string(Option.some(1));
+                return if (Str.len(value) > 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("to_string on Option should fail until complex-value formatting exists");
+        assert!(err.contains("to_string"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_to_string_on_char_runtime() {
+        let temp_root = make_temp_project_root("to-string-char-runtime");
+        let source_path = temp_root.join("to_string_char_runtime.apex");
+        let output_path = temp_root.join("to_string_char_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                c: Char = 'b';
+                value: String = to_string(c);
+                return if (Str.compare(value, "b") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_string on Char should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_string Char binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_to_string_on_unicode_char_runtime() {
+        let temp_root = make_temp_project_root("to-string-unicode-char-runtime");
+        let source_path = temp_root.join("to_string_unicode_char_runtime.apex");
+        let output_path = temp_root.join("to_string_unicode_char_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                c: Char = '🚀';
+                value: String = to_string(c);
+                return if (Str.compare(value, "🚀") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_string on Unicode Char should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_string Unicode Char binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_str_ends_with_false_for_longer_suffix_runtime() {
+        let temp_root = make_temp_project_root("str-ends-with-longer-suffix-runtime");
+        let source_path = temp_root.join("str_ends_with_longer_suffix_runtime.apex");
+        let output_path = temp_root.join("str_ends_with_longer_suffix_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                if (Str.endsWith("a", "abc")) { return 1; }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Str.endsWith longer suffix should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled Str.endsWith longer suffix binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_string_interpolation_on_option_runtime() {
+        let temp_root = make_temp_project_root("string-interpolation-option-runtime");
+        let source_path = temp_root.join("string_interpolation_option_runtime.apex");
+        let output_path = temp_root.join("string_interpolation_option_runtime");
+        let source = r#"
+            function main(): Integer {
+                value: String = "{Option.some(1)}";
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err(
+                "string interpolation on Option should fail until complex formatting exists",
+            );
+        assert!(err.contains("String interpolation"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_on_boolean_runtime() {
+        let temp_root = make_temp_project_root("string-interpolation-bool-runtime");
+        let source_path = temp_root.join("string_interpolation_bool_runtime.apex");
+        let output_path = temp_root.join("string_interpolation_bool_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                value: String = "{true}";
+                return if (Str.compare(value, "true") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation on Boolean should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string interpolation Boolean binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_on_char_runtime() {
+        let temp_root = make_temp_project_root("string-interpolation-char-runtime");
+        let source_path = temp_root.join("string_interpolation_char_runtime.apex");
+        let output_path = temp_root.join("string_interpolation_char_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                value: String = "{'b'}";
+                return if (Str.compare(value, "b") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation on Char should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string interpolation Char binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_on_none_runtime() {
+        let temp_root = make_temp_project_root("string-interpolation-none-runtime");
+        let source_path = temp_root.join("string_interpolation_none_runtime.apex");
+        let output_path = temp_root.join("string_interpolation_none_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                value: String = "{None}";
+                return if (Str.compare(value, "None") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation on None should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string interpolation None binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_fast_on_math_abs_min_integer_runtime() {
+        let temp_root = make_temp_project_root("math-abs-min-integer-runtime");
+        let source_path = temp_root.join("math_abs_min_integer_runtime.apex");
+        let output_path = temp_root.join("math_abs_min_integer_runtime");
+        let source = r#"
+            import std.math.*;
+
+            function main(): Integer {
+                value: Integer = 0 - 9223372036854775807 - 1;
+                result: Integer = Math.abs(value);
+                return if (result < 0) { 1 } else { 0 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("Math.abs minimum integer should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled Math.abs minimum integer binary");
+        assert_eq!(output.status.code(), Some(1));
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert!(
+            stdout.contains("Math.abs() overflow on minimum Integer\n"),
+            "{stdout}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_fails_fast_on_out_of_bounds_list_index_assignment() {
         let temp_root = make_temp_project_root("list-index-assign-oob-runtime");
         let source_path = temp_root.join("list_index_assign_oob_runtime.apex");

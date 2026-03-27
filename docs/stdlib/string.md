@@ -22,6 +22,9 @@ String manipulation utilities. All functions are available as static methods on 
 
 | Function | Type Signature | Description |
 | :--- | :--- | :--- |
-| `to_string` | `<T>(x: T) -> String` | Converts any type to its string representation (Global). |
+| `to_string` | `(x: Integer | Float | Boolean | String | Char | None) -> String` | Converts supported scalar values to a string representation (Global). |
+
+String interpolation uses the same display formatting as `to_string(...)` for supported scalar values, so `"{true}"`, `"{'🚀'}"`, and `"{None}"` render as `true`, `🚀`, and `None`.
+Complex interpolation values such as `"{Option.some(1)}"` are currently rejected until structured formatting exists.
 
 `Str.*` calls and `to_string(...)` can be used directly as expression tails, including inside `async { ... }`, `if` expressions, and `match` arms.
