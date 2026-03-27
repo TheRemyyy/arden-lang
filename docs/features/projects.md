@@ -170,6 +170,12 @@ Expected-type propagation now also reaches `if` and `match` expression branches 
 
 That same expected-type propagation now extends through typed containers and constructors in project builds as well. `Option.some(...)`, `Result.ok(...)`, `Result.error(...)`, and constructor calls such as `Box<(Integer) -> Float>(to_float)` now preserve first-class function payload types instead of degrading into late `Unknown variable` codegen failures, even when the callable is pulled back out through a generic field like `box.value(1)`.
 
+The same generic-function machinery now also stays correct for user-defined generic classes whose names overlap builtin containers. Project-mode flows like `class Box<T> { function map<U>(f: (T) -> U): Box<U> ... }` and `Box<Integer>(1).map<Float>(to_float)` now keep the user-defined `Box<U>` return type and the specialized `(Integer) -> Float` callback signature all the way through typechecking and codegen.
+
+That fix now extends to builtin-shaped multi-parameter types too. User-defined classes such as `Result<T, E>` keep their owner-generic substitutions inside explicit generic method specializations, so methods like `map_ok<U>` can safely construct `Result<U, E>` and call builtins like `to_float` without drifting back into builtin `Result` lowering or mismatched runtime layouts.
+
+Those owner-specialized rewrites now also derive their generic bindings from structured receiver expressions, not just direct constructor syntax. Project-mode calls such as `(if (flag) { Result<Integer, String>(1, "ok") } else { Result<Integer, String>(2, "ok") }).map_ok<Float>(to_float)` and the same pattern for user-defined `Map<K, V>` now keep the correct specialized receiver layout and runtime result.
+
 ```toml
 # apex.toml
 name = "multi_file_demo"

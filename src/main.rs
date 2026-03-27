@@ -14217,6 +14217,33 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_run_supports_builtin_function_values_in_user_defined_builtin_named_generic_methods()
+    {
+        let temp_root =
+            make_temp_project_root("builtin-fn-user-defined-builtin-named-generic-method-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n    function get(): T { return this.value; }\n}\nfunction main(): Integer { mapped: Box<Float> = Box<Integer>(1).map<Float>(to_float); return if (mapped.get() == 1.0) { 0 } else { 1 }; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support builtin function values in user-defined builtin-named generic methods",
+            );
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled builtin function value generic method project binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_run_supports_nested_generic_method_imported_expression_receivers() {
         let temp_root =
             make_temp_project_root("nested-generic-method-imported-expr-runtime-project");
@@ -19324,6 +19351,141 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled generic constructor builtin function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_generic_method_builtin_function_value_runtime() {
+        let temp_root = make_temp_project_root("generic-method-builtin-function-value-runtime");
+        let source_path = temp_root.join("generic_method_builtin_function_value_runtime.apex");
+        let output_path = temp_root.join("generic_method_builtin_function_value_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }
+                function get(): T { return this.value; }
+            }
+            function main(): Integer {
+                mapped: Box<Float> = Box<Integer>(1).map<Float>(to_float);
+                return if (mapped.get() == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("generic method builtin function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled generic method builtin function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_user_defined_result_generic_method_builtin_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("user-defined-result-generic-method-builtin-function-value");
+        let source_path =
+            temp_root.join("user_defined_result_generic_method_builtin_function_value.apex");
+        let output_path =
+            temp_root.join("user_defined_result_generic_method_builtin_function_value");
+        let source = r#"
+            class Result<T, E> {
+                ok: T;
+                err: E;
+                constructor(ok: T, err: E) { this.ok = ok; this.err = err; }
+                function map_ok<U>(f: (T) -> U): Result<U, E> { return Result<U, E>(f(this.ok), this.err); }
+                function value(): T { return this.ok; }
+            }
+            function main(): Integer {
+                mapped: Result<Float, String> = Result<Integer, String>(1, "ok").map_ok<Float>(to_float);
+                return if (mapped.value() == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("user-defined Result generic method builtin function value should codegen");
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled user-defined Result generic method builtin function value binary",
+        );
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_if_receiver_result_generic_method_builtin_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("if-receiver-result-generic-method-builtin-function-value");
+        let source_path =
+            temp_root.join("if_receiver_result_generic_method_builtin_function_value.apex");
+        let output_path =
+            temp_root.join("if_receiver_result_generic_method_builtin_function_value");
+        let source = r#"
+            class Result<T, E> {
+                ok: T;
+                err: E;
+                constructor(ok: T, err: E) { this.ok = ok; this.err = err; }
+                function map_ok<U>(f: (T) -> U): Result<U, E> { return Result<U, E>(f(this.ok), this.err); }
+                function value(): T { return this.ok; }
+            }
+            function main(): Integer {
+                mapped: Result<Float, String> =
+                    (if (true) { Result<Integer, String>(1, "ok"); } else { Result<Integer, String>(2, "ok"); })
+                        .map_ok<Float>(to_float);
+                return if (mapped.value() == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("if receiver Result generic method builtin function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled if receiver Result generic method builtin function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_if_receiver_map_generic_method_builtin_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("if-receiver-map-generic-method-builtin-function-value");
+        let source_path =
+            temp_root.join("if_receiver_map_generic_method_builtin_function_value.apex");
+        let output_path = temp_root.join("if_receiver_map_generic_method_builtin_function_value");
+        let source = r#"
+            class Map<K, V> {
+                key: K;
+                value: V;
+                constructor(key: K, value: V) { this.key = key; this.value = value; }
+                function map_value<U>(f: (V) -> U): Map<K, U> { return Map<K, U>(this.key, f(this.value)); }
+                function get(): V { return this.value; }
+            }
+            function main(): Integer {
+                mapped: Map<String, Float> =
+                    (if (true) { Map<String, Integer>("x", 1); } else { Map<String, Integer>("y", 2); })
+                        .map_value<Float>(to_float);
+                return if (mapped.get() == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("if receiver Map generic method builtin function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled if receiver Map generic method builtin function value binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);

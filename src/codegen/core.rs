@@ -293,6 +293,108 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn owner_class_type_args_from_type(ty: &Type, owner_class: &str) -> Option<Vec<Type>> {
+        match ty {
+            Type::Generic(name, args) if name == owner_class => Some(args.clone()),
+            Type::Ref(inner) | Type::MutRef(inner) => {
+                Self::owner_class_type_args_from_type(inner, owner_class)
+            }
+            Type::Option(inner) if owner_class == "Option" => Some(vec![(**inner).clone()]),
+            Type::Result(ok, err) if owner_class == "Result" => {
+                Some(vec![(**ok).clone(), (**err).clone()])
+            }
+            Type::List(inner) if owner_class == "List" => Some(vec![(**inner).clone()]),
+            Type::Map(key, value) if owner_class == "Map" => {
+                Some(vec![(**key).clone(), (**value).clone()])
+            }
+            Type::Set(inner) if owner_class == "Set" => Some(vec![(**inner).clone()]),
+            Type::Box(inner) if owner_class == "Box" => Some(vec![(**inner).clone()]),
+            Type::Rc(inner) if owner_class == "Rc" => Some(vec![(**inner).clone()]),
+            Type::Arc(inner) if owner_class == "Arc" => Some(vec![(**inner).clone()]),
+            Type::Ptr(inner) if owner_class == "Ptr" => Some(vec![(**inner).clone()]),
+            Type::Task(inner) if owner_class == "Task" => Some(vec![(**inner).clone()]),
+            Type::Range(inner) if owner_class == "Range" => Some(vec![(**inner).clone()]),
+            _ => None,
+        }
+    }
+
+    fn infer_explicit_receiver_type(expr: &Expr) -> Option<Type> {
+        match expr {
+            Expr::Construct { ty, .. } => parse_type_source(ty).ok(),
+            Expr::Borrow(inner) => Some(Type::Ref(Box::new(Self::infer_explicit_receiver_type(
+                &inner.node,
+            )?))),
+            Expr::MutBorrow(inner) => Some(Type::MutRef(Box::new(
+                Self::infer_explicit_receiver_type(&inner.node)?,
+            ))),
+            Expr::Deref(inner) => match Self::infer_explicit_receiver_type(&inner.node)? {
+                Type::Ref(inner) | Type::MutRef(inner) | Type::Ptr(inner) => Some(*inner),
+                _ => None,
+            },
+            Expr::Try(inner) => match Self::infer_explicit_receiver_type(&inner.node)? {
+                Type::Result(ok, _) | Type::Option(ok) => Some(*ok),
+                _ => None,
+            },
+            Expr::Await(inner) => match Self::infer_explicit_receiver_type(&inner.node)? {
+                Type::Task(inner) => Some(*inner),
+                _ => None,
+            },
+            Expr::IfExpr {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                let then_ty = Self::infer_explicit_receiver_block_tail_type(then_branch)?;
+                let else_ty = else_branch
+                    .as_ref()
+                    .and_then(|block| Self::infer_explicit_receiver_block_tail_type(block))?;
+                (then_ty == else_ty).then_some(then_ty)
+            }
+            Expr::Match { arms, .. } => {
+                let mut arm_types = arms
+                    .iter()
+                    .filter_map(|arm| Self::infer_explicit_receiver_block_tail_type(&arm.body));
+                let first = arm_types.next()?;
+                arm_types.all(|ty| ty == first).then_some(first)
+            }
+            Expr::Block(block) | Expr::AsyncBlock(block) => {
+                Self::infer_explicit_receiver_block_tail_type(block)
+            }
+            _ => None,
+        }
+    }
+
+    fn infer_explicit_receiver_block_tail_type(block: &[Spanned<Stmt>]) -> Option<Type> {
+        let last = block.last()?;
+        match &last.node {
+            Stmt::Expr(expr) => Self::infer_explicit_receiver_type(&expr.node),
+            _ => None,
+        }
+    }
+
+    fn explicit_receiver_class_bindings(
+        object: &Expr,
+        owner_class: &str,
+        class_templates: &HashMap<String, GenericClassTemplate>,
+    ) -> Option<(String, HashMap<String, Type>)> {
+        let inferred_ty = Self::infer_explicit_receiver_type(object)?;
+        let type_args = Self::owner_class_type_args_from_type(&inferred_ty, owner_class)?;
+        let template = class_templates.get(owner_class)?;
+        if template.class.generic_params.len() != type_args.len() {
+            return None;
+        }
+
+        let owner_key = Self::generic_class_spec_name(owner_class, &type_args);
+        let bindings = template
+            .class
+            .generic_params
+            .iter()
+            .map(|param| param.name.clone())
+            .zip(type_args)
+            .collect::<HashMap<_, _>>();
+        Some((owner_key, bindings))
+    }
+
     fn specialize_constructor_param_types(
         &self,
         source_ty: Option<&Type>,
@@ -333,6 +435,40 @@ impl<'ctx> Codegen<'ctx> {
             .iter()
             .map(|param| Self::substitute_type(param, &bindings))
             .collect()
+    }
+
+    fn specialize_method_signature_for_receiver(
+        &self,
+        receiver_ty: Option<&Type>,
+        class_name: &str,
+        func_ty: &Type,
+    ) -> Type {
+        let Some(receiver_ty) = receiver_ty else {
+            return func_ty.clone();
+        };
+        let Some((receiver_name, receiver_args)) = self.unwrap_class_like_type(receiver_ty) else {
+            return func_ty.clone();
+        };
+        if receiver_name != class_name {
+            return func_ty.clone();
+        }
+        let Some(type_args) = receiver_args else {
+            return func_ty.clone();
+        };
+        let Some(class_info) = self.classes.get(class_name) else {
+            return func_ty.clone();
+        };
+        if class_info.generic_params.len() != type_args.len() {
+            return func_ty.clone();
+        }
+
+        let bindings = class_info
+            .generic_params
+            .iter()
+            .cloned()
+            .zip(type_args)
+            .collect::<HashMap<_, _>>();
+        Self::substitute_type(func_ty, &bindings)
     }
 
     fn local_module_class_name(
@@ -2674,18 +2810,41 @@ impl<'ctx> Codegen<'ctx> {
                                     .map(Self::type_specialization_suffix)
                                     .collect::<Vec<_>>()
                                     .join("_");
-                                let spec_name = format!("{}__spec__{}", field, suffix);
-                                for template in eligible_templates {
-                                    let emitted_key = format!(
-                                        "{}::{}",
-                                        template.owner_class.as_deref().unwrap_or(field),
-                                        spec_name
-                                    );
+                                for template in &eligible_templates {
+                                    let default_owner = template
+                                        .owner_class
+                                        .clone()
+                                        .unwrap_or_else(|| field.clone());
+                                    let (owner_key, mut bindings) = template
+                                        .owner_class
+                                        .as_deref()
+                                        .and_then(|owner_class| {
+                                            if let Expr::Field { object, .. } = &callee.node {
+                                                Self::explicit_receiver_class_bindings(
+                                                    &object.node,
+                                                    owner_class,
+                                                    class_templates,
+                                                )
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                        .unwrap_or_else(|| (default_owner.clone(), HashMap::new()));
+                                    let spec_name = if owner_key == default_owner {
+                                        format!("{}__spec__{}", field, suffix)
+                                    } else {
+                                        format!(
+                                            "{}__recv__{}__spec__{}",
+                                            field,
+                                            owner_key.replace("__", "_"),
+                                            suffix
+                                        )
+                                    };
+                                    let emitted_key = format!("{}::{}", owner_key, spec_name);
                                     if !emitted.insert(emitted_key) {
                                         continue;
                                     }
 
-                                    let mut bindings: HashMap<String, Type> = HashMap::new();
                                     for (param, ty) in
                                         template.func.generic_params.iter().zip(type_args.iter())
                                     {
@@ -2764,15 +2923,47 @@ impl<'ctx> Codegen<'ctx> {
                                         })
                                         .collect::<Result<Vec<_>>>()?;
                                     spec_func.body = rewritten_body;
-                                    if let Some(owner_class) = &template.owner_class {
+                                    if template.owner_class.is_some() {
                                         generated_methods
-                                            .entry(owner_class.clone())
+                                            .entry(owner_key.clone())
                                             .or_default()
-                                            .push(spec_func);
+                                            .push(spec_func.clone());
+                                        if owner_key != default_owner {
+                                            generated_methods
+                                                .entry(default_owner.clone())
+                                                .or_default()
+                                                .push(spec_func);
+                                        }
                                     }
                                 }
 
                                 if let Expr::Field { object, .. } = &rewritten_callee.node {
+                                    let default_owner = eligible_templates[0]
+                                        .owner_class
+                                        .clone()
+                                        .unwrap_or_else(|| field.clone());
+                                    let owner_key = eligible_templates[0]
+                                        .owner_class
+                                        .as_deref()
+                                        .and_then(|owner_class| {
+                                            Self::explicit_receiver_class_bindings(
+                                                &object.node,
+                                                owner_class,
+                                                class_templates,
+                                            )
+                                            .map(|(owner_key, _)| owner_key)
+                                        })
+                                        .unwrap_or(default_owner.clone());
+                                    let spec_name = if owner_key == default_owner {
+                                        format!("{}__spec__{}", field, suffix)
+                                    } else {
+                                        format!(
+                                            "{}__recv__{}__spec__{}",
+                                            field,
+                                            owner_key.replace("__", "_"),
+                                            suffix
+                                        )
+                                    };
                                     return Ok(Expr::Call {
                                         callee: Box::new(Spanned::new(
                                             Expr::Field {
@@ -11413,7 +11604,7 @@ impl<'ctx> Codegen<'ctx> {
                 ))
             })?;
 
-        let (func, _) = if self.classes.contains_key(&class_name) {
+        let (func, func_ty) = if self.classes.contains_key(&class_name) {
             let func_name = self
                 .resolve_method_function_name(&class_name, method)
                 .ok_or_else(|| {
@@ -11459,9 +11650,24 @@ impl<'ctx> Codegen<'ctx> {
                 .into(), // env_ptr
             obj_val, // this
         ];
-        let llvm_param_types = func.get_type().get_param_types();
-        for (arg, llvm_param_ty) in args.iter().zip(llvm_param_types.into_iter().skip(2)) {
-            compiled_args.push(self.compile_expr_for_llvm_param(&arg.node, llvm_param_ty)?);
+        let specialized_func_ty = self.specialize_method_signature_for_receiver(
+            deref_obj_ty.as_ref(),
+            &class_name,
+            &func_ty,
+        );
+        let apex_param_types = match &specialized_func_ty {
+            Type::Function(params, _) => Some(params.as_slice()),
+            _ => None,
+        };
+        if let Some(param_types) = apex_param_types {
+            for (arg, param_ty) in args.iter().zip(param_types.iter()) {
+                compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+            }
+        } else {
+            let llvm_param_types = func.get_type().get_param_types();
+            for (arg, llvm_param_ty) in args.iter().zip(llvm_param_types.into_iter().skip(2)) {
+                compiled_args.push(self.compile_expr_for_llvm_param(&arg.node, llvm_param_ty)?);
+            }
         }
 
         let args_meta: Vec<BasicMetadataValueEnum> =
