@@ -1718,6 +1718,7 @@ impl<'ctx> Codegen<'ctx> {
                         self.functions.get(&resolved_name).map(|(_, ty)| ty.clone())
                     }
                 }),
+            Expr::GenericFunctionValue { callee, .. } => self.infer_object_type(&callee.node),
             Expr::This => self.variables.get("this").map(|v| v.ty.clone()),
             Expr::Literal(Literal::Integer(_)) => Some(Type::Integer),
             Expr::Literal(Literal::Float(_)) => Some(Type::Float),
@@ -2856,6 +2857,7 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
             },
+            Expr::GenericFunctionValue { callee, .. } => self.infer_expr_type(&callee.node, params),
             Expr::Field { object, field } => {
                 if let Some(function_name) = self.resolve_contextual_function_value_name(expr) {
                     if let Some((_, ty)) = self.functions.get(&function_name) {

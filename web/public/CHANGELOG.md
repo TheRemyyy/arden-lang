@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed explicit generic function values:
+  - expressions like `id<Integer>` now parse as specialized first-class function values instead of leaving `<Integer>` in the token stream and failing with parser errors such as `Expected expression, found Some(TyInteger)`
+  - specialized function values now typecheck and codegen through the existing generic specialization pipeline, so assignments like `f: (Integer) -> Integer = id<Integer>; f(7)` compile and run
 - Fixed parser support for zero-argument pipe lambdas:
   - `|| expr` now parses as a zero-argument lambda expression in prefix position instead of falling through to the binary-operator parser and failing with `Expected expression, found Some(Or)`
   - zero-arg closures now compile and run through generic method returns and bound method values, so patterns like `function make(): () -> Integer { return || 7; }` and `b.lift` with `return || this.value` work end-to-end

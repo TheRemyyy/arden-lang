@@ -1662,6 +1662,26 @@ impl<'ctx> Codegen<'ctx> {
                     type_args: rewritten_type_args,
                 }
             }
+            Expr::GenericFunctionValue { callee, type_args } => Expr::GenericFunctionValue {
+                callee: Box::new(Spanned::new(
+                    Self::rewrite_expr_for_local_module_classes(
+                        &callee.node,
+                        module_prefix,
+                        class_templates,
+                    ),
+                    callee.span.clone(),
+                )),
+                type_args: type_args
+                    .iter()
+                    .map(|arg| {
+                        Self::rewrite_type_for_local_module_classes(
+                            arg,
+                            module_prefix,
+                            class_templates,
+                        )
+                    })
+                    .collect(),
+            },
             Expr::Construct { ty, args } => {
                 let rewritten_ty = parse_type_source(ty)
                     .ok()
@@ -2547,6 +2567,24 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
             }
+            Expr::GenericFunctionValue { callee, type_args } => {
+                Self::collect_generic_class_instantiation_from_expr(
+                    &callee.node,
+                    class_templates,
+                    import_aliases,
+                    in_scope_generics,
+                    instantiations,
+                );
+                for ty in type_args {
+                    Self::collect_generic_class_instantiation_from_type(
+                        ty,
+                        class_templates,
+                        import_aliases,
+                        in_scope_generics,
+                        instantiations,
+                    );
+                }
+            }
             Expr::Construct { ty, args } => {
                 if let Ok(Type::Generic(name, type_args)) = parse_type_source(ty) {
                     let resolved_name = resolve_template_name(&name);
@@ -3279,6 +3317,133 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
             }
+            Expr::GenericFunctionValue { callee, type_args } => {
+                let rewritten_callee = Spanned::new(
+                    Self::rewrite_expr_generic_calls(
+                        &callee.node,
+                        function_templates,
+                        method_templates,
+                        class_templates,
+                        emitted,
+                        generated_functions,
+                        generated_methods,
+                    )?,
+                    callee.span.clone(),
+                );
+
+                if let Some(template_key) =
+                    Self::resolve_function_template_key(function_templates, &callee.node)
+                {
+                    if let Some(template) = function_templates.get(&template_key) {
+                        if template.func.generic_params.len() != type_args.len() {
+                            Expr::GenericFunctionValue {
+                                callee: Box::new(rewritten_callee),
+                                type_args: type_args.clone(),
+                            }
+                        } else {
+                            let suffix = type_args
+                                .iter()
+                                .map(Self::type_specialization_suffix)
+                                .collect::<Vec<_>>()
+                                .join("_");
+                            let spec_name = format!("{}__spec__{}", template_key, suffix);
+
+                            if emitted.insert(spec_name.clone()) {
+                                let mut bindings: HashMap<String, Type> = HashMap::new();
+                                for (param, ty) in
+                                    template.func.generic_params.iter().zip(type_args.iter())
+                                {
+                                    bindings.insert(param.name.clone(), ty.clone());
+                                }
+
+                                let mut spec_func = template.func.clone();
+                                spec_func.name = spec_name.clone();
+                                spec_func.generic_params.clear();
+                                for param in &mut spec_func.params {
+                                    param.ty = Self::substitute_type(&param.ty, &bindings);
+                                }
+                                spec_func.return_type =
+                                    Self::substitute_type(&spec_func.return_type, &bindings);
+                                spec_func.body = spec_func
+                                    .body
+                                    .iter()
+                                    .map(|s| {
+                                        Spanned::new(
+                                            Self::substitute_stmt_types(&s.node, &bindings),
+                                            s.span.clone(),
+                                        )
+                                    })
+                                    .collect();
+                                if let Some((module_prefix, _)) = template_key.rsplit_once("__") {
+                                    for param in &mut spec_func.params {
+                                        param.ty = Self::rewrite_type_for_local_module_classes(
+                                            &param.ty,
+                                            module_prefix,
+                                            class_templates,
+                                        );
+                                    }
+                                    spec_func.return_type =
+                                        Self::rewrite_type_for_local_module_classes(
+                                            &spec_func.return_type,
+                                            module_prefix,
+                                            class_templates,
+                                        );
+                                    spec_func.body = spec_func
+                                        .body
+                                        .iter()
+                                        .map(|stmt| {
+                                            Spanned::new(
+                                                Self::rewrite_stmt_for_local_module_classes(
+                                                    &stmt.node,
+                                                    module_prefix,
+                                                    class_templates,
+                                                ),
+                                                stmt.span.clone(),
+                                            )
+                                        })
+                                        .collect();
+                                }
+
+                                let rewritten_body = spec_func
+                                    .body
+                                    .iter()
+                                    .map(|s| {
+                                        Ok(Spanned::new(
+                                            Self::rewrite_stmt_generic_calls(
+                                                &s.node,
+                                                function_templates,
+                                                method_templates,
+                                                class_templates,
+                                                emitted,
+                                                generated_functions,
+                                                generated_methods,
+                                            )?,
+                                            s.span.clone(),
+                                        ))
+                                    })
+                                    .collect::<Result<Vec<_>>>()?;
+                                spec_func.body = rewritten_body;
+                                generated_functions.push(Spanned::new(
+                                    Decl::Function(spec_func),
+                                    template.span.clone(),
+                                ));
+                            }
+
+                            Expr::Ident(spec_name)
+                        }
+                    } else {
+                        Expr::GenericFunctionValue {
+                            callee: Box::new(rewritten_callee),
+                            type_args: type_args.clone(),
+                        }
+                    }
+                } else {
+                    Expr::GenericFunctionValue {
+                        callee: Box::new(rewritten_callee),
+                        type_args: type_args.clone(),
+                    }
+                }
+            }
             Expr::Binary { op, left, right } => Expr::Binary {
                 op: *op,
                 left: Box::new(Spanned::new(
@@ -3830,6 +3995,16 @@ impl<'ctx> Codegen<'ctx> {
                         )
                     })
                     .collect(),
+                type_args: type_args
+                    .iter()
+                    .map(|ty| Self::rewrite_specialized_class_type(ty, emitted_classes))
+                    .collect(),
+            },
+            Expr::GenericFunctionValue { callee, type_args } => Expr::GenericFunctionValue {
+                callee: Box::new(Spanned::new(
+                    Self::rewrite_specialized_class_expr(&callee.node, emitted_classes),
+                    callee.span.clone(),
+                )),
                 type_args: type_args
                     .iter()
                     .map(|ty| Self::rewrite_specialized_class_type(ty, emitted_classes))
@@ -4906,6 +5081,9 @@ impl<'ctx> Codegen<'ctx> {
                     || args
                         .iter()
                         .any(|arg| Self::expr_has_explicit_generic_calls(&arg.node))
+            }
+            Expr::GenericFunctionValue { callee, type_args } => {
+                !type_args.is_empty() || Self::expr_has_explicit_generic_calls(&callee.node)
             }
             Expr::Binary { left, right, .. } => {
                 Self::expr_has_explicit_generic_calls(&left.node)
@@ -9600,6 +9778,11 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 self.compile_call(&callee.node, args)
             }
+
+            Expr::GenericFunctionValue { .. } => Err(CodegenError::new(
+                "Explicit generic function value should be specialized before code generation"
+                    .to_string(),
+            )),
 
             Expr::Field { object, field } => self.compile_field(&object.node, field),
 

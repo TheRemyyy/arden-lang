@@ -883,6 +883,10 @@ fn expr_has_codegen_specialization_demand(expr: &Expr) -> bool {
                     .any(|arg| expr_has_codegen_specialization_demand(&arg.node))
                 || type_args.iter().any(type_has_codegen_specialization_demand)
         }
+        Expr::GenericFunctionValue { callee, type_args } => {
+            expr_has_codegen_specialization_demand(&callee.node)
+                || type_args.iter().any(type_has_codegen_specialization_demand)
+        }
         Expr::Construct { ty, args } => {
             parse_type_source(ty)
                 .ok()
@@ -4428,6 +4432,12 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 collect_qualified_name_ref(ty, out, qualified_out);
                 for arg in args {
                     collect_expr_refs(&arg.node, out, qualified_out);
+                }
+            }
+            Expr::GenericFunctionValue { callee, type_args } => {
+                collect_expr_refs(&callee.node, out, qualified_out);
+                for type_arg in type_args {
+                    collect_type_refs(type_arg, out, qualified_out);
                 }
             }
             Expr::Lambda { params, body } => {
@@ -21776,6 +21786,34 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled named Integer function value Float return binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_explicit_generic_function_value_runtime() {
+        let temp_root = make_temp_project_root("explicit-generic-function-value-runtime");
+        let source_path = temp_root.join("explicit_generic_function_value_runtime.apex");
+        let output_path = temp_root.join("explicit_generic_function_value_runtime");
+        let source = r#"
+            function id<T>(x: T): T {
+                return x;
+            }
+
+            function main(): Integer {
+                f: (Integer) -> Integer = id<Integer>;
+                return if (f(7) == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("explicit generic function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled explicit generic function value binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);

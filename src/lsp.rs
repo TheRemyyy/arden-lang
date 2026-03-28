@@ -324,6 +324,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                     self.walk_expr(arg);
                 }
             }
+            Expr::GenericFunctionValue { callee, .. } => self.walk_expr(callee),
             Expr::Binary { left, right, .. } => {
                 self.walk_expr(left);
                 self.walk_expr(right);
@@ -1052,6 +1053,9 @@ impl Backend {
                 for arg in args {
                     self.collect_symbol_spans_expr(text, symbol, arg, out);
                 }
+            }
+            Expr::GenericFunctionValue { callee, .. } => {
+                self.collect_symbol_spans_expr(text, symbol, callee, out)
             }
             Expr::Binary { left, right, .. } => {
                 self.collect_symbol_spans_expr(text, symbol, left, out);

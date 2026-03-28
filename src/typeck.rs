@@ -1748,6 +1748,9 @@ impl TypeChecker {
                     self.collect_effects_expr(&arg.node, current_class, out);
                 }
             }
+            Expr::GenericFunctionValue { callee, .. } => {
+                self.collect_effects_expr(&callee.node, current_class, out);
+            }
             Expr::Binary { left, right, .. } => {
                 self.collect_effects_expr(&left.node, current_class, out);
                 self.collect_effects_expr(&right.node, current_class, out);
@@ -2814,6 +2817,9 @@ impl TypeChecker {
                     || args.iter().any(|arg| {
                         Self::expr_mentions_ident_with_shadowing(&arg.node, ident, local_names)
                     })
+            }
+            Expr::GenericFunctionValue { callee, .. } => {
+                Self::expr_mentions_ident_with_shadowing(&callee.node, ident, local_names)
             }
             Expr::Field { object, .. } => {
                 Self::expr_mentions_ident_with_shadowing(&object.node, ident, local_names)
@@ -4027,6 +4033,36 @@ impl TypeChecker {
         }
     }
 
+    fn instantiate_function_value_type(
+        &mut self,
+        function_name: &str,
+        sig: &FuncSig,
+        type_args: &[Type],
+        span: Span,
+    ) -> ResolvedType {
+        if sig.is_extern {
+            self.error(
+                format!(
+                    "extern function '{}' cannot be used as a first-class value",
+                    function_name
+                ),
+                span,
+            );
+            return ResolvedType::Unknown;
+        }
+
+        let (inst_params, inst_return_type, valid_explicit_type_args) =
+            self.instantiate_signature_for_call(function_name, sig, type_args, span.clone());
+        if !valid_explicit_type_args {
+            return ResolvedType::Unknown;
+        }
+
+        ResolvedType::Function(
+            inst_params.into_iter().map(|(_, ty)| ty).collect(),
+            Box::new(inst_return_type),
+        )
+    }
+
     fn resolve_builtin_module_alias(&self, name: &str) -> String {
         let Some(path) = self.import_aliases.get(name) else {
             return name.to_string();
@@ -4934,6 +4970,134 @@ impl TypeChecker {
                     ResolvedType::Unknown
                 }
             }
+
+            Expr::GenericFunctionValue { callee, type_args } => match &callee.node {
+                Expr::Ident(name) => {
+                    if let Some(canonical_name) = self
+                        .resolve_import_alias_symbol(name)
+                        .filter(|canonical_name| self.functions.contains_key(canonical_name))
+                    {
+                        let Some(sig) = self.functions.get(&canonical_name).cloned() else {
+                            self.error(format!("Undefined variable: {}", name), span);
+                            return ResolvedType::Unknown;
+                        };
+                        self.instantiate_function_value_type(&canonical_name, &sig, type_args, span)
+                    } else if let Some(function_name) =
+                        self.resolve_function_value_name(name).map(str::to_string)
+                    {
+                        let Some(sig) = self.functions.get(&function_name).cloned() else {
+                            self.error(format!("Undefined variable: {}", name), span);
+                            return ResolvedType::Unknown;
+                        };
+                        self.instantiate_function_value_type(&function_name, &sig, type_args, span)
+                    } else {
+                        self.error(format!("Undefined variable: {}", name), span);
+                        ResolvedType::Unknown
+                    }
+                }
+                Expr::Field { object, field } => {
+                    if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
+                        if path_parts.len() >= 2 {
+                            if let Some(candidate) = self.resolve_import_alias_module_candidate(
+                                &path_parts[0],
+                                &path_parts[1..],
+                            ) {
+                                let resolved = self
+                                    .resolve_function_value_name(&candidate)
+                                    .unwrap_or(&candidate)
+                                    .to_string();
+                                if let Some(sig) = self.functions.get(&resolved).cloned() {
+                                    return self.instantiate_function_value_type(
+                                        &resolved, &sig, type_args, span,
+                                    );
+                                }
+                            }
+
+                            let mangled = path_parts.join("__");
+                            if let Some(sig) = self.functions.get(&mangled).cloned() {
+                                return self.instantiate_function_value_type(
+                                    &mangled, &sig, type_args, span,
+                                );
+                            }
+                        }
+                    }
+
+                    let obj_type = self.check_expr(&object.node, object.span.clone());
+                    let receiver_type = Self::peel_reference_type(&obj_type);
+                    match receiver_type {
+                        ResolvedType::Class(name) => {
+                            let (base_name, class_substitutions) =
+                                self.instantiated_class_substitutions(name);
+                            if let Some((owner, sig, visibility)) =
+                                self.lookup_class_method(&base_name, field)
+                            {
+                                self.check_member_visibility(
+                                    &owner,
+                                    visibility,
+                                    "Method",
+                                    field,
+                                    span.clone(),
+                                );
+                                let sig = FuncSig {
+                                    params: sig
+                                        .params
+                                        .iter()
+                                        .map(|(name, ty)| {
+                                            (
+                                                name.clone(),
+                                                Self::substitute_type_vars(
+                                                    ty,
+                                                    &class_substitutions,
+                                                ),
+                                            )
+                                        })
+                                        .collect(),
+                                    return_type: Self::substitute_type_vars(
+                                        &sig.return_type,
+                                        &class_substitutions,
+                                    ),
+                                    ..sig
+                                };
+                                let method_name = format!("{}.{}", owner, field);
+                                self.instantiate_function_value_type(
+                                    &method_name,
+                                    &sig,
+                                    type_args,
+                                    span,
+                                )
+                            } else {
+                                self.error(
+                                    format!(
+                                        "Unknown field '{}' on class '{}'",
+                                        field,
+                                        Self::format_diagnostic_class_name(name)
+                                    ),
+                                    span,
+                                );
+                                ResolvedType::Unknown
+                            }
+                        }
+                        _ => {
+                            self.error(
+                                format!(
+                                    "Cannot access field on type {}",
+                                    Self::format_resolved_type_for_diagnostic(&obj_type)
+                                ),
+                                span,
+                            );
+                            ResolvedType::Unknown
+                        }
+                    }
+                }
+                _ => {
+                    self.error(
+                        "Explicit generic function values require a named function or method"
+                            .to_string(),
+                        span,
+                    );
+                    ResolvedType::Unknown
+                }
+            },
 
             Expr::Binary { op, left, right } => {
                 let left_type = self.check_expr(&left.node, left.span.clone());
@@ -9447,6 +9611,20 @@ mod tests {
             }
         "#;
         check_source(src).expect("valid built-in generic constructors should typecheck");
+    }
+
+    #[test]
+    fn accepts_explicit_generic_function_values() {
+        let src = r#"
+            function id<T>(x: T): T { return x; }
+
+            function main(): None {
+                f: (Integer) -> Integer = id<Integer>;
+                value: Integer = f(7);
+                return None;
+            }
+        "#;
+        check_source(src).expect("explicit generic function value should typecheck");
     }
 
     #[test]

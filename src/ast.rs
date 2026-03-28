@@ -358,6 +358,11 @@ pub enum Expr {
         /// Optional explicit generic type arguments at call site: f<T>(...)
         type_args: Vec<Type>,
     },
+    /// Specialized function or method value without an immediate call: f<T> or obj.method<T>
+    GenericFunctionValue {
+        callee: Box<Spanned<Expr>>,
+        type_args: Vec<Type>,
+    },
     /// Field access: expr.field
     Field {
         object: Box<Spanned<Expr>>,

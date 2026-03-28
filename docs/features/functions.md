@@ -62,6 +62,12 @@ function callTwice(f: (Integer) -> None, val: Integer): None {
     f(val);
     return None;
 }
+
+function id<T>(value: T): T {
+    return value;
+}
+
+typed_id: (Integer) -> Integer = id<Integer>;
 ```
 
 ## Closures

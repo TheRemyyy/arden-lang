@@ -771,6 +771,10 @@ impl BorrowChecker {
                 self.exit_scope();
             }
 
+            Expr::GenericFunctionValue { callee, .. } => {
+                self.check_expr(&callee.node, callee.span.clone(), false);
+            }
+
             Expr::Field { object, field: _ } => {
                 self.check_expr(&object.node, object.span.clone(), need_mut);
             }
@@ -1577,6 +1581,9 @@ impl BorrowChecker {
                         .iter()
                         .any(|arg| self.expr_mutates_this_via_builtin(class_name, &arg.node))
             }
+            Expr::GenericFunctionValue { callee, .. } => {
+                self.expr_mutates_this_via_builtin(class_name, &callee.node)
+            }
             Expr::Binary { left, right, op } => {
                 if self.expr_mutates_this_via_builtin(class_name, &left.node) {
                     return true;
@@ -1776,6 +1783,9 @@ impl BorrowChecker {
                         .iter()
                         .any(|a| Self::expr_calls_this_method_in_set(&a.node, methods))
             }
+            Expr::GenericFunctionValue { callee, .. } => {
+                Self::expr_calls_this_method_in_set(&callee.node, methods)
+            }
             Expr::Binary { left, right, op } => {
                 if Self::expr_calls_this_method_in_set(&left.node, methods) {
                     return true;
@@ -1957,6 +1967,9 @@ impl BorrowChecker {
                     Self::collect_free_idents_inner(&arg.node, params, out);
                 }
             }
+            Expr::GenericFunctionValue { callee, .. } => {
+                Self::collect_free_idents_inner(&callee.node, params, out)
+            }
             Expr::Binary { left, right, .. } => {
                 Self::collect_free_idents_inner(&left.node, params, out);
                 Self::collect_free_idents_inner(&right.node, params, out);
@@ -2109,6 +2122,7 @@ impl BorrowChecker {
                 }
                 self.expr_moves_ident(&callee.node, ident)
             }
+            Expr::GenericFunctionValue { callee, .. } => self.expr_moves_ident(&callee.node, ident),
             Expr::Binary { left, right, op } => {
                 if self.expr_moves_ident(&left.node, ident) {
                     return true;
@@ -2285,6 +2299,9 @@ impl BorrowChecker {
                     || args
                         .iter()
                         .any(|arg| self.expr_mutably_borrows_ident(&arg.node, ident))
+            }
+            Expr::GenericFunctionValue { callee, .. } => {
+                self.expr_mutably_borrows_ident(&callee.node, ident)
             }
             Expr::Binary { left, right, op } => {
                 if self.expr_mutably_borrows_ident(&left.node, ident) {

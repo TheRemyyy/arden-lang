@@ -380,6 +380,9 @@ fn collect_expr_idents(
                 collect_expr_idents(&arg.node, declared, used, scope_stack, next_scope_id);
             }
         }
+        Expr::GenericFunctionValue { callee, .. } => {
+            collect_expr_idents(&callee.node, declared, used, scope_stack, next_scope_id)
+        }
         Expr::Binary { left, right, .. } => {
             collect_expr_idents(&left.node, declared, used, scope_stack, next_scope_id);
             collect_expr_idents(&right.node, declared, used, scope_stack, next_scope_id);
@@ -715,6 +718,9 @@ fn check_shadowed_in_expr(
             for arg in args {
                 check_shadowed_in_expr(&arg.node, scopes, findings);
             }
+        }
+        Expr::GenericFunctionValue { callee, .. } => {
+            check_shadowed_in_expr(&callee.node, scopes, findings)
         }
         Expr::Binary { left, right, .. } => {
             check_shadowed_in_expr(&left.node, scopes, findings);
@@ -1092,6 +1098,12 @@ fn collect_expr_names(expr: &Expr, used: &mut HashSet<String>) {
             for arg in args {
                 collect_expr_names(&arg.node, used);
             }
+            for ty in type_args {
+                collect_type_names(ty, used);
+            }
+        }
+        Expr::GenericFunctionValue { callee, type_args } => {
+            collect_expr_names(&callee.node, used);
             for ty in type_args {
                 collect_type_names(ty, used);
             }

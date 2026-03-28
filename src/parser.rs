@@ -2243,17 +2243,27 @@ impl<'src> Parser<'src> {
                     let type_args = if self.check(&Token::Lt) {
                         let saved = self.pos;
                         self.advance();
-                        let type_args = self.parse_type_list(
+                        let parsed = self.parse_type_list(
                             "Generic call type argument list cannot be empty",
                             "Trailing comma is not allowed in generic call type arguments",
                             &Token::Gt,
-                        )?;
-                        self.eat(&Token::Gt)?;
-                        if self.check(&Token::LParen) {
-                            type_args
-                        } else {
-                            self.pos = saved;
-                            Vec::new()
+                        );
+                        match parsed {
+                            Ok(type_args) if self.check(&Token::Gt) => {
+                                self.advance();
+                                type_args
+                            }
+                            Err(err)
+                                if err.message.contains(
+                                    "Trailing comma is not allowed in generic call type arguments",
+                                ) =>
+                            {
+                                return Err(err);
+                            }
+                            _ => {
+                                self.pos = saved;
+                                Vec::new()
+                            }
                         }
                     } else {
                         Vec::new()
@@ -2276,6 +2286,21 @@ impl<'src> Parser<'src> {
                             Expr::Call {
                                 callee: Box::new(method_expr),
                                 args,
+                                type_args,
+                            },
+                            start..self.current_span().start,
+                        );
+                    } else if !type_args.is_empty() {
+                        let method_expr = Spanned::new(
+                            Expr::Field {
+                                object: Box::new(expr),
+                                field,
+                            },
+                            start..self.current_span().start,
+                        );
+                        expr = Spanned::new(
+                            Expr::GenericFunctionValue {
+                                callee: Box::new(method_expr),
                                 type_args,
                             },
                             start..self.current_span().start,
@@ -2500,7 +2525,34 @@ impl<'src> Parser<'src> {
                     .map(|c| c.is_uppercase())
                     .unwrap_or(false);
 
-                let explicit_type_args = self.parse_call_type_args()?;
+                let explicit_type_args = if self.check(&Token::Lt) {
+                    let saved = self.pos;
+                    self.advance();
+                    let parsed = self.parse_type_list(
+                        "Generic call type argument list cannot be empty",
+                        "Trailing comma is not allowed in generic call type arguments",
+                        &Token::Gt,
+                    );
+                    match parsed {
+                        Ok(type_args) if self.check(&Token::Gt) => {
+                            self.advance();
+                            type_args
+                        }
+                        Err(err)
+                            if err.message.contains(
+                                "Trailing comma is not allowed in generic call type arguments",
+                            ) =>
+                        {
+                            return Err(err);
+                        }
+                        _ => {
+                            self.pos = saved;
+                            Vec::new()
+                        }
+                    }
+                } else {
+                    Vec::new()
+                };
                 let has_explicit_type_args = !explicit_type_args.is_empty();
                 if has_explicit_type_args {
                     let formatted = explicit_type_args
@@ -2596,6 +2648,14 @@ impl<'src> Parser<'src> {
                             }
                             _ => call,
                         }
+                    }
+                } else if has_explicit_type_args {
+                    Expr::GenericFunctionValue {
+                        callee: Box::new(Spanned::new(
+                            Expr::Ident(name),
+                            start..self.current_span().start,
+                        )),
+                        type_args: explicit_type_args,
                     }
                 } else {
                     Expr::Ident(name)
@@ -4264,6 +4324,28 @@ mod tests {
         };
         let Expr::Call { type_args, .. } = &value.node else {
             panic!("Expected call");
+        };
+        assert_eq!(type_args.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_explicit_generic_function_value() {
+        let source = r#"
+            function id<T>(x: T): T { return x; }
+            function main(): None {
+                f: (Integer) -> Integer = id<Integer>;
+                return None;
+            }
+        "#;
+        let program = parse_source(source).expect("Should parse explicit generic function value");
+        let Decl::Function(func) = &program.declarations[1].node else {
+            panic!("Expected main function declaration");
+        };
+        let Stmt::Let { value, .. } = &func.body[0].node else {
+            panic!("Expected let statement");
+        };
+        let Expr::GenericFunctionValue { type_args, .. } = &value.node else {
+            panic!("Expected specialized function value");
         };
         assert_eq!(type_args.len(), 1);
     }

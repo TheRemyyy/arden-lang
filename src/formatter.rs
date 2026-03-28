@@ -545,6 +545,15 @@ impl Formatter {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            Expr::GenericFunctionValue { callee, type_args } => format!(
+                "{}<{}>",
+                self.format_expr_with_prec(&callee.node, 9),
+                type_args
+                    .iter()
+                    .map(|arg| self.format_type(arg))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Expr::Field { object, field } => {
                 format!("{}.{}", self.format_expr_with_prec(&object.node, 9), field)
             }
