@@ -9168,6 +9168,115 @@ function main(): Integer {
     }
 
     #[test]
+    fn forward_declared_generic_class_enum_payload_survives_codegen() {
+        let temp_root = make_temp_project_root("forward-declared-generic-enum-payload-runtime");
+        let source_path = temp_root.join("forward_declared_generic_enum_payload_runtime.apex");
+        let output_path = temp_root.join("forward_declared_generic_enum_payload_runtime");
+        let source = r#"
+            enum Choice {
+                Boxed(Box<String>),
+                Empty
+            }
+
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                current: Choice = Choice.Boxed(Box<String>("hi"));
+                picked: Box<String> = match (current) {
+                    Boxed(inner) => inner,
+                    Empty => Box<String>("no")
+                };
+                return if (picked.value == "hi") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("forward-declared generic enum payload runtime should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled forward-declared generic enum payload binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn forward_declared_generic_class_method_chain_survives_codegen() {
+        let temp_root = make_temp_project_root("forward-declared-generic-method-chain-runtime");
+        let source_path = temp_root.join("forward_declared_generic_method_chain_runtime.apex");
+        let output_path = temp_root.join("forward_declared_generic_method_chain_runtime");
+        let source = r#"
+            enum Choice {
+                Boxed(Box<String>),
+                Empty
+            }
+
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function main(): Integer {
+                return if ({
+                    current: Choice = Choice.Boxed(Box<String>("hi"));
+                    match (current) {
+                        Boxed(inner) => inner,
+                        Empty => Box<String>("no")
+                    }
+                }.get().length() == 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("forward-declared generic method chain runtime should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled forward-declared generic method chain binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn bound_generic_method_value_survives_codegen() {
+        let temp_root = make_temp_project_root("bound-generic-method-value-runtime");
+        let source_path = temp_root.join("bound_generic_method_value_runtime.apex");
+        let output_path = temp_root.join("bound_generic_method_value_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function main(): Integer {
+                box: Box<String> = Box<String>("hello");
+                getter: () -> String = box.get;
+                return if (getter().length() == 5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("bound generic method value runtime should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled bound generic method value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn alias_heavy_ultra_edge_tagged_container_method_chain_survives_frontend_backend() {
         let source = r#"
 import app.Option.Some as Present;
@@ -17450,6 +17559,108 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled canceled task object result error class match binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_block_expression_assignment_runtime() {
+        let temp_root = make_temp_project_root("block-expression-assignment-runtime");
+        let source_path = temp_root.join("block_expression_assignment_runtime.apex");
+        let output_path = temp_root.join("block_expression_assignment_runtime");
+        let source = r#"
+            function main(): Integer {
+                computed: Integer = {
+                    value: Integer = 2;
+                    value + 3
+                };
+                return if (computed == 5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("block expression assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled block expression assignment binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_block_expression_method_receiver_runtime() {
+        let temp_root = make_temp_project_root("block-expression-method-receiver-runtime");
+        let source_path = temp_root.join("block_expression_method_receiver_runtime.apex");
+        let output_path = temp_root.join("block_expression_method_receiver_runtime");
+        let source = r#"
+            class Boxed {
+                name: String;
+                constructor() {
+                    this.name = "hi";
+                }
+                function len(): Integer {
+                    return this.name.length();
+                }
+            }
+
+            function main(): Integer {
+                return if ({
+                    value: Boxed = Boxed();
+                    value
+                }.len() == 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("block expression method receiver should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled block expression method receiver binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_block_expression_match_binding_receiver_runtime() {
+        let temp_root = make_temp_project_root("block-expression-match-binding-receiver-runtime");
+        let source_path = temp_root.join("block_expression_match_binding_receiver_runtime.apex");
+        let output_path = temp_root.join("block_expression_match_binding_receiver_runtime");
+        let source = r#"
+            class Boxed {
+                name: String;
+                constructor() {
+                    this.name = "hi";
+                }
+                function len(): Integer {
+                    return this.name.length();
+                }
+            }
+
+            function main(): Integer {
+                return if ({
+                    current: Result<Integer, Boxed> = Result.error(Boxed());
+                    match (current) {
+                        Ok(value) => Boxed(),
+                        Error(err) => err,
+                    }
+                }.len() == 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("block expression match binding receiver should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled block expression match binding receiver binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);

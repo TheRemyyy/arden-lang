@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed order-dependent generic class resolution in the typechecker:
+  - forward-declared nominal generic classes inside enum payloads no longer get misresolved as builtin wrappers like `Box<T>` during declaration collection
+  - enum constructors, match-expression arm joins, and downstream method chains now accept matching forward-declared generic class payloads instead of emitting bogus diagnostics like `expected Box<String>, got Box<String>`
+- Fixed generic method-return inference in backend expression typing:
+  - method values resolved from generic class receivers now substitute the receiver's concrete type arguments into the inferred function signature instead of leaking raw type parameters like `T`
+  - chains like `{ match (...) { ... } }.get().length()` now resolve the `get()` return type as `String` and compile instead of falling into bogus interface-method lookup errors such as `Unknown interface method implementation: length`
+- Fixed bound method values on class instances:
+  - `obj.method` now resolves to a first-class function value when `method` is a class method and no field with that name exists, instead of failing with `Unknown field 'method' on class ...`
+  - generic bound methods now capture the concrete receiver and preserve specialized return types, so expressions like `getter: () -> String = box.get; getter().length()` compile and run
 - Fixed more builtin constructor layout bugs in backend codegen:
   - `Option<T>()` now lowers through the real normalized inner payload type during constructor codegen instead of always materializing an `Option<Integer>`-shaped value
   - `Result<T, E>()` now builds the correct typed `{ tag, ok, err }` layout for every `T`/`E` pair instead of hard-coding `i64`/pointer payload slots in the default constructor path
@@ -32,6 +41,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed codegen-side expression inference for `this` receivers:
   - `infer_expr_type(...)` now recognizes `this` instead of falling back to `Integer`, so expression-only typing paths keep class field types inside methods
   - method bodies that match on `this.state` and then call methods on bound payloads, such as `Error(err) => err.len()`, now codegen correctly instead of failing with `Cannot determine object type for method call: Ident("err")`
+- Fixed parser support for block expressions:
+  - parser now accepts `{ ... }` in expression position and lowers it as `Expr::Block` instead of rejecting it with `Expected expression, found Some(LBrace)`
+  - assignments like `value: Integer = { x: Integer = 2; x + 3 }` and method receivers like `{ value: Boxed = Boxed(); value }.len()` now parse and execute through the existing block-expression codegen path
+- Fixed match-result inference for scope-local pattern bindings in codegen:
+  - expression-side match type inference now carries typed `Some(inner)` / `Ok(value)` / `Error(err)` / enum payload bindings into each arm instead of inferring arms against the outer scope only
+  - block receivers whose tail expression returns a match binding, such as `{ current: Result<Integer, Boxed> = ...; match (current) { Error(err) => err, ... } }.len()`, now resolve the receiver type correctly instead of failing with `Cannot determine object type for method call`
 - Fixed lexer handling for string interpolation expressions containing nested string literals:
   - strings like `"{m["x"]}"` now stay a single string token instead of terminating early at the inner quote
   - interpolation now parses and codegens correctly for map indexing and similar expressions that use string literal keys inside `{...}`

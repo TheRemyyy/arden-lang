@@ -2683,6 +2683,12 @@ impl<'src> Parser<'src> {
                 self.eat(&Token::RParen)?;
                 return Ok(expr);
             }
+            Some(Token::LBrace) => {
+                self.advance();
+                let body = self.parse_expression_block()?;
+                self.eat(&Token::RBrace)?;
+                Expr::Block(body)
+            }
             Some(Token::Require) => {
                 // require(condition) or require(condition, message)
                 self.advance();
@@ -5176,7 +5182,7 @@ mod tests {
     fn test_string_interp_nested_braces_invalid_expr_stays_literal() {
         let source = r#"
             function main(): None {
-                s: String = "value {{1}}";
+                s: String = "value {{1+}}";
                 return None;
             }
         "#;
@@ -5190,7 +5196,7 @@ mod tests {
         let Expr::Literal(Literal::String(s)) = &value.node else {
             panic!("Expected string literal");
         };
-        assert_eq!(s, "value {{1}}");
+        assert_eq!(s, "value {{1+}}");
     }
 
     #[test]

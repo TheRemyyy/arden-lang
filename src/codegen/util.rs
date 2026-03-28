@@ -113,11 +113,27 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub(crate) fn infer_block_tail_type(&self, block: &[Spanned<Stmt>]) -> Option<Type> {
-        let last = block.last()?;
-        match &last.node {
-            Stmt::Expr(expr) => self.infer_object_type(&expr.node),
-            _ => None,
+        let mut scoped_params: Vec<Parameter> = Vec::new();
+        let mut ret = None;
+        for stmt in block {
+            match &stmt.node {
+                Stmt::Let {
+                    name, ty, mutable, ..
+                } => {
+                    scoped_params.push(Parameter {
+                        name: name.clone(),
+                        ty: ty.clone(),
+                        mutable: *mutable,
+                        mode: crate::ast::ParamMode::Owned,
+                    });
+                }
+                Stmt::Expr(expr) => {
+                    ret = Some(self.infer_expr_type(&expr.node, &scoped_params));
+                }
+                _ => {}
+            }
         }
+        ret
     }
 
     fn builtin_method_return_type(&self, obj_ty: &Type, field: &str) -> Option<Type> {
@@ -1119,7 +1135,7 @@ impl<'ctx> Codegen<'ctx> {
             .ok_or_else(|| CodegenError::new("match expression missing insert block"))?;
         let mut incoming: Vec<(BasicValueEnum<'ctx>, BasicBlock<'ctx>)> = Vec::new();
         let mut result_ty: Option<BasicTypeEnum<'ctx>> = None;
-        let inferred_match_result_ty = self.infer_match_expr_result_type(arms, &[]);
+        let inferred_match_result_ty = self.infer_match_expr_result_type(expr, arms, &[]);
         let expected_match_result_ty = expected_result_ty.or(match inferred_match_result_ty {
             Type::None => None,
             ref ty => Some(ty),
@@ -1837,8 +1853,27 @@ impl<'ctx> Codegen<'ctx> {
                         Some(ret_ty)
                     } else {
                         let class_name = self.type_to_class_name(&obj_ty)?;
+                        let generic_args = match &obj_ty {
+                            Type::Generic(_, args) => Some(args.clone()),
+                            _ => None,
+                        };
                         let method_name = self.resolve_method_function_name(&class_name, field)?;
                         let (_, ty) = self.functions.get(&method_name)?;
+                        if let Some(args) = generic_args {
+                            let class_info = self.classes.get(&class_name)?;
+                            if class_info.generic_params.len() == args.len() {
+                                let bindings = class_info
+                                    .generic_params
+                                    .iter()
+                                    .cloned()
+                                    .zip(args)
+                                    .collect::<HashMap<_, _>>();
+                                return match Self::substitute_type(ty, &bindings) {
+                                    Type::Function(_, ret) => Some(*ret),
+                                    _ => None,
+                                };
+                            }
+                        }
                         match ty {
                             Type::Function(_, ret) => Some((**ret).clone()),
                             _ => None,
@@ -1900,16 +1935,8 @@ impl<'ctx> Codegen<'ctx> {
                     None
                 }
             }
-            Expr::Match { arms, .. } => {
-                let mut arm_types = arms
-                    .iter()
-                    .filter_map(|arm| self.infer_block_tail_type(&arm.body));
-                let first = arm_types.next()?;
-                if arm_types.all(|ty| ty == first) {
-                    Some(first)
-                } else {
-                    None
-                }
+            Expr::Match { expr, arms } => {
+                Some(self.infer_match_expr_result_type(&expr.node, arms, &[]))
             }
             Expr::Block(block) => self.infer_block_tail_type(block),
             Expr::AsyncBlock(block) => Some(Type::Task(Box::new(
@@ -1942,19 +1969,36 @@ impl<'ctx> Codegen<'ctx> {
                 let obj_ty = self.infer_object_type(&object.node)?;
                 let (class_name, generic_args) = self.unwrap_class_like_type(&obj_ty)?;
                 let class_info = self.classes.get(&class_name)?;
-                let field_ty = class_info.field_types.get(field)?.clone();
-                if let Some(args) = generic_args.as_ref() {
-                    if class_info.generic_params.len() == args.len() {
-                        let bindings = class_info
-                            .generic_params
-                            .iter()
-                            .cloned()
-                            .zip(args.iter().cloned())
-                            .collect::<HashMap<_, _>>();
-                        return Some(Self::substitute_type(&field_ty, &bindings));
+                if let Some(field_ty) = class_info.field_types.get(field) {
+                    if let Some(args) = generic_args.as_ref() {
+                        if class_info.generic_params.len() == args.len() {
+                            let bindings = class_info
+                                .generic_params
+                                .iter()
+                                .cloned()
+                                .zip(args.iter().cloned())
+                                .collect::<HashMap<_, _>>();
+                            return Some(Self::substitute_type(field_ty, &bindings));
+                        }
                     }
+                    return Some(field_ty.clone());
                 }
-                Some(field_ty)
+                if let Some(method_name) = self.resolve_method_function_name(&class_name, field) {
+                    let (_, ty) = self.functions.get(&method_name)?;
+                    if let Some(args) = generic_args.as_ref() {
+                        if class_info.generic_params.len() == args.len() {
+                            let bindings = class_info
+                                .generic_params
+                                .iter()
+                                .cloned()
+                                .zip(args.iter().cloned())
+                                .collect::<HashMap<_, _>>();
+                            return Some(Self::substitute_type(ty, &bindings));
+                        }
+                    }
+                    return Some(ty.clone());
+                }
+                None
             }
             Expr::Require { .. } => Some(Type::None),
             Expr::Range { .. } => Some(Type::Range(Box::new(Type::Integer))),
@@ -2019,6 +2063,74 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn infer_match_pattern_params(&self, pattern: &Pattern, match_ty: &Type) -> Vec<Parameter> {
+        let mut params = Vec::new();
+        match pattern {
+            Pattern::Ident(name) => params.push(Parameter {
+                name: name.clone(),
+                ty: self.deref_codegen_type(match_ty).clone(),
+                mutable: false,
+                mode: crate::ast::ParamMode::Owned,
+            }),
+            Pattern::Variant(variant_name, bindings) => {
+                let variant_leaf = variant_name.rsplit('.').next().unwrap_or(variant_name);
+                match self.deref_codegen_type(match_ty) {
+                    Type::Option(inner) if variant_leaf == "Some" && !bindings.is_empty() => {
+                        params.push(Parameter {
+                            name: bindings[0].clone(),
+                            ty: (**inner).clone(),
+                            mutable: false,
+                            mode: crate::ast::ParamMode::Owned,
+                        });
+                    }
+                    Type::Result(ok, err) if !bindings.is_empty() => {
+                        let payload_ty = match variant_leaf {
+                            "Ok" => Some((**ok).clone()),
+                            "Error" => Some((**err).clone()),
+                            _ => None,
+                        };
+                        if let Some(payload_ty) = payload_ty {
+                            params.push(Parameter {
+                                name: bindings[0].clone(),
+                                ty: payload_ty,
+                                mutable: false,
+                                mode: crate::ast::ParamMode::Owned,
+                            });
+                        }
+                    }
+                    Type::Named(enum_name) if self.enums.contains_key(enum_name) => {
+                        let resolved_variant = if !variant_name.contains('.') {
+                            self.resolve_import_alias_variant(variant_name)
+                        } else {
+                            None
+                        };
+                        let resolved_leaf = resolved_variant
+                            .as_ref()
+                            .map(|(_, resolved_name)| resolved_name.as_str())
+                            .unwrap_or(variant_leaf);
+                        if let Some(enum_info) = self.enums.get(enum_name) {
+                            if let Some(variant_info) = enum_info.variants.get(resolved_leaf) {
+                                for (binding, field) in
+                                    bindings.iter().zip(variant_info.fields.iter())
+                                {
+                                    params.push(Parameter {
+                                        name: binding.clone(),
+                                        ty: field.clone(),
+                                        mutable: false,
+                                        mode: crate::ast::ParamMode::Owned,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Pattern::Wildcard | Pattern::Literal(_) => {}
+        }
+        params
+    }
+
     pub fn infer_if_expr_result_type(
         &self,
         then_branch: &[Spanned<Stmt>],
@@ -2037,10 +2149,19 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    pub fn infer_match_expr_result_type(&self, arms: &[MatchArm], params: &[Parameter]) -> Type {
+    pub fn infer_match_expr_result_type(
+        &self,
+        match_expr: &Expr,
+        arms: &[MatchArm],
+        params: &[Parameter],
+    ) -> Type {
+        let match_ty = self.infer_expr_type(match_expr, params);
         let mut result: Option<Type> = None;
         for arm in arms {
-            let Some(arm_ty) = self.infer_block_tail_type_with_params(&arm.body, params) else {
+            let mut arm_params = params.to_vec();
+            arm_params.extend(self.infer_match_pattern_params(&arm.pattern, &match_ty));
+            let Some(arm_ty) = self.infer_block_tail_type_with_params(&arm.body, &arm_params)
+            else {
                 continue;
             };
             result = self.merge_codegen_branch_type(result, arm_ty);
@@ -2053,10 +2174,24 @@ impl<'ctx> Codegen<'ctx> {
         stmts: &[Spanned<Stmt>],
         params: &[Parameter],
     ) -> Option<Type> {
+        let mut scoped_params = params.to_vec();
         let mut ret = None;
         for stmt in stmts {
-            if let Stmt::Expr(expr) = &stmt.node {
-                ret = Some(self.infer_expr_type(&expr.node, params));
+            match &stmt.node {
+                Stmt::Let {
+                    name, ty, mutable, ..
+                } => {
+                    scoped_params.push(Parameter {
+                        name: name.clone(),
+                        ty: ty.clone(),
+                        mutable: *mutable,
+                        mode: crate::ast::ParamMode::Owned,
+                    });
+                }
+                Stmt::Expr(expr) => {
+                    ret = Some(self.infer_expr_type(&expr.node, &scoped_params));
+                }
+                _ => {}
             }
         }
         ret
@@ -2716,6 +2851,19 @@ impl<'ctx> Codegen<'ctx> {
                     if let Some(method_name) = self.resolve_method_function_name(&class_name, field)
                     {
                         if let Some((_, ty)) = self.functions.get(&method_name) {
+                            if let Type::Generic(_, args) = &obj_ty {
+                                if let Some(class_info) = self.classes.get(&class_name) {
+                                    if class_info.generic_params.len() == args.len() {
+                                        let bindings = class_info
+                                            .generic_params
+                                            .iter()
+                                            .cloned()
+                                            .zip(args.iter().cloned())
+                                            .collect::<HashMap<_, _>>();
+                                        return Self::substitute_type(ty, &bindings);
+                                    }
+                                }
+                            }
                             return ty.clone();
                         }
                     }
@@ -2746,7 +2894,9 @@ impl<'ctx> Codegen<'ctx> {
                 else_branch,
                 ..
             } => self.infer_if_expr_result_type(then_branch, else_branch.as_ref(), params),
-            Expr::Match { arms, .. } => self.infer_match_expr_result_type(arms, params),
+            Expr::Match { expr, arms } => {
+                self.infer_match_expr_result_type(&expr.node, arms, params)
+            }
             Expr::Await(inner) => {
                 let inner_ty = self.infer_expr_type(&inner.node, params);
                 self.task_inner_type(&inner_ty).unwrap_or(Type::Integer)

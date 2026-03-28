@@ -6080,7 +6080,11 @@ impl<'ctx> Codegen<'ctx> {
                 variant.name.clone(),
                 EnumVariantInfo {
                     tag: i as u8,
-                    fields: variant.fields.iter().map(|f| f.ty.clone()).collect(),
+                    fields: variant
+                        .fields
+                        .iter()
+                        .map(|f| self.normalize_codegen_type(&f.ty))
+                        .collect(),
                 },
             );
             self.enum_variant_to_enum
@@ -8572,7 +8576,8 @@ impl<'ctx> Codegen<'ctx> {
         ty: &Type,
     ) -> Result<IntValue<'ctx>> {
         let i64_type = self.context.i64_type();
-        let encoded = match ty {
+        let normalized_ty = self.normalize_codegen_type(ty);
+        let encoded = match &normalized_ty {
             Type::Integer => value.into_int_value(),
             Type::Boolean => self
                 .builder
@@ -8591,6 +8596,15 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_ptr_to_int(value.into_pointer_value(), i64_type, "ptr_to_i64")
                 .unwrap(),
+            Type::Generic(name, _)
+                if self
+                    .canonical_codegen_type_name(name)
+                    .is_some_and(|canonical| self.classes.contains_key(&canonical)) =>
+            {
+                self.builder
+                    .build_ptr_to_int(value.into_pointer_value(), i64_type, "ptr_to_i64")
+                    .unwrap()
+            }
             _ => {
                 return Err(CodegenError::new(
                     "Unsupported enum payload type for codegen",
@@ -8606,7 +8620,8 @@ impl<'ctx> Codegen<'ctx> {
         ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
         let i64_type = self.context.i64_type();
-        let decoded = match ty {
+        let normalized_ty = self.normalize_codegen_type(ty);
+        let decoded = match &normalized_ty {
             Type::Integer => raw.into(),
             Type::Boolean => self
                 .builder
@@ -8631,6 +8646,20 @@ impl<'ctx> Codegen<'ctx> {
                 )
                 .unwrap()
                 .into(),
+            Type::Generic(name, _)
+                if self
+                    .canonical_codegen_type_name(name)
+                    .is_some_and(|canonical| self.classes.contains_key(&canonical)) =>
+            {
+                self.builder
+                    .build_int_to_ptr(
+                        raw,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "i64_to_ptr",
+                    )
+                    .unwrap()
+                    .into()
+            }
             _ => {
                 return Err(CodegenError::new(
                     "Unsupported enum payload type for codegen",
@@ -12733,10 +12762,26 @@ impl<'ctx> Codegen<'ctx> {
             .get(&class_name)
             .ok_or_else(|| CodegenError::new(format!("Unknown class: {}", class_name)))?;
 
-        let field_idx = *class_info
-            .field_indices
-            .get(field)
-            .ok_or_else(|| CodegenError::new(format!("Unknown field: {}", field)))?;
+        let Some(field_idx) = class_info.field_indices.get(field).copied() else {
+            if let Some(method_name) = self.resolve_method_function_name(&class_name, field) {
+                let (_, func_ty) =
+                    self.functions.get(&method_name).cloned().ok_or_else(|| {
+                        CodegenError::new(format!("Unknown method: {}", method_name))
+                    })?;
+                let apex_func_ty = self.specialize_method_signature_for_receiver(
+                    obj_ty.as_ref(),
+                    &class_name,
+                    &func_ty,
+                );
+                return self.compile_bound_method_value(
+                    object,
+                    obj_ty.as_ref(),
+                    &method_name,
+                    &apex_func_ty,
+                );
+            }
+            return Err(CodegenError::new(format!("Unknown field: {}", field)));
+        };
 
         let i32_type = self.context.i32_type();
         let zero = i32_type.const_int(0, false);
@@ -12761,6 +12806,160 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_load(field_type, field_ptr, field)
             .unwrap())
+    }
+
+    fn compile_bound_method_value(
+        &mut self,
+        object: &Expr,
+        object_ty: Option<&Type>,
+        method_name: &str,
+        apex_func_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let (method_fn, _) = self
+            .functions
+            .get(method_name)
+            .cloned()
+            .ok_or_else(|| CodegenError::new(format!("Unknown method: {}", method_name)))?;
+        let Type::Function(param_types, ret_type) = apex_func_ty else {
+            return Err(CodegenError::new(
+                "bound method value requires function type",
+            ));
+        };
+
+        let receiver_value = if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+            self.compile_deref(object)?
+        } else {
+            self.compile_expr(object)?
+        };
+        let receiver_llvm_ty = receiver_value.get_type();
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let env_struct_ty = self.context.struct_type(&[receiver_llvm_ty], false);
+        let malloc = self.get_or_declare_malloc();
+        let env_size = env_struct_ty
+            .size_of()
+            .ok_or_else(|| CodegenError::new("failed to size bound-method env"))?;
+        let env_alloc = self
+            .builder
+            .build_call(malloc, &[env_size.into()], "bound_method_env_alloc")
+            .unwrap();
+        let env_ptr =
+            self.extract_call_pointer_value(env_alloc, "malloc failed for bound-method env")?;
+        let receiver_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    env_struct_ty,
+                    env_ptr,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context.i32_type().const_int(0, false),
+                    ],
+                    "bound_method_receiver_ptr",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(receiver_ptr, receiver_value)
+            .unwrap();
+
+        let adapter_name = format!("__bound_method_adapter_{}", self.lambda_counter);
+        self.lambda_counter += 1;
+        let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
+        for param_ty in param_types {
+            llvm_params.push(self.llvm_type(param_ty).into());
+        }
+        let adapter_fn_type = match self.llvm_type(ret_type) {
+            BasicTypeEnum::IntType(i) => i.fn_type(&llvm_params, false),
+            BasicTypeEnum::FloatType(f) => f.fn_type(&llvm_params, false),
+            BasicTypeEnum::PointerType(p) => p.fn_type(&llvm_params, false),
+            BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
+            _ => self.context.i8_type().fn_type(&llvm_params, false),
+        };
+        let adapter_fn = self
+            .module
+            .add_function(&adapter_name, adapter_fn_type, None);
+
+        let saved_function = self.current_function;
+        let saved_return_type = self.current_return_type.clone();
+        let saved_insert_block = self.builder.get_insert_block();
+
+        self.current_function = Some(adapter_fn);
+        self.current_return_type = Some(apex_func_ty.clone());
+        let entry = self.context.append_basic_block(adapter_fn, "entry");
+        self.builder.position_at_end(entry);
+
+        let adapter_env = adapter_fn
+            .get_nth_param(0)
+            .ok_or_else(|| CodegenError::new("bound-method env param missing"))?
+            .into_pointer_value();
+        let stored_receiver_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    env_struct_ty,
+                    adapter_env,
+                    &[
+                        self.context.i32_type().const_int(0, false),
+                        self.context.i32_type().const_int(0, false),
+                    ],
+                    "bound_method_loaded_receiver_ptr",
+                )
+                .unwrap()
+        };
+        let loaded_receiver = self
+            .builder
+            .build_load(
+                receiver_llvm_ty,
+                stored_receiver_ptr,
+                "bound_method_receiver",
+            )
+            .unwrap();
+
+        let mut call_args: Vec<BasicMetadataValueEnum> =
+            vec![ptr_type.const_null().into(), loaded_receiver.into()];
+        for (index, _) in param_types.iter().enumerate() {
+            let param = adapter_fn
+                .get_nth_param((index + 1) as u32)
+                .ok_or_else(|| CodegenError::new("bound-method parameter missing"))?;
+            call_args.push(param.into());
+        }
+        let call = self
+            .builder
+            .build_call(method_fn, &call_args, "bound_method_call")
+            .unwrap();
+        match call.try_as_basic_value() {
+            ValueKind::Basic(val) => {
+                self.builder.build_return(Some(&val)).unwrap();
+            }
+            ValueKind::Instruction(_) => {
+                self.builder
+                    .build_return(Some(&self.context.i8_type().const_int(0, false)))
+                    .unwrap();
+            }
+        }
+
+        self.current_function = saved_function;
+        self.current_return_type = saved_return_type;
+        if let Some(block) = saved_insert_block {
+            self.builder.position_at_end(block);
+        }
+
+        let closure_ty = self.llvm_type(apex_func_ty).into_struct_type();
+        let mut closure = closure_ty.get_undef();
+        closure = self
+            .builder
+            .build_insert_value(
+                closure,
+                adapter_fn.as_global_value().as_pointer_value(),
+                0,
+                "fn",
+            )
+            .unwrap()
+            .into_struct_value();
+        closure = self
+            .builder
+            .build_insert_value(closure, env_ptr, 1, "env")
+            .unwrap()
+            .into_struct_value();
+        Ok(closure.into())
     }
 
     /// Get pointer to a field (for in-place modifications on collections)

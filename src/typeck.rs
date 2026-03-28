@@ -2293,6 +2293,7 @@ impl TypeChecker {
 
     /// Collect all top-level declarations
     fn collect_declarations(&mut self, program: &Program) {
+        self.predeclare_nominal_types(program);
         for decl in &program.declarations {
             match &decl.node {
                 Decl::Import(_) => {}
@@ -2312,6 +2313,70 @@ impl TypeChecker {
                     self.collect_module_declarations(module, &module.name, decl.span.clone());
                 }
             }
+        }
+    }
+
+    fn predeclare_nominal_types(&mut self, program: &Program) {
+        for decl in &program.declarations {
+            self.predeclare_decl_nominal_types(&decl.node, None, decl.span.clone());
+        }
+    }
+
+    fn predeclare_decl_nominal_types(
+        &mut self,
+        decl: &Decl,
+        module_prefix: Option<&str>,
+        span: Span,
+    ) {
+        match decl {
+            Decl::Class(class) => {
+                let key = module_prefix
+                    .map(|prefix| format!("{}__{}", prefix, class.name))
+                    .unwrap_or_else(|| class.name.clone());
+                self.classes.entry(key).or_insert_with(|| ClassInfo {
+                    fields: HashMap::new(),
+                    methods: HashMap::new(),
+                    method_visibilities: HashMap::new(),
+                    constructor: None,
+                    generic_type_vars: Vec::new(),
+                    visibility: class.visibility,
+                    extends: class.extends.clone(),
+                    implements: class.implements.clone(),
+                    span: span.clone(),
+                });
+            }
+            Decl::Enum(en) => {
+                let key = module_prefix
+                    .map(|prefix| format!("{}__{}", prefix, en.name))
+                    .unwrap_or_else(|| en.name.clone());
+                self.enums.entry(key).or_insert_with(|| EnumInfo {
+                    variants: HashMap::new(),
+                    span: span.clone(),
+                });
+            }
+            Decl::Interface(interface) => {
+                let key = module_prefix
+                    .map(|prefix| format!("{}__{}", prefix, interface.name))
+                    .unwrap_or_else(|| interface.name.clone());
+                self.interfaces.entry(key).or_insert_with(|| InterfaceInfo {
+                    methods: HashMap::new(),
+                    extends: interface.extends.clone(),
+                    span: span.clone(),
+                });
+            }
+            Decl::Module(module) => {
+                let nested_prefix = module_prefix
+                    .map(|prefix| format!("{}__{}", prefix, module.name))
+                    .unwrap_or_else(|| module.name.clone());
+                for inner_decl in &module.declarations {
+                    self.predeclare_decl_nominal_types(
+                        &inner_decl.node,
+                        Some(&nested_prefix),
+                        inner_decl.span.clone(),
+                    );
+                }
+            }
+            Decl::Function(_) | Decl::Import(_) => {}
         }
     }
 
@@ -7607,6 +7672,19 @@ impl TypeChecker {
                     self.check_member_visibility(&owner, visibility, "Field", field, span.clone());
                     return Self::substitute_type_vars(&field_type, &class_substitutions);
                 }
+                if let Some((owner, method_sig, visibility)) =
+                    self.lookup_class_method(&base_name, field)
+                {
+                    self.check_member_visibility(&owner, visibility, "Method", field, span.clone());
+                    let params = method_sig
+                        .params
+                        .iter()
+                        .map(|(_, ty)| Self::substitute_type_vars(ty, &class_substitutions))
+                        .collect::<Vec<_>>();
+                    let ret =
+                        Self::substitute_type_vars(&method_sig.return_type, &class_substitutions);
+                    return ResolvedType::Function(params, Box::new(ret));
+                }
                 self.error(
                     format!(
                         "Unknown field '{}' on class '{}'",
@@ -10300,6 +10378,101 @@ mod tests {
             }
         "#;
         check_source(src).expect("unit enum variants should typecheck as values");
+    }
+
+    #[test]
+    fn accepts_bound_generic_method_value_field_access() {
+        let src = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function main(): Integer {
+                box: Box<String> = Box<String>("hello");
+                getter: () -> String = box.get;
+                return getter().length();
+            }
+        "#;
+        check_source(src).expect("bound generic method values should typecheck as functions");
+    }
+
+    #[test]
+    fn accepts_forward_declared_generic_class_in_enum_payload_constructor() {
+        let src = r#"
+            enum Choice {
+                Boxed(Box<String>),
+                Empty
+            }
+
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                current: Choice = Choice.Boxed(Box<String>("hi"));
+                return 0;
+            }
+        "#;
+        check_source(src)
+            .expect("enum payload constructor should accept forward-declared generic classes");
+    }
+
+    #[test]
+    fn accepts_forward_declared_generic_class_in_match_expression_arms() {
+        let src = r#"
+            enum Choice {
+                Boxed(Box<String>),
+                Empty
+            }
+
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                current: Choice = Choice.Empty;
+                picked: Box<String> = match (current) {
+                    Boxed(inner) => inner,
+                    Empty => Box<String>("no")
+                };
+                return 0;
+            }
+        "#;
+        check_source(src)
+            .expect("match arms should join on forward-declared generic class payload types");
+    }
+
+    #[test]
+    fn accepts_forward_declared_generic_class_payload_block_receiver_chain() {
+        let src = r#"
+            enum Choice {
+                Boxed(Box<String>),
+                Empty
+            }
+
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function get(): T { return this.value; }
+            }
+
+            function main(): Integer {
+                return if ({
+                    current: Choice = Choice.Boxed(Box<String>("hi"));
+                    match (current) {
+                        Boxed(inner) => inner,
+                        Empty => Box<String>("no")
+                    }
+                }.get().length() == 2) { 0 } else { 1 };
+            }
+        "#;
+        check_source(src).expect(
+            "downstream method calls should work on forward-declared generic class match payloads",
+        );
     }
 
     #[test]
