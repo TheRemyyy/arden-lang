@@ -16999,8 +16999,13 @@ function main(): Integer {
         let source_path = temp_root.join("canceled_task_string_length_runtime.apex");
         let output_path = temp_root.join("canceled_task_string_length_runtime");
         let source = r#"
+            import std.time.*;
+
             function work(): Task<String> {
-                return async { "hi" };
+                return async {
+                    Time.sleep(50);
+                    "hi"
+                };
             }
 
             function main(): Integer {
@@ -17029,8 +17034,13 @@ function main(): Integer {
         let source_path = temp_root.join("canceled_task_string_equality_runtime.apex");
         let output_path = temp_root.join("canceled_task_string_equality_runtime");
         let source = r#"
+            import std.time.*;
+
             function work(): Task<String> {
-                return async { "hi" };
+                return async {
+                    Time.sleep(50);
+                    "hi"
+                };
             }
 
             function main(): Integer {
@@ -17048,6 +17058,433 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled canceled task string equality binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_object_field_runtime() {
+        let temp_root = make_temp_project_root("canceled-task-object-field-runtime");
+        let source_path = temp_root.join("canceled_task_object_field_runtime.apex");
+        let output_path = temp_root.join("canceled_task_object_field_runtime");
+        let source = r#"
+            import std.time.*;
+
+            class Boxed {
+                value: Integer;
+                constructor() {
+                    this.value = 7;
+                }
+            }
+
+            function work(): Task<Boxed> {
+                return async {
+                    Time.sleep(50);
+                    return Boxed();
+                };
+            }
+
+            function main(): Integer {
+                mut t: Task<Boxed> = work();
+                t.cancel();
+                b: Boxed = await(t);
+                return if (b.value == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task object field access should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task object field binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_object_string_method_runtime() {
+        let temp_root = make_temp_project_root("canceled-task-object-string-method-runtime");
+        let source_path = temp_root.join("canceled_task_object_string_method_runtime.apex");
+        let output_path = temp_root.join("canceled_task_object_string_method_runtime");
+        let source = r#"
+            import std.time.*;
+
+            class Boxed {
+                name: String;
+                constructor() {
+                    this.name = "hi";
+                }
+                function len(): Integer {
+                    return this.name.length();
+                }
+            }
+
+            function work(): Task<Boxed> {
+                return async {
+                    Time.sleep(50);
+                    return Boxed();
+                };
+            }
+
+            function main(): Integer {
+                mut t: Task<Boxed> = work();
+                t.cancel();
+                b: Boxed = await(t);
+                return b.len();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task object string method should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task object string method binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_nested_object_method_runtime() {
+        let temp_root = make_temp_project_root("canceled-task-nested-object-method-runtime");
+        let source_path = temp_root.join("canceled_task_nested_object_method_runtime.apex");
+        let output_path = temp_root.join("canceled_task_nested_object_method_runtime");
+        let source = r#"
+            import std.time.*;
+
+            class Inner {
+                value: Integer;
+                constructor() {
+                    this.value = 7;
+                }
+            }
+
+            class Outer {
+                inner: Inner;
+                constructor() {
+                    this.inner = Inner();
+                }
+                function read(): Integer {
+                    return this.inner.value;
+                }
+            }
+
+            function work(): Task<Outer> {
+                return async {
+                    Time.sleep(50);
+                    return Outer();
+                };
+            }
+
+            function main(): Integer {
+                mut t: Task<Outer> = work();
+                t.cancel();
+                o: Outer = await(t);
+                return o.read();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task nested object method should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task nested object method binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_recursive_object_string_method_runtime() {
+        let temp_root = make_temp_project_root("canceled-task-recursive-object-string-runtime");
+        let source_path = temp_root.join("canceled_task_recursive_object_string_runtime.apex");
+        let output_path = temp_root.join("canceled_task_recursive_object_string_runtime");
+        let source = r#"
+            import std.time.*;
+
+            class Node {
+                name: String;
+                next: Node;
+                constructor() {
+                    this.name = "root";
+                    this.next = this;
+                }
+                function nested_len(): Integer {
+                    return this.next.name.length();
+                }
+            }
+
+            function work(): Task<Node> {
+                return async {
+                    Time.sleep(50);
+                    return Node();
+                };
+            }
+
+            function main(): Integer {
+                mut t: Task<Node> = work();
+                t.cancel();
+                n: Node = await(t);
+                return n.nested_len();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task recursive object string method should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task recursive object string method binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_mutually_recursive_object_string_method_runtime() {
+        let temp_root =
+            make_temp_project_root("canceled-task-mutually-recursive-object-string-runtime");
+        let source_path =
+            temp_root.join("canceled_task_mutually_recursive_object_string_runtime.apex");
+        let output_path = temp_root.join("canceled_task_mutually_recursive_object_string_runtime");
+        let source = r#"
+            import std.time.*;
+
+            class Left {
+                label: String;
+                right: Right;
+                constructor() {
+                    this.label = "left";
+                    this.right = Right();
+                }
+                function right_name_len(): Integer {
+                    return this.right.name.length();
+                }
+            }
+
+            class Right {
+                name: String;
+                left: Left;
+                constructor() {
+                    this.name = "right";
+                    this.left = Left();
+                }
+            }
+
+            function work(): Task<Left> {
+                return async {
+                    Time.sleep(50);
+                    return Left();
+                };
+            }
+
+            function main(): Integer {
+                mut t: Task<Left> = work();
+                t.cancel();
+                l: Left = await(t);
+                return l.right_name_len();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task mutually recursive object string method should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task mutually recursive object string method binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_result_error_string_match_runtime() {
+        let temp_root = make_temp_project_root("canceled-task-result-error-string-match-runtime");
+        let source_path = temp_root.join("canceled_task_result_error_string_match_runtime.apex");
+        let output_path = temp_root.join("canceled_task_result_error_string_match_runtime");
+        let source = r#"
+            import std.time.*;
+
+            function work(): Task<Result<Integer, String>> {
+                return async {
+                    Time.sleep(50);
+                    return Result.ok(7);
+                };
+            }
+
+            function main(): Integer {
+                mut t: Task<Result<Integer, String>> = work();
+                t.cancel();
+                r: Result<Integer, String> = await(t);
+                return match (r) {
+                    Ok(value) => value,
+                    Error(err) => err.length(),
+                };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task result error string match should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task result error string match binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_object_result_error_string_match_runtime() {
+        let temp_root =
+            make_temp_project_root("canceled-task-object-result-error-string-match-runtime");
+        let source_path =
+            temp_root.join("canceled_task_object_result_error_string_match_runtime.apex");
+        let output_path = temp_root.join("canceled_task_object_result_error_string_match_runtime");
+        let source = r#"
+            import std.time.*;
+
+            class Boxed {
+                state: Result<Integer, String>;
+                constructor() {
+                    this.state = Result.ok(7);
+                }
+                function read(): Integer {
+                    return match (this.state) {
+                        Ok(value) => value,
+                        Error(err) => err.length(),
+                    };
+                }
+            }
+
+            function work(): Task<Boxed> {
+                return async {
+                    Time.sleep(50);
+                    return Boxed();
+                };
+            }
+
+            function main(): Integer {
+                mut t: Task<Boxed> = work();
+                t.cancel();
+                b: Boxed = await(t);
+                return b.read();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task object result error string match should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task object result error string match binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_object_result_error_class_match_runtime() {
+        let temp_root =
+            make_temp_project_root("canceled-task-object-result-error-class-match-runtime");
+        let source_path =
+            temp_root.join("canceled_task_object_result_error_class_match_runtime.apex");
+        let output_path = temp_root.join("canceled_task_object_result_error_class_match_runtime");
+        let source = r#"
+            import std.time.*;
+
+            class Problem {
+                message: String;
+                constructor() {
+                    this.message = "boom";
+                }
+                function len(): Integer {
+                    return this.message.length();
+                }
+            }
+
+            class Holder {
+                state: Result<Integer, Problem>;
+                constructor() {
+                    this.state = Result.ok(7);
+                }
+                function read(): Integer {
+                    return match (this.state) {
+                        Ok(value) => value,
+                        Error(err) => err.len(),
+                    };
+                }
+            }
+
+            function work(): Task<Holder> {
+                return async {
+                    Time.sleep(50);
+                    return Holder();
+                };
+            }
+
+            function main(): Integer {
+                mut t: Task<Holder> = work();
+                t.cancel();
+                h: Holder = await(t);
+                return h.read();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task object result error class match should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task object result error class match binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_range_has_next_runtime() {
+        let temp_root = make_temp_project_root("canceled-task-range-has-next-runtime");
+        let source_path = temp_root.join("canceled_task_range_has_next_runtime.apex");
+        let output_path = temp_root.join("canceled_task_range_has_next_runtime");
+        let source = r#"
+            import std.time.*;
+
+            function work(): Task<Range<Integer>> {
+                return async {
+                    Time.sleep(50);
+                    return range(0, 3);
+                };
+            }
+
+            function main(): Integer {
+                mut t: Task<Range<Integer>> = work();
+                t.cancel();
+                r: Range<Integer> = await(t);
+                return if (r.has_next() == false) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task range has_next should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task range has_next binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
@@ -19450,6 +19887,114 @@ function main(): Integer {
         let err = compile_source(source, &source_path, &output_path, false, true, None, None)
             .expect_err("print on Option should fail until complex formatting exists");
         assert!(err.contains("print()"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_with_string_literal_index_key_runtime() {
+        let temp_root = make_temp_project_root("string-interpolation-map-string-key-runtime");
+        let source_path = temp_root.join("string_interpolation_map_string_key_runtime.apex");
+        let output_path = temp_root.join("string_interpolation_map_string_key_runtime");
+        let source = r#"
+            function main(): Integer {
+                mut m: Map<String, Integer> = Map<String, Integer>();
+                m["x"] = 7;
+                s: String = "{m["x"]}";
+                return if (s == "7") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation with string literal key should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string interpolation with string key binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_long_string_interpolation_runtime() {
+        let temp_root = make_temp_project_root("long-string-interpolation-runtime");
+        let source_path = temp_root.join("long_string_interpolation_runtime.apex");
+        let output_path = temp_root.join("long_string_interpolation_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                mut s: String = "";
+                mut i: Integer = 0;
+                while (i < 60000) {
+                    s = Str.concat(s, "a");
+                    i = i + 1;
+                }
+                out: String = "x{s}y";
+                return if (out.length() == 60002) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("long string interpolation should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled long string interpolation binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_with_nested_braces_string_literal_runtime() {
+        let temp_root = make_temp_project_root("string-interp-nested-braces-string-runtime");
+        let source_path = temp_root.join("string_interp_nested_braces_string_runtime.apex");
+        let output_path = temp_root.join("string_interp_nested_braces_string_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                s: String = "{Str.contains("\{x\}", "{")}";
+                return if (s == "true") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation with nested braces in string literal should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled nested braces string interpolation binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_with_char_brace_literal_runtime() {
+        let temp_root = make_temp_project_root("string-interp-char-brace-runtime");
+        let source_path = temp_root.join("string_interp_char_brace_runtime.apex");
+        let output_path = temp_root.join("string_interp_char_brace_runtime");
+        let source = r#"
+            function main(): Integer {
+                s: String = "{'}'}";
+                return if (s == "}") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation with char brace literal should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled char brace interpolation binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -24017,6 +24562,40 @@ function main(): Integer {
             .status()
             .expect("run compiled async block await_timeout binary");
         assert_eq!(status.code(), Some(84));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_await_timeout_zero_pending_runtime() {
+        let temp_root = make_temp_project_root("await-timeout-zero-pending-runtime");
+        let source_path = temp_root.join("await_timeout_zero_pending_runtime.apex");
+        let output_path = temp_root.join("await_timeout_zero_pending_runtime");
+        let source = r#"
+            function work(): Task<Integer> {
+                return async {
+                    mut i: Integer = 0;
+                    while (i < 1000000) {
+                        i = i + 1;
+                    }
+                    return 7;
+                };
+            }
+
+            function main(): Integer {
+                maybe: Option<Integer> = work().await_timeout(0);
+                return if (maybe.is_none()) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("await_timeout(0) on pending task should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled await_timeout zero pending binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }

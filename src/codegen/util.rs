@@ -2514,6 +2514,11 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Type::Integer
             }
+            Expr::This => self
+                .variables
+                .get("this")
+                .map(|v| v.ty.clone())
+                .unwrap_or(Type::Integer),
             Expr::Binary { op, left, .. } => match op {
                 BinOp::Eq
                 | BinOp::NotEq
@@ -2765,7 +2770,6 @@ impl<'ctx> Codegen<'ctx> {
             )),
             Expr::Require { .. } => Type::None,
             Expr::Range { .. } => Type::Range(Box::new(Type::Integer)),
-            _ => Type::Integer,
         }
     }
 
@@ -2942,6 +2946,23 @@ impl<'ctx> Codegen<'ctx> {
             true,
         );
         self.module.add_function(name, sprintf_type, None)
+    }
+
+    pub fn get_or_declare_snprintf(&self) -> FunctionValue<'ctx> {
+        let name = "snprintf";
+        if let Some(f) = self.module.get_function(name) {
+            return f;
+        }
+
+        let snprintf_type = self.context.i32_type().fn_type(
+            &[
+                self.context.ptr_type(AddressSpace::default()).into(),
+                self.context.i64_type().into(),
+                self.context.ptr_type(AddressSpace::default()).into(),
+            ],
+            true,
+        );
+        self.module.add_function(name, snprintf_type, None)
     }
 
     // === Range Implementation ===

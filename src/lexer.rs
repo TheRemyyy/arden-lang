@@ -4,6 +4,112 @@
 
 use logos::Logos;
 
+fn remainder_has_interpolation_close(remainder: &str) -> bool {
+    let mut depth = 1usize;
+    let mut escape_active = false;
+    let mut nested_quote: Option<char> = None;
+
+    for ch in remainder.chars() {
+        if escape_active {
+            escape_active = false;
+            continue;
+        }
+
+        if let Some(active_quote) = nested_quote {
+            match ch {
+                '\\' => escape_active = true,
+                current if current == active_quote => nested_quote = None,
+                _ => {}
+            }
+            continue;
+        }
+
+        match ch {
+            '\\' => escape_active = true,
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return true;
+                }
+            }
+            '"' | '\'' => nested_quote = Some(ch),
+            _ => {}
+        }
+    }
+
+    false
+}
+
+fn can_start_nested_interpolation_string(remainder: &str, quote: char) -> bool {
+    let mut escape_active = false;
+
+    for (idx, ch) in remainder.char_indices() {
+        if escape_active {
+            escape_active = false;
+            continue;
+        }
+
+        match ch {
+            '\\' => escape_active = true,
+            current if current == quote => {
+                return remainder_has_interpolation_close(&remainder[idx + ch.len_utf8()..]);
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+fn lex_string_literal<'src>(lex: &mut logos::Lexer<'src, Token<'src>>) -> Option<&'src str> {
+    let mut interpolation_depth = 0usize;
+    let mut escape_active = false;
+    let mut nested_quote: Option<char> = None;
+
+    for (idx, ch) in lex.remainder().char_indices() {
+        if escape_active {
+            escape_active = false;
+            continue;
+        }
+
+        if let Some(active_quote) = nested_quote {
+            match ch {
+                '\\' => escape_active = true,
+                current if current == active_quote => nested_quote = None,
+                _ => {}
+            }
+            continue;
+        }
+
+        match ch {
+            '\\' => escape_active = true,
+            '{' => interpolation_depth += 1,
+            '}' if interpolation_depth > 0 => interpolation_depth -= 1,
+            '"' if interpolation_depth == 0 => {
+                lex.bump(idx + ch.len_utf8());
+                let slice = lex.slice();
+                return Some(&slice[1..slice.len() - 1]);
+            }
+            '"' | '\'' if interpolation_depth > 0 => {
+                if can_start_nested_interpolation_string(
+                    &lex.remainder()[idx + ch.len_utf8()..],
+                    ch,
+                ) {
+                    nested_quote = Some(ch);
+                } else {
+                    lex.bump(idx + ch.len_utf8());
+                    let slice = lex.slice();
+                    return Some(&slice[1..slice.len() - 1]);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
 #[derive(Logos, Debug, Clone, PartialEq)]
 #[logos(skip r"[ \t\r\n\f]+")]
 #[logos(skip r"//[^\n]*")]
@@ -202,10 +308,7 @@ pub enum Token<'src> {
     })]
     Float(f64),
 
-    #[regex(r#""([^"\\]|\\.)*""#, |lex| {
-        let s = lex.slice();
-        Some(&s[1..s.len()-1])
-    })]
+    #[token("\"", lex_string_literal)]
     String(&'src str),
 
     #[regex(r"'([^'\\]|\\.)'", |lex| {
@@ -413,5 +516,16 @@ mod tests {
         assert!(matches!(tokens[2], Token::Char('\t')));
         assert!(matches!(tokens[3], Token::Char('\\')));
         assert!(matches!(tokens[4], Token::Char('\'')));
+    }
+
+    #[test]
+    fn tokenizes_string_interpolation_with_nested_string_literal() {
+        let tokens = tokenize(r#"s: String = "{m["x"]}";"#).expect("tokenization succeeds");
+        assert!(matches!(tokens[0].0, Token::Ident("s")));
+        assert!(matches!(tokens[1].0, Token::Colon));
+        assert!(matches!(tokens[2].0, Token::TyString));
+        assert!(matches!(tokens[3].0, Token::Eq));
+        assert!(matches!(tokens[4].0, Token::String("{m[\"x\"]}")));
+        assert!(matches!(tokens[5].0, Token::Semi));
     }
 }

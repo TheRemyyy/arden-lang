@@ -23,6 +23,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed canceled `Task<String>` default payload handling:
   - `Task.cancel()` no longer stores a null string pointer as the synthetic awaited result for canceled string tasks
   - awaiting a canceled `Task<String>` now yields a real empty string buffer, so string operations like `.length()` and `== ""` stay safe instead of crashing or producing inconsistent results
+- Fixed canceled `Task<T>` default payload handling for pointer-backed non-string values:
+  - canceled tasks returning user-defined classes now materialize a zero-initialized instance instead of a null object pointer, so field access after `await(task)` no longer crashes
+  - canceled tasks returning classes with nested pointer-backed fields now recursively materialize safe defaults for members like `String` and nested objects, so method calls on the awaited canceled result no longer dereference invalid inner pointers
+  - cyclic class graphs now still initialize non-recursive fields on revisited nodes during canceled-task default materialization, so self-referential and mutually recursive objects no longer crash on paths like `node.next.name.length()`
+  - canceled tasks returning `Result<T, String>` now materialize a real empty string for the active `Error` payload instead of a null pointer, so matching `Error(err)` and reading `err.length()` no longer segfaults
+  - canceled tasks returning `Range<T>` now materialize an empty range with a non-zero step, so methods like `.has_next()` stay safe after cancellation instead of dereferencing a null range handle
+- Fixed codegen-side expression inference for `this` receivers:
+  - `infer_expr_type(...)` now recognizes `this` instead of falling back to `Integer`, so expression-only typing paths keep class field types inside methods
+  - method bodies that match on `this.state` and then call methods on bound payloads, such as `Error(err) => err.len()`, now codegen correctly instead of failing with `Cannot determine object type for method call: Ident("err")`
+- Fixed lexer handling for string interpolation expressions containing nested string literals:
+  - strings like `"{m["x"]}"` now stay a single string token instead of terminating early at the inner quote
+  - interpolation now parses and codegens correctly for map indexing and similar expressions that use string literal keys inside `{...}`
+- Fixed long string interpolation buffer sizing in backend codegen:
+  - interpolation result buffers are now sized from the actual rendered literal and expression string lengths instead of using a fixed 4096-byte allocation
+  - long interpolations like `"x{s}y"` with large runtime-built strings no longer corrupt memory or crash during execution
+- Fixed parser handling for interpolation expressions containing nested string and char literals:
+  - brace characters inside nested string and char literals no longer terminate the surrounding `{...}` interpolation early during parsing
+  - expressions like `"{Str.contains("\{x\}", "{")}"` and `"{'}'}"` now parse and execute as interpolation instead of silently degrading into plain string literals
+- Fixed zero-timeout task waits in backend codegen:
+  - `Task.await_timeout(0)` now returns `None` immediately for pending tasks instead of sleeping once and spuriously succeeding if the task finishes during that extra millisecond
+  - already-ready tasks still flow through the existing ready-path checks, while zero-timeout pending waits no longer get an accidental extra millisecond
 - Fixed the last shared call-result crash path in backend codegen:
   - the common `extract_call_value(...)` helper now returns a normal `CodegenError` instead of assuming every lowered call always produces a value
   - string helpers, math builtins, filesystem/process builtins, UTF-8 utilities, assertion lowering, and function-adapter returns now all propagate that failure path instead of panicking or mis-typing intermediate LLVM values

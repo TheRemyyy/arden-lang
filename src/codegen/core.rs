@@ -12289,113 +12289,31 @@ impl<'ctx> Codegen<'ctx> {
                     AtomicOrdering::Release,
                 )?;
 
-                // Store default zero value so await after cancel doesn't dereference null.
+                // Store a safe default payload so await after cancel stays valid for heap-backed
+                // values like user classes and ranges instead of returning a null object pointer.
                 let malloc = self.get_or_declare_malloc();
-                let result_ptr = if matches!(inner, Type::None) {
-                    let raw = self
-                        .builder
-                        .build_call(
-                            malloc,
-                            &[self.context.i64_type().const_int(1, false).into()],
-                            "task_cancel_none_alloc",
-                        )
-                        .unwrap();
-                    let ptr = self.extract_call_pointer_value(
-                        raw,
-                        "malloc failed while creating canceled task value",
-                    )?;
-                    let typed = self
-                        .builder
-                        .build_pointer_cast(
-                            ptr,
-                            self.context.ptr_type(AddressSpace::default()),
-                            "task_cancel_none_ptr",
-                        )
-                        .unwrap();
-                    self.builder
-                        .build_store(typed, self.context.i8_type().const_int(0, false))
-                        .unwrap();
-                    ptr
-                } else if matches!(inner, Type::String) {
-                    let string_raw = self
-                        .builder
-                        .build_call(
-                            malloc,
-                            &[self.context.i64_type().const_int(1, false).into()],
-                            "task_cancel_string_alloc",
-                        )
-                        .unwrap();
-                    let string_ptr = self.extract_call_pointer_value(
-                        string_raw,
-                        "malloc failed while creating canceled task string value",
-                    )?;
-                    self.builder
-                        .build_store(string_ptr, self.context.i8_type().const_zero())
-                        .unwrap();
-
-                    let slot_raw = self
-                        .builder
-                        .build_call(
-                            malloc,
-                            &[self
-                                .context
-                                .i64_type()
-                                .const_int(
-                                    self.storage_size_of_llvm_type(self.llvm_type(inner)),
-                                    false,
-                                )
-                                .into()],
-                            "task_cancel_string_slot_alloc",
-                        )
-                        .unwrap();
-                    let slot_ptr = self.extract_call_pointer_value(
-                        slot_raw,
-                        "malloc failed while creating canceled task string slot",
-                    )?;
-                    let typed_slot_ptr = self
-                        .builder
-                        .build_pointer_cast(
-                            slot_ptr,
-                            self.context.ptr_type(AddressSpace::default()),
-                            "task_cancel_string_slot_ptr",
-                        )
-                        .unwrap();
-                    self.builder
-                        .build_store(typed_slot_ptr, string_ptr)
-                        .unwrap();
-                    slot_ptr
-                } else {
-                    let llvm_inner = self.llvm_type(inner);
-                    let size = llvm_inner
-                        .size_of()
-                        .ok_or_else(|| CodegenError::new("failed to size Task inner type"))?;
-                    let raw = self
-                        .builder
-                        .build_call(malloc, &[size.into()], "task_cancel_alloc")
-                        .unwrap();
-                    let ptr = self.extract_call_pointer_value(
-                        raw,
-                        "malloc failed while creating canceled task value",
-                    )?;
-                    let typed_ptr = self
-                        .builder
-                        .build_pointer_cast(
-                            ptr,
-                            self.context.ptr_type(AddressSpace::default()),
-                            "task_cancel_result_ptr",
-                        )
-                        .unwrap();
-
-                    let zero_value: BasicValueEnum = match llvm_inner {
-                        BasicTypeEnum::IntType(t) => t.const_zero().into(),
-                        BasicTypeEnum::FloatType(t) => t.const_float(0.0).into(),
-                        BasicTypeEnum::PointerType(t) => t.const_null().into(),
-                        BasicTypeEnum::StructType(t) => t.const_zero().into(),
-                        _ => self.context.i8_type().const_int(0, false).into(),
-                    };
-                    self.builder.build_store(typed_ptr, zero_value).unwrap();
-                    ptr
-                };
+                let llvm_inner = self.llvm_type(inner);
+                let size = llvm_inner
+                    .size_of()
+                    .ok_or_else(|| CodegenError::new("failed to size Task inner type"))?;
+                let raw = self
+                    .builder
+                    .build_call(malloc, &[size.into()], "task_cancel_alloc")
+                    .unwrap();
+                let result_ptr = self.extract_call_pointer_value(
+                    raw,
+                    "malloc failed while creating canceled task value",
+                )?;
+                let typed_ptr = self
+                    .builder
+                    .build_pointer_cast(
+                        result_ptr,
+                        self.context.ptr_type(AddressSpace::default()),
+                        "task_cancel_result_ptr",
+                    )
+                    .unwrap();
+                let default_value = self.create_default_value_for_type(inner)?;
+                self.builder.build_store(typed_ptr, default_value).unwrap();
                 self.builder.build_store(result_field, result_ptr).unwrap();
                 self.builder.build_unconditional_branch(merge_bb).unwrap();
 
@@ -12528,14 +12446,7 @@ impl<'ctx> Codegen<'ctx> {
                 self.builder
                     .build_store(iter_ptr, self.context.i64_type().const_zero())
                     .unwrap();
-                let max_iters = self
-                    .builder
-                    .build_int_add(
-                        ms_i64,
-                        self.context.i64_type().const_int(1, false),
-                        "task_timeout_iters",
-                    )
-                    .unwrap();
+                let max_iters = ms_i64;
 
                 self.builder
                     .build_conditional_branch(done_ready, done_bb, check_bb)
@@ -14277,28 +14188,59 @@ impl<'ctx> Codegen<'ctx> {
         // Build format string and collect arguments
         let mut fmt_str = String::new();
         let mut args: Vec<BasicMetadataValueEnum> = Vec::new();
+        let i64_type = self.context.i64_type();
+        let strlen = self.get_or_declare_strlen();
+        let mut rendered_len = i64_type.const_zero();
 
         for part in parts {
             match part {
                 StringPart::Literal(s) => {
                     // Escape % characters for printf
                     fmt_str.push_str(&s.replace('%', "%%"));
+                    rendered_len = self
+                        .builder
+                        .build_int_add(
+                            rendered_len,
+                            i64_type.const_int(s.len() as u64, false),
+                            "interp_literal_len",
+                        )
+                        .unwrap();
                 }
                 StringPart::Expr(expr) => {
                     let expr_ty = self.infer_expr_type(&expr.node, &[]);
                     let val = self.compile_expr_with_expected_type(&expr.node, &expr_ty)?;
                     let display = self.compile_value_to_display_string(val, &expr_ty)?;
+                    let display_len_call = self
+                        .builder
+                        .build_call(strlen, &[display.into()], "interp_display_len")
+                        .unwrap();
+                    let display_len = self
+                        .extract_call_value_with_context(
+                            display_len_call,
+                            "strlen did not produce a value for string interpolation",
+                        )?
+                        .into_int_value();
+                    rendered_len = self
+                        .builder
+                        .build_int_add(rendered_len, display_len, "interp_total_expr_len")
+                        .unwrap();
                     fmt_str.push_str("%s");
                     args.push(display.into());
                 }
             }
         }
 
-        // Allocate buffer for result (simplified: fixed size)
-        let sprintf = self.get_or_declare_sprintf();
+        // Allocate the exact output size plus the trailing null terminator.
+        let snprintf = self.get_or_declare_snprintf();
         let malloc = self.get_or_declare_malloc();
-
-        let buffer_size = self.context.i64_type().const_int(4096, false);
+        let buffer_size = self
+            .builder
+            .build_int_add(
+                rendered_len,
+                i64_type.const_int(1, false),
+                "interp_buffer_size",
+            )
+            .unwrap();
         let buffer_call = self
             .builder
             .build_call(malloc, &[buffer_size.into()], "strbuf")
@@ -14316,12 +14258,15 @@ impl<'ctx> Codegen<'ctx> {
         fmt_global.set_linkage(Linkage::Private);
         fmt_global.set_initializer(&fmt_val);
 
-        // Call sprintf
-        let mut sprintf_args: Vec<BasicMetadataValueEnum> =
-            vec![buffer.into(), fmt_global.as_pointer_value().into()];
-        sprintf_args.extend(args);
+        // Call snprintf with the exact output size to avoid heap overwrites on long strings.
+        let mut snprintf_args: Vec<BasicMetadataValueEnum> = vec![
+            buffer.into(),
+            buffer_size.into(),
+            fmt_global.as_pointer_value().into(),
+        ];
+        snprintf_args.extend(args);
         self.builder
-            .build_call(sprintf, &sprintf_args, "sprintf")
+            .build_call(snprintf, &snprintf_args, "snprintf")
             .unwrap();
 
         Ok(buffer.into())

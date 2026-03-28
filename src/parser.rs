@@ -2814,19 +2814,48 @@ impl<'src> Parser<'src> {
                 let mut expr_str = String::new();
                 let mut depth = 1;
                 let mut closed = false;
+                let mut escape_active = false;
+                let mut nested_quote: Option<char> = None;
                 for c in chars.by_ref() {
-                    if c == '{' {
-                        depth += 1;
+                    if escape_active {
+                        escape_active = false;
                         expr_str.push(c);
-                    } else if c == '}' {
-                        depth -= 1;
-                        if depth == 0 {
-                            closed = true;
-                            break;
+                        continue;
+                    }
+
+                    if let Some(active_quote) = nested_quote {
+                        match c {
+                            '\\' => {
+                                escape_active = true;
+                                expr_str.push(c);
+                            }
+                            current if current == active_quote => {
+                                nested_quote = None;
+                                expr_str.push(c);
+                            }
+                            _ => expr_str.push(c),
                         }
-                        expr_str.push(c);
-                    } else {
-                        expr_str.push(c);
+                        continue;
+                    }
+
+                    match c {
+                        '"' | '\'' => {
+                            nested_quote = Some(c);
+                            expr_str.push(c);
+                        }
+                        '{' => {
+                            depth += 1;
+                            expr_str.push(c);
+                        }
+                        '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                closed = true;
+                                break;
+                            }
+                            expr_str.push(c);
+                        }
+                        _ => expr_str.push(c),
                     }
                 }
 
@@ -5311,6 +5340,21 @@ mod tests {
                         1 => { println(msg); },
                         _ => { println("fallback"); },
                     }
+                    return None;
+                }
+            "#,
+            r#"
+                function main(): None {
+                    mut m: Map<String, Integer> = Map<String, Integer>();
+                    msg: String = "{m["x"]}";
+                    return None;
+                }
+            "#,
+            r#"
+                import std.string.*;
+                function main(): None {
+                    msg: String = "{Str.contains("\{x\}", "{")}";
+                    end: String = "{'}'}";
                     return None;
                 }
             "#,

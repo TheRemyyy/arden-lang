@@ -8,6 +8,7 @@ use inkwell::targets::{
 use inkwell::types::BasicType;
 use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use crate::codegen::core::{Codegen, CodegenError, Result};
@@ -1954,10 +1955,11 @@ impl<'ctx> Codegen<'ctx> {
         self.create_default_result_typed(&Type::Integer, &Type::String)
     }
 
-    pub fn create_default_result_typed(
+    fn create_default_result_typed_with_guard(
         &mut self,
         ok_ty: &Type,
         err_ty: &Type,
+        visited_classes: &mut HashSet<String>,
     ) -> Result<BasicValueEnum<'ctx>> {
         // Result is struct { is_ok: i8, ok_value: i64, err_value: ptr }
         // We default to Error (tag=0) with null pointer
@@ -2004,7 +2006,7 @@ impl<'ctx> Codegen<'ctx> {
             .build_store(ok_ptr, ok_llvm.const_zero())
             .unwrap();
 
-        // Set err_value to null
+        // Set err_value to a safe default for the active Error variant.
         let err_ptr = unsafe {
             self.builder
                 .build_gep(
@@ -2015,14 +2017,25 @@ impl<'ctx> Codegen<'ctx> {
                 )
                 .unwrap()
         };
+        let default_err_value =
+            self.create_default_value_for_type_with_guard(err_ty, visited_classes)?;
         self.builder
-            .build_store(err_ptr, err_llvm.const_zero())
+            .build_store(err_ptr, default_err_value)
             .unwrap();
 
         Ok(self
             .builder
             .build_load(result_type, alloca, "result")
             .unwrap())
+    }
+
+    pub fn create_default_result_typed(
+        &mut self,
+        ok_ty: &Type,
+        err_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let mut visited_classes = HashSet::new();
+        self.create_default_result_typed_with_guard(ok_ty, err_ty, &mut visited_classes)
     }
 
     // === List<T> helpers ===
@@ -2558,6 +2571,140 @@ impl<'ctx> Codegen<'ctx> {
             context_name,
         )?;
         Ok(ptr.into())
+    }
+
+    fn create_zero_initialized_class_instance(
+        &mut self,
+        class_name: &str,
+        visited_classes: &mut HashSet<String>,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let class_info = self.classes.get(class_name).ok_or_else(|| {
+            CodegenError::new(format!("Unknown class for default value: {class_name}"))
+        })?;
+        let struct_ty = class_info.struct_type;
+        let field_types = class_info.field_types.clone();
+        let field_indices = class_info.field_indices.clone();
+        let malloc = self.get_or_declare_malloc();
+        let size_bytes = self.storage_size_of_llvm_type(struct_ty.into());
+        let size = self.context.i64_type().const_int(size_bytes, false);
+        let call_result = self
+            .builder
+            .build_call(malloc, &[size.into()], "default_class_alloc")
+            .unwrap();
+        let ptr = self.extract_call_pointer_value(
+            call_result,
+            "malloc did not produce a pointer while allocating class default storage",
+        )?;
+        self.zero_initialize_allocated_bytes(ptr, size_bytes, class_name)?;
+        let inserted_class = visited_classes.insert(class_name.to_string());
+        let i32_type = self.context.i32_type();
+        let zero = i32_type.const_zero();
+        for (field_name, field_ty) in &field_types {
+            let Some(field_index) = field_indices.get(field_name) else {
+                continue;
+            };
+            if let Type::Named(nested_class_name) = self.deref_codegen_type(field_ty) {
+                if !inserted_class && visited_classes.contains(nested_class_name) {
+                    continue;
+                }
+            }
+            let default_value =
+                self.create_default_value_for_type_with_guard(field_ty, visited_classes)?;
+            let field_ptr = unsafe {
+                self.builder
+                    .build_gep(
+                        struct_ty.as_basic_type_enum(),
+                        ptr,
+                        &[zero, i32_type.const_int(*field_index as u64, false)],
+                        &format!("default_{}_{}", class_name, field_name),
+                    )
+                    .unwrap()
+            };
+            self.builder.build_store(field_ptr, default_value).unwrap();
+        }
+        if inserted_class {
+            visited_classes.remove(class_name);
+        }
+        Ok(ptr.into())
+    }
+
+    pub fn create_empty_range_typed(&mut self, range_ty: &Type) -> Result<BasicValueEnum<'ctx>> {
+        let inner_ty = match self.deref_codegen_type(range_ty) {
+            Type::Range(inner) => inner.as_ref(),
+            _ => &Type::Integer,
+        };
+        match inner_ty {
+            Type::Integer => Ok(self
+                .create_range(
+                    self.context.i64_type().const_zero().into(),
+                    self.context.i64_type().const_zero().into(),
+                    self.context.i64_type().const_int(1, false).into(),
+                )?
+                .into()),
+            Type::Float => Ok(self
+                .create_range(
+                    self.context.f64_type().const_float(0.0).into(),
+                    self.context.f64_type().const_float(0.0).into(),
+                    self.context.f64_type().const_float(1.0).into(),
+                )?
+                .into()),
+            _ => Err(CodegenError::new(
+                "Range<T> default value creation supports only Integer and Float elements",
+            )),
+        }
+    }
+
+    fn create_default_value_for_type_with_guard(
+        &mut self,
+        ty: &Type,
+        visited_classes: &mut HashSet<String>,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        match self.deref_codegen_type(ty) {
+            Type::String => {
+                let malloc = self.get_or_declare_malloc();
+                let call_result = self
+                    .builder
+                    .build_call(
+                        malloc,
+                        &[self.context.i64_type().const_int(1, false).into()],
+                        "default_string_alloc",
+                    )
+                    .unwrap();
+                let ptr = self.extract_call_pointer_value(
+                    call_result,
+                    "malloc did not produce a pointer while allocating default String storage",
+                )?;
+                self.builder
+                    .build_store(ptr, self.context.i8_type().const_zero())
+                    .unwrap();
+                Ok(ptr.into())
+            }
+            Type::Named(name) if self.classes.contains_key(name) => {
+                self.create_zero_initialized_class_instance(name, visited_classes)
+            }
+            Type::Box(_) => self.create_empty_box_typed(ty),
+            Type::Rc(_) => self.create_empty_rc_typed(ty),
+            Type::Arc(_) => self.create_empty_arc_typed(ty),
+            Type::Range(_) => self.create_empty_range_typed(ty),
+            Type::Result(ok, err) => {
+                self.create_default_result_typed_with_guard(ok, err, visited_classes)
+            }
+            _ => {
+                let llvm_ty = self.llvm_type(ty);
+                Ok(match llvm_ty {
+                    inkwell::types::BasicTypeEnum::IntType(t) => t.const_zero().into(),
+                    inkwell::types::BasicTypeEnum::FloatType(t) => t.const_float(0.0).into(),
+                    inkwell::types::BasicTypeEnum::PointerType(t) => t.const_null().into(),
+                    inkwell::types::BasicTypeEnum::StructType(t) => t.const_zero().into(),
+                    _ => self.context.i8_type().const_zero().into(),
+                })
+            }
+        }
+    }
+
+    pub fn create_default_value_for_type(&mut self, ty: &Type) -> Result<BasicValueEnum<'ctx>> {
+        let mut visited_classes = HashSet::new();
+        self.create_default_value_for_type_with_guard(ty, &mut visited_classes)
     }
 
     pub fn create_empty_box(&mut self) -> Result<BasicValueEnum<'ctx>> {
