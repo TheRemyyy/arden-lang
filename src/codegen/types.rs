@@ -12,9 +12,65 @@ use std::sync::OnceLock;
 
 use crate::codegen::core::{Codegen, CodegenError, Result};
 
-static CODEGEN_TARGET_DATA_LAYOUT: OnceLock<String> = OnceLock::new();
+static CODEGEN_TARGET_DATA_LAYOUT: OnceLock<Option<String>> = OnceLock::new();
 
 impl<'ctx> Codegen<'ctx> {
+    fn init_codegen_target_data_layout() -> Option<String> {
+        Target::initialize_native(&InitializationConfig::default()).ok()?;
+        let triple = TargetMachine::get_default_triple();
+        let target = Target::from_triple(&triple).ok()?;
+        let cpu = TargetMachine::get_host_cpu_name();
+        let features = TargetMachine::get_host_cpu_features();
+        let machine = target.create_target_machine(
+            &triple,
+            cpu.to_str().unwrap_or("generic"),
+            features.to_str().unwrap_or(""),
+            OptimizationLevel::Default,
+            RelocMode::Default,
+            CodeModel::Default,
+        )?;
+        Some(
+            machine
+                .get_target_data()
+                .get_data_layout()
+                .as_str()
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+
+    fn fallback_storage_size_of_llvm_type(&self, ty: inkwell::types::BasicTypeEnum<'ctx>) -> u64 {
+        match ty {
+            inkwell::types::BasicTypeEnum::IntType(int_ty) => {
+                u64::from(int_ty.get_bit_width().max(8)).div_ceil(8)
+            }
+            inkwell::types::BasicTypeEnum::FloatType(float_ty) => match float_ty.get_bit_width() {
+                16 => 2,
+                32 => 4,
+                64 => 8,
+                80 | 86 => 16,
+                128 => 16,
+                _ => 8,
+            },
+            inkwell::types::BasicTypeEnum::PointerType(_) => 8,
+            inkwell::types::BasicTypeEnum::ArrayType(array_ty) => {
+                self.fallback_storage_size_of_llvm_type(array_ty.get_element_type())
+                    * array_ty.len() as u64
+            }
+            inkwell::types::BasicTypeEnum::StructType(struct_ty) => struct_ty
+                .get_field_types()
+                .iter()
+                .map(|field_ty| self.fallback_storage_size_of_llvm_type(*field_ty))
+                .sum::<u64>()
+                .max(1),
+            inkwell::types::BasicTypeEnum::VectorType(vector_ty) => {
+                self.fallback_storage_size_of_llvm_type(vector_ty.get_element_type())
+                    * u64::from(vector_ty.get_size())
+            }
+            inkwell::types::BasicTypeEnum::ScalableVectorType(_) => 16,
+        }
+    }
+
     pub(crate) fn emit_runtime_error(&mut self, message: &str, global_name: &str) -> Result<()> {
         let printf = self.get_or_declare_printf();
         let exit_fn = self.get_or_declare_exit();
@@ -625,33 +681,15 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub(crate) fn storage_size_of_llvm_type(&self, ty: inkwell::types::BasicTypeEnum<'ctx>) -> u64 {
-        let layout_str = CODEGEN_TARGET_DATA_LAYOUT.get_or_init(|| {
-            Target::initialize_native(&InitializationConfig::default())
-                .expect("failed to initialize native LLVM target for codegen sizing");
-            let triple = TargetMachine::get_default_triple();
-            let target = Target::from_triple(&triple)
-                .expect("failed to create LLVM target from host triple");
-            let cpu = TargetMachine::get_host_cpu_name();
-            let features = TargetMachine::get_host_cpu_features();
-            let machine = target
-                .create_target_machine(
-                    &triple,
-                    cpu.to_str().unwrap_or("generic"),
-                    features.to_str().unwrap_or(""),
-                    OptimizationLevel::Default,
-                    RelocMode::Default,
-                    CodeModel::Default,
-                )
-                .expect("failed to create LLVM target machine for codegen sizing");
-            machine
-                .get_target_data()
-                .get_data_layout()
-                .as_str()
-                .to_string_lossy()
-                .into_owned()
-        });
-        let target_data = TargetData::create(layout_str);
-        target_data.get_abi_size(&ty)
+        let layout_str = CODEGEN_TARGET_DATA_LAYOUT
+            .get_or_init(Self::init_codegen_target_data_layout)
+            .as_deref();
+        if let Some(layout_str) = layout_str {
+            let target_data = TargetData::create(layout_str);
+            target_data.get_abi_size(&ty)
+        } else {
+            self.fallback_storage_size_of_llvm_type(ty)
+        }
     }
 
     pub(crate) fn list_element_layout_from_list_type(

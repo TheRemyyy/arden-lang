@@ -20,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - lambda environments, async/task result buffers, async block environments/results, function-adapter environments, task cancellation payloads, class instances, range storage, list/map/set storage, and map/set/list growth paths now all use shared checked extraction for call results instead of open-coded `try_as_basic_value()` assumptions
   - constructor returns and async body returns now surface explicit codegen errors if LLVM lowers them as non-value calls, instead of each site carrying its own partial match logic
   - string equality (`strcmp`) and structural equality (`memcmp`) no longer silently fall back to a fake non-equal result when the runtime call unexpectedly fails to yield a value; those paths now report a real codegen error instead
+- Fixed all remaining production `expect(...)` crash paths in codegen target setup:
+  - target-machine cache population in backend output generation now propagates `create_target_machine(...)` failures as normal string errors instead of panicking the compiler when cache insertion fails
+  - codegen-side storage sizing no longer panics if native LLVM target initialization or host target-machine creation fails while computing ABI sizes
+  - when native LLVM target data cannot be initialized for sizing, collection/container layout helpers now fall back to conservative type-size estimation instead of crashing the compiler process
 - Fixed project-mode type inference for alias-qualified nested async calls returning `Task<T>`:
   - expressions like `await(analytics.Api.V2.score(10))` now preserve the real inner return type across package aliases and deep module chains instead of falling back to `Integer`
   - project builds no longer mis-read `Task<Float>` results from cross-file dotted-package async functions as raw integer bit patterns during `await`

@@ -2178,10 +2178,13 @@ impl<'ctx> Codegen<'ctx> {
         let (key, triple) = Self::target_machine_config(opt_level, target_triple, output_kind)?;
         TARGET_MACHINE_CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
-            let machine = cache.entry(key.clone()).or_insert_with(|| {
-                Self::create_target_machine(&triple, &key, opt_level, output_kind)
-                    .expect("failed to create target machine")
-            });
+            if !cache.contains_key(&key) {
+                let machine = Self::create_target_machine(&triple, &key, opt_level, output_kind)?;
+                cache.insert(key.clone(), machine);
+            }
+            let machine = cache
+                .get(&key)
+                .ok_or_else(|| "target machine cache missing inserted machine".to_string())?;
             f(machine, &triple)
         })
     }
