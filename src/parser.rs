@@ -115,29 +115,128 @@ impl<'src> Parser<'src> {
         }
 
         Ok(match (name.as_str(), type_args.len()) {
-            ("Option", 1) => Type::Option(Box::new(type_args.into_iter().next().unwrap())),
+            ("Option", 1) => {
+                let mut iter = type_args.into_iter();
+                let Some(inner) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Option' is missing its type argument",
+                        span,
+                    ));
+                };
+                Type::Option(Box::new(inner))
+            }
             ("Result", 2) => {
                 let mut iter = type_args.into_iter();
-                Type::Result(
-                    Box::new(iter.next().unwrap()),
-                    Box::new(iter.next().unwrap()),
-                )
+                let Some(ok) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Result' is missing its first type argument",
+                        span.clone(),
+                    ));
+                };
+                let Some(err) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Result' is missing its second type argument",
+                        span,
+                    ));
+                };
+                Type::Result(Box::new(ok), Box::new(err))
             }
-            ("List", 1) => Type::List(Box::new(type_args.into_iter().next().unwrap())),
+            ("List", 1) => {
+                let mut iter = type_args.into_iter();
+                let Some(inner) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'List' is missing its type argument",
+                        span,
+                    ));
+                };
+                Type::List(Box::new(inner))
+            }
             ("Map", 2) => {
                 let mut iter = type_args.into_iter();
-                Type::Map(
-                    Box::new(iter.next().unwrap()),
-                    Box::new(iter.next().unwrap()),
-                )
+                let Some(key) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Map' is missing its first type argument",
+                        span.clone(),
+                    ));
+                };
+                let Some(value) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Map' is missing its second type argument",
+                        span,
+                    ));
+                };
+                Type::Map(Box::new(key), Box::new(value))
             }
-            ("Set", 1) => Type::Set(Box::new(type_args.into_iter().next().unwrap())),
-            ("Box", 1) => Type::Box(Box::new(type_args.into_iter().next().unwrap())),
-            ("Rc", 1) => Type::Rc(Box::new(type_args.into_iter().next().unwrap())),
-            ("Arc", 1) => Type::Arc(Box::new(type_args.into_iter().next().unwrap())),
-            ("Ptr", 1) => Type::Ptr(Box::new(type_args.into_iter().next().unwrap())),
-            ("Task", 1) => Type::Task(Box::new(type_args.into_iter().next().unwrap())),
-            ("Range", 1) => Type::Range(Box::new(type_args.into_iter().next().unwrap())),
+            ("Set", 1) => {
+                let mut iter = type_args.into_iter();
+                let Some(inner) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Set' is missing its type argument",
+                        span,
+                    ));
+                };
+                Type::Set(Box::new(inner))
+            }
+            ("Box", 1) => {
+                let mut iter = type_args.into_iter();
+                let Some(inner) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Box' is missing its type argument",
+                        span,
+                    ));
+                };
+                Type::Box(Box::new(inner))
+            }
+            ("Rc", 1) => {
+                let mut iter = type_args.into_iter();
+                let Some(inner) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Rc' is missing its type argument",
+                        span,
+                    ));
+                };
+                Type::Rc(Box::new(inner))
+            }
+            ("Arc", 1) => {
+                let mut iter = type_args.into_iter();
+                let Some(inner) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Arc' is missing its type argument",
+                        span,
+                    ));
+                };
+                Type::Arc(Box::new(inner))
+            }
+            ("Ptr", 1) => {
+                let mut iter = type_args.into_iter();
+                let Some(inner) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Ptr' is missing its type argument",
+                        span,
+                    ));
+                };
+                Type::Ptr(Box::new(inner))
+            }
+            ("Task", 1) => {
+                let mut iter = type_args.into_iter();
+                let Some(inner) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Task' is missing its type argument",
+                        span,
+                    ));
+                };
+                Type::Task(Box::new(inner))
+            }
+            ("Range", 1) => {
+                let mut iter = type_args.into_iter();
+                let Some(inner) = iter.next() else {
+                    return Err(ParseError::new(
+                        "Built-in type 'Range' is missing its type argument",
+                        span,
+                    ));
+                };
+                Type::Range(Box::new(inner))
+            }
             _ => Type::Generic(name, type_args),
         })
     }
@@ -2785,9 +2884,9 @@ impl<'src> Parser<'src> {
         if parts.iter().all(|p| matches!(p, StringPart::Literal(_))) {
             let merged = parts
                 .into_iter()
-                .map(|p| match p {
-                    StringPart::Literal(s) => s,
-                    StringPart::Expr(_) => unreachable!(),
+                .filter_map(|p| match p {
+                    StringPart::Literal(s) => Some(s),
+                    StringPart::Expr(_) => None,
                 })
                 .collect::<String>();
             return Ok(Expr::Literal(Literal::String(merged)));

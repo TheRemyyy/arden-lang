@@ -1117,7 +1117,7 @@ impl<'ctx> Codegen<'ctx> {
                         ]);
                         Ok(phi.as_basic_value())
                     }
-                    _ => unreachable!(),
+                    _ => Err(CodegenError::new(format!("Unknown Set method: {}", method))),
                 }
             }
             _ => Err(CodegenError::new(format!("Unknown Set method: {}", method))),
@@ -2049,7 +2049,11 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         let data_ptr = match call_result.try_as_basic_value() {
             ValueKind::Basic(val) => val,
-            _ => panic!("malloc should return a value"),
+            _ => {
+                return Err(CodegenError::new(
+                    "malloc did not produce a value while allocating list storage",
+                ))
+            }
         };
 
         let data_ptr_field = unsafe {
@@ -2106,7 +2110,11 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         let grown_data = match grown_call.try_as_basic_value() {
             ValueKind::Basic(v) => v.into_pointer_value(),
-            _ => panic!("malloc should return a value"),
+            _ => {
+                return Err(CodegenError::new(
+                    "malloc did not produce a pointer while growing list storage",
+                ))
+            }
         };
 
         let bytes_to_copy = self
@@ -2268,7 +2276,11 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         let keys_ptr = match keys_call.try_as_basic_value() {
             ValueKind::Basic(val) => val,
-            _ => panic!("malloc should return a value"),
+            _ => {
+                return Err(CodegenError::new(
+                    "malloc did not produce a value while allocating map keys storage",
+                ))
+            }
         };
         let keys_field = unsafe {
             self.builder
@@ -2288,7 +2300,11 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         let values_ptr = match values_call.try_as_basic_value() {
             ValueKind::Basic(val) => val,
-            _ => panic!("malloc should return a value"),
+            _ => {
+                return Err(CodegenError::new(
+                    "malloc did not produce a value while allocating map values storage",
+                ))
+            }
         };
         let values_field = unsafe {
             self.builder
@@ -2377,7 +2393,11 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         let data_ptr = match call_result.try_as_basic_value() {
             ValueKind::Basic(val) => val,
-            _ => panic!("malloc should return a value"),
+            _ => {
+                return Err(CodegenError::new(
+                    "malloc did not produce a value while allocating set storage",
+                ))
+            }
         };
 
         let data_ptr_field = unsafe {
@@ -2404,7 +2424,9 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         match call_result.try_as_basic_value() {
             ValueKind::Basic(val) => Ok(val),
-            _ => panic!("malloc should return a value"),
+            _ => Err(CodegenError::new(
+                "malloc did not produce a value while allocating Box storage",
+            )),
         }
     }
 
@@ -2417,7 +2439,9 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         match call_result.try_as_basic_value() {
             ValueKind::Basic(val) => Ok(val),
-            _ => panic!("malloc should return a value"),
+            _ => Err(CodegenError::new(
+                "malloc did not produce a value while allocating Rc storage",
+            )),
         }
     }
 
@@ -2430,7 +2454,9 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         match call_result.try_as_basic_value() {
             ValueKind::Basic(val) => Ok(val),
-            _ => panic!("malloc should return a value"),
+            _ => Err(CodegenError::new(
+                "malloc did not produce a value while allocating Arc storage",
+            )),
         }
     }
 

@@ -4882,10 +4882,10 @@ impl TypeChecker {
                         Some(NumericConst::Integer(0))
                     )
                 {
-                    let message = match op {
-                        BinOp::Div => "Integer division by zero",
-                        BinOp::Mod => "Integer modulo by zero",
-                        _ => unreachable!(),
+                    let message = if matches!(op, BinOp::Div) {
+                        "Integer division by zero"
+                    } else {
+                        "Integer modulo by zero"
                     };
                     self.error(message.to_string(), right.span.clone());
                 }
@@ -4938,11 +4938,13 @@ impl TypeChecker {
                             self.resolve_nominal_reference_name(&owner_source)
                         {
                             if let Some(enum_info) = self.enums.get(&resolved_owner) {
-                                if let Some(variant_fields) =
-                                    enum_info.variants.get(path_parts.last().unwrap())
-                                {
-                                    if variant_fields.is_empty() {
-                                        return ResolvedType::Class(resolved_owner);
+                                if let Some(variant_name) = path_parts.last() {
+                                    if let Some(variant_fields) =
+                                        enum_info.variants.get(variant_name)
+                                    {
+                                        if variant_fields.is_empty() {
+                                            return ResolvedType::Class(resolved_owner);
+                                        }
                                     }
                                 }
                             }

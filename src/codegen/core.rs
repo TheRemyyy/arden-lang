@@ -7877,10 +7877,12 @@ impl<'ctx> Codegen<'ctx> {
                         if let Some((op, rhs)) =
                             Self::match_compound_assign_target(&target.node, &value.node)
                         {
-                            let (key_ty, val_ty) = match &map_ty {
-                                Type::Map(key_ty, val_ty) => ((*key_ty.clone()), (*val_ty.clone())),
-                                _ => unreachable!(),
+                            let Type::Map(key_ty, val_ty) = &map_ty else {
+                                return Err(CodegenError::new(
+                                    "internal error: expected map type for map compound assignment",
+                                ));
                             };
+                            let (key_ty, val_ty) = ((*key_ty.clone()), (*val_ty.clone()));
                             let key = self.compile_expr_with_expected_type(&index.node, &key_ty)?;
                             let current = self.compile_map_get_on_value_with_compiled_key(
                                 map_value, &map_ty, key,
@@ -8273,7 +8275,9 @@ impl<'ctx> Codegen<'ctx> {
             && matches!(deref_iterable_ty, Type::Range(_))
         {
             let Type::Range(inner) = deref_iterable_ty.clone() else {
-                unreachable!();
+                return Err(CodegenError::new(
+                    "internal error: expected range type for range iteration",
+                ));
             };
             let iter_ty = var_type.cloned().unwrap_or((*inner).clone());
             let var_alloca = self
@@ -11024,10 +11028,10 @@ impl<'ctx> Codegen<'ctx> {
                             this.compile_expr_with_expected_type(expected_expr, expected_ty)?;
                         let rhs = this.compile_expr_with_expected_type(other_expr, expected_ty)?;
                         let eq = this.build_value_equality(lhs, rhs, expected_ty, "eq")?;
-                        let result = match op {
-                            BinOp::Eq => eq,
-                            BinOp::NotEq => this.builder.build_not(eq, "ne").unwrap(),
-                            _ => unreachable!(),
+                        let result = if matches!(op, BinOp::Eq) {
+                            eq
+                        } else {
+                            this.builder.build_not(eq, "ne").unwrap()
                         };
                         Ok(Some(result.into()))
                     }
@@ -11039,10 +11043,10 @@ impl<'ctx> Codegen<'ctx> {
                 let lhs = self.compile_expr(left)?;
                 let rhs = self.compile_expr(right)?;
                 let eq = self.build_value_equality(lhs, rhs, &left_ty, "eq")?;
-                let result = match op {
-                    BinOp::Eq => eq,
-                    BinOp::NotEq => self.builder.build_not(eq, "ne").unwrap(),
-                    _ => unreachable!(),
+                let result = if matches!(op, BinOp::Eq) {
+                    eq
+                } else {
+                    self.builder.build_not(eq, "ne").unwrap()
                 };
                 return Ok(result.into());
             }
@@ -11134,19 +11138,12 @@ impl<'ctx> Codegen<'ctx> {
             let r = rhs.into_int_value();
 
             if matches!(op, BinOp::Div | BinOp::Mod) {
-                self.guard_nonzero_integer_divisor(
-                    r,
-                    match op {
-                        BinOp::Div => "Integer division by zero",
-                        BinOp::Mod => "Integer modulo by zero",
-                        _ => unreachable!(),
-                    },
-                    match op {
-                        BinOp::Div => "int_div_zero",
-                        BinOp::Mod => "int_mod_zero",
-                        _ => unreachable!(),
-                    },
-                )?;
+                let (message, global_name) = if matches!(op, BinOp::Div) {
+                    ("Integer division by zero", "int_div_zero")
+                } else {
+                    ("Integer modulo by zero", "int_mod_zero")
+                };
+                self.guard_nonzero_integer_divisor(r, message, global_name)?;
             }
 
             let result = match op {
@@ -11287,26 +11284,24 @@ impl<'ctx> Codegen<'ctx> {
                 .build_call(strcmp, &[lhs.into(), rhs.into()], "strcmp")
                 .map_err(|e| CodegenError::new(format!("strcmp call failed: {}", e)))?;
             let cmp = self.extract_call_value(cmp).into_int_value();
-            let result = match op {
-                BinOp::Eq => self
-                    .builder
+            let result = if matches!(op, BinOp::Eq) {
+                self.builder
                     .build_int_compare(
                         IntPredicate::EQ,
                         cmp,
                         self.context.i32_type().const_zero(),
                         "str_eq",
                     )
-                    .unwrap(),
-                BinOp::NotEq => self
-                    .builder
+                    .unwrap()
+            } else {
+                self.builder
                     .build_int_compare(
                         IntPredicate::NE,
                         cmp,
                         self.context.i32_type().const_zero(),
                         "str_ne",
                     )
-                    .unwrap(),
-                _ => unreachable!(),
+                    .unwrap()
             };
             return Ok(result.into());
         }
@@ -14225,7 +14220,10 @@ impl<'ctx> Codegen<'ctx> {
 
         match call.try_as_basic_value() {
             ValueKind::Basic(val) => Ok(val),
-            _ => panic!("Constructor should return a value"),
+            _ => Err(CodegenError::new(format!(
+                "Constructor '{}' did not produce a value result",
+                func_name
+            ))),
         }
     }
 
@@ -14304,7 +14302,11 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         let buffer = match buffer_call.try_as_basic_value() {
             ValueKind::Basic(val) => val.into_pointer_value(),
-            _ => panic!("malloc should return a value"),
+            _ => {
+                return Err(CodegenError::new(
+                    "malloc did not produce a buffer pointer for string interpolation",
+                ))
+            }
         };
 
         // Create format string

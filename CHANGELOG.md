@@ -41,6 +41,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed explicit generic free-function alias specialization when the specialized body introduces generic class instantiations:
   - exact imported aliases such as `import M.mk as mk; mk<Integer>(2).get()` now emit and reuse the required class specialization (`M.Box<Integer>`) after the function specialization pass instead of falling back to the unspecialized class ABI
   - that removes the bad pointer-shaped return path where generated `__spec__` functions called unspecialized constructors/methods like `M__Box__new` / `M__Box__get` and then produced invalid LLVM returns for integer results
+- Fixed two remaining backend panic paths in production codegen:
+  - constructor lowering now returns a normal `CodegenError` if an emitted constructor call ever fails to produce a value, instead of crashing the compiler process with `Constructor should return a value`
+  - string interpolation buffer allocation now also reports a proper codegen failure if the internal `malloc` call does not yield a pointer, instead of aborting through `malloc should return a value`
+  - collection/container allocation helpers for `List`, `Map`, `Set`, `Box`, `Rc`, and `Arc` now also surface explicit codegen failures when internal `malloc` calls do not yield values, instead of aborting the compiler process
+  - lambda closure environment allocation now reports a regular codegen error if the backing `malloc` call does not produce a pointer, instead of panicking during closure lowering
+  - several remaining codegen-only `_ => unreachable!()` branches in binary comparison, map/range assignment helpers, generic-call inference, and set-method lowering were removed or turned into explicit internal diagnostics, reducing the number of backend crash paths to one shared helper
+  - builtin generic type parsing for `Option`, `Result`, `List`, `Map`, `Set`, `Box`, `Rc`, `Arc`, `Ptr`, `Task`, and `Range` no longer relies on unchecked iterator `unwrap()` calls after arity validation, so malformed parser states now surface normal parse errors instead of panicking the compiler
+  - string interpolation literal folding no longer keeps an `unreachable!()` branch while joining literal-only parts, and integer divide/mod-by-zero type diagnostics no longer rely on a redundant `unreachable!()` operator fallback
+  - lambda lowering now reports explicit codegen errors when captured variables, environment size metadata, or synthesized lambda parameters are missing, instead of panicking through unchecked `unwrap()` calls
+  - match-expression lowering now also reports normal codegen errors if it is entered without an active function or LLVM insert block, and enum-field type lookup no longer relies on unchecked `path_parts.last().unwrap()` in the typechecker
 - Fixed additional project-mode diagnostic mangling leaks:
   - assignment mismatch, non-function call, binary-operator, field-access, return-mismatch, and argument-mismatch errors now render source-style names like `lib.Box<lib.Named>` instead of internal rewritten symbols such as `lib__Box<lib__Named>`
   - project builds now keep demangled class names in unknown-field and non-function-call failures too, so follow-up debugging no longer depends on reading internal symbol mangling

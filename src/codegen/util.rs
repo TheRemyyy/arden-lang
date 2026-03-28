@@ -847,7 +847,9 @@ impl<'ctx> Codegen<'ctx> {
         let env_struct_ty = self.context.struct_type(&env_types, false);
 
         let malloc = self.get_or_declare_malloc();
-        let size = env_struct_ty.size_of().unwrap();
+        let size = env_struct_ty
+            .size_of()
+            .ok_or_else(|| CodegenError::new("Failed to compute lambda environment size"))?;
         let env_ptr_raw = match self
             .builder
             .build_call(malloc, &[size.into()], "env_ptr")
@@ -855,12 +857,19 @@ impl<'ctx> Codegen<'ctx> {
             .try_as_basic_value()
         {
             ValueKind::Basic(val) => val.into_pointer_value(),
-            _ => panic!("malloc should return a value"),
+            _ => {
+                return Err(CodegenError::new(
+                    "malloc did not produce a pointer while allocating lambda environment",
+                ))
+            }
         };
 
         // Fill environment
         for (i, (name, ty)) in captures.iter().enumerate() {
-            let var = self.variables.get(name).unwrap();
+            let var = self
+                .variables
+                .get(name)
+                .ok_or_else(|| CodegenError::new(format!("Missing captured variable: {}", name)))?;
             let val = self
                 .builder
                 .build_load(self.llvm_type(ty), var.ptr, name)
@@ -917,7 +926,10 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(entry);
 
         // Populate local variables from env_ptr
-        let env_ptr_arg = lambda_fn.get_nth_param(0).unwrap().into_pointer_value();
+        let env_ptr_arg = lambda_fn
+            .get_nth_param(0)
+            .ok_or_else(|| CodegenError::new("Lambda environment parameter missing"))?
+            .into_pointer_value();
         for (i, (name, ty)) in captures.iter().enumerate() {
             let field_ptr = unsafe {
                 self.builder
@@ -949,7 +961,13 @@ impl<'ctx> Codegen<'ctx> {
 
         // Allocate parameters (starting from index 1)
         for (i, param) in params.iter().enumerate() {
-            let llvm_param = lambda_fn.get_nth_param((i + 1) as u32).unwrap();
+            let llvm_param = lambda_fn.get_nth_param((i + 1) as u32).ok_or_else(|| {
+                CodegenError::new(format!(
+                    "Lambda parameter {} missing for '{}'",
+                    i + 1,
+                    lambda_name
+                ))
+            })?;
             let alloca = self
                 .builder
                 .build_alloca(self.llvm_type(&param.ty), &param.name)
@@ -1056,7 +1074,9 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         let val = self.compile_expr(expr)?;
-        let func = self.current_function.unwrap();
+        let func = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("match expression used outside function"))?;
         let merge_bb = self.context.append_basic_block(func, "match.expr.merge");
 
         let match_ty = self.infer_expr_type(expr, &[]);
@@ -1073,7 +1093,10 @@ impl<'ctx> Codegen<'ctx> {
             _ => None,
         };
 
-        let mut dispatch_bb = self.builder.get_insert_block().unwrap();
+        let mut dispatch_bb = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| CodegenError::new("match expression missing insert block"))?;
         let mut incoming: Vec<(BasicValueEnum<'ctx>, BasicBlock<'ctx>)> = Vec::new();
         let mut result_ty: Option<BasicTypeEnum<'ctx>> = None;
         let inferred_match_result_ty = self.infer_match_expr_result_type(arms, &[]);
@@ -1719,30 +1742,27 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
             }
-            Expr::Call { callee, args, .. } => match &callee.node {
+            Expr::Call {
+                callee,
+                args,
+                type_args,
+            } => match &callee.node {
                 Expr::Ident(name) if matches!(name.as_str(), "println" | "to_string" | "range") => {
                     self.infer_builtin_call_type(&callee.node, args)
                 }
                 Expr::Field { object, field } => {
                     if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
                         let full_path = path_parts.join(".");
-                        let explicit_type_args = match expr {
-                            Expr::Call { type_args, .. } => type_args,
-                            _ => unreachable!(),
-                        };
-                        if !explicit_type_args.is_empty() {
+                        if !type_args.is_empty() {
                             let normalized = self
                                 .resolve_alias_qualified_codegen_type_name(&full_path)
                                 .and_then(|resolved| {
-                                    self.normalize_user_defined_generic_type(
-                                        &resolved,
-                                        explicit_type_args,
-                                    )
+                                    self.normalize_user_defined_generic_type(&resolved, type_args)
                                 })
                                 .unwrap_or_else(|| {
                                     self.normalize_codegen_type(&Type::Generic(
                                         full_path.clone(),
-                                        explicit_type_args.clone(),
+                                        type_args.clone(),
                                     ))
                                 });
                             if self.type_to_class_name(&normalized).is_some() {
@@ -2477,7 +2497,9 @@ impl<'ctx> Codegen<'ctx> {
                 UnaryOp::Not => Type::Boolean,
                 UnaryOp::Neg => self.infer_expr_type(&expr.node, params),
             },
-            Expr::Call { callee, .. } => match &callee.node {
+            Expr::Call {
+                callee, type_args, ..
+            } => match &callee.node {
                 Expr::Ident(name) if name == "println" => Type::None,
                 Expr::Ident(name) if name == "to_string" => Type::String,
                 Expr::Ident(name) if name == "range" => {
@@ -2494,23 +2516,16 @@ impl<'ctx> Codegen<'ctx> {
                 _ => {
                     if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
                         let full_path = path_parts.join(".");
-                        let explicit_type_args = match expr {
-                            Expr::Call { type_args, .. } => type_args,
-                            _ => unreachable!(),
-                        };
-                        if !explicit_type_args.is_empty() {
+                        if !type_args.is_empty() {
                             let normalized = self
                                 .resolve_alias_qualified_codegen_type_name(&full_path)
                                 .and_then(|resolved| {
-                                    self.normalize_user_defined_generic_type(
-                                        &resolved,
-                                        explicit_type_args,
-                                    )
+                                    self.normalize_user_defined_generic_type(&resolved, type_args)
                                 })
                                 .unwrap_or_else(|| {
                                     self.normalize_codegen_type(&Type::Generic(
                                         full_path.clone(),
-                                        explicit_type_args.clone(),
+                                        type_args.clone(),
                                     ))
                                 });
                             if let Some((class_name, _)) = self.unwrap_class_like_type(&normalized)
@@ -2595,16 +2610,16 @@ impl<'ctx> Codegen<'ctx> {
                                             if let Some(first_arg) = args.first() {
                                                 let arg_ty =
                                                     self.infer_expr_type(&first_arg.node, params);
-                                                return match field.as_str() {
-                                                    "ok" => Type::Result(
+                                                return if field == "ok" {
+                                                    Type::Result(
                                                         Box::new(arg_ty),
                                                         Box::new(Type::String),
-                                                    ),
-                                                    "error" => Type::Result(
+                                                    )
+                                                } else {
+                                                    Type::Result(
                                                         Box::new(Type::Integer),
                                                         Box::new(arg_ty),
-                                                    ),
-                                                    _ => unreachable!(),
+                                                    )
                                                 };
                                             }
                                         }
