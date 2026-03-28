@@ -624,7 +624,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, fn_type, None)
     }
 
-    pub fn get_or_declare_stdin(&self) -> PointerValue<'ctx> {
+    pub fn get_or_declare_stdin(&self) -> Result<PointerValue<'ctx>> {
         #[cfg(windows)]
         {
             let name = "__acrt_iob_func";
@@ -645,7 +645,7 @@ impl<'ctx> Codegen<'ctx> {
                     "stdin",
                 )
                 .unwrap();
-            return self.extract_call_value(call).into_pointer_value();
+            return Ok(self.extract_call_value(call)?.into_pointer_value());
         }
 
         #[cfg(not(windows))]
@@ -656,10 +656,11 @@ impl<'ctx> Codegen<'ctx> {
             } else {
                 self.module.add_global(ptr_type, None, "stdin")
             };
-            self.builder
+            Ok(self
+                .builder
                 .build_load(ptr_type, stdin_global.as_pointer_value(), "stdin")
                 .unwrap()
-                .into_pointer_value()
+                .into_pointer_value())
         }
     }
 
@@ -679,10 +680,32 @@ impl<'ctx> Codegen<'ctx> {
     pub fn extract_call_value(
         &self,
         call: inkwell::values::CallSiteValue<'ctx>,
-    ) -> BasicValueEnum<'ctx> {
+    ) -> Result<BasicValueEnum<'ctx>> {
         match call.try_as_basic_value() {
-            ValueKind::Basic(val) => val,
-            _ => panic!("Expected call to return a value"),
+            ValueKind::Basic(val) => Ok(val),
+            _ => Err(CodegenError::new("Expected call to return a value")),
+        }
+    }
+
+    pub fn extract_call_value_with_context(
+        &self,
+        call: inkwell::values::CallSiteValue<'ctx>,
+        context: &str,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        self.extract_call_value(call)
+            .map_err(|_| CodegenError::new(context))
+    }
+
+    pub fn extract_call_pointer_value(
+        &self,
+        call: inkwell::values::CallSiteValue<'ctx>,
+        context: &str,
+    ) -> Result<PointerValue<'ctx>> {
+        let value = self.extract_call_value_with_context(call, context)?;
+        if value.is_pointer_value() {
+            Ok(value.into_pointer_value())
+        } else {
+            Err(CodegenError::new(context))
         }
     }
 
@@ -700,7 +723,7 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(strlen_fn, &[s_ptr.into()], "len")
             .unwrap();
-        let len = self.extract_call_value(len_call).into_int_value();
+        let len = self.extract_call_value(len_call)?.into_int_value();
 
         let one = self.context.i64_type().const_int(1, false);
         let size = self.builder.build_int_add(len, one, "size").unwrap();
@@ -708,9 +731,11 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc_fn, &[size.into()], "buf")
             .unwrap();
-        let buf = self.extract_call_value(buf_call).into_pointer_value();
+        let buf = self.extract_call_value(buf_call)?.into_pointer_value();
 
-        let current_fn = self.current_function.unwrap();
+        let current_fn = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("string transform used outside function"))?;
         let cond_bb = self.context.append_basic_block(current_fn, "trans.cond");
         let body_bb = self.context.append_basic_block(current_fn, "trans.body");
         let after_bb = self.context.append_basic_block(current_fn, "trans.after");
@@ -757,7 +782,7 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(transform_fn, &[char_i32.into()], "t32")
             .unwrap();
-        let trans_val32 = self.extract_call_value(trans_call).into_int_value();
+        let trans_val32 = self.extract_call_value(trans_call)?.into_int_value();
         let trans_val = self
             .builder
             .build_int_truncate(trans_val32, self.context.i8_type(), "t8")
@@ -850,19 +875,14 @@ impl<'ctx> Codegen<'ctx> {
         let size = env_struct_ty
             .size_of()
             .ok_or_else(|| CodegenError::new("Failed to compute lambda environment size"))?;
-        let env_ptr_raw = match self
+        let env_ptr_call = self
             .builder
             .build_call(malloc, &[size.into()], "env_ptr")
-            .unwrap()
-            .try_as_basic_value()
-        {
-            ValueKind::Basic(val) => val.into_pointer_value(),
-            _ => {
-                return Err(CodegenError::new(
-                    "malloc did not produce a pointer while allocating lambda environment",
-                ))
-            }
-        };
+            .unwrap();
+        let env_ptr_raw = self.extract_call_pointer_value(
+            env_ptr_call,
+            "malloc did not produce a pointer while allocating lambda environment",
+        )?;
 
         // Fill environment
         for (i, (name, ty)) in captures.iter().enumerate() {
@@ -1203,7 +1223,7 @@ impl<'ctx> Codegen<'ctx> {
                                 "match_expr_strcmp",
                             )
                             .unwrap();
-                        let cmp_val = self.extract_call_value(cmp).into_int_value();
+                        let cmp_val = self.extract_call_value(cmp)?.into_int_value();
                         self.builder
                             .build_int_compare(
                                 IntPredicate::EQ,
@@ -1432,7 +1452,9 @@ impl<'ctx> Codegen<'ctx> {
 
             if self.needs_terminator() {
                 self.builder.build_unconditional_branch(merge_bb).unwrap();
-                let pred = self.builder.get_insert_block().unwrap();
+                let pred = self.builder.get_insert_block().ok_or_else(|| {
+                    CodegenError::new("match expression arm predecessor block missing")
+                })?;
                 incoming.push((arm_result, pred));
             }
 
@@ -1444,7 +1466,9 @@ impl<'ctx> Codegen<'ctx> {
             let fallback = ty.const_zero();
             if self.needs_terminator() {
                 self.builder.build_unconditional_branch(merge_bb).unwrap();
-                let pred = self.builder.get_insert_block().unwrap();
+                let pred = self.builder.get_insert_block().ok_or_else(|| {
+                    CodegenError::new("match expression fallback predecessor block missing")
+                })?;
                 incoming.push((fallback, pred));
             }
 
@@ -1611,7 +1635,9 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_and(non_negative, in_bounds, "list_assign_valid")
                         .unwrap();
-                    let current_fn = self.current_function.unwrap();
+                    let current_fn = self.current_function.ok_or_else(|| {
+                        CodegenError::new("list assignment used outside function")
+                    })?;
                     let ok_bb = self
                         .context
                         .append_basic_block(current_fn, "list_assign_ok");
@@ -2963,15 +2989,15 @@ impl<'ctx> Codegen<'ctx> {
         let ok_bb = self.context.append_basic_block(current_fn, "range_init");
 
         // Allocate memory for Range struct
-        let size = range_type.size_of().unwrap();
+        let size = range_type
+            .size_of()
+            .ok_or_else(|| CodegenError::new("failed to compute range allocation size"))?;
         let alloc_call = self
             .builder
             .build_call(malloc, &[size.into()], "range_alloc")
             .unwrap();
-        let range_ptr = match alloc_call.try_as_basic_value() {
-            ValueKind::Basic(inkwell::values::BasicValueEnum::PointerValue(p)) => p,
-            _ => return Err(CodegenError::new("malloc should return pointer")),
-        };
+        let range_ptr =
+            self.extract_call_pointer_value(alloc_call, "malloc should return pointer")?;
 
         // Initialize fields - use i32 for GEP indices as required by LLVM
         let i32_type = self.context.i32_type();

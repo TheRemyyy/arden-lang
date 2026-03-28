@@ -6,7 +6,7 @@ use inkwell::targets::{
     CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
 };
 use inkwell::types::BasicType;
-use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue, ValueKind};
+use inkwell::values::{BasicValueEnum, FunctionValue, IntValue, PointerValue};
 use inkwell::{AddressSpace, IntPredicate, OptimizationLevel};
 use std::sync::OnceLock;
 
@@ -440,7 +440,9 @@ impl<'ctx> Codegen<'ctx> {
                 .build_and(lhs_null, rhs_null, &format!("{name}_both_null"))
                 .unwrap();
 
-            let current_fn = self.current_function.unwrap();
+            let current_fn = self.current_function.ok_or_else(|| {
+                CodegenError::new("string equality lowering used outside function")
+            })?;
             let strcmp_bb = self
                 .context
                 .append_basic_block(current_fn, &format!("{name}_strcmp_bb"));
@@ -463,10 +465,12 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_call(strcmp, &[lhs.into(), rhs.into()], &format!("{name}_strcmp"))
                 .unwrap();
-            let cmp_v = match cmp.try_as_basic_value() {
-                ValueKind::Basic(v) => v.into_int_value(),
-                _ => self.context.i32_type().const_int(1, false),
-            };
+            let cmp_v = self
+                .extract_call_value_with_context(
+                    cmp,
+                    "strcmp did not produce a value during string equality lowering",
+                )?
+                .into_int_value();
             let strcmp_eq = self
                 .builder
                 .build_int_compare(
@@ -575,10 +579,12 @@ impl<'ctx> Codegen<'ctx> {
                     &format!("{name}_memcmp"),
                 )
                 .unwrap();
-            let cmp_v = match cmp.try_as_basic_value() {
-                ValueKind::Basic(v) => v.into_int_value(),
-                _ => self.context.i32_type().const_int(1, false),
-            };
+            let cmp_v = self
+                .extract_call_value_with_context(
+                    cmp,
+                    "memcmp did not produce a value during structural equality lowering",
+                )?
+                .into_int_value();
             return Ok(self
                 .builder
                 .build_int_compare(
@@ -673,7 +679,10 @@ impl<'ctx> Codegen<'ctx> {
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (set_ptr, set_ty) = {
-            let var = self.variables.get(set_name).unwrap();
+            let var = self
+                .variables
+                .get(set_name)
+                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", set_name)))?;
             (var.ptr, var.ty.clone())
         };
         self.compile_set_method_on_value(set_ptr.into(), &set_ty, method, args)
@@ -783,7 +792,9 @@ impl<'ctx> Codegen<'ctx> {
                     .build_store(found_ptr, i64_type.const_all_ones())
                     .unwrap();
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self.current_function.ok_or_else(|| {
+                    CodegenError::new("Set.contains/remove used outside function")
+                })?;
                 let cond_bb = self
                     .context
                     .append_basic_block(current_fn, "set_search.cond");
@@ -920,19 +931,18 @@ impl<'ctx> Codegen<'ctx> {
                                 "set_new_size",
                             )
                             .unwrap();
-                        let grown_ptr = self
+                        let grown_call = self
                             .builder
                             .build_call(
                                 realloc,
                                 &[data_ptr.into(), new_size.into()],
                                 "set_grown_ptr",
                             )
-                            .unwrap()
-                            .try_as_basic_value();
-                        let grown_ptr = match grown_ptr {
-                            ValueKind::Basic(BasicValueEnum::PointerValue(ptr)) => ptr,
-                            _ => return Err(CodegenError::new("realloc failed for Set growth")),
-                        };
+                            .unwrap();
+                        let grown_ptr = self.extract_call_pointer_value(
+                            grown_call,
+                            "realloc failed for Set growth",
+                        )?;
                         self.builder.build_store(data_ptr_ptr, grown_ptr).unwrap();
                         self.builder
                             .build_store(capacity_ptr, grown_capacity)
@@ -1133,7 +1143,10 @@ impl<'ctx> Codegen<'ctx> {
         _args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (ptr, ty) = {
-            let var = self.variables.get(option_name).unwrap();
+            let var = self
+                .variables
+                .get(option_name)
+                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", option_name)))?;
             (var.ptr, var.ty.clone())
         };
         self.compile_option_method_on_value(ptr.into(), &ty, method)
@@ -1308,7 +1321,10 @@ impl<'ctx> Codegen<'ctx> {
         _args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (ptr, ty) = {
-            let var = self.variables.get(result_name).unwrap();
+            let var = self
+                .variables
+                .get(result_name)
+                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", result_name)))?;
             (var.ptr, var.ty.clone())
         };
         self.compile_result_method_on_value(ptr.into(), &ty, method)
@@ -2047,14 +2063,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "data")
             .unwrap();
-        let data_ptr = match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => val,
-            _ => {
-                return Err(CodegenError::new(
-                    "malloc did not produce a value while allocating list storage",
-                ))
-            }
-        };
+        let data_ptr = self.extract_call_value_with_context(
+            call_result,
+            "malloc did not produce a value while allocating list storage",
+        )?;
 
         let data_ptr_field = unsafe {
             self.builder
@@ -2108,14 +2120,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[new_size.into()], "grown_data")
             .unwrap();
-        let grown_data = match grown_call.try_as_basic_value() {
-            ValueKind::Basic(v) => v.into_pointer_value(),
-            _ => {
-                return Err(CodegenError::new(
-                    "malloc did not produce a pointer while growing list storage",
-                ))
-            }
-        };
+        let grown_data = self.extract_call_pointer_value(
+            grown_call,
+            "malloc did not produce a pointer while growing list storage",
+        )?;
 
         let bytes_to_copy = self
             .builder
@@ -2274,14 +2282,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[keys_size.into()], "keys")
             .unwrap();
-        let keys_ptr = match keys_call.try_as_basic_value() {
-            ValueKind::Basic(val) => val,
-            _ => {
-                return Err(CodegenError::new(
-                    "malloc did not produce a value while allocating map keys storage",
-                ))
-            }
-        };
+        let keys_ptr = self.extract_call_value_with_context(
+            keys_call,
+            "malloc did not produce a value while allocating map keys storage",
+        )?;
         let keys_field = unsafe {
             self.builder
                 .build_gep(
@@ -2298,14 +2302,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[values_size.into()], "values")
             .unwrap();
-        let values_ptr = match values_call.try_as_basic_value() {
-            ValueKind::Basic(val) => val,
-            _ => {
-                return Err(CodegenError::new(
-                    "malloc did not produce a value while allocating map values storage",
-                ))
-            }
-        };
+        let values_ptr = self.extract_call_value_with_context(
+            values_call,
+            "malloc did not produce a value while allocating map values storage",
+        )?;
         let values_field = unsafe {
             self.builder
                 .build_gep(
@@ -2391,14 +2391,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "data")
             .unwrap();
-        let data_ptr = match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => val,
-            _ => {
-                return Err(CodegenError::new(
-                    "malloc did not produce a value while allocating set storage",
-                ))
-            }
-        };
+        let data_ptr = self.extract_call_value_with_context(
+            call_result,
+            "malloc did not produce a value while allocating set storage",
+        )?;
 
         let data_ptr_field = unsafe {
             self.builder
@@ -2422,12 +2418,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "box")
             .unwrap();
-        match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => Ok(val),
-            _ => Err(CodegenError::new(
-                "malloc did not produce a value while allocating Box storage",
-            )),
-        }
+        self.extract_call_value_with_context(
+            call_result,
+            "malloc did not produce a value while allocating Box storage",
+        )
     }
 
     pub fn create_empty_rc(&mut self) -> Result<BasicValueEnum<'ctx>> {
@@ -2437,12 +2431,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "rc")
             .unwrap();
-        match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => Ok(val),
-            _ => Err(CodegenError::new(
-                "malloc did not produce a value while allocating Rc storage",
-            )),
-        }
+        self.extract_call_value_with_context(
+            call_result,
+            "malloc did not produce a value while allocating Rc storage",
+        )
     }
 
     pub fn create_empty_arc(&mut self) -> Result<BasicValueEnum<'ctx>> {
@@ -2452,12 +2444,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "arc")
             .unwrap();
-        match call_result.try_as_basic_value() {
-            ValueKind::Basic(val) => Ok(val),
-            _ => Err(CodegenError::new(
-                "malloc did not produce a value while allocating Arc storage",
-            )),
-        }
+        self.extract_call_value_with_context(
+            call_result,
+            "malloc did not produce a value while allocating Arc storage",
+        )
     }
 
     pub fn compile_list_method(
@@ -2467,7 +2457,10 @@ impl<'ctx> Codegen<'ctx> {
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (list_ptr, list_ty) = {
-            let var = self.variables.get(list_name).unwrap();
+            let var = self
+                .variables
+                .get(list_name)
+                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", list_name)))?;
             (var.ptr, var.ty.clone())
         };
         self.compile_list_method_ptr(list_ptr, &list_ty, method, args)
@@ -2634,7 +2627,9 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap()
                     .into_int_value();
                 let index = self.compile_expr(&args[0].node)?.into_int_value();
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("List.get used outside function"))?;
                 let ok_bb = self.context.append_basic_block(current_fn, "list_get.ok");
                 let fail_bb = self.context.append_basic_block(current_fn, "list_get.fail");
                 let non_negative = self
@@ -2748,7 +2743,9 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(self.context.i64_type(), length_ptr, "len")
                     .unwrap()
                     .into_int_value();
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("List.pop used outside function"))?;
                 let ok_bb = self.context.append_basic_block(current_fn, "list_pop.ok");
                 let fail_bb = self.context.append_basic_block(current_fn, "list_pop.fail");
                 let has_items = self
@@ -2850,7 +2847,9 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap()
                     .into_int_value();
                 let index = self.compile_expr(&args[0].node)?.into_int_value();
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("List.set used outside function"))?;
                 let ok_bb = self.context.append_basic_block(current_fn, "list_set.ok");
                 let fail_bb = self.context.append_basic_block(current_fn, "list_set.fail");
                 let non_negative = self
@@ -3107,7 +3106,9 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap()
                     .into_int_value();
                 let index = self.compile_expr(&args[0].node)?.into_int_value();
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("List.get used outside function"))?;
                 let ok_bb = self
                     .context
                     .append_basic_block(current_fn, "list_ptr_get.ok");
@@ -3204,7 +3205,9 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap()
                     .into_int_value();
                 let index = self.compile_expr(&args[0].node)?.into_int_value();
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("List.set used outside function"))?;
                 let ok_bb = self
                     .context
                     .append_basic_block(current_fn, "list_ptr_set.ok");
@@ -3304,7 +3307,9 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(self.context.i64_type(), length_ptr, "len")
                     .unwrap()
                     .into_int_value();
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("List.pop used outside function"))?;
                 let ok_bb = self
                     .context
                     .append_basic_block(current_fn, "list_ptr_pop.ok");
@@ -3405,7 +3410,10 @@ impl<'ctx> Codegen<'ctx> {
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (map_ptr, map_ty) = {
-            let var = self.variables.get(map_name).unwrap();
+            let var = self
+                .variables
+                .get(map_name)
+                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", map_name)))?;
             (var.ptr.into(), var.ty.clone())
         };
         self.compile_map_method_on_value(map_ptr, &map_ty, method, args)
@@ -3530,7 +3538,9 @@ impl<'ctx> Codegen<'ctx> {
                     .build_store(found_ptr, self.context.bool_type().const_zero())
                     .unwrap();
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("Map.get used outside function"))?;
                 let cond_bb = self.context.append_basic_block(current_fn, "map_get.cond");
                 let body_bb = self.context.append_basic_block(current_fn, "map_get.body");
                 let done_bb = self.context.append_basic_block(current_fn, "map_get.done");
@@ -3670,7 +3680,9 @@ impl<'ctx> Codegen<'ctx> {
                     .build_store(res_ptr, self.context.bool_type().const_int(0, false))
                     .unwrap();
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("Map.contains used outside function"))?;
                 let cond_bb = self
                     .context
                     .append_basic_block(current_fn, "map_contains.cond");
@@ -3840,7 +3852,9 @@ impl<'ctx> Codegen<'ctx> {
         self.builder
             .build_store(idx_ptr, i64_type.const_int(0, false))
             .unwrap();
-        let current_fn = self.current_function.unwrap();
+        let current_fn = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("Map.set used outside function"))?;
         let cond_bb = self.context.append_basic_block(current_fn, "map_set.cond");
         let body_bb = self.context.append_basic_block(current_fn, "map_set.body");
         let cont_bb = self.context.append_basic_block(current_fn, "map_set.cont");
@@ -3973,19 +3987,16 @@ impl<'ctx> Codegen<'ctx> {
                 "new_key_size",
             )
             .unwrap();
-        let grown_keys = self
+        let grown_keys_call = self
             .builder
             .build_call(
                 realloc,
                 &[keys_ptr.into(), new_key_size.into()],
                 "grown_keys",
             )
-            .unwrap()
-            .try_as_basic_value();
-        let grown_keys = match grown_keys {
-            ValueKind::Basic(BasicValueEnum::PointerValue(ptr)) => ptr,
-            _ => return Err(CodegenError::new("realloc failed for Map key growth")),
-        };
+            .unwrap();
+        let grown_keys =
+            self.extract_call_pointer_value(grown_keys_call, "realloc failed for Map key growth")?;
         let new_val_size = self
             .builder
             .build_int_mul(
@@ -3994,19 +4005,16 @@ impl<'ctx> Codegen<'ctx> {
                 "new_val_size",
             )
             .unwrap();
-        let grown_vals = self
+        let grown_vals_call = self
             .builder
             .build_call(
                 realloc,
                 &[values_ptr.into(), new_val_size.into()],
                 "grown_vals",
             )
-            .unwrap()
-            .try_as_basic_value();
-        let grown_vals = match grown_vals {
-            ValueKind::Basic(BasicValueEnum::PointerValue(ptr)) => ptr,
-            _ => return Err(CodegenError::new("realloc failed for Map value growth")),
-        };
+            .unwrap();
+        let grown_vals = self
+            .extract_call_pointer_value(grown_vals_call, "realloc failed for Map value growth")?;
         self.builder.build_store(keys_ptr_ptr, grown_keys).unwrap();
         self.builder
             .build_store(values_ptr_ptr, grown_vals)
@@ -4206,7 +4214,9 @@ impl<'ctx> Codegen<'ctx> {
             .build_store(found_ptr, self.context.bool_type().const_zero())
             .unwrap();
 
-        let current_fn = self.current_function.unwrap();
+        let current_fn = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("Map.get used outside function"))?;
         let cond_bb = self.context.append_basic_block(current_fn, "map_get.cond");
         let body_bb = self.context.append_basic_block(current_fn, "map_get.body");
         let done_bb = self.context.append_basic_block(current_fn, "map_get.done");
@@ -4326,7 +4336,10 @@ impl<'ctx> Codegen<'ctx> {
         _args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (range_ptr, range_ty) = {
-            let var = self.variables.get(range_name).unwrap();
+            let var = self
+                .variables
+                .get(range_name)
+                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", range_name)))?;
             let ptr_type = self.context.ptr_type(AddressSpace::default());
             let range_ptr = self
                 .builder

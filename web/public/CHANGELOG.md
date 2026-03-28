@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed the last shared call-result crash path in backend codegen:
+  - the common `extract_call_value(...)` helper now returns a normal `CodegenError` instead of assuming every lowered call always produces a value
+  - string helpers, math builtins, filesystem/process builtins, UTF-8 utilities, assertion lowering, and function-adapter returns now all propagate that failure path instead of panicking or mis-typing intermediate LLVM values
+  - the Windows `stdin` declaration path follows the same explicit error propagation too, so the helper contract stays consistent across platforms
+- Fixed another production codegen panic cluster across control flow and container builtins:
+  - list, map, set, option, result, and range method lowering no longer crash on missing lowered variables and now report explicit `Unknown variable: ...` codegen errors instead
+  - `range()` allocation now reports a normal codegen error if LLVM cannot compute the runtime layout size, instead of panicking on `size_of().unwrap()`
+  - `if` / `while` / `for` / `match` lowering, `if`-expression phi construction, string transforms, string/list indexing, `Str.trim`, `read_line`, file/system builtins, and assertion helpers now all reject missing active-function / predecessor-block state with explicit diagnostics instead of panicking through `current_function.unwrap()` or `get_insert_block().unwrap()`
+- Fixed another call-result / allocation hardening batch in backend codegen:
+  - lambda environments, async/task result buffers, async block environments/results, function-adapter environments, task cancellation payloads, class instances, range storage, list/map/set storage, and map/set/list growth paths now all use shared checked extraction for call results instead of open-coded `try_as_basic_value()` assumptions
+  - constructor returns and async body returns now surface explicit codegen errors if LLVM lowers them as non-value calls, instead of each site carrying its own partial match logic
+  - string equality (`strcmp`) and structural equality (`memcmp`) no longer silently fall back to a fake non-equal result when the runtime call unexpectedly fails to yield a value; those paths now report a real codegen error instead
 - Fixed project-mode type inference for alias-qualified nested async calls returning `Task<T>`:
   - expressions like `await(analytics.Api.V2.score(10))` now preserve the real inner return type across package aliases and deep module chains instead of falling back to `Integer`
   - project builds no longer mis-read `Task<Float>` results from cross-file dotted-package async functions as raw integer bit patterns during `await`

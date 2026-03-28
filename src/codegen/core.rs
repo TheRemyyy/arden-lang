@@ -6688,14 +6688,8 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[size.into()], "instance")
             .map_err(|e| CodegenError::new(format!("malloc call failed: {}", e)))?;
-        let instance = match ptr.try_as_basic_value() {
-            ValueKind::Basic(val) => val.into_pointer_value(),
-            _ => {
-                return Err(CodegenError::new(
-                    "malloc call did not produce a pointer result",
-                ))
-            }
-        };
+        let instance =
+            self.extract_call_pointer_value(ptr, "malloc call did not produce a pointer result")?;
 
         // Store 'this'
         let this_alloca = self
@@ -7091,12 +7085,9 @@ impl<'ctx> Codegen<'ctx> {
         let raw = self
             .builder
             .build_call(malloc, &[size.into()], "task_alloc")
-            .unwrap()
-            .try_as_basic_value();
-        let task_raw = match raw {
-            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-            _ => return Err(CodegenError::new("malloc should return pointer for Task")),
-        };
+            .unwrap();
+        let task_raw =
+            self.extract_call_pointer_value(raw, "malloc should return pointer for Task")?;
 
         let task_ptr = self
             .builder
@@ -7182,12 +7173,9 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "task_spawn",
                     )
-                    .unwrap()
-                    .try_as_basic_value();
-                let handle = match raw_handle {
-                    ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-                    _ => return Err(CodegenError::new("CreateThread should return handle")),
-                };
+                    .unwrap();
+                let handle = self
+                    .extract_call_pointer_value(raw_handle, "CreateThread should return handle")?;
                 self.builder
                     .build_ptr_to_int(handle, self.context.i64_type(), "task_thread")
                     .unwrap()
@@ -7500,16 +7488,9 @@ impl<'ctx> Codegen<'ctx> {
                     &[self.context.i64_type().const_int(1, false).into()],
                     "async_none_alloc",
                 )
-                .unwrap()
-                .try_as_basic_value();
-            let ptr = match raw {
-                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-                _ => {
-                    return Err(CodegenError::new(
-                        "malloc failed for async Task<None> result",
-                    ))
-                }
-            };
+                .unwrap();
+            let ptr =
+                self.extract_call_pointer_value(raw, "malloc failed for async Task<None> result")?;
             let none_ptr = self
                 .builder
                 .build_pointer_cast(
@@ -7530,12 +7511,8 @@ impl<'ctx> Codegen<'ctx> {
             let raw = self
                 .builder
                 .build_call(malloc, &[size.into()], "async_result_alloc")
-                .unwrap()
-                .try_as_basic_value();
-            let ptr = match raw {
-                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-                _ => return Err(CodegenError::new("malloc failed for async result")),
-            };
+                .unwrap();
+            let ptr = self.extract_call_pointer_value(raw, "malloc failed for async result")?;
             let typed_ptr = self
                 .builder
                 .build_pointer_cast(
@@ -7544,14 +7521,10 @@ impl<'ctx> Codegen<'ctx> {
                     "async_result_ptr",
                 )
                 .unwrap();
-            let result = match body_call.try_as_basic_value() {
-                ValueKind::Basic(v) => v,
-                ValueKind::Instruction(_) => {
-                    return Err(CodegenError::new(
-                        "async body should return value for non-None Task",
-                    ));
-                }
-            };
+            let result = self.extract_call_value_with_context(
+                body_call,
+                "async body should return value for non-None Task",
+            )?;
             self.builder.build_store(typed_ptr, result).unwrap();
             ptr
         };
@@ -7630,12 +7603,9 @@ impl<'ctx> Codegen<'ctx> {
         let env_alloc = self
             .builder
             .build_call(malloc, &[env_size.into()], "async_env_alloc")
-            .unwrap()
-            .try_as_basic_value();
-        let env_raw_ptr = match env_alloc {
-            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-            _ => return Err(CodegenError::new("malloc failed for async environment")),
-        };
+            .unwrap();
+        let env_raw_ptr =
+            self.extract_call_pointer_value(env_alloc, "malloc failed for async environment")?;
         let env_cast = self
             .builder
             .build_pointer_cast(
@@ -8022,7 +7992,9 @@ impl<'ctx> Codegen<'ctx> {
         else_block: Option<&Block>,
     ) -> Result<()> {
         let cond_val = self.compile_expr(&cond.node)?.into_int_value();
-        let func = self.current_function.unwrap();
+        let func = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("if statement used outside function"))?;
 
         let then_bb = self.context.append_basic_block(func, "then");
         let else_bb = self.context.append_basic_block(func, "else");
@@ -8057,7 +8029,9 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_while(&mut self, cond: &Spanned<Expr>, body: &Block) -> Result<()> {
-        let func = self.current_function.unwrap();
+        let func = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("while loop used outside function"))?;
 
         // LOOP ROTATION OPTIMIZATION:
         // Instead of: while (cond) { body }
@@ -8111,7 +8085,9 @@ impl<'ctx> Codegen<'ctx> {
         iterable: &Spanned<Expr>,
         body: &Block,
     ) -> Result<()> {
-        let func = self.current_function.unwrap();
+        let func = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("for loop used outside function"))?;
         let iterable_ty = self.infer_expr_type(&iterable.node, &[]);
         let deref_iterable_ty = self.deref_codegen_type(&iterable_ty).clone();
 
@@ -8717,7 +8693,9 @@ impl<'ctx> Codegen<'ctx> {
                 .then_some((enum_name, variant_name, variant_info.tag))
         };
         let val = self.compile_expr(&expr.node)?;
-        let func = self.current_function.unwrap();
+        let func = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("match statement used outside function"))?;
         let merge_bb = self.context.append_basic_block(func, "match.merge");
 
         let match_ty = self.infer_expr_type(&expr.node, &[]);
@@ -8736,7 +8714,10 @@ impl<'ctx> Codegen<'ctx> {
             _ => None,
         };
 
-        let mut dispatch_bb = self.builder.get_insert_block().unwrap();
+        let mut dispatch_bb = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| CodegenError::new("match statement insert block missing"))?;
 
         for arm in arms {
             let arm_bb = self.context.append_basic_block(func, "match.arm");
@@ -8841,7 +8822,7 @@ impl<'ctx> Codegen<'ctx> {
                                 "match_strcmp",
                             )
                             .unwrap();
-                        let cmp_val = self.extract_call_value(cmp).into_int_value();
+                        let cmp_val = self.extract_call_value(cmp)?.into_int_value();
                         self.builder
                             .build_int_compare(
                                 IntPredicate::EQ,
@@ -9195,12 +9176,9 @@ impl<'ctx> Codegen<'ctx> {
         let env_alloc = self
             .builder
             .build_call(malloc, &[env_size.into()], "async_block_env")
-            .unwrap()
-            .try_as_basic_value();
-        let env_raw = match env_alloc {
-            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-            _ => return Err(CodegenError::new("malloc failed for async block env")),
-        };
+            .unwrap();
+        let env_raw =
+            self.extract_call_pointer_value(env_alloc, "malloc failed for async block env")?;
         let env_cast = self
             .builder
             .build_pointer_cast(
@@ -9373,16 +9351,9 @@ impl<'ctx> Codegen<'ctx> {
                     &[self.context.i64_type().const_int(1, false).into()],
                     "async_block_none_alloc",
                 )
-                .unwrap()
-                .try_as_basic_value();
-            let ptr = match alloc {
-                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-                _ => {
-                    return Err(CodegenError::new(
-                        "malloc failed for async block none result",
-                    ))
-                }
-            };
+                .unwrap();
+            let ptr = self
+                .extract_call_pointer_value(alloc, "malloc failed for async block none result")?;
             let none_ptr = self
                 .builder
                 .build_pointer_cast(
@@ -9403,12 +9374,9 @@ impl<'ctx> Codegen<'ctx> {
             let alloc = self
                 .builder
                 .build_call(malloc, &[size.into()], "async_block_alloc")
-                .unwrap()
-                .try_as_basic_value();
-            let ptr = match alloc {
-                ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-                _ => return Err(CodegenError::new("malloc failed for async block result")),
-            };
+                .unwrap();
+            let ptr =
+                self.extract_call_pointer_value(alloc, "malloc failed for async block result")?;
             let typed_ptr = self
                 .builder
                 .build_pointer_cast(
@@ -9417,14 +9385,10 @@ impl<'ctx> Codegen<'ctx> {
                     "async_block_result_ptr",
                 )
                 .unwrap();
-            let result_val = match body_call.try_as_basic_value() {
-                ValueKind::Basic(v) => v,
-                ValueKind::Instruction(_) => {
-                    return Err(CodegenError::new(
-                        "async block body should return value for non-None Task",
-                    ));
-                }
-            };
+            let result_val = self.extract_call_value_with_context(
+                body_call,
+                "async block body should return value for non-None Task",
+            )?;
             self.builder.build_store(typed_ptr, result_val).unwrap();
             ptr
         };
@@ -9980,7 +9944,7 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         let result = self.extract_call_value(call);
         let adapted = self.adapt_function_adapter_return(
-            result,
+            result?,
             actual_ret.as_ref(),
             expected_ret.as_ref(),
             "fn_adapter_return",
@@ -10248,12 +10212,9 @@ impl<'ctx> Codegen<'ctx> {
         let env_alloc = self
             .builder
             .build_call(malloc, &[env_size.into()], "fn_adapter_env_alloc")
-            .unwrap()
-            .try_as_basic_value();
-        let env_ptr = match env_alloc {
-            ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-            _ => return Err(CodegenError::new("malloc failed for function adapter env")),
-        };
+            .unwrap();
+        let env_ptr =
+            self.extract_call_pointer_value(env_alloc, "malloc failed for function adapter env")?;
         let stored_closure_ptr = unsafe {
             self.builder
                 .build_gep(
@@ -10368,7 +10329,7 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
         let result = self.extract_call_value(call);
         let adapted = self.adapt_function_adapter_return(
-            result,
+            result?,
             actual_ret.as_ref(),
             expected_ret.as_ref(),
             "fn_adapter_return",
@@ -10476,7 +10437,7 @@ impl<'ctx> Codegen<'ctx> {
                 "char_str_buf",
             )
             .unwrap();
-        let buffer = self.extract_call_value(buf_call).into_pointer_value();
+        let buffer = self.extract_call_value(buf_call)?.into_pointer_value();
 
         let one_byte_bb = self.context.append_basic_block(current_fn, "char_str_one");
         let two_byte_bb = self.context.append_basic_block(current_fn, "char_str_two");
@@ -10851,7 +10812,7 @@ impl<'ctx> Codegen<'ctx> {
                         "display_buf",
                     )
                     .unwrap();
-                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
+                let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
                 let (fmt, print_arg): (&str, BasicMetadataValueEnum) = if value.is_float_value() {
                     ("%f", value.into())
@@ -10950,7 +10911,10 @@ impl<'ctx> Codegen<'ctx> {
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
-        let then_block = self.builder.get_insert_block().unwrap();
+        let then_block = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| CodegenError::new("if expression then predecessor block missing"))?;
 
         // Else branch
         self.builder.position_at_end(else_block);
@@ -10971,7 +10935,10 @@ impl<'ctx> Codegen<'ctx> {
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
-        let else_block = self.builder.get_insert_block().unwrap();
+        let else_block = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| CodegenError::new("if expression else predecessor block missing"))?;
 
         // Merge block with phi node
         self.builder.position_at_end(merge_block);
@@ -11244,12 +11211,12 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_call(strlen_fn, &[s1.into()], "len1")
                 .unwrap();
-            let len1 = self.extract_call_value(len1_call).into_int_value();
+            let len1 = self.extract_call_value(len1_call)?.into_int_value();
             let len2_call = self
                 .builder
                 .build_call(strlen_fn, &[s2.into()], "len2")
                 .unwrap();
-            let len2 = self.extract_call_value(len2_call).into_int_value();
+            let len2 = self.extract_call_value(len2_call)?.into_int_value();
             let total_len = self.builder.build_int_add(len1, len2, "total").unwrap();
             let buffer_size = self
                 .builder
@@ -11263,7 +11230,7 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_call(malloc, &[buffer_size.into()], "buf")
                 .unwrap();
-            let buffer = self.extract_call_value(buffer_call).into_pointer_value();
+            let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
             self.builder
                 .build_call(strcpy_fn, &[buffer.into(), s1.into()], "")
                 .unwrap();
@@ -11283,7 +11250,7 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_call(strcmp, &[lhs.into(), rhs.into()], "strcmp")
                 .map_err(|e| CodegenError::new(format!("strcmp call failed: {}", e)))?;
-            let cmp = self.extract_call_value(cmp).into_int_value();
+            let cmp = self.extract_call_value(cmp)?.into_int_value();
             let result = if matches!(op, BinOp::Eq) {
                 self.builder
                     .build_int_compare(
@@ -12332,16 +12299,11 @@ impl<'ctx> Codegen<'ctx> {
                             &[self.context.i64_type().const_int(1, false).into()],
                             "task_cancel_none_alloc",
                         )
-                        .unwrap()
-                        .try_as_basic_value();
-                    let ptr = match raw {
-                        ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-                        _ => {
-                            return Err(CodegenError::new(
-                                "malloc failed while creating canceled task value",
-                            ));
-                        }
-                    };
+                        .unwrap();
+                    let ptr = self.extract_call_pointer_value(
+                        raw,
+                        "malloc failed while creating canceled task value",
+                    )?;
                     let typed = self
                         .builder
                         .build_pointer_cast(
@@ -12362,16 +12324,11 @@ impl<'ctx> Codegen<'ctx> {
                     let raw = self
                         .builder
                         .build_call(malloc, &[size.into()], "task_cancel_alloc")
-                        .unwrap()
-                        .try_as_basic_value();
-                    let ptr = match raw {
-                        ValueKind::Basic(BasicValueEnum::PointerValue(p)) => p,
-                        _ => {
-                            return Err(CodegenError::new(
-                                "malloc failed while creating canceled task value",
-                            ));
-                        }
-                    };
+                        .unwrap();
+                    let ptr = self.extract_call_pointer_value(
+                        raw,
+                        "malloc failed while creating canceled task value",
+                    )?;
                     let typed_ptr = self
                         .builder
                         .build_pointer_cast(
@@ -13900,7 +13857,9 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_and(non_negative, in_bounds, "string_literal_index_valid")
                     .unwrap();
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self.current_function.ok_or_else(|| {
+                    CodegenError::new("string literal index used outside function")
+                })?;
                 let ok_bb = self
                     .context
                     .append_basic_block(current_fn, "string_literal_index_ok");
@@ -14065,7 +14024,9 @@ impl<'ctx> Codegen<'ctx> {
                 .builder
                 .build_and(non_negative, in_bounds, "index_valid")
                 .unwrap();
-            let current_fn = self.current_function.unwrap();
+            let current_fn = self
+                .current_function
+                .ok_or_else(|| CodegenError::new("list index used outside function"))?;
             let ok_bb = self.context.append_basic_block(current_fn, "index_ok");
             let fail_bb = self.context.append_basic_block(current_fn, "index_fail");
             self.builder
@@ -14218,13 +14179,10 @@ impl<'ctx> Codegen<'ctx> {
             compiled_args.iter().map(|a| (*a).into()).collect();
         let call = self.builder.build_call(func, &args_meta, "new").unwrap();
 
-        match call.try_as_basic_value() {
-            ValueKind::Basic(val) => Ok(val),
-            _ => Err(CodegenError::new(format!(
-                "Constructor '{}' did not produce a value result",
-                func_name
-            ))),
-        }
+        self.extract_call_value_with_context(
+            call,
+            &format!("Constructor '{}' did not produce a value result", func_name),
+        )
     }
 
     pub fn compile_print(
@@ -14300,14 +14258,10 @@ impl<'ctx> Codegen<'ctx> {
             .builder
             .build_call(malloc, &[buffer_size.into()], "strbuf")
             .unwrap();
-        let buffer = match buffer_call.try_as_basic_value() {
-            ValueKind::Basic(val) => val.into_pointer_value(),
-            _ => {
-                return Err(CodegenError::new(
-                    "malloc did not produce a buffer pointer for string interpolation",
-                ))
-            }
-        };
+        let buffer = self.extract_call_pointer_value(
+            buffer_call,
+            "malloc did not produce a buffer pointer for string interpolation",
+        )?;
 
         // Create format string
         let fmt_val = self.context.const_string(fmt_str.as_bytes(), true);
@@ -14513,7 +14467,7 @@ impl<'ctx> Codegen<'ctx> {
                 } else {
                     let fabs = self.get_or_declare_math_func("fabs", true);
                     let call = self.builder.build_call(fabs, &[val.into()], "abs").unwrap();
-                    Ok(Some(self.extract_call_value(call)))
+                    Ok(Some(self.extract_call_value(call)?))
                 }
             }
             "Math__min" => {
@@ -14549,7 +14503,7 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_call(fmin, &[av.into(), bv.into()], "min")
                         .unwrap();
-                    Ok(Some(self.extract_call_value(call)))
+                    Ok(Some(self.extract_call_value(call)?))
                 } else {
                     let av = a.into_int_value();
                     let bv = b.into_int_value();
@@ -14594,7 +14548,7 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_call(fmax, &[av.into(), bv.into()], "max")
                         .unwrap();
-                    Ok(Some(self.extract_call_value(call)))
+                    Ok(Some(self.extract_call_value(call)?))
                 } else {
                     let av = a.into_int_value();
                     let bv = b.into_int_value();
@@ -14625,7 +14579,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(sqrt, &[fval.into()], "sqrt")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__pow" => {
                 let base = self.compile_expr(&args[0].node)?;
@@ -14659,7 +14613,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(pow_fn, &[fbase.into(), fexp.into()], "pow")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__sin" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -14680,7 +14634,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(sin_fn, &[fval.into()], "sin")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__cos" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -14701,7 +14655,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(cos_fn, &[fval.into()], "cos")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__tan" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -14722,7 +14676,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(tan_fn, &[fval.into()], "tan")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__floor" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -14743,7 +14697,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(floor_fn, &[fval.into()], "floor")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__ceil" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -14764,7 +14718,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(ceil_fn, &[fval.into()], "ceil")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__round" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -14785,7 +14739,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(round_fn, &[fval.into()], "round")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__log" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -14806,7 +14760,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(log_fn, &[fval.into()], "log")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__log10" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -14827,7 +14781,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(log10_fn, &[fval.into()], "log10")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
             "Math__exp" => {
                 let val = self.compile_expr(&args[0].node)?;
@@ -14848,13 +14802,13 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(exp_fn, &[fval.into()], "exp")
                     .unwrap();
-                Ok(Some(self.extract_call_value(call)))
+                Ok(Some(self.extract_call_value(call)?))
             }
 
             "Math__random" => {
                 let rand_fn = self.get_or_declare_rand();
                 let res = self.builder.build_call(rand_fn, &[], "r").unwrap();
-                let val = self.extract_call_value(res).into_int_value();
+                let val = self.extract_call_value(res)?.into_int_value();
                 let fval = self
                     .builder
                     .build_unsigned_int_to_float(val, self.context.f64_type(), "rf")
@@ -14923,7 +14877,7 @@ impl<'ctx> Codegen<'ctx> {
                             "toint",
                         )
                         .unwrap();
-                    Ok(Some(self.extract_call_value(call)))
+                    Ok(Some(self.extract_call_value(call)?))
                 } else if val.is_int_value() {
                     Ok(Some(val))
                 } else {
@@ -14954,7 +14908,7 @@ impl<'ctx> Codegen<'ctx> {
                     .build_call(strcmp_fn, &[s1.into(), s2.into()], "cmp")
                     .unwrap();
                 // strcmp returns i32, extend to i64
-                let result = self.extract_call_value(call).into_int_value();
+                let result = self.extract_call_value(call)?.into_int_value();
                 let extended = self
                     .builder
                     .build_int_s_extend(result, self.context.i64_type(), "cmp64")
@@ -14976,12 +14930,12 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strlen_fn, &[s1.into()], "len1")
                     .unwrap();
-                let len1 = self.extract_call_value(len1_call).into_int_value();
+                let len1 = self.extract_call_value(len1_call)?.into_int_value();
                 let len2_call = self
                     .builder
                     .build_call(strlen_fn, &[s2.into()], "len2")
                     .unwrap();
-                let len2 = self.extract_call_value(len2_call).into_int_value();
+                let len2 = self.extract_call_value(len2_call)?.into_int_value();
 
                 // Allocate len1 + len2 + 1
                 let total_len = self.builder.build_int_add(len1, len2, "total").unwrap();
@@ -14998,7 +14952,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[buffer_size.into()], "buf")
                     .unwrap();
-                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
+                let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
                 // strcpy(buffer, s1)
                 self.builder
@@ -15036,7 +14990,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strlen_fn, &[s_ptr.into()], "len")
                     .unwrap();
-                let len = self.extract_call_value(len_call).into_int_value();
+                let len = self.extract_call_value(len_call)?.into_int_value();
 
                 // Find start (first non-space)
                 let start_ptr = self
@@ -15047,7 +15001,9 @@ impl<'ctx> Codegen<'ctx> {
                     .build_store(start_ptr, self.context.i64_type().const_int(0, false))
                     .unwrap();
 
-                let cur_fn = self.current_function.unwrap();
+                let cur_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("Str.trim used outside function"))?;
                 let start_cond = self.context.append_basic_block(cur_fn, "trim.start.cond");
                 let start_body = self.context.append_basic_block(cur_fn, "trim.start.body");
                 let start_after = self.context.append_basic_block(cur_fn, "trim.start.after");
@@ -15084,7 +15040,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_int_compare(
                         IntPredicate::NE,
-                        self.extract_call_value(is_space_call).into_int_value(),
+                        self.extract_call_value(is_space_call)?.into_int_value(),
                         self.context.i32_type().const_int(0, false),
                         "",
                     )
@@ -15156,7 +15112,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_int_compare(
                         IntPredicate::NE,
-                        self.extract_call_value(is_space_call).into_int_value(),
+                        self.extract_call_value(is_space_call)?.into_int_value(),
                         self.context.i32_type().const_int(0, false),
                         "",
                     )
@@ -15198,7 +15154,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc_fn, &[alloc_size.into()], "buf")
                     .unwrap();
-                let buf = self.extract_call_value(buf_call).into_pointer_value();
+                let buf = self.extract_call_value(buf_call)?.into_pointer_value();
 
                 let src_ptr = unsafe {
                     self.builder
@@ -15234,7 +15190,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strstr, &[s.into(), sub.into()], "pos")
                     .unwrap();
-                let ptr = self.extract_call_value(res).into_pointer_value();
+                let ptr = self.extract_call_value(res)?.into_pointer_value();
                 let is_null = self.builder.build_is_null(ptr, "not_found").unwrap();
                 let found = self.builder.build_not(is_null, "found").unwrap();
                 Ok(Some(found.into()))
@@ -15256,7 +15212,7 @@ impl<'ctx> Codegen<'ctx> {
                         &[
                             s.into(),
                             pre.into(),
-                            self.extract_call_value(pre_len).into_int_value().into(),
+                            self.extract_call_value(pre_len)?.into_int_value().into(),
                         ],
                         "cmp",
                     )
@@ -15265,7 +15221,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_int_compare(
                         IntPredicate::EQ,
-                        self.extract_call_value(res).into_int_value(),
+                        self.extract_call_value(res)?.into_int_value(),
                         self.context.i32_type().const_int(0, false),
                         "is_zero",
                     )
@@ -15287,8 +15243,8 @@ impl<'ctx> Codegen<'ctx> {
                     .build_call(strlen, &[suf.into()], "suf_len")
                     .unwrap();
 
-                let s_len_val = self.extract_call_value(s_len).into_int_value();
-                let suf_len_val = self.extract_call_value(suf_len).into_int_value();
+                let s_len_val = self.extract_call_value(s_len)?.into_int_value();
+                let suf_len_val = self.extract_call_value(suf_len)?.into_int_value();
 
                 let can_end = self
                     .builder
@@ -15318,7 +15274,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_int_compare(
                         IntPredicate::EQ,
-                        self.extract_call_value(res).into_int_value(),
+                        self.extract_call_value(res)?.into_int_value(),
                         self.context.i32_type().const_int(0, false),
                         "is_zero",
                     )
@@ -15346,7 +15302,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[initial_capacity.into()], "linebuf")
                     .unwrap();
-                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
+                let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
                 let buffer_slot = self
                     .builder
                     .build_alloca(ptr_type, "read_line_buffer_slot")
@@ -15370,7 +15326,9 @@ impl<'ctx> Codegen<'ctx> {
                     .build_store(buffer, i8_type.const_zero())
                     .unwrap();
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("read_line used outside function"))?;
                 let read_cond_bb = self
                     .context
                     .append_basic_block(current_fn, "read_line.cond");
@@ -15433,7 +15391,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(getchar_fn, &[], "read_line_char")
                     .unwrap();
-                let char_i32 = self.extract_call_value(getchar_call).into_int_value();
+                let char_i32 = self.extract_call_value(getchar_call)?.into_int_value();
                 let is_eof = self
                     .builder
                     .build_int_compare(
@@ -15521,7 +15479,7 @@ impl<'ctx> Codegen<'ctx> {
                         "read_line_realloc",
                     )
                     .unwrap();
-                let realloc_ptr = self.extract_call_value(realloc_call).into_pointer_value();
+                let realloc_ptr = self.extract_call_value(realloc_call)?.into_pointer_value();
                 let realloc_failed = self
                     .builder
                     .build_is_null(realloc_ptr, "read_line_realloc_failed")
@@ -15608,11 +15566,13 @@ impl<'ctx> Codegen<'ctx> {
                         "file",
                     )
                     .unwrap();
-                let file_ptr = self.extract_call_value(file_call).into_pointer_value();
+                let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
 
                 let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("File.write used outside function"))?;
                 let success_block = self.context.append_basic_block(current_fn, "file.success");
                 let fail_block = self.context.append_basic_block(current_fn, "file.fail");
                 let merge_block = self.context.append_basic_block(current_fn, "file.merge");
@@ -15637,12 +15597,12 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(fputs, &[content.into(), file_ptr.into()], "write")
                     .unwrap();
-                let write_code = self.extract_call_value(write_result).into_int_value();
+                let write_code = self.extract_call_value(write_result)?.into_int_value();
                 let close_result = self
                     .builder
                     .build_call(fclose, &[file_ptr.into()], "close")
                     .unwrap();
-                let close_code = self.extract_call_value(close_result).into_int_value();
+                let close_code = self.extract_call_value(close_result)?.into_int_value();
                 let write_failed = self
                     .builder
                     .build_int_compare(
@@ -15720,11 +15680,13 @@ impl<'ctx> Codegen<'ctx> {
                         "file",
                     )
                     .unwrap();
-                let file_ptr = self.extract_call_value(file_call).into_pointer_value();
+                let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
 
                 let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("File.read used outside function"))?;
                 let success_block = self.context.append_basic_block(current_fn, "read.success");
                 let fail_block = self.context.append_basic_block(current_fn, "read.fail");
                 let seek_ok_block = self.context.append_basic_block(current_fn, "read.seek_ok");
@@ -15755,7 +15717,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(fseek, &[file_ptr.into(), zero.into(), seek_end.into()], "")
                     .unwrap();
-                let seek_code = self.extract_call_value(seek_result).into_int_value();
+                let seek_code = self.extract_call_value(seek_result)?.into_int_value();
                 let seek_succeeded = self
                     .builder
                     .build_int_compare(
@@ -15782,7 +15744,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(ftell, &[file_ptr.into()], "size")
                     .unwrap();
-                let size = self.extract_call_value(size_call).into_int_value();
+                let size = self.extract_call_value(size_call)?.into_int_value();
                 let size_non_negative = self
                     .builder
                     .build_int_compare(
@@ -15816,7 +15778,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[alloc_size.into()], "buffer")
                     .unwrap();
-                let buffer = self.extract_call_value(buffer_call).into_pointer_value();
+                let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
 
                 // fread(buffer, 1, size, f)
                 let size_size_t = size; // Assuming size_t is i64
@@ -15972,7 +15934,7 @@ impl<'ctx> Codegen<'ctx> {
                         "file",
                     )
                     .unwrap();
-                let file_ptr = self.extract_call_value(file_call).into_pointer_value();
+                let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
 
                 let is_null = self.builder.build_is_null(file_ptr, "is_null").unwrap();
                 let alloca_exists_slot = self
@@ -15985,12 +15947,11 @@ impl<'ctx> Codegen<'ctx> {
                 let exists = self.builder.build_not(is_null, "exists").unwrap();
 
                 // Close if opened
-                let close_block = self
-                    .context
-                    .append_basic_block(self.current_function.unwrap(), "exists.close");
-                let end_block = self
-                    .context
-                    .append_basic_block(self.current_function.unwrap(), "exists.end");
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("File.exists used outside function"))?;
+                let close_block = self.context.append_basic_block(current_fn, "exists.close");
+                let end_block = self.context.append_basic_block(current_fn, "exists.end");
 
                 self.builder
                     .build_conditional_branch(exists, close_block, end_block)
@@ -16010,7 +15971,7 @@ impl<'ctx> Codegen<'ctx> {
                         "exists_seek_result",
                     )
                     .unwrap();
-                let seek_code = self.extract_call_value(seek_result).into_int_value();
+                let seek_code = self.extract_call_value(seek_result)?.into_int_value();
                 self.builder
                     .build_call(fclose, &[file_ptr.into()], "")
                     .unwrap();
@@ -16062,8 +16023,10 @@ impl<'ctx> Codegen<'ctx> {
                         "delete_file_probe",
                     )
                     .unwrap();
-                let file_ptr = self.extract_call_value(file_call).into_pointer_value();
-                let current_fn = self.current_function.unwrap();
+                let file_ptr = self.extract_call_value(file_call)?.into_pointer_value();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("File.delete used outside function"))?;
                 let probe_open_bb = self
                     .context
                     .append_basic_block(current_fn, "file_delete_probe_open");
@@ -16109,7 +16072,7 @@ impl<'ctx> Codegen<'ctx> {
                         "delete_probe_seek",
                     )
                     .unwrap();
-                let seek_code = self.extract_call_value(seek_result).into_int_value();
+                let seek_code = self.extract_call_value(seek_result)?.into_int_value();
                 self.builder
                     .build_call(fclose, &[file_ptr.into()], "delete_probe_close")
                     .unwrap();
@@ -16136,7 +16099,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(remove, &[path.into()], "res")
                     .unwrap();
-                let res = self.extract_call_value(res_call).into_int_value();
+                let res = self.extract_call_value(res_call)?.into_int_value();
                 let zero = self.context.i32_type().const_int(0, false);
                 let success = self
                     .builder
@@ -16183,7 +16146,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(time_fn, &[null.into()], "t")
                     .unwrap();
-                let t_raw = self.extract_call_value(t_val);
+                let t_raw = self.extract_call_value(t_val)?;
 
                 // 2. Alloca for time_t (i64)
                 let t_ptr = self
@@ -16197,7 +16160,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(localtime_fn, &[t_ptr.into()], "tm")
                     .unwrap();
-                let tm_ptr = self.extract_call_value(tm_ptr_val).into_pointer_value();
+                let tm_ptr = self.extract_call_value(tm_ptr_val)?.into_pointer_value();
 
                 // 4. Allocate a buffer sized from the format string instead of a fixed
                 // 64-byte slab, which truncated longer formats and could leave invalid output.
@@ -16206,7 +16169,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strlen_fn, &[format.into()], "format_len")
                     .unwrap();
-                let format_len = self.extract_call_value(format_len_call).into_int_value();
+                let format_len = self.extract_call_value(format_len_call)?.into_int_value();
                 let scaled_format_len = self
                     .builder
                     .build_int_mul(
@@ -16247,7 +16210,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[buf_size.into()], "buf")
                     .unwrap();
-                let buf_ptr = self.extract_call_value(buf_ptr_val).into_pointer_value();
+                let buf_ptr = self.extract_call_value(buf_ptr_val)?.into_pointer_value();
                 let last_byte_offset = self
                     .builder
                     .build_int_sub(
@@ -16278,7 +16241,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(strlen_fn, &[format.into()], "len")
                     .unwrap();
-                let is_empty_val = self.extract_call_value(is_empty).into_int_value();
+                let is_empty_val = self.extract_call_value(is_empty)?.into_int_value();
                 let is_zero = self
                     .builder
                     .build_int_compare(
@@ -16330,7 +16293,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(time_fn, &[null.into()], "time")
                     .unwrap();
-                Ok(Some(self.extract_call_value(res)))
+                Ok(Some(self.extract_call_value(res)?))
             }
 
             "Time__sleep" => {
@@ -16410,13 +16373,15 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(getenv_fn, &[name.into()], "env")
                     .unwrap();
-                let val = self.extract_call_value(res).into_pointer_value();
+                let val = self.extract_call_value(res)?.into_pointer_value();
 
                 // If NULL, return empty string
                 let is_null = self.builder.build_is_null(val, "is_null").unwrap();
                 let empty_str = self.get_or_create_empty_string();
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("System.getenv used outside function"))?;
                 let success_bb = self.context.append_basic_block(current_fn, "env.ok");
                 let fail_bb = self.context.append_basic_block(current_fn, "env.fail");
                 let merge_bb = self.context.append_basic_block(current_fn, "env.merge");
@@ -16452,11 +16417,13 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(system_fn, &[cmd.into()], "exit_code")
                     .unwrap();
-                let code = self.extract_call_value(res).into_int_value();
+                let code = self.extract_call_value(res)?.into_int_value();
                 #[cfg(not(windows))]
                 let code = {
                     let i32_type = self.context.i32_type();
-                    let current_fn = self.current_function.unwrap();
+                    let current_fn = self
+                        .current_function
+                        .ok_or_else(|| CodegenError::new("System.shell used outside function"))?;
                     let decode_error_bb = self
                         .context
                         .append_basic_block(current_fn, "system_shell_decode_error");
@@ -16582,11 +16549,13 @@ impl<'ctx> Codegen<'ctx> {
                         "pipe",
                     )
                     .unwrap();
-                let pipe_ptr = self.extract_call_value(pipe_val).into_pointer_value();
+                let pipe_ptr = self.extract_call_value(pipe_val)?.into_pointer_value();
 
                 let is_null = self.builder.build_is_null(pipe_ptr, "is_null").unwrap();
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("System.exec used outside function"))?;
                 let success_bb = self.context.append_basic_block(current_fn, "exec.ok");
                 let fail_bb = self.context.append_basic_block(current_fn, "exec.fail");
                 let merge_bb = self.context.append_basic_block(current_fn, "exec.merge");
@@ -16645,7 +16614,7 @@ impl<'ctx> Codegen<'ctx> {
                     .builder
                     .build_call(malloc, &[initial_capacity.into()], "buf")
                     .unwrap();
-                let buf = self.extract_call_value(buf_call).into_pointer_value();
+                let buf = self.extract_call_value(buf_call)?.into_pointer_value();
                 self.builder.build_store(buf_slot, buf).unwrap();
                 self.builder
                     .build_store(capacity_slot, initial_capacity)
@@ -16715,7 +16684,7 @@ impl<'ctx> Codegen<'ctx> {
                         "read_len",
                     )
                     .unwrap();
-                let read_len = self.extract_call_value(read_len_call).into_int_value();
+                let read_len = self.extract_call_value(read_len_call)?.into_int_value();
                 let reached_eof = self
                     .builder
                     .build_int_compare(
@@ -16773,7 +16742,7 @@ impl<'ctx> Codegen<'ctx> {
                         "exec_realloc",
                     )
                     .unwrap();
-                let realloc_buf = self.extract_call_value(realloc_call).into_pointer_value();
+                let realloc_buf = self.extract_call_value(realloc_call)?.into_pointer_value();
                 let realloc_failed = self
                     .builder
                     .build_is_null(realloc_buf, "exec_realloc_failed")
@@ -16939,7 +16908,7 @@ impl<'ctx> Codegen<'ctx> {
                         "cwd",
                     )
                     .unwrap();
-                let cwd_ptr = self.extract_call_value(cwd_call).into_pointer_value();
+                let cwd_ptr = self.extract_call_value(cwd_call)?.into_pointer_value();
                 let cwd_failed = self.builder.build_is_null(cwd_ptr, "cwd_failed").unwrap();
                 let current_fn = self
                     .current_function
@@ -17116,7 +17085,9 @@ impl<'ctx> Codegen<'ctx> {
                     return Err(CodegenError::new("assert requires boolean condition"));
                 };
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("assert used outside function"))?;
                 let panic_bb = self.context.append_basic_block(current_fn, "assert_panic");
                 let ok_bb = self.context.append_basic_block(current_fn, "assert_ok");
 
@@ -17196,7 +17167,7 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_call(strcmp, &[a.into(), b.into()], "cmp")
                         .unwrap();
-                    let cmp_val = self.extract_call_value(res).into_int_value();
+                    let cmp_val = self.extract_call_value(res)?.into_int_value();
                     self.builder
                         .build_int_compare(
                             IntPredicate::EQ,
@@ -17211,7 +17182,9 @@ impl<'ctx> Codegen<'ctx> {
                     ));
                 };
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("assert_eq used outside function"))?;
                 let panic_bb = self
                     .context
                     .append_basic_block(current_fn, "assert_eq_panic");
@@ -17295,7 +17268,7 @@ impl<'ctx> Codegen<'ctx> {
                         .builder
                         .build_call(strcmp, &[a.into(), b.into()], "cmp")
                         .unwrap();
-                    let cmp_val = self.extract_call_value(res).into_int_value();
+                    let cmp_val = self.extract_call_value(res)?.into_int_value();
                     self.builder
                         .build_int_compare(
                             IntPredicate::NE,
@@ -17310,7 +17283,9 @@ impl<'ctx> Codegen<'ctx> {
                     ));
                 };
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("assert_ne used outside function"))?;
                 let panic_bb = self
                     .context
                     .append_basic_block(current_fn, "assert_ne_panic");
@@ -17370,7 +17345,9 @@ impl<'ctx> Codegen<'ctx> {
                     return Err(CodegenError::new("assert_true requires boolean condition"));
                 };
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("assert_true used outside function"))?;
                 let panic_bb = self
                     .context
                     .append_basic_block(current_fn, "assert_true_panic");
@@ -17432,7 +17409,9 @@ impl<'ctx> Codegen<'ctx> {
                     return Err(CodegenError::new("assert_false requires boolean condition"));
                 };
 
-                let current_fn = self.current_function.unwrap();
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("assert_false used outside function"))?;
                 let panic_bb = self
                     .context
                     .append_basic_block(current_fn, "assert_false_panic");
