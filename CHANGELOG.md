@@ -17,6 +17,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed project-mode seeded validation for specialized interface parents:
   - project builds now accept rewritten parent refs like `global__Reader<String>` during the effect-seeded typecheck pass instead of rejecting valid interfaces with `extends unknown interface`
   - that keeps project-mode `interface ... extends Reader<String>` behavior aligned with single-file `check`, runtime dispatch, and bound-method lookup
+- Fixed project rewrite for generic alias-qualified interface parents:
+  - inheritance refs such as `interface X extends api.Reader<String>` and `interface X extends ReaderAlias<String>` now rewrite the aliased parent interface symbol before seeded semantic checks, instead of leaving the generic nominal ref untouched and failing with `extends unknown interface`
+  - project builds using namespace aliases or exact import aliases for generic parent interfaces now stay aligned with the already-working single-file path
+- Fixed project rewrite for generic alias-qualified interface type annotations:
+  - variable annotations such as `reader: api.Reader<String>` and `reader: ReaderAlias<String>` now rewrite to the project-mangled interface symbol inside statement bodies instead of surviving as unresolved aliases until typecheck
+  - project-mode builds and runtime now accept classes implementing those aliased generic interfaces without bogus follow-on errors like `Unknown class: api.Reader<String>` or `Cannot call method on type unknown`
+- Fixed project rewrite for generic alias-qualified interface signatures:
+  - top-level function parameters, returns, class fields, constructors, methods, interface methods, and enum payloads now rewrite alias-qualified interface types through the same interface-aware path as statement bodies
+  - project builds no longer reject valid signatures such as `function use(r: api.Reader<String>)` or `function make(): ReaderAlias<String>` with `Unknown type` and downstream mismatch errors
+- Fixed remaining project rewrite gaps for generic alias-qualified interface types in nested/function-type positions:
+  - module-local declarations now rewrite alias-qualified interface types through the same interface-aware path, so signatures inside `module Helpers { ... }` no longer fail on `api.Reader<String>`
+  - function-type and lambda parameter annotations now rewrite alias-qualified interface types too, so values like `(api.Reader<String>) -> Integer` and `|reader: api.Reader<String>| ...` compile cleanly in project mode
+- Fixed cascading diagnostics for invalid string interpolation expressions:
+  - when an interpolated subexpression already fails typechecking, the compiler now keeps the primary error instead of adding a second misleading `String interpolation ... got unknown` diagnostic
+  - invalid expressions like `"{1 + true}"` now report the real arithmetic/type error without extra noise
+- Fixed cascading diagnostics for method calls on unknown receivers:
+  - expressions like `nope.missing()` now stop after the primary `Undefined variable` error instead of adding a second `Cannot call method on type unknown` diagnostic
+  - method-call checking now treats already-failed receiver expressions as terminal to avoid redundant follow-on noise
+- Fixed cascading diagnostics for builtins called with unknown arguments:
+  - helpers such as `print(...)`, `println(...)`, `to_string(...)`, `to_float(...)`, `to_int(...)`, and numeric math builtins now skip their secondary type-validation error when the argument expression already failed earlier
+  - calls like `to_string(nope)` and `print(nope)` now keep the primary `Undefined variable` diagnostic without an extra `got unknown` builtin error
+- Fixed cascading diagnostics for binary operators with unknown operands:
+  - arithmetic, comparison, and logical operators now stop after the primary operand failure instead of emitting a second misleading type error against `unknown`
+  - expressions like `nope + 1`, `nope < 1`, and `nope && true` now keep the original `Undefined variable` diagnostic without redundant follow-on noise
+- Fixed cascading diagnostics for indexing with unknown receivers or indices:
+  - direct index expressions and `List.get`/`List.set` now stop after the primary missing-symbol failure instead of adding `Cannot index type unknown` or `index must be Integer` noise
+  - expressions like `nope[0]`, `"hi"[nope]`, `xs.get(nope)`, and `xs.set(nope, 1)` now preserve only the root cause diagnostic
+- Fixed more cascading diagnostics for control-flow and async expressions with unknown operands:
+  - `await`, `require`, `if` conditions, and `range(...)` now stop after the primary missing-symbol failure instead of appending a second type-check error against `unknown`
+  - expressions like `await(nope)`, `require(nope)`, `if (nope) { ... }`, and `range(nope, 3)` now preserve the original root cause diagnostic
+- Fixed cascading diagnostics for `exit(...)` and `fail(...)` with unknown arguments:
+  - those builtins now stop after the primary missing-symbol failure instead of appending a second argument-type error against `unknown`
+  - calls like `exit(nope)` and `fail(nope)` now preserve only the original `Undefined variable` diagnostic
+- Fixed cascading diagnostics for assertion builtins with unknown arguments:
+  - `assert(...)`, `assert_true(...)`, and `assert_false(...)` now stop after the primary missing-symbol failure instead of appending a second boolean-type error against `unknown`
+  - calls like `assert(nope)`, `assert_true(nope)`, and `assert_false(nope)` now preserve only the original root cause diagnostic
+- Fixed cascading diagnostics for string builtins with unknown arguments:
+  - `Str.len`, `Str.compare`, `Str.concat`, `Str.upper`, `Str.lower`, `Str.trim`, `Str.contains`, `Str.startsWith`, and `Str.endsWith` now stop after the primary missing-symbol failure instead of appending a second string-type error against `unknown`
+  - calls like `Str.len(nope)`, `Str.contains(nope, "a")`, `Str.compare(nope, "a")`, and `Str.upper(nope)` now preserve only the original root cause diagnostic
+- Fixed cascading diagnostics for file builtins and `Task.await_timeout(...)` with unknown arguments:
+  - `File.read`, `File.write`, `File.exists`, `File.delete`, and `Task.await_timeout(...)` now stop after the primary missing-symbol failure instead of appending a second path/type error against `unknown`
+  - calls like `File.read(nope)`, `File.write(nope, "x")`, `File.exists(nope)`, `File.delete(nope)`, and `work().await_timeout(nope)` now preserve only the original root cause diagnostic
+- Fixed cascading diagnostics for `Args.get`, `Time`, and `System` builtins with unknown arguments:
+  - `Args.get`, `Time.now`, `Time.sleep`, `System.getenv`, `System.shell`, and `System.exec` now stop after the primary missing-symbol failure instead of appending a second argument-type error against `unknown`
+  - calls like `Args.get(nope)`, `Time.now(nope)`, `Time.sleep(nope)`, `System.getenv(nope)`, `System.shell(nope)`, and `System.exec(nope)` now preserve only the original root cause diagnostic
+- Fixed cascading diagnostics for unary operators, `?`, and dereference with unknown operands:
+  - unary negation, logical not, the try operator, and dereference now stop after the primary missing-symbol failure instead of appending a second operator-type error against `unknown`
+  - expressions like `-nope`, `!nope`, `nope?`, and `*nope` now preserve only the original root cause diagnostic
+- Fixed cascading diagnostics for builtin constructors with unknown arguments:
+  - `List`, `Map`, `Set`, `Option`, and `Result` constructors now stop after the primary missing-symbol failure instead of appending a second constructor-arity/type error against `unknown`
+  - expressions like `List<Integer>(nope)`, `Map<String, Integer>(nope)`, `Set<Integer>(nope)`, `Option<Integer>(nope)`, and `Result<Integer, String>(nope)` now preserve only the original root cause diagnostic
 - Fixed explicit generic function values:
   - expressions like `id<Integer>` now parse as specialized first-class function values instead of leaving `<Integer>` in the token stream and failing with parser errors such as `Expected expression, found Some(TyInteger)`
   - specialized function values now typecheck and codegen through the existing generic specialization pipeline, so assignments like `f: (Integer) -> Integer = id<Integer>; f(7)` compile and run

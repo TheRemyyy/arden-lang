@@ -11,6 +11,9 @@ struct RewriteTypeContext<'a> {
     local_classes: &'a HashSet<String>,
     imported_classes: &'a ImportedMap,
     global_class_map: &'a HashMap<String, String>,
+    local_interfaces: &'a HashSet<String>,
+    imported_interfaces: &'a ImportedMap,
+    global_interface_map: &'a HashMap<String, String>,
     local_enums: &'a HashSet<String>,
     imported_enums: &'a ImportedMap,
     global_enum_map: &'a HashMap<String, String>,
@@ -161,6 +164,9 @@ fn rewrite_construct_type_name_for_project(
         local_classes,
         imported_classes,
         global_class_map,
+        local_interfaces: &HashSet::new(),
+        imported_interfaces: &HashMap::new(),
+        global_interface_map: &HashMap::new(),
         local_enums,
         imported_enums,
         global_enum_map,
@@ -359,12 +365,15 @@ pub fn rewrite_program_for_project(
                             .iter()
                             .map(|p| ast::Parameter {
                                 name: p.name.clone(),
-                                ty: rewrite_type_for_project(
+                                ty: rewrite_type_for_project_with_interfaces(
                                     &p.ty,
                                     current_namespace,
                                     &local_classes,
                                     &imported_classes,
                                     global_class_map,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    global_interface_map,
                                     &local_enums,
                                     &imported_enums,
                                     global_enum_map,
@@ -375,12 +384,15 @@ pub fn rewrite_program_for_project(
                                 mode: p.mode,
                             })
                             .collect();
-                        f.return_type = rewrite_type_for_project(
+                        f.return_type = rewrite_type_for_project_with_interfaces(
                             &f.return_type,
                             current_namespace,
                             &local_classes,
                             &imported_classes,
                             global_class_map,
+                            &local_interfaces,
+                            &imported_interfaces,
+                            global_interface_map,
                             &local_enums,
                             &imported_enums,
                             global_enum_map,
@@ -397,6 +409,9 @@ pub fn rewrite_program_for_project(
                             &local_classes,
                             &imported_classes,
                             global_class_map,
+                            &local_interfaces,
+                            &imported_interfaces,
+                            global_interface_map,
                             &imported_enums,
                             global_enum_map,
                             &local_modules,
@@ -456,12 +471,15 @@ pub fn rewrite_program_for_project(
                             .iter()
                             .map(|field| ast::Field {
                                 name: field.name.clone(),
-                                ty: rewrite_type_for_project(
+                                ty: rewrite_type_for_project_with_interfaces(
                                     &field.ty,
                                     current_namespace,
                                     &local_classes,
                                     &imported_classes,
                                     global_class_map,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    global_interface_map,
                                     &local_enums,
                                     &imported_enums,
                                     global_enum_map,
@@ -484,12 +502,15 @@ pub fn rewrite_program_for_project(
                                 .iter()
                                 .map(|p| ast::Parameter {
                                     name: p.name.clone(),
-                                    ty: rewrite_type_for_project(
+                                    ty: rewrite_type_for_project_with_interfaces(
                                         &p.ty,
                                         current_namespace,
                                         &local_classes,
                                         &imported_classes,
                                         global_class_map,
+                                        &local_interfaces,
+                                        &imported_interfaces,
+                                        global_interface_map,
                                         &local_enums,
                                         &imported_enums,
                                         global_enum_map,
@@ -510,6 +531,9 @@ pub fn rewrite_program_for_project(
                                 &local_classes,
                                 &imported_classes,
                                 global_class_map,
+                                &local_interfaces,
+                                &imported_interfaces,
+                                global_interface_map,
                                 &imported_enums,
                                 global_enum_map,
                                 &local_modules,
@@ -533,6 +557,9 @@ pub fn rewrite_program_for_project(
                                 &local_classes,
                                 &imported_classes,
                                 global_class_map,
+                                &local_interfaces,
+                                &imported_interfaces,
+                                global_interface_map,
                                 &imported_enums,
                                 global_enum_map,
                                 &local_modules,
@@ -571,12 +598,15 @@ pub fn rewrite_program_for_project(
                                     .iter()
                                     .map(|p| ast::Parameter {
                                         name: p.name.clone(),
-                                        ty: rewrite_type_for_project(
+                                        ty: rewrite_type_for_project_with_interfaces(
                                             &p.ty,
                                             current_namespace,
                                             &local_classes,
                                             &imported_classes,
                                             global_class_map,
+                                            &local_interfaces,
+                                            &imported_interfaces,
+                                            global_interface_map,
                                             &local_enums,
                                             &imported_enums,
                                             global_enum_map,
@@ -587,12 +617,15 @@ pub fn rewrite_program_for_project(
                                         mode: p.mode,
                                     })
                                     .collect();
-                                nm.return_type = rewrite_type_for_project(
+                                nm.return_type = rewrite_type_for_project_with_interfaces(
                                     &nm.return_type,
                                     current_namespace,
                                     &local_classes,
                                     &imported_classes,
                                     global_class_map,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    global_interface_map,
                                     &local_enums,
                                     &imported_enums,
                                     global_enum_map,
@@ -609,6 +642,9 @@ pub fn rewrite_program_for_project(
                                     &local_classes,
                                     &imported_classes,
                                     global_class_map,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    global_interface_map,
                                     &imported_enums,
                                     global_enum_map,
                                     &local_modules,
@@ -668,6 +704,7 @@ pub fn rewrite_program_for_project(
                                                     current_namespace,
                                                     entry_namespace,
                                                     &module_local_classes,
+                                                    &module_local_interfaces,
                                                     &module_local_enums,
                                                     &module_local_modules,
                                                     &imported_classes,
@@ -675,6 +712,7 @@ pub fn rewrite_program_for_project(
                                                     &imported_enums,
                                                     global_enum_map,
                                                     &imported_modules,
+                                                    global_interface_map,
                                                 ),
                                                 mutable: p.mutable,
                                                 mode: p.mode,
@@ -686,6 +724,7 @@ pub fn rewrite_program_for_project(
                                             current_namespace,
                                             entry_namespace,
                                             &module_local_classes,
+                                            &module_local_interfaces,
                                             &module_local_enums,
                                             &module_local_modules,
                                             &imported_classes,
@@ -693,6 +732,7 @@ pub fn rewrite_program_for_project(
                                             &imported_enums,
                                             global_enum_map,
                                             &imported_modules,
+                                            global_interface_map,
                                         );
                                         f.body = fix_module_local_block(
                                             &rewrite_block_calls_for_project(
@@ -705,6 +745,9 @@ pub fn rewrite_program_for_project(
                                                 &module_local_classes,
                                                 &imported_classes,
                                                 global_class_map,
+                                                &module_local_interfaces,
+                                                &imported_interfaces,
+                                                global_interface_map,
                                                 &imported_enums,
                                                 global_enum_map,
                                                 &module_local_modules,
@@ -745,6 +788,7 @@ pub fn rewrite_program_for_project(
                                                 current_namespace,
                                                 entry_namespace,
                                                 &module_local_classes,
+                                                &module_local_interfaces,
                                                 &module_local_enums,
                                                 &module_local_modules,
                                                 &imported_classes,
@@ -752,6 +796,7 @@ pub fn rewrite_program_for_project(
                                                 &imported_enums,
                                                 global_enum_map,
                                                 &imported_modules,
+                                                global_interface_map,
                                             ) {
                                                 ast::Type::Named(rewritten) => rewritten,
                                                 _ => extends.clone(),
@@ -785,6 +830,7 @@ pub fn rewrite_program_for_project(
                                                     current_namespace,
                                                     entry_namespace,
                                                     &module_local_classes,
+                                                    &module_local_interfaces,
                                                     &module_local_enums,
                                                     &module_local_modules,
                                                     &imported_classes,
@@ -792,6 +838,7 @@ pub fn rewrite_program_for_project(
                                                     &imported_enums,
                                                     global_enum_map,
                                                     &imported_modules,
+                                                    global_interface_map,
                                                 ),
                                                 mutable: field.mutable,
                                                 visibility: field.visibility,
@@ -818,6 +865,7 @@ pub fn rewrite_program_for_project(
                                                         current_namespace,
                                                         entry_namespace,
                                                         &module_local_classes,
+                                                        &module_local_interfaces,
                                                         &module_local_enums,
                                                         &module_local_modules,
                                                         &imported_classes,
@@ -825,6 +873,7 @@ pub fn rewrite_program_for_project(
                                                         &imported_enums,
                                                         global_enum_map,
                                                         &imported_modules,
+                                                        global_interface_map,
                                                     ),
                                                     mutable: p.mutable,
                                                     mode: p.mode,
@@ -841,6 +890,9 @@ pub fn rewrite_program_for_project(
                                                     &module_local_classes,
                                                     &imported_classes,
                                                     global_class_map,
+                                                    &module_local_interfaces,
+                                                    &imported_interfaces,
+                                                    global_interface_map,
                                                     &imported_enums,
                                                     global_enum_map,
                                                     &module_local_modules,
@@ -871,6 +923,9 @@ pub fn rewrite_program_for_project(
                                                     &module_local_classes,
                                                     &imported_classes,
                                                     global_class_map,
+                                                    &module_local_interfaces,
+                                                    &imported_interfaces,
+                                                    global_interface_map,
                                                     &imported_enums,
                                                     global_enum_map,
                                                     &module_local_modules,
@@ -927,6 +982,7 @@ pub fn rewrite_program_for_project(
                                                             current_namespace,
                                                             entry_namespace,
                                                             &module_local_classes,
+                                                            &module_local_interfaces,
                                                             &module_local_enums,
                                                             &module_local_modules,
                                                             &imported_classes,
@@ -934,6 +990,7 @@ pub fn rewrite_program_for_project(
                                                             &imported_enums,
                                                             global_enum_map,
                                                             &imported_modules,
+                                                            global_interface_map,
                                                         ),
                                                         mutable: p.mutable,
                                                         mode: p.mode,
@@ -945,6 +1002,7 @@ pub fn rewrite_program_for_project(
                                                     current_namespace,
                                                     entry_namespace,
                                                     &module_local_classes,
+                                                    &module_local_interfaces,
                                                     &module_local_enums,
                                                     &module_local_modules,
                                                     &imported_classes,
@@ -952,6 +1010,7 @@ pub fn rewrite_program_for_project(
                                                     &imported_enums,
                                                     global_enum_map,
                                                     &imported_modules,
+                                                    global_interface_map,
                                                 );
                                                 nm.body = fix_module_local_block(
                                                     &rewrite_block_calls_for_project(
@@ -964,6 +1023,9 @@ pub fn rewrite_program_for_project(
                                                         &module_local_classes,
                                                         &imported_classes,
                                                         global_class_map,
+                                                        &module_local_interfaces,
+                                                        &imported_interfaces,
+                                                        global_interface_map,
                                                         &imported_enums,
                                                         global_enum_map,
                                                         &module_local_modules,
@@ -1016,6 +1078,7 @@ pub fn rewrite_program_for_project(
                                                             current_namespace,
                                                             entry_namespace,
                                                             &module_local_classes,
+                                                            &module_local_interfaces,
                                                             &module_local_enums,
                                                             &module_local_modules,
                                                             &imported_classes,
@@ -1023,6 +1086,7 @@ pub fn rewrite_program_for_project(
                                                             &imported_enums,
                                                             global_enum_map,
                                                             &imported_modules,
+                                                            global_interface_map,
                                                         ),
                                                     })
                                                     .collect(),
@@ -1056,6 +1120,7 @@ pub fn rewrite_program_for_project(
                                             global_function_map,
                                             &imported_classes,
                                             global_class_map,
+                                            &imported_interfaces,
                                             &imported_enums,
                                             global_enum_map,
                                             &imported_modules,
@@ -1125,6 +1190,7 @@ pub fn rewrite_program_for_project(
                                                             current_namespace,
                                                             entry_namespace,
                                                             &module_local_classes,
+                                                            &module_local_interfaces,
                                                             &module_local_enums,
                                                             &module_local_modules,
                                                             &imported_classes,
@@ -1132,6 +1198,7 @@ pub fn rewrite_program_for_project(
                                                             &imported_enums,
                                                             global_enum_map,
                                                             &imported_modules,
+                                                            global_interface_map,
                                                         ),
                                                         mutable: param.mutable,
                                                         mode: param.mode,
@@ -1143,6 +1210,7 @@ pub fn rewrite_program_for_project(
                                                     current_namespace,
                                                     entry_namespace,
                                                     &module_local_classes,
+                                                    &module_local_interfaces,
                                                     &module_local_enums,
                                                     &module_local_modules,
                                                     &imported_classes,
@@ -1150,6 +1218,7 @@ pub fn rewrite_program_for_project(
                                                     &imported_enums,
                                                     global_enum_map,
                                                     &imported_modules,
+                                                    global_interface_map,
                                                 );
                                                 new_method.default_impl =
                                                     method.default_impl.as_ref().map(|block| {
@@ -1164,6 +1233,9 @@ pub fn rewrite_program_for_project(
                                                                 &module_local_classes,
                                                                 &imported_classes,
                                                                 global_class_map,
+                                                                &module_local_interfaces,
+                                                                &imported_interfaces,
+                                                                global_interface_map,
                                                                 &imported_enums,
                                                                 global_enum_map,
                                                                 &module_local_modules,
@@ -1215,12 +1287,15 @@ pub fn rewrite_program_for_project(
                                     .iter()
                                     .map(|f| ast::EnumField {
                                         name: f.name.clone(),
-                                        ty: rewrite_type_for_project(
+                                        ty: rewrite_type_for_project_with_interfaces(
                                             &f.ty,
                                             current_namespace,
                                             &local_classes,
                                             &imported_classes,
                                             global_class_map,
+                                            &local_interfaces,
+                                            &imported_interfaces,
+                                            global_interface_map,
                                             &local_enums,
                                             &imported_enums,
                                             global_enum_map,
@@ -1287,12 +1362,15 @@ pub fn rewrite_program_for_project(
                                     .iter()
                                     .map(|param| ast::Parameter {
                                         name: param.name.clone(),
-                                        ty: rewrite_type_for_project(
+                                        ty: rewrite_type_for_project_with_interfaces(
                                             &param.ty,
                                             current_namespace,
                                             &local_classes,
                                             &imported_classes,
                                             global_class_map,
+                                            &local_interfaces,
+                                            &imported_interfaces,
+                                            global_interface_map,
                                             &local_enums,
                                             &imported_enums,
                                             global_enum_map,
@@ -1303,12 +1381,15 @@ pub fn rewrite_program_for_project(
                                         mode: param.mode,
                                     })
                                     .collect();
-                                new_method.return_type = rewrite_type_for_project(
+                                new_method.return_type = rewrite_type_for_project_with_interfaces(
                                     &new_method.return_type,
                                     current_namespace,
                                     &local_classes,
                                     &imported_classes,
                                     global_class_map,
+                                    &local_interfaces,
+                                    &imported_interfaces,
+                                    global_interface_map,
                                     &local_enums,
                                     &imported_enums,
                                     global_enum_map,
@@ -1327,6 +1408,9 @@ pub fn rewrite_program_for_project(
                                             &local_classes,
                                             &imported_classes,
                                             global_class_map,
+                                            &local_interfaces,
+                                            &imported_interfaces,
+                                            global_interface_map,
                                             &imported_enums,
                                             global_enum_map,
                                             &local_modules,
@@ -1367,6 +1451,22 @@ fn rewrite_type_for_project_with_ctx(ty: &ast::Type, ctx: &RewriteTypeContext<'_
         if let Some(ns) = ctx.global_class_map.get(name) {
             return mangle_project_symbol(ns, ctx.entry_namespace, name);
         }
+        if ctx.local_interfaces.contains(name) {
+            return mangle_project_symbol(ctx.current_namespace, ctx.entry_namespace, name);
+        }
+        if let Some((ns, symbol_name)) = ctx.imported_interfaces.get(name) {
+            return mangle_project_symbol(ns, ctx.entry_namespace, symbol_name);
+        }
+        if let Some(ns) = ctx.global_interface_map.get(name) {
+            return mangle_project_symbol(ns, ctx.entry_namespace, name);
+        }
+        if let Some((ns, symbol_name)) = ctx.imported_modules.get(name) {
+            if let Some((owner_ns, interface_name)) =
+                resolve_exact_imported_symbol_path(ns, symbol_name, ctx.global_interface_map)
+            {
+                return mangle_project_symbol(&owner_ns, ctx.entry_namespace, &interface_name);
+            }
+        }
         if ctx.local_enums.contains(name) {
             return mangle_project_symbol(ctx.current_namespace, ctx.entry_namespace, name);
         }
@@ -1394,6 +1494,25 @@ fn rewrite_type_for_project_with_ctx(ty: &ast::Type, ctx: &RewriteTypeContext<'_
             return mangle_project_symbol(&owner_ns, ctx.entry_namespace, &class_name);
         }
 
+        if let Some((owner_ns, interface_name)) = resolve_module_alias_class_candidate(
+            ctx.current_namespace,
+            alias,
+            &member_parts,
+            ctx.global_interface_map,
+        ) {
+            return mangle_project_symbol(&owner_ns, ctx.entry_namespace, &interface_name);
+        }
+        if let Some((ns, symbol_name)) = ctx.imported_modules.get(alias) {
+            if let Some((owner_ns, interface_name)) = resolve_module_alias_class_candidate(
+                ns,
+                symbol_name,
+                &member_parts,
+                ctx.global_interface_map,
+            ) {
+                return mangle_project_symbol(&owner_ns, ctx.entry_namespace, &interface_name);
+            }
+        }
+
         if let Some((owner_ns, enum_name)) = resolve_module_alias_enum_type_candidate(
             ctx.current_namespace,
             alias,
@@ -1414,6 +1533,15 @@ fn rewrite_type_for_project_with_ctx(ty: &ast::Type, ctx: &RewriteTypeContext<'_
             ctx.global_class_map,
         ) {
             return mangle_project_symbol(&owner_ns, ctx.entry_namespace, &class_name);
+        }
+
+        if let Some((owner_ns, interface_name)) = resolve_module_alias_class_candidate(
+            ns,
+            symbol_name,
+            &member_parts,
+            ctx.global_interface_map,
+        ) {
+            return mangle_project_symbol(&owner_ns, ctx.entry_namespace, &interface_name);
         }
 
         if let Some((owner_ns, enum_name)) = resolve_module_alias_enum_type_candidate(
@@ -1555,12 +1683,15 @@ fn rewrite_type_for_project_with_ctx(ty: &ast::Type, ctx: &RewriteTypeContext<'_
 }
 
 #[allow(clippy::too_many_arguments)]
-fn rewrite_type_for_project(
+fn rewrite_type_for_project_with_interfaces(
     ty: &ast::Type,
     current_namespace: &str,
     local_classes: &HashSet<String>,
     imported_classes: &ImportedMap,
     global_class_map: &HashMap<String, String>,
+    local_interfaces: &HashSet<String>,
+    imported_interfaces: &ImportedMap,
+    global_interface_map: &HashMap<String, String>,
     local_enums: &HashSet<String>,
     imported_enums: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
@@ -1572,6 +1703,9 @@ fn rewrite_type_for_project(
         local_classes,
         imported_classes,
         global_class_map,
+        local_interfaces,
+        imported_interfaces,
+        global_interface_map,
         local_enums,
         imported_enums,
         global_enum_map,
@@ -1579,6 +1713,42 @@ fn rewrite_type_for_project(
         entry_namespace,
     };
     rewrite_type_for_project_with_ctx(ty, &ctx)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rewrite_named_reference_for_project_with_interfaces(
+    name: &str,
+    current_namespace: &str,
+    local_classes: &HashSet<String>,
+    imported_classes: &ImportedMap,
+    global_class_map: &HashMap<String, String>,
+    local_interfaces: &HashSet<String>,
+    imported_interfaces: &ImportedMap,
+    global_interface_map: &HashMap<String, String>,
+    local_enums: &HashSet<String>,
+    imported_enums: &ImportedMap,
+    global_enum_map: &HashMap<String, String>,
+    imported_modules: &ImportedMap,
+    entry_namespace: &str,
+) -> String {
+    match rewrite_type_for_project_with_interfaces(
+        &ast::Type::Named(name.to_string()),
+        current_namespace,
+        local_classes,
+        imported_classes,
+        global_class_map,
+        local_interfaces,
+        imported_interfaces,
+        global_interface_map,
+        local_enums,
+        imported_enums,
+        global_enum_map,
+        imported_modules,
+        entry_namespace,
+    ) {
+        ast::Type::Named(rewritten) => rewritten,
+        _ => name.to_string(),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1594,21 +1764,21 @@ fn rewrite_named_reference_for_project(
     imported_modules: &ImportedMap,
     entry_namespace: &str,
 ) -> String {
-    match rewrite_type_for_project(
-        &ast::Type::Named(name.to_string()),
+    rewrite_named_reference_for_project_with_interfaces(
+        name,
         current_namespace,
         local_classes,
         imported_classes,
         global_class_map,
+        &HashSet::new(),
+        &HashMap::new(),
+        &HashMap::new(),
         local_enums,
         imported_enums,
         global_enum_map,
         imported_modules,
         entry_namespace,
-    ) {
-        ast::Type::Named(rewritten) => rewritten,
-        _ => name.to_string(),
-    }
+    )
 }
 
 fn rewrite_interface_reference_for_project(
@@ -1620,6 +1790,24 @@ fn rewrite_interface_reference_for_project(
     global_interface_map: &HashMap<String, String>,
     entry_namespace: &str,
 ) -> String {
+    if let Ok(ast::Type::Generic(base, args)) = parse_type_source(name) {
+        let rewritten_base = rewrite_interface_reference_for_project(
+            &base,
+            current_namespace,
+            local_interfaces,
+            imported_interfaces,
+            imported_modules,
+            global_interface_map,
+            entry_namespace,
+        );
+        let rewritten_args = args
+            .iter()
+            .map(format_type_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        return format!("{}<{}>", rewritten_base, rewritten_args);
+    }
+
     if local_interfaces.contains(name) {
         return mangle_project_symbol(current_namespace, entry_namespace, name);
     }
@@ -1684,6 +1872,26 @@ fn rewrite_interface_reference_for_module(
     imported_modules: &ImportedMap,
     global_interface_map: &HashMap<String, String>,
 ) -> String {
+    if let Ok(ast::Type::Generic(base, args)) = parse_type_source(name) {
+        let rewritten_base = rewrite_interface_reference_for_module(
+            &base,
+            module_prefix,
+            current_namespace,
+            entry_namespace,
+            local_interfaces,
+            local_modules,
+            imported_interfaces,
+            imported_modules,
+            global_interface_map,
+        );
+        let rewritten_args = args
+            .iter()
+            .map(format_type_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        return format!("{}<{}>", rewritten_base, rewritten_args);
+    }
+
     if local_interfaces.contains(name) {
         return mangle_project_symbol(
             current_namespace,
@@ -2065,6 +2273,7 @@ fn rewrite_nested_module_decl_for_project(
     global_function_map: &HashMap<String, String>,
     imported_classes: &ImportedMap,
     global_class_map: &HashMap<String, String>,
+    imported_interfaces: &ImportedMap,
     imported_enums: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
     imported_modules: &ImportedMap,
@@ -2086,6 +2295,7 @@ fn rewrite_nested_module_decl_for_project(
                         current_namespace,
                         entry_namespace,
                         module_local_classes,
+                        module_local_interfaces,
                         module_local_enums,
                         module_local_modules,
                         imported_classes,
@@ -2093,6 +2303,7 @@ fn rewrite_nested_module_decl_for_project(
                         imported_enums,
                         global_enum_map,
                         imported_modules,
+                        global_interface_map,
                     ),
                     mutable: p.mutable,
                     mode: p.mode,
@@ -2104,6 +2315,7 @@ fn rewrite_nested_module_decl_for_project(
                 current_namespace,
                 entry_namespace,
                 module_local_classes,
+                module_local_interfaces,
                 module_local_enums,
                 module_local_modules,
                 imported_classes,
@@ -2111,6 +2323,7 @@ fn rewrite_nested_module_decl_for_project(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             f.body = fix_module_local_block(
                 &rewrite_block_calls_for_project(
@@ -2123,6 +2336,9 @@ fn rewrite_nested_module_decl_for_project(
                     module_local_classes,
                     imported_classes,
                     global_class_map,
+                    module_local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     module_local_modules,
@@ -2147,6 +2363,7 @@ fn rewrite_nested_module_decl_for_project(
                     current_namespace,
                     entry_namespace,
                     module_local_classes,
+                    module_local_interfaces,
                     module_local_enums,
                     module_local_modules,
                     imported_classes,
@@ -2154,6 +2371,7 @@ fn rewrite_nested_module_decl_for_project(
                     imported_enums,
                     global_enum_map,
                     imported_modules,
+                    global_interface_map,
                 ) {
                     ast::Type::Named(rewritten) => rewritten,
                     _ => extends.clone(),
@@ -2187,6 +2405,7 @@ fn rewrite_nested_module_decl_for_project(
                         current_namespace,
                         entry_namespace,
                         module_local_classes,
+                        module_local_interfaces,
                         module_local_enums,
                         module_local_modules,
                         imported_classes,
@@ -2194,6 +2413,7 @@ fn rewrite_nested_module_decl_for_project(
                         imported_enums,
                         global_enum_map,
                         imported_modules,
+                        global_interface_map,
                     ),
                     mutable: field.mutable,
                     visibility: field.visibility,
@@ -2217,6 +2437,7 @@ fn rewrite_nested_module_decl_for_project(
                             current_namespace,
                             entry_namespace,
                             module_local_classes,
+                            module_local_interfaces,
                             module_local_enums,
                             module_local_modules,
                             imported_classes,
@@ -2224,6 +2445,7 @@ fn rewrite_nested_module_decl_for_project(
                             imported_enums,
                             global_enum_map,
                             imported_modules,
+                            global_interface_map,
                         ),
                         mutable: p.mutable,
                         mode: p.mode,
@@ -2240,6 +2462,9 @@ fn rewrite_nested_module_decl_for_project(
                         module_local_classes,
                         imported_classes,
                         global_class_map,
+                        module_local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
                         imported_enums,
                         global_enum_map,
                         module_local_modules,
@@ -2276,6 +2501,7 @@ fn rewrite_nested_module_decl_for_project(
                                 current_namespace,
                                 entry_namespace,
                                 module_local_classes,
+                                module_local_interfaces,
                                 module_local_enums,
                                 module_local_modules,
                                 imported_classes,
@@ -2283,6 +2509,7 @@ fn rewrite_nested_module_decl_for_project(
                                 imported_enums,
                                 global_enum_map,
                                 imported_modules,
+                                global_interface_map,
                             ),
                             mutable: p.mutable,
                             mode: p.mode,
@@ -2294,6 +2521,7 @@ fn rewrite_nested_module_decl_for_project(
                         current_namespace,
                         entry_namespace,
                         module_local_classes,
+                        module_local_interfaces,
                         module_local_enums,
                         module_local_modules,
                         imported_classes,
@@ -2301,6 +2529,7 @@ fn rewrite_nested_module_decl_for_project(
                         imported_enums,
                         global_enum_map,
                         imported_modules,
+                        global_interface_map,
                     );
                     nm.body = fix_module_local_block(
                         &rewrite_block_calls_for_project(
@@ -2313,6 +2542,9 @@ fn rewrite_nested_module_decl_for_project(
                             module_local_classes,
                             imported_classes,
                             global_class_map,
+                            module_local_interfaces,
+                            imported_interfaces,
+                            global_interface_map,
                             imported_enums,
                             global_enum_map,
                             module_local_modules,
@@ -2349,6 +2581,7 @@ fn rewrite_nested_module_decl_for_project(
                                 current_namespace,
                                 entry_namespace,
                                 module_local_classes,
+                                module_local_interfaces,
                                 module_local_enums,
                                 module_local_modules,
                                 imported_classes,
@@ -2356,6 +2589,7 @@ fn rewrite_nested_module_decl_for_project(
                                 imported_enums,
                                 global_enum_map,
                                 imported_modules,
+                                global_interface_map,
                             ),
                         })
                         .collect(),
@@ -2396,6 +2630,7 @@ fn rewrite_nested_module_decl_for_project(
                         global_function_map,
                         imported_classes,
                         global_class_map,
+                        imported_interfaces,
                         imported_enums,
                         global_enum_map,
                         imported_modules,
@@ -2446,6 +2681,7 @@ fn rewrite_nested_module_decl_for_project(
                                 current_namespace,
                                 entry_namespace,
                                 module_local_classes,
+                                module_local_interfaces,
                                 module_local_enums,
                                 module_local_modules,
                                 imported_classes,
@@ -2453,6 +2689,7 @@ fn rewrite_nested_module_decl_for_project(
                                 imported_enums,
                                 global_enum_map,
                                 imported_modules,
+                                global_interface_map,
                             ),
                             mutable: param.mutable,
                             mode: param.mode,
@@ -2464,6 +2701,7 @@ fn rewrite_nested_module_decl_for_project(
                         current_namespace,
                         entry_namespace,
                         module_local_classes,
+                        module_local_interfaces,
                         module_local_enums,
                         module_local_modules,
                         imported_classes,
@@ -2471,6 +2709,7 @@ fn rewrite_nested_module_decl_for_project(
                         imported_enums,
                         global_enum_map,
                         imported_modules,
+                        global_interface_map,
                     );
                     new_method.default_impl = method.default_impl.as_ref().map(|block| {
                         fix_module_local_block(
@@ -2484,6 +2723,9 @@ fn rewrite_nested_module_decl_for_project(
                                 module_local_classes,
                                 imported_classes,
                                 global_class_map,
+                                module_local_interfaces,
+                                imported_interfaces,
+                                global_interface_map,
                                 imported_enums,
                                 global_enum_map,
                                 module_local_modules,
@@ -3216,6 +3458,7 @@ fn rewrite_module_local_type(
     current_namespace: &str,
     entry_namespace: &str,
     local_classes: &HashSet<String>,
+    local_interfaces: &HashSet<String>,
     local_enums: &HashSet<String>,
     local_modules: &HashSet<String>,
     imported_classes: &ImportedMap,
@@ -3223,6 +3466,7 @@ fn rewrite_module_local_type(
     imported_enums: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
     imported_modules: &ImportedMap,
+    global_interface_map: &HashMap<String, String>,
 ) -> ast::Type {
     let rewrite_shadowed_builtin =
         |builtin_name: &str, args: Vec<ast::Type>| -> Option<ast::Type> {
@@ -3240,7 +3484,10 @@ fn rewrite_module_local_type(
 
     match ty {
         ast::Type::Named(name) => {
-            if local_classes.contains(name) || local_enums.contains(name) {
+            if local_classes.contains(name)
+                || local_interfaces.contains(name)
+                || local_enums.contains(name)
+            {
                 ast::Type::Named(mangle_project_symbol(
                     current_namespace,
                     entry_namespace,
@@ -3254,12 +3501,15 @@ fn rewrite_module_local_type(
                         &module_prefixed_symbol(module_prefix, &name.replace('.', "__")),
                     ))
                 } else {
-                    rewrite_type_for_project(
+                    rewrite_type_for_project_with_interfaces(
                         ty,
                         current_namespace,
                         local_classes,
                         imported_classes,
                         global_class_map,
+                        local_interfaces,
+                        &HashMap::new(),
+                        global_interface_map,
                         local_enums,
                         imported_enums,
                         global_enum_map,
@@ -3268,12 +3518,15 @@ fn rewrite_module_local_type(
                     )
                 }
             } else {
-                rewrite_type_for_project(
+                rewrite_type_for_project_with_interfaces(
                     ty,
                     current_namespace,
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    &HashMap::new(),
+                    global_interface_map,
                     local_enums,
                     imported_enums,
                     global_enum_map,
@@ -3289,6 +3542,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3296,6 +3550,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             ) {
                 ast::Type::Named(name) => name,
                 other => format_type_string(&other),
@@ -3308,6 +3563,7 @@ fn rewrite_module_local_type(
                         current_namespace,
                         entry_namespace,
                         local_classes,
+                        local_interfaces,
                         local_enums,
                         local_modules,
                         imported_classes,
@@ -3315,6 +3571,7 @@ fn rewrite_module_local_type(
                         imported_enums,
                         global_enum_map,
                         imported_modules,
+                        global_interface_map,
                     )
                 })
                 .collect(),
@@ -3329,6 +3586,7 @@ fn rewrite_module_local_type(
                         current_namespace,
                         entry_namespace,
                         local_classes,
+                        local_interfaces,
                         local_enums,
                         local_modules,
                         imported_classes,
@@ -3336,6 +3594,7 @@ fn rewrite_module_local_type(
                         imported_enums,
                         global_enum_map,
                         imported_modules,
+                        global_interface_map,
                     )
                 })
                 .collect(),
@@ -3345,6 +3604,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3352,6 +3612,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             )),
         ),
         ast::Type::Option(inner) => {
@@ -3361,6 +3622,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3368,6 +3630,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Option", vec![rewritten_inner.clone()])
                 .unwrap_or_else(|| ast::Type::Option(Box::new(rewritten_inner)))
@@ -3379,6 +3642,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3386,6 +3650,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             let rewritten_err = rewrite_module_local_type(
                 err,
@@ -3393,6 +3658,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3400,6 +3666,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Result", vec![rewritten_ok.clone(), rewritten_err.clone()])
                 .unwrap_or_else(|| {
@@ -3413,6 +3680,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3420,6 +3688,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("List", vec![rewritten_inner.clone()])
                 .unwrap_or_else(|| ast::Type::List(Box::new(rewritten_inner)))
@@ -3431,6 +3700,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3438,6 +3708,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             let rewritten_value = rewrite_module_local_type(
                 v,
@@ -3445,6 +3716,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3452,6 +3724,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Map", vec![rewritten_key.clone(), rewritten_value.clone()])
                 .unwrap_or_else(|| {
@@ -3465,6 +3738,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3472,6 +3746,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Set", vec![rewritten_inner.clone()])
                 .unwrap_or_else(|| ast::Type::Set(Box::new(rewritten_inner)))
@@ -3482,6 +3757,7 @@ fn rewrite_module_local_type(
             current_namespace,
             entry_namespace,
             local_classes,
+            local_interfaces,
             local_enums,
             local_modules,
             imported_classes,
@@ -3489,6 +3765,7 @@ fn rewrite_module_local_type(
             imported_enums,
             global_enum_map,
             imported_modules,
+            global_interface_map,
         ))),
         ast::Type::MutRef(inner) => ast::Type::MutRef(Box::new(rewrite_module_local_type(
             inner,
@@ -3496,6 +3773,7 @@ fn rewrite_module_local_type(
             current_namespace,
             entry_namespace,
             local_classes,
+            local_interfaces,
             local_enums,
             local_modules,
             imported_classes,
@@ -3503,6 +3781,7 @@ fn rewrite_module_local_type(
             imported_enums,
             global_enum_map,
             imported_modules,
+            global_interface_map,
         ))),
         ast::Type::Box(inner) => {
             let rewritten_inner = rewrite_module_local_type(
@@ -3511,6 +3790,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3518,6 +3798,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Box", vec![rewritten_inner.clone()])
                 .unwrap_or_else(|| ast::Type::Box(Box::new(rewritten_inner)))
@@ -3529,6 +3810,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3536,6 +3818,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Rc", vec![rewritten_inner.clone()])
                 .unwrap_or_else(|| ast::Type::Rc(Box::new(rewritten_inner)))
@@ -3547,6 +3830,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3554,6 +3838,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Arc", vec![rewritten_inner.clone()])
                 .unwrap_or_else(|| ast::Type::Arc(Box::new(rewritten_inner)))
@@ -3565,6 +3850,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3572,6 +3858,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Ptr", vec![rewritten_inner.clone()])
                 .unwrap_or_else(|| ast::Type::Ptr(Box::new(rewritten_inner)))
@@ -3583,6 +3870,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3590,6 +3878,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Task", vec![rewritten_inner.clone()])
                 .unwrap_or_else(|| ast::Type::Task(Box::new(rewritten_inner)))
@@ -3601,6 +3890,7 @@ fn rewrite_module_local_type(
                 current_namespace,
                 entry_namespace,
                 local_classes,
+                local_interfaces,
                 local_enums,
                 local_modules,
                 imported_classes,
@@ -3608,6 +3898,7 @@ fn rewrite_module_local_type(
                 imported_enums,
                 global_enum_map,
                 imported_modules,
+                global_interface_map,
             );
             rewrite_shadowed_builtin("Range", vec![rewritten_inner.clone()])
                 .unwrap_or_else(|| ast::Type::Range(Box::new(rewritten_inner)))
@@ -3627,6 +3918,9 @@ fn rewrite_block_calls_for_project(
     local_classes: &HashSet<String>,
     imported_classes: &ImportedMap,
     global_class_map: &HashMap<String, String>,
+    local_interfaces: &HashSet<String>,
+    imported_interfaces: &ImportedMap,
+    global_interface_map: &HashMap<String, String>,
     imported_enums: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
     local_modules: &HashSet<String>,
@@ -3648,6 +3942,9 @@ fn rewrite_block_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -3672,6 +3969,9 @@ fn rewrite_stmt_calls_for_project(
     local_classes: &HashSet<String>,
     imported_classes: &ImportedMap,
     global_class_map: &HashMap<String, String>,
+    local_interfaces: &HashSet<String>,
+    imported_interfaces: &ImportedMap,
+    global_interface_map: &HashMap<String, String>,
     imported_enums: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
     local_modules: &HashSet<String>,
@@ -3688,12 +3988,15 @@ fn rewrite_stmt_calls_for_project(
         } => {
             let rewritten = Stmt::Let {
                 name: name.clone(),
-                ty: rewrite_type_for_project(
+                ty: rewrite_type_for_project_with_interfaces(
                     ty,
                     current_namespace,
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     &collect_local_enum_names(global_enum_map, current_namespace),
                     imported_enums,
                     global_enum_map,
@@ -3711,6 +4014,9 @@ fn rewrite_stmt_calls_for_project(
                         local_classes,
                         imported_classes,
                         global_class_map,
+                        local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
                         imported_enums,
                         global_enum_map,
                         local_modules,
@@ -3739,6 +4045,9 @@ fn rewrite_stmt_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -3759,6 +4068,9 @@ fn rewrite_stmt_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -3780,6 +4092,9 @@ fn rewrite_stmt_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -3800,6 +4115,9 @@ fn rewrite_stmt_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -3825,6 +4143,9 @@ fn rewrite_stmt_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -3845,6 +4166,9 @@ fn rewrite_stmt_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -3865,6 +4189,9 @@ fn rewrite_stmt_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -3893,6 +4220,9 @@ fn rewrite_stmt_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -3913,6 +4243,9 @@ fn rewrite_stmt_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -3940,6 +4273,9 @@ fn rewrite_stmt_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -3963,6 +4299,9 @@ fn rewrite_stmt_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -3974,12 +4313,15 @@ fn rewrite_stmt_calls_for_project(
             Stmt::For {
                 var: var.clone(),
                 var_type: var_type.as_ref().map(|t| {
-                    rewrite_type_for_project(
+                    rewrite_type_for_project_with_interfaces(
                         t,
                         current_namespace,
                         local_classes,
                         imported_classes,
                         global_class_map,
+                        local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
                         &collect_local_enum_names(global_enum_map, current_namespace),
                         imported_enums,
                         global_enum_map,
@@ -4003,6 +4345,9 @@ fn rewrite_stmt_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -4037,6 +4382,9 @@ fn rewrite_stmt_calls_for_project(
                         local_classes,
                         imported_classes,
                         global_class_map,
+                        local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
                         imported_enums,
                         global_enum_map,
                         local_modules,
@@ -4067,6 +4415,9 @@ fn rewrite_expr_calls_for_project(
     local_classes: &HashSet<String>,
     imported_classes: &ImportedMap,
     global_class_map: &HashMap<String, String>,
+    local_interfaces: &HashSet<String>,
+    imported_interfaces: &ImportedMap,
+    global_interface_map: &HashMap<String, String>,
     imported_enums: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
     local_modules: &HashSet<String>,
@@ -4114,6 +4465,9 @@ fn rewrite_expr_calls_for_project(
                                                 local_classes,
                                                 imported_classes,
                                                 global_class_map,
+                                                local_interfaces,
+                                                imported_interfaces,
+                                                global_interface_map,
                                                 imported_enums,
                                                 global_enum_map,
                                                 local_modules,
@@ -4165,6 +4519,9 @@ fn rewrite_expr_calls_for_project(
                                                 local_classes,
                                                 imported_classes,
                                                 global_class_map,
+                                                local_interfaces,
+                                                imported_interfaces,
+                                                global_interface_map,
                                                 imported_enums,
                                                 global_enum_map,
                                                 local_modules,
@@ -4188,12 +4545,15 @@ fn rewrite_expr_calls_for_project(
                             let rewritten_type_args = type_args
                                 .iter()
                                 .map(|ty| {
-                                    rewrite_type_for_project(
+                                    rewrite_type_for_project_with_interfaces(
                                         ty,
                                         current_namespace,
                                         local_classes,
                                         imported_classes,
                                         global_class_map,
+                                        local_interfaces,
+                                        imported_interfaces,
+                                        global_interface_map,
                                         &collect_local_enum_names(
                                             global_enum_map,
                                             current_namespace,
@@ -4224,6 +4584,9 @@ fn rewrite_expr_calls_for_project(
                                                 local_classes,
                                                 imported_classes,
                                                 global_class_map,
+                                                local_interfaces,
+                                                imported_interfaces,
+                                                global_interface_map,
                                                 imported_enums,
                                                 global_enum_map,
                                                 local_modules,
@@ -4248,12 +4611,15 @@ fn rewrite_expr_calls_for_project(
                             let rewritten_type_args = type_args
                                 .iter()
                                 .map(|ty| {
-                                    rewrite_type_for_project(
+                                    rewrite_type_for_project_with_interfaces(
                                         ty,
                                         current_namespace,
                                         local_classes,
                                         imported_classes,
                                         global_class_map,
+                                        local_interfaces,
+                                        imported_interfaces,
+                                        global_interface_map,
                                         &collect_local_enum_names(
                                             global_enum_map,
                                             current_namespace,
@@ -4284,6 +4650,9 @@ fn rewrite_expr_calls_for_project(
                                                 local_classes,
                                                 imported_classes,
                                                 global_class_map,
+                                                local_interfaces,
+                                                imported_interfaces,
+                                                global_interface_map,
                                                 imported_enums,
                                                 global_enum_map,
                                                 local_modules,
@@ -4306,12 +4675,15 @@ fn rewrite_expr_calls_for_project(
                         let rewritten_type_args = type_args
                             .iter()
                             .map(|ty| {
-                                rewrite_type_for_project(
+                                rewrite_type_for_project_with_interfaces(
                                     ty,
                                     current_namespace,
                                     local_classes,
                                     imported_classes,
                                     global_class_map,
+                                    local_interfaces,
+                                    imported_interfaces,
+                                    global_interface_map,
                                     &collect_local_enum_names(global_enum_map, current_namespace),
                                     imported_enums,
                                     global_enum_map,
@@ -4339,6 +4711,9 @@ fn rewrite_expr_calls_for_project(
                                             local_classes,
                                             imported_classes,
                                             global_class_map,
+                                            local_interfaces,
+                                            imported_interfaces,
+                                            global_interface_map,
                                             imported_enums,
                                             global_enum_map,
                                             local_modules,
@@ -4389,6 +4764,9 @@ fn rewrite_expr_calls_for_project(
                                                 local_classes,
                                                 imported_classes,
                                                 global_class_map,
+                                                local_interfaces,
+                                                imported_interfaces,
+                                                global_interface_map,
                                                 imported_enums,
                                                 global_enum_map,
                                                 local_modules,
@@ -4429,6 +4807,9 @@ fn rewrite_expr_calls_for_project(
                             local_classes,
                             imported_classes,
                             global_class_map,
+                            local_interfaces,
+                            imported_interfaces,
+                            global_interface_map,
                             imported_enums,
                             global_enum_map,
                             local_modules,
@@ -4451,12 +4832,15 @@ fn rewrite_expr_calls_for_project(
                                 let rewritten_type_args = type_args
                                     .iter()
                                     .map(|ty| {
-                                        rewrite_type_for_project(
+                                        rewrite_type_for_project_with_interfaces(
                                             ty,
                                             current_namespace,
                                             local_classes,
                                             imported_classes,
                                             global_class_map,
+                                            local_interfaces,
+                                            imported_interfaces,
+                                            global_interface_map,
                                             &collect_local_enum_names(
                                                 global_enum_map,
                                                 current_namespace,
@@ -4491,6 +4875,9 @@ fn rewrite_expr_calls_for_project(
                                                     local_classes,
                                                     imported_classes,
                                                     global_class_map,
+                                                    local_interfaces,
+                                                    imported_interfaces,
+                                                    global_interface_map,
                                                     imported_enums,
                                                     global_enum_map,
                                                     local_modules,
@@ -4546,6 +4933,9 @@ fn rewrite_expr_calls_for_project(
                                             local_classes,
                                             imported_classes,
                                             global_class_map,
+                                            local_interfaces,
+                                            imported_interfaces,
+                                            global_interface_map,
                                             imported_enums,
                                             global_enum_map,
                                             local_modules,
@@ -4565,6 +4955,9 @@ fn rewrite_expr_calls_for_project(
                                         local_classes,
                                         imported_classes,
                                         global_class_map,
+                                        local_interfaces,
+                                        imported_interfaces,
+                                        global_interface_map,
                                         imported_enums,
                                         global_enum_map,
                                         local_modules,
@@ -4585,6 +4978,9 @@ fn rewrite_expr_calls_for_project(
                                 local_classes,
                                 imported_classes,
                                 global_class_map,
+                                local_interfaces,
+                                imported_interfaces,
+                                global_interface_map,
                                 imported_enums,
                                 global_enum_map,
                                 local_modules,
@@ -4604,6 +5000,9 @@ fn rewrite_expr_calls_for_project(
                             local_classes,
                             imported_classes,
                             global_class_map,
+                            local_interfaces,
+                            imported_interfaces,
+                            global_interface_map,
                             imported_enums,
                             global_enum_map,
                             local_modules,
@@ -4644,6 +5043,9 @@ fn rewrite_expr_calls_for_project(
                                         local_classes,
                                         imported_classes,
                                         global_class_map,
+                                        local_interfaces,
+                                        imported_interfaces,
+                                        global_interface_map,
                                         imported_enums,
                                         global_enum_map,
                                         local_modules,
@@ -4664,12 +5066,15 @@ fn rewrite_expr_calls_for_project(
                                     let rewritten_type_args = type_args
                                         .iter()
                                         .map(|ty| {
-                                            rewrite_type_for_project(
+                                            rewrite_type_for_project_with_interfaces(
                                                 ty,
                                                 current_namespace,
                                                 local_classes,
                                                 imported_classes,
                                                 global_class_map,
+                                                local_interfaces,
+                                                imported_interfaces,
+                                                global_interface_map,
                                                 &collect_local_enum_names(
                                                     global_enum_map,
                                                     current_namespace,
@@ -4704,6 +5109,9 @@ fn rewrite_expr_calls_for_project(
                                                         local_classes,
                                                         imported_classes,
                                                         global_class_map,
+                                                        local_interfaces,
+                                                        imported_interfaces,
+                                                        global_interface_map,
                                                         imported_enums,
                                                         global_enum_map,
                                                         local_modules,
@@ -4774,6 +5182,9 @@ fn rewrite_expr_calls_for_project(
                                                     local_classes,
                                                     imported_classes,
                                                     global_class_map,
+                                                    local_interfaces,
+                                                    imported_interfaces,
+                                                    global_interface_map,
                                                     imported_enums,
                                                     global_enum_map,
                                                     local_modules,
@@ -4793,6 +5204,9 @@ fn rewrite_expr_calls_for_project(
                                                 local_classes,
                                                 imported_classes,
                                                 global_class_map,
+                                                local_interfaces,
+                                                imported_interfaces,
+                                                global_interface_map,
                                                 imported_enums,
                                                 global_enum_map,
                                                 local_modules,
@@ -4825,6 +5239,9 @@ fn rewrite_expr_calls_for_project(
                                             local_classes,
                                             imported_classes,
                                             global_class_map,
+                                            local_interfaces,
+                                            imported_interfaces,
+                                            global_interface_map,
                                             imported_enums,
                                             global_enum_map,
                                             local_modules,
@@ -4845,6 +5262,9 @@ fn rewrite_expr_calls_for_project(
                                     local_classes,
                                     imported_classes,
                                     global_class_map,
+                                    local_interfaces,
+                                    imported_interfaces,
+                                    global_interface_map,
                                     imported_enums,
                                     global_enum_map,
                                     local_modules,
@@ -4865,6 +5285,9 @@ fn rewrite_expr_calls_for_project(
                                     local_classes,
                                     imported_classes,
                                     global_class_map,
+                                    local_interfaces,
+                                    imported_interfaces,
+                                    global_interface_map,
                                     imported_enums,
                                     global_enum_map,
                                     local_modules,
@@ -4885,12 +5308,15 @@ fn rewrite_expr_calls_for_project(
                                 let rewritten_type_args = type_args
                                     .iter()
                                     .map(|ty| {
-                                        rewrite_type_for_project(
+                                        rewrite_type_for_project_with_interfaces(
                                             ty,
                                             current_namespace,
                                             local_classes,
                                             imported_classes,
                                             global_class_map,
+                                            local_interfaces,
+                                            imported_interfaces,
+                                            global_interface_map,
                                             &collect_local_enum_names(
                                                 global_enum_map,
                                                 current_namespace,
@@ -4925,6 +5351,9 @@ fn rewrite_expr_calls_for_project(
                                                     local_classes,
                                                     imported_classes,
                                                     global_class_map,
+                                                    local_interfaces,
+                                                    imported_interfaces,
+                                                    global_interface_map,
                                                     imported_enums,
                                                     global_enum_map,
                                                     local_modules,
@@ -4995,6 +5424,9 @@ fn rewrite_expr_calls_for_project(
                                                 local_classes,
                                                 imported_classes,
                                                 global_class_map,
+                                                local_interfaces,
+                                                imported_interfaces,
+                                                global_interface_map,
                                                 imported_enums,
                                                 global_enum_map,
                                                 local_modules,
@@ -5014,6 +5446,9 @@ fn rewrite_expr_calls_for_project(
                                             local_classes,
                                             imported_classes,
                                             global_class_map,
+                                            local_interfaces,
+                                            imported_interfaces,
+                                            global_interface_map,
                                             imported_enums,
                                             global_enum_map,
                                             local_modules,
@@ -5046,6 +5481,9 @@ fn rewrite_expr_calls_for_project(
                                         local_classes,
                                         imported_classes,
                                         global_class_map,
+                                        local_interfaces,
+                                        imported_interfaces,
+                                        global_interface_map,
                                         imported_enums,
                                         global_enum_map,
                                         local_modules,
@@ -5066,6 +5504,9 @@ fn rewrite_expr_calls_for_project(
                                 local_classes,
                                 imported_classes,
                                 global_class_map,
+                                local_interfaces,
+                                imported_interfaces,
+                                global_interface_map,
                                 imported_enums,
                                 global_enum_map,
                                 local_modules,
@@ -5085,6 +5526,9 @@ fn rewrite_expr_calls_for_project(
                             local_classes,
                             imported_classes,
                             global_class_map,
+                            local_interfaces,
+                            imported_interfaces,
+                            global_interface_map,
                             imported_enums,
                             global_enum_map,
                             local_modules,
@@ -5128,6 +5572,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5148,12 +5595,15 @@ fn rewrite_expr_calls_for_project(
                     let rewritten_type_args = type_args
                         .iter()
                         .map(|ty| {
-                            rewrite_type_for_project(
+                            rewrite_type_for_project_with_interfaces(
                                 ty,
                                 current_namespace,
                                 local_classes,
                                 imported_classes,
                                 global_class_map,
+                                local_interfaces,
+                                imported_interfaces,
+                                global_interface_map,
                                 &collect_local_enum_names(global_enum_map, current_namespace),
                                 imported_enums,
                                 global_enum_map,
@@ -5178,6 +5628,9 @@ fn rewrite_expr_calls_for_project(
                                         local_classes,
                                         imported_classes,
                                         global_class_map,
+                                        local_interfaces,
+                                        imported_interfaces,
+                                        global_interface_map,
                                         imported_enums,
                                         global_enum_map,
                                         local_modules,
@@ -5208,6 +5661,9 @@ fn rewrite_expr_calls_for_project(
                                 local_classes,
                                 imported_classes,
                                 global_class_map,
+                                local_interfaces,
+                                imported_interfaces,
+                                global_interface_map,
                                 imported_enums,
                                 global_enum_map,
                                 local_modules,
@@ -5222,12 +5678,15 @@ fn rewrite_expr_calls_for_project(
                 type_args: type_args
                     .iter()
                     .map(|ty| {
-                        rewrite_type_for_project(
+                        rewrite_type_for_project_with_interfaces(
                             ty,
                             current_namespace,
                             local_classes,
                             imported_classes,
                             global_class_map,
+                            local_interfaces,
+                            imported_interfaces,
+                            global_interface_map,
                             &collect_local_enum_names(global_enum_map, current_namespace),
                             imported_enums,
                             global_enum_map,
@@ -5251,6 +5710,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5271,6 +5733,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5294,6 +5759,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5589,6 +6057,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5614,6 +6085,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5634,6 +6108,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5678,6 +6155,9 @@ fn rewrite_expr_calls_for_project(
                                         local_classes,
                                         imported_classes,
                                         global_class_map,
+                                        local_interfaces,
+                                        imported_interfaces,
+                                        global_interface_map,
                                         imported_enums,
                                         global_enum_map,
                                         local_modules,
@@ -5721,6 +6201,9 @@ fn rewrite_expr_calls_for_project(
                                 local_classes,
                                 imported_classes,
                                 global_class_map,
+                                local_interfaces,
+                                imported_interfaces,
+                                global_interface_map,
                                 imported_enums,
                                 global_enum_map,
                                 local_modules,
@@ -5751,6 +6234,9 @@ fn rewrite_expr_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -5764,12 +6250,15 @@ fn rewrite_expr_calls_for_project(
                     .iter()
                     .map(|p| ast::Parameter {
                         name: p.name.clone(),
-                        ty: rewrite_type_for_project(
+                        ty: rewrite_type_for_project_with_interfaces(
                             &p.ty,
                             current_namespace,
                             local_classes,
                             imported_classes,
                             global_class_map,
+                            local_interfaces,
+                            imported_interfaces,
+                            global_interface_map,
                             &collect_local_enum_names(global_enum_map, current_namespace),
                             imported_enums,
                             global_enum_map,
@@ -5793,6 +6282,9 @@ fn rewrite_expr_calls_for_project(
             local_classes,
             imported_classes,
             global_class_map,
+            local_interfaces,
+            imported_interfaces,
+            global_interface_map,
             imported_enums,
             global_enum_map,
             local_modules,
@@ -5816,6 +6308,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5836,6 +6331,9 @@ fn rewrite_expr_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -5856,6 +6354,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5884,6 +6385,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -5918,6 +6422,9 @@ fn rewrite_expr_calls_for_project(
                         local_classes,
                         imported_classes,
                         global_class_map,
+                        local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
                         imported_enums,
                         global_enum_map,
                         local_modules,
@@ -5944,6 +6451,9 @@ fn rewrite_expr_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -5964,6 +6474,9 @@ fn rewrite_expr_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -5984,6 +6497,9 @@ fn rewrite_expr_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -6004,6 +6520,9 @@ fn rewrite_expr_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -6024,6 +6543,9 @@ fn rewrite_expr_calls_for_project(
                 local_classes,
                 imported_classes,
                 global_class_map,
+                local_interfaces,
+                imported_interfaces,
+                global_interface_map,
                 imported_enums,
                 global_enum_map,
                 local_modules,
@@ -6049,6 +6571,9 @@ fn rewrite_expr_calls_for_project(
                             local_classes,
                             imported_classes,
                             global_class_map,
+                            local_interfaces,
+                            imported_interfaces,
+                            global_interface_map,
                             imported_enums,
                             global_enum_map,
                             local_modules,
@@ -6071,6 +6596,9 @@ fn rewrite_expr_calls_for_project(
             local_classes,
             imported_classes,
             global_class_map,
+            local_interfaces,
+            imported_interfaces,
+            global_interface_map,
             imported_enums,
             global_enum_map,
             local_modules,
@@ -6090,6 +6618,9 @@ fn rewrite_expr_calls_for_project(
                     local_classes,
                     imported_classes,
                     global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
                     imported_enums,
                     global_enum_map,
                     local_modules,
@@ -6111,6 +6642,9 @@ fn rewrite_expr_calls_for_project(
                         local_classes,
                         imported_classes,
                         global_class_map,
+                        local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
                         imported_enums,
                         global_enum_map,
                         local_modules,
@@ -6139,6 +6673,9 @@ fn rewrite_expr_calls_for_project(
                         local_classes,
                         imported_classes,
                         global_class_map,
+                        local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
                         imported_enums,
                         global_enum_map,
                         local_modules,
@@ -6161,6 +6698,9 @@ fn rewrite_expr_calls_for_project(
                         local_classes,
                         imported_classes,
                         global_class_map,
+                        local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
                         imported_enums,
                         global_enum_map,
                         local_modules,
@@ -9026,6 +9566,114 @@ mod tests {
             })
             .expect("expected interface declaration");
         assert_eq!(interface.extends, vec!["util__Api__Named".to_string()]);
+    }
+
+    #[test]
+    fn rewrites_interface_extends_generic_namespace_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util".to_string(),
+                    alias: Some("u".to_string()),
+                })),
+                sp(Decl::Interface(ast::InterfaceDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: vec!["u.Api.Reader<String>".to_string()],
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([(
+                "util".to_string(),
+                HashSet::from(["Api__Reader".to_string()]),
+            )]),
+            &HashMap::from([("Api__Reader".to_string(), "util".to_string())]),
+            &[ImportDecl {
+                path: "util".to_string(),
+                alias: Some("u".to_string()),
+            }],
+        );
+
+        let interface = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) => Some(interface),
+                _ => None,
+            })
+            .expect("expected interface declaration");
+        assert_eq!(
+            interface.extends,
+            vec!["util__Api__Reader<String>".to_string()]
+        );
+    }
+
+    #[test]
+    fn rewrites_interface_extends_generic_exact_import_alias_types() {
+        let program = Program {
+            package: Some("app".to_string()),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "util.Api.Reader".to_string(),
+                    alias: Some("ReaderAlias".to_string()),
+                })),
+                sp(Decl::Interface(ast::InterfaceDecl {
+                    name: "Child".to_string(),
+                    generic_params: vec![],
+                    extends: vec!["ReaderAlias<String>".to_string()],
+                    methods: vec![],
+                    visibility: ast::Visibility::Private,
+                })),
+            ],
+        };
+
+        let rewritten = rewrite_program_for_project(
+            &program,
+            "app",
+            "app",
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::from([(
+                "util".to_string(),
+                HashSet::from(["Api__Reader".to_string()]),
+            )]),
+            &HashMap::from([("Api__Reader".to_string(), "util".to_string())]),
+            &[ImportDecl {
+                path: "util.Api.Reader".to_string(),
+                alias: Some("ReaderAlias".to_string()),
+            }],
+        );
+
+        let interface = rewritten
+            .declarations
+            .iter()
+            .find_map(|decl| match &decl.node {
+                Decl::Interface(interface) => Some(interface),
+                _ => None,
+            })
+            .expect("expected interface declaration");
+        assert_eq!(
+            interface.extends,
+            vec!["util__Api__Reader<String>".to_string()]
+        );
     }
 
     #[test]

@@ -55,6 +55,8 @@ class ConfigReader implements Reader<String> {
 }
 ```
 
+Project builds also rewrite alias-qualified generic interface types in ordinary type positions, so declarations such as `reader: api.Reader<String>` and `reader: ReaderAlias<String>` work the same way as single-file `check`.
+
 ## Polymorphism
 
 You can use interfaces as types.

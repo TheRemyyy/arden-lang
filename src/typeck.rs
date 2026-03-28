@@ -4897,7 +4897,9 @@ impl TypeChecker {
         expected: &ResolvedType,
     ) -> ResolvedType {
         let cond_type = self.check_expr(condition, condition_span.clone());
-        if !matches!(cond_type, ResolvedType::Boolean) {
+        if !matches!(cond_type, ResolvedType::Unknown)
+            && !matches!(cond_type, ResolvedType::Boolean)
+        {
             self.error(
                 format!(
                     "If condition must be Boolean, got {}",
@@ -5280,7 +5282,8 @@ impl TypeChecker {
 
                 match op {
                     UnaryOp::Neg => {
-                        if !inner_type.is_numeric() {
+                        if !matches!(inner_type, ResolvedType::Unknown) && !inner_type.is_numeric()
+                        {
                             self.error(
                                 format!(
                                     "Cannot negate non-numeric type {}",
@@ -5292,7 +5295,9 @@ impl TypeChecker {
                         inner_type
                     }
                     UnaryOp::Not => {
-                        if !matches!(inner_type, ResolvedType::Boolean) {
+                        if !matches!(inner_type, ResolvedType::Unknown)
+                            && !matches!(inner_type, ResolvedType::Boolean)
+                        {
                             self.error(
                                 format!(
                                     "Cannot apply '!' to non-boolean type {}",
@@ -5392,6 +5397,17 @@ impl TypeChecker {
                 let obj_type = self.check_expr(&object.node, object.span.clone());
                 let idx_type = self.check_expr(&index.node, index.span.clone());
                 let indexed_type = Self::peel_reference_type(&obj_type);
+
+                if matches!(obj_type, ResolvedType::Unknown)
+                    || matches!(idx_type, ResolvedType::Unknown)
+                {
+                    return match indexed_type {
+                        ResolvedType::List(inner) => (**inner).clone(),
+                        ResolvedType::String => ResolvedType::Char,
+                        ResolvedType::Map(_, value) => (**value).clone(),
+                        _ => ResolvedType::Unknown,
+                    };
+                }
 
                 match indexed_type {
                     ResolvedType::List(inner) => {
@@ -5648,14 +5664,17 @@ impl TypeChecker {
                 for part in parts {
                     if let StringPart::Expr(e) = part {
                         let ty = self.check_expr(&e.node, e.span.clone());
+                        if matches!(ty, ResolvedType::Unknown) {
+                            continue;
+                        }
                         if !Self::supports_display_scalar(&ty) {
                             self.error(
-                        format!(
-                            "String interpolation currently supports Integer, Float, Boolean, String, Char, and None, got {}",
-                            Self::format_resolved_type_for_diagnostic(&ty)
-                        ),
-                        e.span.clone(),
-                    );
+                                format!(
+                                    "String interpolation currently supports Integer, Float, Boolean, String, Char, and None, got {}",
+                                    Self::format_resolved_type_for_diagnostic(&ty)
+                                ),
+                                e.span.clone(),
+                            );
                         }
                     }
                 }
@@ -5702,6 +5721,7 @@ impl TypeChecker {
                         }
                         *ok
                     }
+                    ResolvedType::Unknown => ResolvedType::Unknown,
                     _ => {
                         self.error(
                             format!(
@@ -5744,6 +5764,7 @@ impl TypeChecker {
                     ResolvedType::Ref(inner)
                     | ResolvedType::MutRef(inner)
                     | ResolvedType::Ptr(inner) => *inner,
+                    ResolvedType::Unknown => ResolvedType::Unknown,
                     _ => {
                         self.error(
                             format!(
@@ -5812,6 +5833,7 @@ impl TypeChecker {
                 // await on Task<T> yields T
                 match inner_type {
                     ResolvedType::Task(inner) => *inner,
+                    ResolvedType::Unknown => ResolvedType::Unknown,
                     _ => {
                         self.error(
                             format!(
@@ -5829,7 +5851,9 @@ impl TypeChecker {
 
             Expr::Require { condition, message } => {
                 let cond_type = self.check_expr(&condition.node, condition.span.clone());
-                if !matches!(cond_type, ResolvedType::Boolean) {
+                if !matches!(cond_type, ResolvedType::Unknown)
+                    && !matches!(cond_type, ResolvedType::Boolean)
+                {
                     self.error(
                         format!(
                             "require() condition must be Boolean, got {}",
@@ -5840,7 +5864,9 @@ impl TypeChecker {
                 }
                 if let Some(msg) = message {
                     let msg_type = self.check_expr(&msg.node, msg.span.clone());
-                    if !matches!(msg_type, ResolvedType::String) {
+                    if !matches!(msg_type, ResolvedType::Unknown)
+                        && !matches!(msg_type, ResolvedType::String)
+                    {
                         self.error(
                             format!(
                                 "require() message must be String, got {}",
@@ -5860,7 +5886,9 @@ impl TypeChecker {
             } => {
                 if let Some(s) = start {
                     let start_type = self.check_expr(&s.node, s.span.clone());
-                    if !matches!(start_type, ResolvedType::Integer) {
+                    if !matches!(start_type, ResolvedType::Unknown)
+                        && !matches!(start_type, ResolvedType::Integer)
+                    {
                         self.error(
                             format!(
                                 "Range start must be Integer, got {}",
@@ -5872,7 +5900,9 @@ impl TypeChecker {
                 }
                 if let Some(e) = end {
                     let end_type = self.check_expr(&e.node, e.span.clone());
-                    if !matches!(end_type, ResolvedType::Integer) {
+                    if !matches!(end_type, ResolvedType::Unknown)
+                        && !matches!(end_type, ResolvedType::Integer)
+                    {
                         self.error(
                             format!(
                                 "Range end must be Integer, got {}",
@@ -5891,7 +5921,9 @@ impl TypeChecker {
                 else_branch,
             } => {
                 let cond_type = self.check_expr(&condition.node, condition.span.clone());
-                if !matches!(cond_type, ResolvedType::Boolean) {
+                if !matches!(cond_type, ResolvedType::Unknown)
+                    && !matches!(cond_type, ResolvedType::Boolean)
+                {
                     self.error(
                         format!(
                             "If condition must be Boolean, got {}",
@@ -5975,6 +6007,9 @@ impl TypeChecker {
             .iter()
             .map(|arg| self.check_expr(&arg.node, arg.span.clone()))
             .collect();
+        let has_unknown_arg = arg_types
+            .iter()
+            .any(|arg_type| matches!(arg_type, ResolvedType::Unknown));
 
         // List<T>(N) supports optional integer preallocation size; otherwise List<T>().
         if ty_name == "List"
@@ -5984,6 +6019,7 @@ impl TypeChecker {
             match arg_types.as_slice() {
                 [] => {}
                 [ResolvedType::Integer] => {}
+                [ResolvedType::Unknown] => {}
                 [other] => {
                     self.error(
                         format!(
@@ -6025,6 +6061,9 @@ impl TypeChecker {
                     | ResolvedType::Result(_, _)
             );
         if requires_zero_args && !arg_types.is_empty() {
+            if has_unknown_arg {
+                return;
+            }
             self.error(
                 format!(
                     "Constructor {} expects 0 arguments, got {}",
@@ -6940,6 +6979,9 @@ impl TypeChecker {
             "println" | "print" => {
                 for arg in args {
                     let ty = self.check_expr(&arg.node, arg.span.clone());
+                    if matches!(ty, ResolvedType::Unknown) {
+                        continue;
+                    }
                     if !Self::supports_display_scalar(&ty) {
                         self.error(
                             format!(
@@ -6961,7 +7003,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !t.is_numeric() {
+                    if !matches!(t, ResolvedType::Unknown) && !t.is_numeric() {
                         self.error(
                             format!(
                                 "Math.abs() requires numeric type, got {}",
@@ -7008,7 +7050,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !t.is_numeric() {
+                    if !matches!(t, ResolvedType::Unknown) && !t.is_numeric() {
                         self.error(
                             format!(
                                 "{}() requires numeric type, got {}",
@@ -7026,7 +7068,10 @@ impl TypeChecker {
                 if args.len() >= 2 {
                     let t1 = self.check_expr(&args[0].node, args[0].span.clone());
                     let t2 = self.check_expr(&args[1].node, args[1].span.clone());
-                    if !t1.is_numeric() || !t2.is_numeric() {
+                    if !matches!(t1, ResolvedType::Unknown)
+                        && !matches!(t2, ResolvedType::Unknown)
+                        && (!t1.is_numeric() || !t2.is_numeric())
+                    {
                         self.error("Math.pow() requires numeric types".to_string(), span);
                     }
                 }
@@ -7036,7 +7081,9 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Integer | ResolvedType::Float) {
+                    if !matches!(t, ResolvedType::Unknown)
+                        && !matches!(t, ResolvedType::Integer | ResolvedType::Float)
+                    {
                         self.error(
                             format!(
                                 "to_float() requires Integer or Float, got {}",
@@ -7052,10 +7099,12 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(
-                        t,
-                        ResolvedType::Integer | ResolvedType::Float | ResolvedType::String
-                    ) {
+                    if !matches!(t, ResolvedType::Unknown)
+                        && !matches!(
+                            t,
+                            ResolvedType::Integer | ResolvedType::Float | ResolvedType::String
+                        )
+                    {
                         self.error(
                             format!(
                                 "to_int() requires Integer, Float, or String, got {}",
@@ -7071,6 +7120,9 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
+                    if matches!(t, ResolvedType::Unknown) {
+                        return Some(ResolvedType::String);
+                    }
                     if !Self::supports_display_scalar(&t) {
                         self.error(
                             format!(
@@ -7087,7 +7139,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error(
                             format!(
                                 "Str.len() requires String, got {}",
@@ -7104,6 +7156,9 @@ impl TypeChecker {
                 if args.len() >= 2 {
                     for arg in &args[..2] {
                         let t = self.check_expr(&arg.node, arg.span.clone());
+                        if matches!(t, ResolvedType::Unknown) {
+                            continue;
+                        }
                         if !matches!(t, ResolvedType::String) {
                             self.error(
                                 "Str.compare() requires String arguments".to_string(),
@@ -7119,6 +7174,9 @@ impl TypeChecker {
                 if args.len() >= 2 {
                     for arg in &args[..2] {
                         let t = self.check_expr(&arg.node, arg.span.clone());
+                        if matches!(t, ResolvedType::Unknown) {
+                            continue;
+                        }
                         if !matches!(t, ResolvedType::String) {
                             self.error(
                                 "Str.concat() requires String arguments".to_string(),
@@ -7133,7 +7191,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error("Str.upper() requires String".to_string(), span.clone());
                     }
                 }
@@ -7143,7 +7201,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error("Str.lower() requires String".to_string(), span.clone());
                     }
                 }
@@ -7153,7 +7211,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error("Str.trim() requires String".to_string(), span.clone());
                     }
                 }
@@ -7164,6 +7222,9 @@ impl TypeChecker {
                 if args.len() >= 2 {
                     let t1 = self.check_expr(&args[0].node, args[0].span.clone());
                     let t2 = self.check_expr(&args[1].node, args[1].span.clone());
+                    if matches!(t1, ResolvedType::Unknown) || matches!(t2, ResolvedType::Unknown) {
+                        return Some(ResolvedType::Boolean);
+                    }
                     if !matches!(t1, ResolvedType::String) || !matches!(t2, ResolvedType::String) {
                         self.error(
                             "Str.contains() requires two String arguments".to_string(),
@@ -7178,6 +7239,9 @@ impl TypeChecker {
                 if args.len() >= 2 {
                     let t1 = self.check_expr(&args[0].node, args[0].span.clone());
                     let t2 = self.check_expr(&args[1].node, args[1].span.clone());
+                    if matches!(t1, ResolvedType::Unknown) || matches!(t2, ResolvedType::Unknown) {
+                        return Some(ResolvedType::Boolean);
+                    }
                     if !matches!(t1, ResolvedType::String) || !matches!(t2, ResolvedType::String) {
                         let mut parts = name.split("__");
                         let owner = parts.next().unwrap_or("Str");
@@ -7194,7 +7258,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Integer) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::Integer) {
                         self.error("exit() requires Integer code".to_string(), span);
                     }
                 }
@@ -7208,6 +7272,9 @@ impl TypeChecker {
                 let mut range_ty = ResolvedType::Unknown;
                 if let Some(first_arg) = args.first() {
                     let first_ty = self.check_expr(&first_arg.node, first_arg.span.clone());
+                    if matches!(first_ty, ResolvedType::Unknown) {
+                        return Some(ResolvedType::Range(Box::new(ResolvedType::Unknown)));
+                    }
                     if !matches!(first_ty, ResolvedType::Integer | ResolvedType::Float) {
                         self.error(
                             "range() arguments must be all Integer or all Float".to_string(),
@@ -7218,6 +7285,9 @@ impl TypeChecker {
                     }
                     for arg in &args[1..] {
                         let arg_ty = self.check_expr(&arg.node, arg.span.clone());
+                        if matches!(arg_ty, ResolvedType::Unknown) {
+                            return Some(ResolvedType::Range(Box::new(range_ty)));
+                        }
                         if !matches!(arg_ty, ResolvedType::Integer | ResolvedType::Float) {
                             self.error(
                                 "range() arguments must be all Integer or all Float".to_string(),
@@ -7250,7 +7320,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error(
                             format!(
                                 "File.read() requires String path, got {}",
@@ -7267,13 +7337,17 @@ impl TypeChecker {
                 if args.len() >= 2 {
                     let path_t = self.check_expr(&args[0].node, args[0].span.clone());
                     let content_t = self.check_expr(&args[1].node, args[1].span.clone());
-                    if !matches!(path_t, ResolvedType::String) {
+                    if !matches!(path_t, ResolvedType::Unknown)
+                        && !matches!(path_t, ResolvedType::String)
+                    {
                         self.error(
                             "File.write() path must be String".to_string(),
                             args[0].span.clone(),
                         );
                     }
-                    if !matches!(content_t, ResolvedType::String) {
+                    if !matches!(content_t, ResolvedType::Unknown)
+                        && !matches!(content_t, ResolvedType::String)
+                    {
                         self.error(
                             "File.write() content must be String".to_string(),
                             args[1].span.clone(),
@@ -7286,7 +7360,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error(
                             format!(
                                 "File.exists() requires String path, got {}",
@@ -7302,7 +7376,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error(
                             format!(
                                 "File.delete() requires String path, got {}",
@@ -7319,7 +7393,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error(
                             "Time.now() requires String format".to_string(),
                             span.clone(),
@@ -7336,7 +7410,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Integer) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::Integer) {
                         self.error(
                             "Time.sleep() requires Integer milliseconds".to_string(),
                             span,
@@ -7356,7 +7430,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error(
                             "System.getenv() requires String name".to_string(),
                             span.clone(),
@@ -7369,7 +7443,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error(
                             "System.shell() requires String command".to_string(),
                             span.clone(),
@@ -7382,7 +7456,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error(
                             "System.exec() requires String command".to_string(),
                             span.clone(),
@@ -7417,7 +7491,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Integer) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::Integer) {
                         self.error(
                             "Args.get() requires Integer index".to_string(),
                             span.clone(),
@@ -7438,7 +7512,9 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Boolean | ResolvedType::Integer) {
+                    if !matches!(t, ResolvedType::Unknown)
+                        && !matches!(t, ResolvedType::Boolean | ResolvedType::Integer)
+                    {
                         self.error(
                             "assert() requires boolean condition".to_string(),
                             span.clone(),
@@ -7473,7 +7549,9 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Boolean | ResolvedType::Integer) {
+                    if !matches!(t, ResolvedType::Unknown)
+                        && !matches!(t, ResolvedType::Boolean | ResolvedType::Integer)
+                    {
                         self.error("assert_true() requires boolean".to_string(), span.clone());
                     }
                 }
@@ -7484,7 +7562,9 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Boolean | ResolvedType::Integer) {
+                    if !matches!(t, ResolvedType::Unknown)
+                        && !matches!(t, ResolvedType::Boolean | ResolvedType::Integer)
+                    {
                         self.error("assert_false() requires boolean".to_string(), span.clone());
                     }
                 }
@@ -7495,7 +7575,7 @@ impl TypeChecker {
                 if !args.is_empty() {
                     self.check_arg_count(name, args, 1, span.clone());
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::String) {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error("fail() requires String message".to_string(), span.clone());
                     }
                 }
@@ -7549,6 +7629,9 @@ impl TypeChecker {
                     self.check_arg_count(method, args, 1, span.clone());
                     if !args.is_empty() {
                         let idx_type = self.check_expr(&args[0].node, args[0].span.clone());
+                        if matches!(idx_type, ResolvedType::Unknown) {
+                            return (**inner).clone();
+                        }
                         if !matches!(idx_type, ResolvedType::Integer) {
                             self.error(
                                 format!(
@@ -7572,12 +7655,14 @@ impl TypeChecker {
                     if args.len() >= 2 {
                         let idx_type = self.check_expr(&args[0].node, args[0].span.clone());
                         let val_type = self.check_expr(&args[1].node, args[1].span.clone());
-                        if !matches!(idx_type, ResolvedType::Integer) {
+                        if !matches!(idx_type, ResolvedType::Unknown)
+                            && !matches!(idx_type, ResolvedType::Integer)
+                        {
                             self.error(
                                 "List.set() index must be Integer".to_string(),
                                 args[0].span.clone(),
                             );
-                        } else {
+                        } else if matches!(idx_type, ResolvedType::Integer) {
                             self.check_non_negative_integer_const(
                                 &args[0].node,
                                 args[0].span.clone(),
@@ -7879,7 +7964,9 @@ impl TypeChecker {
                     self.check_arg_count(method, args, 1, span.clone());
                     if let Some(arg) = args.first() {
                         let t = self.check_expr(&arg.node, arg.span.clone());
-                        if !matches!(t, ResolvedType::Integer) {
+                        if !matches!(t, ResolvedType::Unknown)
+                            && !matches!(t, ResolvedType::Integer)
+                        {
                             self.error(
                                 format!(
                                     "Task.await_timeout() expects Integer milliseconds, got {}",
@@ -7939,6 +8026,9 @@ impl TypeChecker {
                     sig.return_type
                 }
                 Ok(None) => {
+                    if matches!(obj_type, ResolvedType::Unknown) {
+                        return ResolvedType::Unknown;
+                    }
                     self.error(
                         format!(
                             "Cannot call method on type {}",
@@ -7953,6 +8043,7 @@ impl TypeChecker {
                     ResolvedType::Unknown
                 }
             },
+            ResolvedType::Unknown => ResolvedType::Unknown,
             _ => {
                 self.error(
                     format!(
@@ -8042,6 +8133,15 @@ impl TypeChecker {
         right: &ResolvedType,
         span: Span,
     ) -> ResolvedType {
+        if matches!(left, ResolvedType::Unknown) || matches!(right, ResolvedType::Unknown) {
+            return match op {
+                BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::LtEq | BinOp::Gt | BinOp::GtEq => {
+                    ResolvedType::Boolean
+                }
+                _ => ResolvedType::Unknown,
+            };
+        }
+
         match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                 if matches!(op, BinOp::Add)
