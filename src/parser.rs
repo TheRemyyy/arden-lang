@@ -903,7 +903,7 @@ impl<'src> Parser<'src> {
                     self.current_span(),
                 ));
             }
-            let parent = self.parse_qualified_name()?;
+            let parent = self.parse_nominal_type_source()?;
             if self.check(&Token::Comma) {
                 return Err(ParseError::new(
                     "Class extends clause accepts exactly one base class",
@@ -925,7 +925,7 @@ impl<'src> Parser<'src> {
                     self.current_span(),
                 ));
             }
-            implements.push(self.parse_qualified_name()?);
+            implements.push(self.parse_nominal_type_source()?);
             while self.check(&Token::Comma) {
                 self.advance();
                 if self.check(&Token::LBrace) {
@@ -934,7 +934,7 @@ impl<'src> Parser<'src> {
                         self.current_span(),
                     ));
                 }
-                implements.push(self.parse_qualified_name()?);
+                implements.push(self.parse_nominal_type_source()?);
             }
         }
 
@@ -1205,6 +1205,17 @@ impl<'src> Parser<'src> {
         Ok(qualified_name)
     }
 
+    fn parse_nominal_type_source(&mut self) -> ParseResult<String> {
+        let ty = self.parse_type()?;
+        match ty {
+            Type::Named(_) | Type::Generic(_, _) => Ok(self.format_type(&ty)),
+            _ => Err(ParseError::new(
+                "Expected interface or class name",
+                self.current_span(),
+            )),
+        }
+    }
+
     fn parse_interface(&mut self, _attributes: Vec<Attribute>) -> ParseResult<InterfaceDecl> {
         let visibility = self.parse_visibility();
 
@@ -1222,7 +1233,7 @@ impl<'src> Parser<'src> {
                     self.current_span(),
                 ));
             }
-            extends.push(self.parse_qualified_name()?);
+            extends.push(self.parse_nominal_type_source()?);
             while self.check(&Token::Comma) {
                 self.advance();
                 if self.check(&Token::LBrace) {
@@ -1231,7 +1242,7 @@ impl<'src> Parser<'src> {
                         self.current_span(),
                     ));
                 }
-                extends.push(self.parse_qualified_name()?);
+                extends.push(self.parse_nominal_type_source()?);
             }
         }
 
@@ -4348,6 +4359,25 @@ mod tests {
             panic!("Expected specialized function value");
         };
         assert_eq!(type_args.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_generic_interface_reference_in_implements_clause() {
+        let source = r#"
+            interface I<T> {
+                function get(): T;
+            }
+
+            class C implements I<String> {
+                function get(): String { return "ok"; }
+            }
+        "#;
+        let program =
+            parse_source(source).expect("Should parse generic interface implements clause");
+        let Decl::Class(class_decl) = &program.declarations[1].node else {
+            panic!("Expected class declaration");
+        };
+        assert_eq!(class_decl.implements, vec!["I<String>".to_string()]);
     }
 
     #[test]

@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed generic interface references in inheritance clauses:
+  - parser support for `class ... implements I<String>`, `class ... extends Base<String>`, and `interface ... extends Parent<String>` now accepts nominal generic references instead of stopping at `<...>` with errors like `Expected LBrace, found Some(Lt)`
+  - interface metadata now preserves and instantiates generic parameters before method compatibility checks, so flows like `i: I<String> = C(); i.get().length()` typecheck and run with the concrete `String` signature instead of leaking raw interface type variables
+- Fixed inherited interface method lookup through specialized parent interfaces:
+  - child interfaces such as `interface StringReader extends Reader<String>` now expose inherited methods at call sites and bound-method lookups, so `reader.read()` and `reader.read` no longer fail with `Unknown method 'read' on interface 'StringReader'`
+  - inherited interface signatures continue to instantiate concrete type arguments from the specialized parent chain, so child-interface receivers preserve `String`/`T` substitutions end-to-end
+- Fixed project-mode seeded validation for specialized interface parents:
+  - project builds now accept rewritten parent refs like `global__Reader<String>` during the effect-seeded typecheck pass instead of rejecting valid interfaces with `extends unknown interface`
+  - that keeps project-mode `interface ... extends Reader<String>` behavior aligned with single-file `check`, runtime dispatch, and bound-method lookup
 - Fixed explicit generic function values:
   - expressions like `id<Integer>` now parse as specialized first-class function values instead of leaving `<Integer>` in the token stream and failing with parser errors such as `Expected expression, found Some(TyInteger)`
   - specialized function values now typecheck and codegen through the existing generic specialization pipeline, so assignments like `f: (Integer) -> Integer = id<Integer>; f(7)` compile and run

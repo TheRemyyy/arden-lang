@@ -212,6 +212,8 @@ pub struct EnumInfo {
 #[derive(Debug, Clone)]
 pub struct InterfaceInfo {
     pub methods: HashMap<String, FuncSig>,
+    pub generic_param_names: Vec<String>,
+    pub generic_type_vars: Vec<usize>,
     pub extends: Vec<String>,
     pub span: Span,
 }
@@ -751,6 +753,16 @@ impl TypeChecker {
     }
 
     fn resolve_nominal_reference_name(&self, name: &str) -> Option<String> {
+        if let Ok(Type::Generic(base, args)) = parse_type_source(name) {
+            let resolved_base = self.resolve_nominal_reference_name(&base)?;
+            let resolved_args = args
+                .iter()
+                .map(|arg| self.resolve_type(arg).to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Some(format!("{}<{}>", resolved_base, resolved_args));
+        }
+
         if let Some(resolved) = self.resolve_known_type_name(name) {
             return Some(resolved);
         }
@@ -845,7 +857,10 @@ impl TypeChecker {
         self.apply_effect_seeds(function_effects, class_method_effects);
         for (name, iface) in self.interfaces.clone() {
             for parent in iface.extends {
-                if !self.interfaces.contains_key(&parent) {
+                if !self
+                    .interfaces
+                    .contains_key(self.interface_base_name(&parent))
+                {
                     self.error(
                         format!(
                             "Interface '{}' extends unknown interface '{}'",
@@ -1879,6 +1894,7 @@ impl TypeChecker {
     }
 
     fn class_implements_interface(&self, class_name: &str, interface_name: &str) -> bool {
+        let target_base = self.interface_base_name(interface_name);
         let mut current = class_name;
         let mut depth = 0usize;
         while depth < 64 {
@@ -1886,11 +1902,10 @@ impl TypeChecker {
                 return false;
             };
 
-            if info
-                .implements
-                .iter()
-                .any(|i| i == interface_name || self.interface_extends(i, interface_name))
-            {
+            if info.implements.iter().any(|i| {
+                self.interface_base_name(i) == target_base
+                    || self.interface_extends(i, interface_name)
+            }) {
                 return true;
             }
 
@@ -1904,7 +1919,8 @@ impl TypeChecker {
     }
 
     fn interface_extends(&self, interface_name: &str, target: &str) -> bool {
-        if interface_name == target {
+        let target_base = self.interface_base_name(target).to_string();
+        if self.interface_base_name(interface_name) == target_base {
             return true;
         }
         let mut stack = vec![interface_name.to_string()];
@@ -1913,12 +1929,14 @@ impl TypeChecker {
             if !visited.insert(name.clone()) {
                 continue;
             }
-            if name == target {
+            if self.interface_base_name(&name) == target_base {
                 return true;
             }
-            if let Some(info) = self.interfaces.get(&name) {
+            let (base_name, _, name_substitutions) =
+                self.instantiated_interface_substitutions(&name);
+            if let Some(info) = self.interfaces.get(&base_name) {
                 for parent in &info.extends {
-                    stack.push(parent.clone());
+                    stack.push(self.substitute_interface_reference(parent, &name_substitutions));
                 }
             }
         }
@@ -1934,14 +1952,21 @@ impl TypeChecker {
         if !visited.insert(interface_name.to_string()) {
             return;
         }
-        let Some(info) = self.interfaces.get(interface_name) else {
+        let (base_name, _, name_substitutions) =
+            self.instantiated_interface_substitutions(interface_name);
+        let Some(info) = self.interfaces.get(&base_name) else {
             return;
         };
         for parent in &info.extends {
-            self.collect_interface_methods(parent, out, visited);
+            let instantiated_parent =
+                self.substitute_interface_reference(parent, &name_substitutions);
+            self.collect_interface_methods(&instantiated_parent, out, visited);
         }
         for (name, sig) in &info.methods {
-            out.insert(name.clone(), sig.clone());
+            out.insert(
+                name.clone(),
+                self.instantiate_interface_signature(interface_name, sig),
+            );
         }
     }
 
@@ -1955,6 +1980,7 @@ impl TypeChecker {
         key: &str,
         span: Span,
     ) {
+        let interface_generic_bindings = self.make_generic_type_bindings(&interface.generic_params);
         let mut inherited_methods: HashMap<String, (String, FuncSig)> = HashMap::new();
         for parent in &interface.extends {
             let resolved_parent = self
@@ -1987,11 +2013,17 @@ impl TypeChecker {
             let params = method
                 .params
                 .iter()
-                .map(|p| (p.name.clone(), self.resolve_type(&p.ty)))
+                .map(|p| {
+                    (
+                        p.name.clone(),
+                        self.resolve_type_with_bindings(&p.ty, &interface_generic_bindings),
+                    )
+                })
                 .collect::<Vec<_>>();
             let sig = FuncSig {
                 params,
-                return_type: self.resolve_type(&method.return_type),
+                return_type: self
+                    .resolve_type_with_bindings(&method.return_type, &interface_generic_bindings),
                 generic_type_vars: Vec::new(),
                 is_variadic: false,
                 is_extern: false,
@@ -2099,6 +2131,92 @@ impl TypeChecker {
             .map(|(id, part)| (*id, self.parse_type_string(part)))
             .collect();
         (base_name, substitutions)
+    }
+
+    fn interface_base_name<'a>(&self, interface_name: &'a str) -> &'a str {
+        interface_name.split('<').next().unwrap_or(interface_name)
+    }
+
+    fn instantiated_interface_substitutions(
+        &self,
+        interface_name: &str,
+    ) -> (
+        String,
+        HashMap<usize, ResolvedType>,
+        HashMap<String, ResolvedType>,
+    ) {
+        let base_name = self.interface_base_name(interface_name).to_string();
+        let Some(interface) = self.interfaces.get(&base_name) else {
+            return (base_name, HashMap::new(), HashMap::new());
+        };
+        if interface.generic_type_vars.is_empty()
+            || !interface_name.contains('<')
+            || !interface_name.ends_with('>')
+        {
+            return (base_name, HashMap::new(), HashMap::new());
+        }
+
+        let Some(open_bracket) = interface_name.find('<') else {
+            return (base_name, HashMap::new(), HashMap::new());
+        };
+        let inner = &interface_name[open_bracket + 1..interface_name.len() - 1];
+        let parts = self.split_generic_args(inner);
+        if parts.len() != interface.generic_type_vars.len()
+            || parts.len() != interface.generic_param_names.len()
+        {
+            return (base_name, HashMap::new(), HashMap::new());
+        }
+
+        let positional = interface
+            .generic_type_vars
+            .iter()
+            .zip(parts.iter())
+            .map(|(id, part)| (*id, self.parse_type_string(part)))
+            .collect::<HashMap<_, _>>();
+        let named = interface
+            .generic_param_names
+            .iter()
+            .zip(parts.iter())
+            .map(|(name, part)| (name.clone(), self.parse_type_string(part)))
+            .collect::<HashMap<_, _>>();
+        (base_name, positional, named)
+    }
+
+    fn substitute_interface_reference(
+        &self,
+        interface_name: &str,
+        substitutions: &HashMap<String, ResolvedType>,
+    ) -> String {
+        parse_type_source(interface_name)
+            .ok()
+            .map(|ty| {
+                self.resolve_type_with_bindings(&ty, substitutions)
+                    .to_string()
+            })
+            .unwrap_or_else(|| interface_name.to_string())
+    }
+
+    fn instantiate_interface_signature(&self, interface_name: &str, sig: &FuncSig) -> FuncSig {
+        let (_, substitutions, _) = self.instantiated_interface_substitutions(interface_name);
+        if substitutions.is_empty() {
+            return sig.clone();
+        }
+        FuncSig {
+            params: sig
+                .params
+                .iter()
+                .map(|(name, ty)| (name.clone(), Self::substitute_type_vars(ty, &substitutions)))
+                .collect(),
+            return_type: Self::substitute_type_vars(&sig.return_type, &substitutions),
+            ..sig.clone()
+        }
+    }
+
+    fn lookup_interface_method(&self, interface_name: &str, method_name: &str) -> Option<FuncSig> {
+        let mut methods = HashMap::new();
+        let mut visited = std::collections::HashSet::new();
+        self.collect_interface_methods(interface_name, &mut methods, &mut visited);
+        methods.get(method_name).cloned()
     }
 
     fn lookup_class_method(
@@ -2268,7 +2386,10 @@ impl TypeChecker {
         self.normalize_inheritance_references();
         for (name, iface) in self.interfaces.clone() {
             for parent in iface.extends {
-                if !self.interfaces.contains_key(&parent) {
+                if !self
+                    .interfaces
+                    .contains_key(self.interface_base_name(&parent))
+                {
                     self.error(
                         format!(
                             "Interface '{}' extends unknown interface '{}'",
@@ -2363,6 +2484,8 @@ impl TypeChecker {
                     .unwrap_or_else(|| interface.name.clone());
                 self.interfaces.entry(key).or_insert_with(|| InterfaceInfo {
                     methods: HashMap::new(),
+                    generic_param_names: Vec::new(),
+                    generic_type_vars: Vec::new(),
                     extends: interface.extends.clone(),
                     span: span.clone(),
                 });
@@ -2556,18 +2679,35 @@ impl TypeChecker {
     }
 
     fn insert_interface_info(&mut self, interface: &InterfaceDecl, key: &str, span: Span) {
+        let interface_generic_bindings = self.make_generic_type_bindings(&interface.generic_params);
+        let interface_generic_type_vars: Vec<usize> = interface
+            .generic_params
+            .iter()
+            .filter_map(|p| match interface_generic_bindings.get(&p.name) {
+                Some(ResolvedType::TypeVar(id)) => Some(*id),
+                _ => None,
+            })
+            .collect();
         let mut methods = HashMap::new();
         for method in &interface.methods {
             let params: Vec<(String, ResolvedType)> = method
                 .params
                 .iter()
-                .map(|p| (p.name.clone(), self.resolve_type(&p.ty)))
+                .map(|p| {
+                    (
+                        p.name.clone(),
+                        self.resolve_type_with_bindings(&p.ty, &interface_generic_bindings),
+                    )
+                })
                 .collect();
             methods.insert(
                 method.name.clone(),
                 FuncSig {
                     params,
-                    return_type: self.resolve_type(&method.return_type),
+                    return_type: self.resolve_type_with_bindings(
+                        &method.return_type,
+                        &interface_generic_bindings,
+                    ),
                     generic_type_vars: Vec::new(),
                     is_variadic: false,
                     is_extern: false,
@@ -2583,6 +2723,12 @@ impl TypeChecker {
             key.to_string(),
             InterfaceInfo {
                 methods,
+                generic_param_names: interface
+                    .generic_params
+                    .iter()
+                    .map(|param| param.name.clone())
+                    .collect(),
+                generic_type_vars: interface_generic_type_vars,
                 extends: interface.extends.clone(),
                 span,
             },
@@ -3038,6 +3184,7 @@ impl TypeChecker {
             span.clone(),
             &format!("Interface '{}'", interface.name),
         );
+        let interface_generic_bindings = self.make_generic_type_bindings(&interface.generic_params);
         let interface_key = self
             .current_module_prefix
             .as_ref()
@@ -3046,6 +3193,7 @@ impl TypeChecker {
         self.validate_interface_inherited_method_conflicts(interface, &interface_key, span.clone());
         for method in &interface.methods {
             let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
+            self.current_generic_type_bindings = interface_generic_bindings.clone();
             for param in &method.params {
                 let ty = self.resolve_type(&param.ty);
                 self.validate_resolved_type_exists(&ty, span.clone());
@@ -3062,6 +3210,7 @@ impl TypeChecker {
                 continue;
             };
             let saved_generic_bindings = std::mem::take(&mut self.current_generic_type_bindings);
+            self.current_generic_type_bindings = interface_generic_bindings.clone();
             self.enter_scope();
             let saved_effects = std::mem::take(&mut self.current_effects);
             let saved_pure = self.current_is_pure;
@@ -3217,7 +3366,8 @@ impl TypeChecker {
             let resolved_parent = self
                 .resolve_nominal_reference_name(parent)
                 .unwrap_or_else(|| parent.clone());
-            if self.interfaces.contains_key(&resolved_parent) {
+            let resolved_parent_base = self.class_base_name(&resolved_parent);
+            if self.interfaces.contains_key(resolved_parent_base) {
                 self.error(
                     format!(
                         "Class '{}' cannot extend interface '{}'",
@@ -3226,7 +3376,7 @@ impl TypeChecker {
                     ),
                     span.clone(),
                 );
-            } else if !self.classes.contains_key(&resolved_parent) {
+            } else if !self.classes.contains_key(resolved_parent_base) {
                 self.error(
                     format!(
                         "Class '{}' extends unknown class '{}'",
@@ -3259,7 +3409,10 @@ impl TypeChecker {
             let resolved_interface = self
                 .resolve_nominal_reference_name(interface_name)
                 .unwrap_or_else(|| interface_name.clone());
-            if !self.interfaces.contains_key(&resolved_interface) {
+            if !self
+                .interfaces
+                .contains_key(self.interface_base_name(&resolved_interface))
+            {
                 self.error(
                     format!(
                         "Class '{}' implements unknown interface '{}'",
@@ -7559,8 +7712,8 @@ impl TypeChecker {
             },
             ResolvedType::Class(name) => {
                 let (base_name, class_substitutions) = self.instantiated_class_substitutions(name);
-                if let Some(interface) = self.interfaces.get(&base_name).cloned() {
-                    if let Some(sig) = interface.methods.get(method) {
+                if self.interfaces.contains_key(&base_name) {
+                    if let Some(sig) = self.lookup_interface_method(name, method) {
                         if !type_args.is_empty() {
                             self.error(
                                 format!(
@@ -7824,18 +7977,13 @@ impl TypeChecker {
             ResolvedType::Class(name) => {
                 let (base_name, class_substitutions) = self.instantiated_class_substitutions(name);
                 if self.interfaces.contains_key(&base_name) {
-                    if let Some(interface) = self.interfaces.get(&base_name) {
-                        if let Some(sig) = interface.methods.get(field) {
-                            let params = sig
-                                .params
-                                .iter()
-                                .map(|(_, ty)| ty.clone())
-                                .collect::<Vec<_>>();
-                            return ResolvedType::Function(
-                                params,
-                                Box::new(sig.return_type.clone()),
-                            );
-                        }
+                    if let Some(sig) = self.lookup_interface_method(name, field) {
+                        let params = sig
+                            .params
+                            .iter()
+                            .map(|(_, ty)| ty.clone())
+                            .collect::<Vec<_>>();
+                        return ResolvedType::Function(params, Box::new(sig.return_type.clone()));
                     }
                     self.error(
                         format!("Interfaces do not expose fields ('{}')", field),
@@ -9625,6 +9773,50 @@ mod tests {
             }
         "#;
         check_source(src).expect("explicit generic function value should typecheck");
+    }
+
+    #[test]
+    fn accepts_generic_interface_references_in_implements_clauses() {
+        let src = r#"
+            interface I<T> {
+                function get(): T;
+            }
+
+            class C implements I<String> {
+                function get(): String { return "ok"; }
+            }
+
+            function main(): None {
+                value: I<String> = C();
+                out: String = value.get();
+                return None;
+            }
+        "#;
+        check_source(src).expect("generic interface implements clause should typecheck");
+    }
+
+    #[test]
+    fn accepts_specialized_parent_interface_methods_via_child_interface() {
+        let src = r#"
+            interface Reader<T> {
+                function read(): T;
+            }
+
+            interface StringReader extends Reader<String> {}
+
+            class FileReader implements StringReader {
+                function read(): String { return "ok"; }
+            }
+
+            function main(): None {
+                reader: StringReader = FileReader();
+                value: String = reader.read();
+                f: () -> String = reader.read;
+                check: String = f();
+                return None;
+            }
+        "#;
+        check_source(src).expect("specialized parent interface methods should typecheck");
     }
 
     #[test]

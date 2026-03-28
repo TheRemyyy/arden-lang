@@ -9356,6 +9356,73 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_generic_interface_implements_runtime() {
+        let temp_root = make_temp_project_root("generic-interface-implements-runtime");
+        let source_path = temp_root.join("generic_interface_implements_runtime.apex");
+        let output_path = temp_root.join("generic_interface_implements_runtime");
+        let source = r#"
+            interface I<T> {
+                function get(): T;
+            }
+
+            class C implements I<String> {
+                function get(): String { return "ok"; }
+            }
+
+            function main(): Integer {
+                i: I<String> = C();
+                return if (i.get().length() == 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("generic interface implements clause should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled generic interface implements binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_specialized_parent_interface_method_runtime() {
+        let temp_root = make_temp_project_root("specialized-parent-interface-runtime");
+        let source_path = temp_root.join("specialized_parent_interface_runtime.apex");
+        let output_path = temp_root.join("specialized_parent_interface_runtime");
+        let source = r#"
+            interface Reader<T> {
+                function read(): T;
+            }
+
+            interface StringReader extends Reader<String> {}
+
+            class FileReader implements StringReader {
+                function read(): String { return "ok"; }
+            }
+
+            function main(): Integer {
+                reader: StringReader = FileReader();
+                f: () -> String = reader.read;
+                return if (reader.read().length() == 2 && f().length() == 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("specialized parent interface methods should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled specialized parent interface binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn alias_heavy_ultra_edge_tagged_container_method_chain_survives_frontend_backend() {
         let source = r#"
 import app.Option.Some as Present;
@@ -14110,6 +14177,40 @@ function main(): Integer {
             .status()
             .expect("run compiled imported nested generic function binary");
         assert_eq!(status.code(), Some(2));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_supports_specialized_parent_interface_methods() {
+        let temp_root = make_temp_project_root("specialized-parent-interface-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/lib.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("lib.apex"),
+            "package app;\ninterface Reader<T> { function read(): T; }\ninterface StringReader extends Reader<String> {}\nclass FileReader implements StringReader { function read(): String { return \"ok\"; } }\n",
+        )
+        .expect("write lib");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.StringReader;\nimport app.FileReader;\nfunction main(): Integer { reader: StringReader = FileReader(); f: () -> String = reader.read; return if (reader.read().length() == 2 && f().length() == 2) { 0 } else { 1 }; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support specialized parent interface methods");
+        });
+
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled specialized parent interface project binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }

@@ -39,6 +39,22 @@ interface Named extends Printable {
 }
 ```
 
+Generic interfaces can also be referenced directly in `implements` and `extends` clauses.
+
+```apex
+interface Reader<T> {
+    function read(): T;
+}
+
+interface StringReader extends Reader<String> {}
+
+class ConfigReader implements Reader<String> {
+    function read(): String {
+        return "ok";
+    }
+}
+```
+
 ## Polymorphism
 
 You can use interfaces as types.
