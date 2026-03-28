@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed bound method values on class instances:
   - `obj.method` now resolves to a first-class function value when `method` is a class method and no field with that name exists, instead of failing with `Unknown field 'method' on class ...`
   - generic bound methods now capture the concrete receiver and preserve specialized return types, so expressions like `getter: () -> String = box.get; getter().length()` compile and run
+- Fixed codegen-side interface method result inference:
+  - interface receiver chains with a single unambiguous implementation, such as `n.get().length()`, now infer the intermediate return type correctly instead of collapsing to unknown and crashing later in method dispatch
+  - ambiguous multi-implementation interface dispatch is still rejected by the backend until real dynamic dispatch exists
 - Fixed more builtin constructor layout bugs in backend codegen:
   - `Option<T>()` now lowers through the real normalized inner payload type during constructor codegen instead of always materializing an `Option<Integer>`-shaped value
   - `Result<T, E>()` now builds the correct typed `{ tag, ok, err }` layout for every `T`/`E` pair instead of hard-coding `i64`/pointer payload slots in the default constructor path

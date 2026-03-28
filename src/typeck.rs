@@ -10399,6 +10399,56 @@ mod tests {
     }
 
     #[test]
+    fn allows_interface_method_dispatch_during_typecheck() {
+        let src = r#"
+            interface Named {
+                function get(): String;
+            }
+
+            class Boxed implements Named {
+                value: String;
+                constructor(value: String) { this.value = value; }
+                function get(): String { return this.value; }
+            }
+
+            function main(): Integer {
+                n: Named = Boxed("abc");
+                return n.get().length();
+            }
+        "#;
+        check_source(src).expect("interface method dispatch should typecheck");
+    }
+
+    #[test]
+    fn rejects_interface_bound_method_values_during_typecheck() {
+        let src = r#"
+            interface Named {
+                function get(): String;
+            }
+
+            class Boxed implements Named {
+                value: String;
+                constructor(value: String) { this.value = value; }
+                function get(): String { return this.value; }
+            }
+
+            function main(): Integer {
+                n: Named = Boxed("abc");
+                getter: () -> String = n.get;
+                return getter().length();
+            }
+        "#;
+        let errors = check_source(src)
+            .expect_err("interface bound method values should fail during typecheck");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(joined.contains("Interfaces do not expose fields ('get')"));
+    }
+
+    #[test]
     fn accepts_forward_declared_generic_class_in_enum_payload_constructor() {
         let src = r#"
             enum Choice {

@@ -1853,6 +1853,23 @@ impl<'ctx> Codegen<'ctx> {
                         Some(ret_ty)
                     } else {
                         let class_name = self.type_to_class_name(&obj_ty)?;
+                        if !self.classes.contains_key(&class_name) {
+                            let suffix = format!("__{}", field);
+                            let mut candidates = self
+                                .functions
+                                .iter()
+                                .filter_map(|(name, (_, ty))| {
+                                    name.ends_with(&suffix).then_some(ty.clone())
+                                })
+                                .collect::<Vec<_>>();
+                            if candidates.len() == 1 {
+                                return match candidates.pop()? {
+                                    Type::Function(_, ret) => Some(*ret),
+                                    _ => None,
+                                };
+                            }
+                            return None;
+                        }
                         let generic_args = match &obj_ty {
                             Type::Generic(_, args) => Some(args.clone()),
                             _ => None,
@@ -2802,6 +2819,24 @@ impl<'ctx> Codegen<'ctx> {
                             let obj_ty = self.infer_expr_type(&object.node, params);
                             if let Some(ret_ty) = self.builtin_method_return_type(&obj_ty, field) {
                                 return ret_ty;
+                            }
+                            if let Some(class_name) = self.type_to_class_name(&obj_ty) {
+                                if !self.classes.contains_key(&class_name) {
+                                    let suffix = format!("__{}", field);
+                                    let mut candidates = self
+                                        .functions
+                                        .iter()
+                                        .filter_map(|(name, (_, ty))| {
+                                            name.ends_with(&suffix).then_some(ty.clone())
+                                        })
+                                        .collect::<Vec<_>>();
+                                    if candidates.len() == 1 {
+                                        if let Type::Function(_, ret_ty) = candidates.pop().unwrap()
+                                        {
+                                            return *ret_ty;
+                                        }
+                                    }
+                                }
                             }
                             let callee_ty = self.infer_expr_type(&callee.node, params);
                             if let Type::Function(_, ret_ty) = callee_ty {
