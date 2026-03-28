@@ -42,6 +42,9 @@ Type: `(ParamTypes) -> ReturnType`
 // Implicit return
 square: (Integer) -> Integer = (x: Integer) => x * x;
 
+// Zero-argument shorthand
+answer: () -> Integer = || 42;
+
 // Explicit block
 complex: (Integer) -> Integer = (x: Integer) => {
     y: Integer = x * 2;

@@ -12757,10 +12757,36 @@ impl<'ctx> Codegen<'ctx> {
                 ))
             })?;
 
-        let class_info = self
-            .classes
-            .get(&class_name)
-            .ok_or_else(|| CodegenError::new(format!("Unknown class: {}", class_name)))?;
+        let class_info = self.classes.get(&class_name);
+        if class_info.is_none() {
+            let suffix = format!("__{}", field);
+            let mut candidates = self
+                .functions
+                .iter()
+                .filter_map(|(name, (_, ty))| {
+                    name.ends_with(&suffix)
+                        .then_some((name.clone(), ty.clone()))
+                })
+                .collect::<Vec<_>>();
+            if candidates.len() == 1 {
+                let (method_name, func_ty) = candidates.pop().unwrap();
+                return self.compile_bound_method_value(
+                    object,
+                    obj_ty.as_ref(),
+                    &method_name,
+                    &func_ty,
+                );
+            }
+            if candidates.is_empty() {
+                return Err(CodegenError::new(format!("Unknown class: {}", class_name)));
+            }
+            return Err(CodegenError::new(format!(
+                "Ambiguous interface dispatch for method '{}': {} candidates",
+                field,
+                candidates.len()
+            )));
+        }
+        let class_info = class_info.unwrap();
 
         let Some(field_idx) = class_info.field_indices.get(field).copied() else {
             if let Some(method_name) = self.resolve_method_function_name(&class_name, field) {

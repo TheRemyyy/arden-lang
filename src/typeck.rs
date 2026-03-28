@@ -7660,6 +7660,19 @@ impl TypeChecker {
             ResolvedType::Class(name) => {
                 let (base_name, class_substitutions) = self.instantiated_class_substitutions(name);
                 if self.interfaces.contains_key(&base_name) {
+                    if let Some(interface) = self.interfaces.get(&base_name) {
+                        if let Some(sig) = interface.methods.get(field) {
+                            let params = sig
+                                .params
+                                .iter()
+                                .map(|(_, ty)| ty.clone())
+                                .collect::<Vec<_>>();
+                            return ResolvedType::Function(
+                                params,
+                                Box::new(sig.return_type.clone()),
+                            );
+                        }
+                    }
                     self.error(
                         format!("Interfaces do not expose fields ('{}')", field),
                         span,
@@ -10420,7 +10433,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_interface_bound_method_values_during_typecheck() {
+    fn allows_interface_bound_method_values_during_typecheck() {
         let src = r#"
             interface Named {
                 function get(): String;
@@ -10438,14 +10451,7 @@ mod tests {
                 return getter().length();
             }
         "#;
-        let errors = check_source(src)
-            .expect_err("interface bound method values should fail during typecheck");
-        let joined = errors
-            .iter()
-            .map(|e| e.message.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(joined.contains("Interfaces do not expose fields ('get')"));
+        check_source(src).expect("interface bound method values should typecheck");
     }
 
     #[test]

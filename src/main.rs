@@ -9311,6 +9311,41 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_unique_interface_bound_method_value_runtime() {
+        let temp_root = make_temp_project_root("interface-bound-method-value-runtime");
+        let source_path = temp_root.join("interface_bound_method_value_runtime.apex");
+        let output_path = temp_root.join("interface_bound_method_value_runtime");
+        let source = r#"
+            interface Named {
+                function get(): String;
+            }
+
+            class Boxed implements Named {
+                value: String;
+                constructor(value: String) { this.value = value; }
+                function get(): String { return this.value; }
+            }
+
+            function main(): Integer {
+                n: Named = Boxed("abc");
+                f: () -> String = n.get;
+                return if (f().length() == 3) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("single-implementation interface bound method value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled interface bound method value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn alias_heavy_ultra_edge_tagged_container_method_chain_survives_frontend_backend() {
         let source = r#"
 import app.Option.Some as Present;
@@ -25762,6 +25797,63 @@ function main(): Integer {
         compile_source(source, &source_path, &output_path, true, true, None, None)
             .expect("generic method returning lambda should codegen");
         assert!(output_path.with_extension("ll").exists());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_zero_arg_pipe_lambda_runtime() {
+        let temp_root = make_temp_project_root("zero-arg-pipe-lambda-runtime");
+        let source_path = temp_root.join("zero_arg_pipe_lambda_runtime.apex");
+        let output_path = temp_root.join("zero_arg_pipe_lambda_runtime");
+        let source = r#"
+            function make(): () -> Integer { return || 7; }
+
+            function main(): Integer {
+                f: () -> Integer = make();
+                return if (f() == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("zero-arg pipe lambda should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled zero-arg pipe lambda binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_generic_method_returning_zero_arg_pipe_lambda_runtime() {
+        let temp_root = make_temp_project_root("generic-method-zero-arg-pipe-lambda-runtime");
+        let source_path = temp_root.join("generic_method_zero_arg_pipe_lambda_runtime.apex");
+        let output_path = temp_root.join("generic_method_zero_arg_pipe_lambda_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+                function lift(): () -> T { return || this.value; }
+            }
+
+            function main(): Integer {
+                b: Box<String> = Box<String>("ok");
+                f: () -> () -> String = b.lift;
+                return if (f()().length() == 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("generic method returning zero-arg pipe lambda should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled generic method zero-arg pipe lambda binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }

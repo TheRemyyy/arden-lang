@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed parser support for zero-argument pipe lambdas:
+  - `|| expr` now parses as a zero-argument lambda expression in prefix position instead of falling through to the binary-operator parser and failing with `Expected expression, found Some(Or)`
+  - zero-arg closures now compile and run through generic method returns and bound method values, so patterns like `function make(): () -> Integer { return || 7; }` and `b.lift` with `return || this.value` work end-to-end
 - Fixed order-dependent generic class resolution in the typechecker:
   - forward-declared nominal generic classes inside enum payloads no longer get misresolved as builtin wrappers like `Box<T>` during declaration collection
   - enum constructors, match-expression arm joins, and downstream method chains now accept matching forward-declared generic class payloads instead of emitting bogus diagnostics like `expected Box<String>, got Box<String>`
@@ -20,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed codegen-side interface method result inference:
   - interface receiver chains with a single unambiguous implementation, such as `n.get().length()`, now infer the intermediate return type correctly instead of collapsing to unknown and crashing later in method dispatch
   - ambiguous multi-implementation interface dispatch is still rejected by the backend until real dynamic dispatch exists
+- Fixed unique interface bound method values:
+  - expressions like `f: () -> String = n.get` now typecheck and compile when the interface method has a single unambiguous implementation in the current program
+  - ambiguous interface bound method values still fail explicitly at codegen time instead of silently picking an implementation
 - Fixed more builtin constructor layout bugs in backend codegen:
   - `Option<T>()` now lowers through the real normalized inner payload type during constructor codegen instead of always materializing an `Option<Integer>`-shaped value
   - `Result<T, E>()` now builds the correct typed `{ tag, ok, err }` layout for every `T`/`E` pair instead of hard-coding `i64`/pointer payload slots in the default constructor path

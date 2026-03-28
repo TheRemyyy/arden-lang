@@ -2444,6 +2444,15 @@ impl<'src> Parser<'src> {
                     self.current_span(),
                 ));
             }
+            Some(Token::Or) => {
+                // Zero-arg lambda: || body
+                self.advance();
+                let body = self.parse_expr()?;
+                Expr::Lambda {
+                    params: Vec::new(),
+                    body: Box::new(body),
+                }
+            }
             Some(Token::Pipe) => {
                 // Lambda: |args| body
                 self.advance();
@@ -4835,6 +4844,18 @@ mod tests {
             "{}",
             err.message
         );
+    }
+
+    #[test]
+    fn test_parse_zero_arg_pipe_lambda() {
+        let source = r#"
+            function main(): None {
+                f: () -> Integer = || 1;
+                return None;
+            }
+        "#;
+
+        parse_source(source).expect("zero-arg pipe lambda should parse");
     }
 
     #[test]
