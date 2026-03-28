@@ -12316,6 +12316,54 @@ impl<'ctx> Codegen<'ctx> {
                         .build_store(typed, self.context.i8_type().const_int(0, false))
                         .unwrap();
                     ptr
+                } else if matches!(inner, Type::String) {
+                    let string_raw = self
+                        .builder
+                        .build_call(
+                            malloc,
+                            &[self.context.i64_type().const_int(1, false).into()],
+                            "task_cancel_string_alloc",
+                        )
+                        .unwrap();
+                    let string_ptr = self.extract_call_pointer_value(
+                        string_raw,
+                        "malloc failed while creating canceled task string value",
+                    )?;
+                    self.builder
+                        .build_store(string_ptr, self.context.i8_type().const_zero())
+                        .unwrap();
+
+                    let slot_raw = self
+                        .builder
+                        .build_call(
+                            malloc,
+                            &[self
+                                .context
+                                .i64_type()
+                                .const_int(
+                                    self.storage_size_of_llvm_type(self.llvm_type(inner)),
+                                    false,
+                                )
+                                .into()],
+                            "task_cancel_string_slot_alloc",
+                        )
+                        .unwrap();
+                    let slot_ptr = self.extract_call_pointer_value(
+                        slot_raw,
+                        "malloc failed while creating canceled task string slot",
+                    )?;
+                    let typed_slot_ptr = self
+                        .builder
+                        .build_pointer_cast(
+                            slot_ptr,
+                            self.context.ptr_type(AddressSpace::default()),
+                            "task_cancel_string_slot_ptr",
+                        )
+                        .unwrap();
+                    self.builder
+                        .build_store(typed_slot_ptr, string_ptr)
+                        .unwrap();
+                    slot_ptr
                 } else {
                     let llvm_inner = self.llvm_type(inner);
                     let size = llvm_inner
@@ -13817,7 +13865,6 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         let idx = self.compile_expr(index)?.into_int_value();
-        let list_ty = object_ty.clone();
 
         if matches!(deref_object_ty, Some(Type::String)) {
             if let Expr::Literal(Literal::String(text)) = object {
@@ -14007,9 +14054,9 @@ impl<'ctx> Codegen<'ctx> {
                         )
                         .unwrap()
                         .into_pointer_value();
-                    let elem_ty = match list_ty {
+                    let elem_ty = match &deref_object_ty {
                         Some(list_ty @ Type::List(_)) => {
-                            self.list_element_layout_from_list_type(&list_ty).0
+                            self.list_element_layout_from_list_type(list_ty).0
                         }
                         _ => self.list_element_layout_default().0,
                     };
@@ -14109,27 +14156,25 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap_or_else(|| Type::Named(ty.to_string()));
 
         match &normalized_ty {
-            Type::List(inner) => {
-                let list_ty = matches!(inner.as_ref(), Type::Boolean)
-                    .then(|| Type::List(Box::new(Type::Boolean)));
+            Type::List(_) => {
                 if args.len() == 1 {
                     if let Expr::Literal(Literal::Integer(size)) = &args[0].node {
                         if *size > 0 {
-                            return self.create_fixed_list(*size as u64, list_ty.as_ref());
+                            return self.create_fixed_list(*size as u64, Some(&normalized_ty));
                         }
                     }
                 }
-                return self.create_empty_list(list_ty.as_ref());
+                return self.create_empty_list(Some(&normalized_ty));
             }
             Type::Map(_, _) => {
                 return self.create_empty_map_for_type(&normalized_ty);
             }
-            Type::Option(_) => return self.create_option_none(),
-            Type::Result(_, _) => return self.create_default_result(),
+            Type::Option(inner) => return self.create_option_none_typed(inner),
+            Type::Result(ok, err) => return self.create_default_result_typed(ok, err),
             Type::Set(_) => return self.create_empty_set_for_type(&normalized_ty),
-            Type::Box(_) => return self.create_empty_box(),
-            Type::Rc(_) => return self.create_empty_rc(),
-            Type::Arc(_) => return self.create_empty_arc(),
+            Type::Box(_) => return self.create_empty_box_typed(&normalized_ty),
+            Type::Rc(_) => return self.create_empty_rc_typed(&normalized_ty),
+            Type::Arc(_) => return self.create_empty_arc_typed(&normalized_ty),
             _ => {}
         }
 

@@ -1911,7 +1911,10 @@ impl<'ctx> Codegen<'ctx> {
                     None
                 }
             }
-            Expr::Block(block) | Expr::AsyncBlock(block) => self.infer_block_tail_type(block),
+            Expr::Block(block) => self.infer_block_tail_type(block),
+            Expr::AsyncBlock(block) => Some(Type::Task(Box::new(
+                self.infer_block_tail_type(block).unwrap_or(Type::None),
+            ))),
             Expr::Index { object, .. } => {
                 match self.deref_codegen_type(&self.infer_object_type(&object.node)?) {
                     Type::List(inner) => Some((**inner).clone()),
@@ -2715,12 +2718,14 @@ impl<'ctx> Codegen<'ctx> {
                 Type::Integer
             }
             Expr::Construct { ty, .. } => parse_type_source(ty).unwrap_or(Type::Integer),
-            Expr::Index { object, .. } => match self.infer_expr_type(&object.node, params) {
-                Type::List(inner) => *inner,
-                Type::Map(_, value) => *value,
-                Type::String => Type::Char,
-                _ => Type::Integer,
-            },
+            Expr::Index { object, .. } => {
+                match self.deref_codegen_type(&self.infer_expr_type(&object.node, params)) {
+                    Type::List(inner) => (**inner).clone(),
+                    Type::Map(_, value) => (**value).clone(),
+                    Type::String => Type::Char,
+                    _ => Type::Integer,
+                }
+            }
             Expr::Lambda { params, body } => {
                 let ret_ty = self.infer_expr_type(&body.node, params);
                 Type::Function(
@@ -2751,7 +2756,7 @@ impl<'ctx> Codegen<'ctx> {
                 Type::MutRef(Box::new(self.infer_expr_type(&inner.node, params)))
             }
             Expr::Deref(inner) => match self.infer_expr_type(&inner.node, params) {
-                Type::Ref(inner) | Type::MutRef(inner) => *inner,
+                Type::Ref(inner) | Type::MutRef(inner) | Type::Ptr(inner) => *inner,
                 _ => Type::Integer,
             },
             Expr::StringInterp(_) => Type::String,

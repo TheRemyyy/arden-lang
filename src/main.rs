@@ -16994,6 +16994,66 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_canceled_task_string_length_runtime() {
+        let temp_root = make_temp_project_root("canceled-task-string-length-runtime");
+        let source_path = temp_root.join("canceled_task_string_length_runtime.apex");
+        let output_path = temp_root.join("canceled_task_string_length_runtime");
+        let source = r#"
+            function work(): Task<String> {
+                return async { "hi" };
+            }
+
+            function main(): Integer {
+                mut t: Task<String> = work();
+                t.cancel();
+                s: String = await(t);
+                return s.length();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task string length should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task string length binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_canceled_task_string_equality_runtime() {
+        let temp_root = make_temp_project_root("canceled-task-string-equality-runtime");
+        let source_path = temp_root.join("canceled_task_string_equality_runtime.apex");
+        let output_path = temp_root.join("canceled_task_string_equality_runtime");
+        let source = r#"
+            function work(): Task<String> {
+                return async { "hi" };
+            }
+
+            function main(): Integer {
+                mut t: Task<String> = work();
+                t.cancel();
+                s: String = await(t);
+                return if (s == "") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("canceled task string equality should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled canceled task string equality binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_borrowed_field_reference_runtime() {
         let temp_root = make_temp_project_root("borrowed-field-reference-runtime");
         let source_path = temp_root.join("borrowed_field_reference_runtime.apex");
@@ -17058,6 +17118,60 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled mutable borrowed field reference binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_float_list_index_arithmetic_runtime() {
+        let temp_root = make_temp_project_root("borrowed-float-list-index-arithmetic-runtime");
+        let source_path = temp_root.join("borrowed_float_list_index_arithmetic_runtime.apex");
+        let output_path = temp_root.join("borrowed_float_list_index_arithmetic_runtime");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Float> = List<Float>();
+                xs.push(1.5);
+                rxs: &List<Float> = &xs;
+                sum: Float = rxs[0] + 1.25;
+                return if (sum == 2.75) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed float list index arithmetic should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed float list arithmetic binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_borrowed_float_list_index_interpolation_runtime() {
+        let temp_root = make_temp_project_root("borrowed-float-list-index-interp-runtime");
+        let source_path = temp_root.join("borrowed_float_list_index_interp_runtime.apex");
+        let output_path = temp_root.join("borrowed_float_list_index_interp_runtime");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Float> = List<Float>();
+                xs.push(1.5);
+                rxs: &List<Float> = &xs;
+                text: String = "{rxs[0]}";
+                return if (text == "1.500000") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("borrowed float list index interpolation should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled borrowed float list interpolation binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
@@ -23702,6 +23816,227 @@ function main(): Integer {
             .status()
             .expect("run compiled list equality binary");
         assert_eq!(status.code(), Some(34));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_fixed_length_list_constructor_with_zero_initialized_elements() {
+        let temp_root = make_temp_project_root("fixed-list-zero-init-runtime");
+        let source_path = temp_root.join("fixed_list_zero_init_runtime.apex");
+        let output_path = temp_root.join("fixed_list_zero_init_runtime");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Integer> = List<Integer>(3);
+                if (xs.length() == 3 && xs.get(0) == 0 && xs.get(2) == 0) {
+                    return 80;
+                }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fixed-length integer list constructor should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled fixed-length integer list binary");
+        assert_eq!(status.code(), Some(80));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_fixed_length_option_list_constructor_with_typed_layout() {
+        let temp_root = make_temp_project_root("fixed-option-list-runtime");
+        let source_path = temp_root.join("fixed_option_list_runtime.apex");
+        let output_path = temp_root.join("fixed_option_list_runtime");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Option<Integer>> = List<Option<Integer>>(2);
+                if (xs.length() == 2 && xs.get(0).is_none() && xs.get(1).is_none()) {
+                    return 81;
+                }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("fixed-length option list constructor should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled fixed-length option list binary");
+        assert_eq!(status.code(), Some(81));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_typed_option_constructor_through_function_return() {
+        let temp_root = make_temp_project_root("typed-option-constructor-runtime");
+        let source_path = temp_root.join("typed_option_constructor_runtime.apex");
+        let output_path = temp_root.join("typed_option_constructor_runtime");
+        let source = r#"
+            function build(): Option<List<Option<Integer>>> {
+                return Option<List<Option<Integer>>>();
+            }
+
+            function main(): Integer {
+                value: Option<List<Option<Integer>>> = build();
+                if (value.is_none()) {
+                    return 82;
+                }
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("typed option constructor return should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled typed option constructor binary");
+        assert_eq!(status.code(), Some(82));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_typed_result_constructor_through_function_return() {
+        let temp_root = make_temp_project_root("typed-result-constructor-runtime");
+        let source_path = temp_root.join("typed_result_constructor_runtime.apex");
+        let output_path = temp_root.join("typed_result_constructor_runtime");
+        let source = r#"
+            function build(): Result<List<Option<Integer>>, String> {
+                return Result<List<Option<Integer>>, String>();
+            }
+
+            function main(): Integer {
+                result: Result<List<Option<Integer>>, String> = build();
+                return match (result) {
+                    Result.Ok(xs) => xs.length(),
+                    Result.Error(err) => 83,
+                };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("typed result constructor return should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled typed result constructor binary");
+        assert_eq!(status.code(), Some(83));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_uses_typed_heap_sizes_for_builtin_smart_pointer_constructors() {
+        let temp_root = make_temp_project_root("typed-smart-pointer-ir");
+        let source_path = temp_root.join("typed_smart_pointer_ir.apex");
+        let output_path = temp_root.join("typed_smart_pointer_ir");
+        let source = r#"
+            function main(): None {
+                box_value: Box<List<Option<Integer>>> = Box<List<Option<Integer>>>();
+                rc_value: Rc<List<Option<Integer>>> = Rc<List<Option<Integer>>>();
+                arc_value: Arc<List<Option<Integer>>> = Arc<List<Option<Integer>>>();
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, true, true, None, None)
+            .expect("typed smart pointer constructors should codegen");
+
+        let ir_path = output_path.with_extension("ll");
+        let ir = fs::read_to_string(&ir_path).expect("read generated llvm ir");
+        let malloc_24_count = ir.matches("call ptr @malloc(i64 24)").count();
+        assert!(
+            malloc_24_count >= 3,
+            "expected Box/Rc/Arc constructors to allocate 24-byte List<Option<Integer>> payloads, found {malloc_24_count} matching malloc calls in {}",
+            ir_path.display()
+        );
+        assert!(
+            !ir.contains("call ptr @malloc(i64 8)"),
+            "builtin smart pointer constructors should not use hard-coded 8-byte payload allocations"
+        );
+        assert!(
+            !ir.contains("call ptr @malloc(i64 16)"),
+            "builtin smart pointer constructors should not use hard-coded 16-byte payload allocations"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_supports_raw_ptr_deref_with_float_payloads() {
+        let temp_root = make_temp_project_root("ptr-float-deref-codegen");
+        let source_path = temp_root.join("ptr_float_deref_codegen.apex");
+        let output_path = temp_root.join("ptr_float_deref_codegen");
+        let source = r#"
+            function load(slot: Ptr<Float>): Float {
+                return *slot;
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, true, true, None, None)
+            .expect("raw Ptr<Float> deref should codegen");
+        assert!(output_path.with_extension("ll").exists());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_async_block_await_timeout_method_chain() {
+        let temp_root = make_temp_project_root("async-block-await-timeout-runtime");
+        let source_path = temp_root.join("async_block_await_timeout_runtime.apex");
+        let output_path = temp_root.join("async_block_await_timeout_runtime");
+        let source = r#"
+            function main(): Integer {
+                value: Option<Integer> = (async { 7 }).await_timeout(100);
+                return if (value.unwrap() == 7) { 84 } else { 0 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("async block await_timeout chain should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled async block await_timeout binary");
+        assert_eq!(status.code(), Some(84));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_supports_async_block_is_done_method_chain() {
+        let temp_root = make_temp_project_root("async-block-is-done-codegen");
+        let source_path = temp_root.join("async_block_is_done_codegen.apex");
+        let output_path = temp_root.join("async_block_is_done_codegen");
+        let source = r#"
+            function main(): None {
+                done: Boolean = (async { 1 }).is_done();
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, true, true, None, None)
+            .expect("async block is_done chain should codegen");
+        assert!(output_path.with_extension("ll").exists());
 
         let _ = fs::remove_dir_all(temp_root);
     }

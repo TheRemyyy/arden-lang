@@ -15,6 +15,86 @@ use crate::codegen::core::{Codegen, CodegenError, Result};
 static CODEGEN_TARGET_DATA_LAYOUT: OnceLock<Option<String>> = OnceLock::new();
 
 impl<'ctx> Codegen<'ctx> {
+    fn zero_initialize_allocated_bytes(
+        &mut self,
+        buffer_ptr: PointerValue<'ctx>,
+        byte_len: u64,
+        context_name: &str,
+    ) -> Result<()> {
+        if byte_len == 0 {
+            return Ok(());
+        }
+
+        let current_fn = self
+            .current_function
+            .ok_or_else(|| CodegenError::new(format!("{context_name} used outside function")))?;
+        let i64_type = self.context.i64_type();
+        let i8_type = self.context.i8_type();
+        let index_ptr = self
+            .builder
+            .build_alloca(i64_type, "zero_init_idx")
+            .map_err(|_| CodegenError::new("failed to allocate zero-init index"))?;
+        self.builder
+            .build_store(index_ptr, i64_type.const_zero())
+            .map_err(|_| CodegenError::new("failed to initialize zero-init index"))?;
+
+        let cond_bb = self
+            .context
+            .append_basic_block(current_fn, "zero_init_cond");
+        let body_bb = self
+            .context
+            .append_basic_block(current_fn, "zero_init_body");
+        let done_bb = self
+            .context
+            .append_basic_block(current_fn, "zero_init_done");
+
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|_| CodegenError::new("failed to branch into zero-init loop"))?;
+
+        self.builder.position_at_end(cond_bb);
+        let index = self
+            .builder
+            .build_load(i64_type, index_ptr, "zero_init_index")
+            .map_err(|_| CodegenError::new("failed to load zero-init index"))?
+            .into_int_value();
+        let keep_zeroing = self
+            .builder
+            .build_int_compare(
+                IntPredicate::ULT,
+                index,
+                i64_type.const_int(byte_len, false),
+                "zero_init_continue",
+            )
+            .map_err(|_| CodegenError::new("failed to compare zero-init index"))?;
+        self.builder
+            .build_conditional_branch(keep_zeroing, body_bb, done_bb)
+            .map_err(|_| CodegenError::new("failed to branch inside zero-init loop"))?;
+
+        self.builder.position_at_end(body_bb);
+        let byte_ptr = unsafe {
+            self.builder
+                .build_gep(i8_type, buffer_ptr, &[index], "zero_init_byte_ptr")
+                .map_err(|_| CodegenError::new("failed to compute zero-init byte pointer"))?
+        };
+        self.builder
+            .build_store(byte_ptr, i8_type.const_zero())
+            .map_err(|_| CodegenError::new("failed to store zero-init byte"))?;
+        let next_index = self
+            .builder
+            .build_int_add(index, i64_type.const_int(1, false), "zero_init_next")
+            .map_err(|_| CodegenError::new("failed to increment zero-init index"))?;
+        self.builder
+            .build_store(index_ptr, next_index)
+            .map_err(|_| CodegenError::new("failed to store zero-init index"))?;
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|_| CodegenError::new("failed to continue zero-init loop"))?;
+
+        self.builder.position_at_end(done_bb);
+        Ok(())
+    }
+
     fn init_codegen_target_data_layout() -> Option<String> {
         Target::initialize_native(&InitializationConfig::default()).ok()?;
         let triple = TargetMachine::get_default_triple();
@@ -1871,16 +1951,21 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn create_default_result(&mut self) -> Result<BasicValueEnum<'ctx>> {
+        self.create_default_result_typed(&Type::Integer, &Type::String)
+    }
+
+    pub fn create_default_result_typed(
+        &mut self,
+        ok_ty: &Type,
+        err_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
         // Result is struct { is_ok: i8, ok_value: i64, err_value: ptr }
         // We default to Error (tag=0) with null pointer
-        let result_type = self.context.struct_type(
-            &[
-                self.context.i8_type().into(),
-                self.context.i64_type().into(), // default ok type
-                self.context.ptr_type(AddressSpace::default()).into(),
-            ],
-            false,
-        );
+        let ok_llvm = self.llvm_type(ok_ty);
+        let err_llvm = self.llvm_type(err_ty);
+        let result_type = self
+            .context
+            .struct_type(&[self.context.i8_type().into(), ok_llvm, err_llvm], false);
 
         let alloca = self
             .builder
@@ -1916,7 +2001,7 @@ impl<'ctx> Codegen<'ctx> {
                 .unwrap()
         };
         self.builder
-            .build_store(ok_ptr, self.context.i64_type().const_int(0, false))
+            .build_store(ok_ptr, ok_llvm.const_zero())
             .unwrap();
 
         // Set err_value to null
@@ -1930,8 +2015,9 @@ impl<'ctx> Codegen<'ctx> {
                 )
                 .unwrap()
         };
-        let null = self.context.ptr_type(AddressSpace::default()).const_null();
-        self.builder.build_store(err_ptr, null).unwrap();
+        self.builder
+            .build_store(err_ptr, err_llvm.const_zero())
+            .unwrap();
 
         Ok(self
             .builder
@@ -1994,32 +2080,29 @@ impl<'ctx> Codegen<'ctx> {
                 .unwrap()
         };
         self.builder
-            .build_store(length_ptr, self.context.i64_type().const_int(0, false))
+            .build_store(length_ptr, self.context.i64_type().const_int(size, false))
             .unwrap();
 
-        let arr_ty = elem_llvm_ty.array_type(size as u32);
-        let data_alloca = self
+        let malloc = self.get_or_declare_malloc();
+        let elem_size = self.storage_size_of_llvm_type(elem_llvm_ty);
+        let total_size = size.saturating_mul(elem_size);
+        let data_call = self
             .builder
-            .build_alloca(arr_ty, "list_fixed_data")
-            .unwrap();
-        let data_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    arr_ty.as_basic_type_enum(),
-                    data_alloca,
-                    &[zero, zero],
-                    "list_fixed_data_ptr",
-                )
-                .unwrap()
-        };
-        let data_i8_ptr = self
-            .builder
-            .build_pointer_cast(
-                data_ptr,
-                self.context.ptr_type(AddressSpace::default()),
-                "list_fixed_data_i8",
+            .build_call(
+                malloc,
+                &[self.context.i64_type().const_int(total_size, false).into()],
+                "list_fixed_data",
             )
             .unwrap();
+        let data_i8_ptr = self.extract_call_pointer_value(
+            data_call,
+            "malloc did not produce a pointer while allocating fixed list storage",
+        )?;
+        self.zero_initialize_allocated_bytes(
+            data_i8_ptr,
+            total_size,
+            "fixed list zero initialization",
+        )?;
         let data_ptr_field = unsafe {
             self.builder
                 .build_gep(
@@ -2449,43 +2532,68 @@ impl<'ctx> Codegen<'ctx> {
         Ok(self.builder.build_load(set_type, alloca, "set").unwrap())
     }
 
-    pub fn create_empty_box(&mut self) -> Result<BasicValueEnum<'ctx>> {
+    fn create_zero_initialized_heap_value(
+        &mut self,
+        value_ty: &Type,
+        allocation_name: &str,
+        context_name: &str,
+    ) -> Result<BasicValueEnum<'ctx>> {
         let malloc = self.get_or_declare_malloc();
-        let size = self.context.i64_type().const_int(8, false);
+        let llvm_ty = self.llvm_type(value_ty);
+        let size = self
+            .context
+            .i64_type()
+            .const_int(self.storage_size_of_llvm_type(llvm_ty), false);
         let call_result = self
             .builder
-            .build_call(malloc, &[size.into()], "box")
+            .build_call(malloc, &[size.into()], allocation_name)
             .unwrap();
-        self.extract_call_value_with_context(
+        let ptr = self.extract_call_pointer_value(
             call_result,
-            "malloc did not produce a value while allocating Box storage",
-        )
+            &format!("malloc did not produce a pointer while allocating {context_name} storage"),
+        )?;
+        self.zero_initialize_allocated_bytes(
+            ptr,
+            size.get_zero_extended_constant().unwrap_or(0),
+            context_name,
+        )?;
+        Ok(ptr.into())
+    }
+
+    pub fn create_empty_box(&mut self) -> Result<BasicValueEnum<'ctx>> {
+        self.create_empty_box_typed(&Type::Integer)
+    }
+
+    pub fn create_empty_box_typed(&mut self, box_ty: &Type) -> Result<BasicValueEnum<'ctx>> {
+        let inner_ty = match self.deref_codegen_type(box_ty) {
+            Type::Box(inner) => inner.as_ref(),
+            _ => &Type::Integer,
+        };
+        self.create_zero_initialized_heap_value(inner_ty, "box", "Box")
     }
 
     pub fn create_empty_rc(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        let malloc = self.get_or_declare_malloc();
-        let size = self.context.i64_type().const_int(16, false); // refcount + data
-        let call_result = self
-            .builder
-            .build_call(malloc, &[size.into()], "rc")
-            .unwrap();
-        self.extract_call_value_with_context(
-            call_result,
-            "malloc did not produce a value while allocating Rc storage",
-        )
+        self.create_empty_rc_typed(&Type::Integer)
+    }
+
+    pub fn create_empty_rc_typed(&mut self, rc_ty: &Type) -> Result<BasicValueEnum<'ctx>> {
+        let inner_ty = match self.deref_codegen_type(rc_ty) {
+            Type::Rc(inner) => inner.as_ref(),
+            _ => &Type::Integer,
+        };
+        self.create_zero_initialized_heap_value(inner_ty, "rc", "Rc")
     }
 
     pub fn create_empty_arc(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        let malloc = self.get_or_declare_malloc();
-        let size = self.context.i64_type().const_int(16, false); // atomic refcount + data
-        let call_result = self
-            .builder
-            .build_call(malloc, &[size.into()], "arc")
-            .unwrap();
-        self.extract_call_value_with_context(
-            call_result,
-            "malloc did not produce a value while allocating Arc storage",
-        )
+        self.create_empty_arc_typed(&Type::Integer)
+    }
+
+    pub fn create_empty_arc_typed(&mut self, arc_ty: &Type) -> Result<BasicValueEnum<'ctx>> {
+        let inner_ty = match self.deref_codegen_type(arc_ty) {
+            Type::Arc(inner) => inner.as_ref(),
+            _ => &Type::Integer,
+        };
+        self.create_zero_initialized_heap_value(inner_ty, "arc", "Arc")
     }
 
     pub fn compile_list_method(

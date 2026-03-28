@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed more builtin constructor layout bugs in backend codegen:
+  - `Option<T>()` now lowers through the real normalized inner payload type during constructor codegen instead of always materializing an `Option<Integer>`-shaped value
+  - `Result<T, E>()` now builds the correct typed `{ tag, ok, err }` layout for every `T`/`E` pair instead of hard-coding `i64`/pointer payload slots in the default constructor path
+  - builtin `Box<T>()`, `Rc<T>()`, and `Arc<T>()` constructors now size heap allocations from the real normalized payload type and zero-initialize that storage, instead of always allocating fixed 8/16-byte buffers with stale assumptions about hidden refcount layout
+- Fixed raw-pointer dereference typing drift between the typechecker and backend:
+  - `*ptr` now typechecks for `Ptr<T>` the same way it already did for `&T` / `&mut T`, instead of incorrectly rejecting every raw-pointer dereference as “non-reference”
+  - expression inference for dereference now preserves the real `Ptr<T>` payload type instead of falling back to `Integer`, so signatures like `function load(slot: Ptr<Float>): Float { return *slot; }` lower with the correct result type
+- Fixed async-block receiver inference for backend method chains:
+  - object-type inference now keeps `async { ... }` as `Task<T>` instead of collapsing it to the block tail type, so chained calls like `(async { 7 }).await_timeout(100)` and `(async { 1 }).is_done()` lower through the task builtin path instead of failing method resolution/codegen
+- Fixed borrowed collection index inference in backend expression typing:
+  - indexing through `&List<T>` / `&Map<K, V>` / borrowed strings no longer falls back to `Integer` in codegen-side expression inference
+  - borrowed `List<Float>` index values now keep their real `Float` type through arithmetic and string interpolation instead of being lowered as integers, fixing wrong runtime results for expressions like `rxs[0] + 1.25` and `"{rxs[0]}"`
+- Fixed canceled `Task<String>` default payload handling:
+  - `Task.cancel()` no longer stores a null string pointer as the synthetic awaited result for canceled string tasks
+  - awaiting a canceled `Task<String>` now yields a real empty string buffer, so string operations like `.length()` and `== ""` stay safe instead of crashing or producing inconsistent results
 - Fixed the last shared call-result crash path in backend codegen:
   - the common `extract_call_value(...)` helper now returns a normal `CodegenError` instead of assuming every lowered call always produces a value
   - string helpers, math builtins, filesystem/process builtins, UTF-8 utilities, assertion lowering, and function-adapter returns now all propagate that failure path instead of panicking or mis-typing intermediate LLVM values
@@ -24,6 +39,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - target-machine cache population in backend output generation now propagates `create_target_machine(...)` failures as normal string errors instead of panicking the compiler when cache insertion fails
   - codegen-side storage sizing no longer panics if native LLVM target initialization or host target-machine creation fails while computing ABI sizes
   - when native LLVM target data cannot be initialized for sizing, collection/container layout helpers now fall back to conservative type-size estimation instead of crashing the compiler process
+- Fixed built-in `List<T>` constructor layout/runtime bugs:
+  - `List<T>(n)` no longer stores its backing array on the stack; fixed-length list constructors now allocate heap storage so returned lists do not carry dangling pointers after constructor evaluation
+  - fixed-length lists now initialize `length = n` instead of incorrectly starting at `0`, so calls like `List<Integer>(3).length()` and indexed reads behave as real pre-sized collections
+  - fixed-length list storage is now zero-initialized, so default elements start as `0` / `false` / `None` / null-pointer payloads instead of reading uninitialized memory
+  - builtin `List<T>()` / `List<T>(n)` constructors now pass the real normalized `List<T>` type into layout sizing for every element type, not just `Boolean`, so payloads like `Option<T>` no longer allocate 8-byte slots with the wrong runtime layout
 - Fixed project-mode type inference for alias-qualified nested async calls returning `Task<T>`:
   - expressions like `await(analytics.Api.V2.score(10))` now preserve the real inner return type across package aliases and deep module chains instead of falling back to `Integer`
   - project builds no longer mis-read `Task<Float>` results from cross-file dotted-package async functions as raw integer bit patterns during `await`

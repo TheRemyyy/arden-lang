@@ -5359,11 +5359,13 @@ impl TypeChecker {
             Expr::Deref(inner) => {
                 let inner_type = self.check_expr(&inner.node, inner.span.clone());
                 match inner_type {
-                    ResolvedType::Ref(inner) | ResolvedType::MutRef(inner) => *inner,
+                    ResolvedType::Ref(inner)
+                    | ResolvedType::MutRef(inner)
+                    | ResolvedType::Ptr(inner) => *inner,
                     _ => {
                         self.error(
                             format!(
-                                "Cannot dereference non-reference type {}",
+                                "Cannot dereference non-pointer type {}",
                                 Self::format_resolved_type_for_diagnostic(&inner_type)
                             ),
                             span,
@@ -9883,6 +9885,25 @@ mod tests {
             joined.contains("Cannot assign through immutable reference 'r'"),
             "{joined}"
         );
+    }
+
+    #[test]
+    fn raw_ptr_deref_typechecks_for_non_integer_payloads() {
+        let src = r#"
+            function load(slot: Ptr<Float>): Float {
+                return *slot;
+            }
+
+            function load_list(xs: Ptr<List<Option<Integer>>>): List<Option<Integer>> {
+                return *xs;
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        check_source(src).expect("raw Ptr<T> deref should typecheck for typed payloads");
     }
 
     #[test]
