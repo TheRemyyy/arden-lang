@@ -282,7 +282,43 @@ impl TypeChecker {
                 | ResolvedType::String
                 | ResolvedType::Char
                 | ResolvedType::None
-        )
+        ) || matches!(ty, ResolvedType::Option(inner) if Self::supports_display_scalar(inner))
+            || matches!(
+                ty,
+                ResolvedType::Result(ok, err)
+                    if Self::supports_display_scalar(ok) && Self::supports_display_scalar(err)
+            )
+    }
+
+    fn supports_display_expr(&self, expr: &Expr, ty: &ResolvedType) -> bool {
+        if Self::supports_display_scalar(ty) {
+            return true;
+        }
+
+        let Expr::Call { callee, args, .. } = expr else {
+            return false;
+        };
+        let Expr::Field { object, field } = &callee.node else {
+            return false;
+        };
+        let Expr::Ident(owner_name) = &object.node else {
+            return false;
+        };
+        let owner_name = self.resolve_builtin_module_alias(owner_name);
+
+        match (owner_name.as_str(), field.as_str(), ty) {
+            ("Option", "none", ResolvedType::Option(_)) => true,
+            ("Option", "some", ResolvedType::Option(inner)) => args
+                .first()
+                .is_some_and(|arg| self.supports_display_expr(&arg.node, inner)),
+            ("Result", "ok", ResolvedType::Result(ok, _)) => args
+                .first()
+                .is_some_and(|arg| self.supports_display_expr(&arg.node, ok)),
+            ("Result", "error", ResolvedType::Result(_, err)) => args
+                .first()
+                .is_some_and(|arg| self.supports_display_expr(&arg.node, err)),
+            _ => false,
+        }
     }
 
     fn format_diagnostic_class_name(name: &str) -> String {
@@ -4490,7 +4526,7 @@ impl TypeChecker {
             }
             "assert" | "assert_true" | "assert_false" => {
                 params.len() == 1
-                    && matches!(params[0], ResolvedType::Boolean | ResolvedType::Integer)
+                    && matches!(params[0], ResolvedType::Boolean)
                     && matches!(ret.as_ref(), ResolvedType::None)
             }
             "fail" => {
@@ -5680,10 +5716,10 @@ impl TypeChecker {
                         if matches!(ty, ResolvedType::Unknown) {
                             continue;
                         }
-                        if !Self::supports_display_scalar(&ty) {
+                        if !self.supports_display_expr(&e.node, &ty) {
                             self.error(
                                 format!(
-                                    "String interpolation currently supports Integer, Float, Boolean, String, Char, and None, got {}",
+                                    "String interpolation currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
                                     Self::format_resolved_type_for_diagnostic(&ty)
                                 ),
                                 e.span.clone(),
@@ -7046,10 +7082,10 @@ impl TypeChecker {
                     if matches!(ty, ResolvedType::Unknown) {
                         continue;
                     }
-                    if !Self::supports_display_scalar(&ty) {
+                    if !self.supports_display_expr(&arg.node, &ty) {
                         self.error(
                             format!(
-                                "{}() currently supports Integer, Float, Boolean, String, Char, and None arguments, got {}",
+                                "{}() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
                                 name,
                                 Self::format_resolved_type_for_diagnostic(&ty)
                             ),
@@ -7187,10 +7223,10 @@ impl TypeChecker {
                     if matches!(t, ResolvedType::Unknown) {
                         return Some(ResolvedType::String);
                     }
-                    if !Self::supports_display_scalar(&t) {
+                    if !self.supports_display_expr(&args[0].node, &t) {
                         self.error(
                             format!(
-                                "to_string() currently supports Integer, Float, Boolean, String, Char, and None, got {}",
+                                "to_string() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
                                 Self::format_resolved_type_for_diagnostic(&t)
                             ),
                             span,
@@ -7576,9 +7612,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Unknown)
-                        && !matches!(t, ResolvedType::Boolean | ResolvedType::Integer)
-                    {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::Boolean) {
                         self.error(
                             "assert() requires boolean condition".to_string(),
                             span.clone(),
@@ -7613,9 +7647,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Unknown)
-                        && !matches!(t, ResolvedType::Boolean | ResolvedType::Integer)
-                    {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::Boolean) {
                         self.error("assert_true() requires boolean".to_string(), span.clone());
                     }
                 }
@@ -7626,9 +7658,7 @@ impl TypeChecker {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
                     let t = self.check_expr(&args[0].node, args[0].span.clone());
-                    if !matches!(t, ResolvedType::Unknown)
-                        && !matches!(t, ResolvedType::Boolean | ResolvedType::Integer)
-                    {
+                    if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::Boolean) {
                         self.error("assert_false() requires boolean".to_string(), span.clone());
                     }
                 }

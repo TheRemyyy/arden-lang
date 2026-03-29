@@ -20241,7 +20241,7 @@ function main(): Integer {
     }
 
     #[test]
-    fn compile_source_rejects_to_string_on_option_runtime() {
+    fn compile_source_runs_to_string_on_option_runtime() {
         let temp_root = make_temp_project_root("to-string-option-runtime");
         let source_path = temp_root.join("to_string_option_runtime.apex");
         let output_path = temp_root.join("to_string_option_runtime");
@@ -20250,14 +20250,149 @@ function main(): Integer {
 
             function main(): Integer {
                 value: String = to_string(Option.some(1));
-                return if (Str.len(value) > 0) { 0 } else { 1 };
+                return if (Str.compare(value, "Some(1)") == 0) { 0 } else { 1 };
             }
         "#;
 
         fs::write(&source_path, source).expect("write source");
-        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-            .expect_err("to_string on Option should fail until complex-value formatting exists");
-        assert!(err.contains("to_string"), "{err}");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_string on Option should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_string Option binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_to_string_on_direct_option_none_runtime() {
+        let temp_root = make_temp_project_root("to-string-direct-option-none-runtime");
+        let source_path = temp_root.join("to_string_direct_option_none_runtime.apex");
+        let output_path = temp_root.join("to_string_direct_option_none_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                value: String = to_string(Option.none());
+                return if (Str.compare(value, "None") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_string on direct Option.none should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_string direct Option.none binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_to_string_on_nested_direct_option_runtime() {
+        let temp_root = make_temp_project_root("to-string-nested-direct-option-runtime");
+        let source_path = temp_root.join("to_string_nested_direct_option_runtime.apex");
+        let output_path = temp_root.join("to_string_nested_direct_option_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                value: String = to_string(Option.some(Option.none()));
+                return if (Str.compare(value, "Some(None)") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_string on nested direct Option should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_string nested direct Option binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_to_string_on_result_runtime() {
+        let temp_root = make_temp_project_root("to-string-result-runtime");
+        let source_path = temp_root.join("to_string_result_runtime.apex");
+        let output_path = temp_root.join("to_string_result_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                result: Result<Integer, String> = Result.ok(1);
+                value: String = to_string(result);
+                return if (Str.compare(value, "Ok(1)") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_string on Result should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_string Result binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_to_string_on_direct_result_ok_runtime() {
+        let temp_root = make_temp_project_root("to-string-direct-result-ok-runtime");
+        let source_path = temp_root.join("to_string_direct_result_ok_runtime.apex");
+        let output_path = temp_root.join("to_string_direct_result_ok_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                value: String = to_string(Result.ok(1));
+                return if (Str.compare(value, "Ok(1)") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_string on direct Result.ok should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_string direct Result.ok binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_to_string_on_direct_result_error_with_option_none_runtime() {
+        let temp_root = make_temp_project_root("to-string-direct-result-error-option-none-runtime");
+        let source_path = temp_root.join("to_string_direct_result_error_option_none_runtime.apex");
+        let output_path = temp_root.join("to_string_direct_result_error_option_none_runtime");
+        let source = r#"
+            import std.string.*;
+
+            function main(): Integer {
+                value: String = to_string(Result.error(Option.none()));
+                return if (Str.compare(value, "Error(None)") == 0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("to_string on direct Result.error(Option.none()) should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled to_string direct Result.error(Option.none()) binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -20343,23 +20478,125 @@ function main(): Integer {
     }
 
     #[test]
-    fn compile_source_rejects_string_interpolation_on_option_runtime() {
+    fn compile_source_runs_string_interpolation_on_option_runtime() {
         let temp_root = make_temp_project_root("string-interpolation-option-runtime");
         let source_path = temp_root.join("string_interpolation_option_runtime.apex");
         let output_path = temp_root.join("string_interpolation_option_runtime");
         let source = r#"
             function main(): Integer {
                 value: String = "{Option.some(1)}";
-                return 0;
+                return if (value == "Some(1)") { 0 } else { 1 };
             }
         "#;
 
         fs::write(&source_path, source).expect("write source");
-        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-            .expect_err(
-                "string interpolation on Option should fail until complex formatting exists",
-            );
-        assert!(err.contains("String interpolation"), "{err}");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation on Option should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string interpolation Option binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_on_direct_option_none_runtime() {
+        let temp_root = make_temp_project_root("string-interpolation-direct-option-none-runtime");
+        let source_path = temp_root.join("string_interpolation_direct_option_none_runtime.apex");
+        let output_path = temp_root.join("string_interpolation_direct_option_none_runtime");
+        let source = r#"
+            function main(): Integer {
+                value: String = "{Option.none()}";
+                return if (value == "None") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation on direct Option.none should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string interpolation direct Option.none binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_on_direct_result_error_with_option_none_runtime() {
+        let temp_root =
+            make_temp_project_root("string-interpolation-direct-result-error-option-none-runtime");
+        let source_path =
+            temp_root.join("string_interpolation_direct_result_error_option_none_runtime.apex");
+        let output_path =
+            temp_root.join("string_interpolation_direct_result_error_option_none_runtime");
+        let source = r#"
+            function main(): Integer {
+                value: String = "{Result.error(Option.none())}";
+                return if (value == "Error(None)") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation on direct Result.error(Option.none()) should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string interpolation direct Result.error(Option.none()) binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_on_result_runtime() {
+        let temp_root = make_temp_project_root("string-interpolation-result-runtime");
+        let source_path = temp_root.join("string_interpolation_result_runtime.apex");
+        let output_path = temp_root.join("string_interpolation_result_runtime");
+        let source = r#"
+            function main(): Integer {
+                result: Result<Integer, String> = Result.error("boom");
+                value: String = "{result}";
+                return if (value == "Error(boom)") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation on Result should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string interpolation Result binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_string_interpolation_on_direct_result_runtime() {
+        let temp_root = make_temp_project_root("string-interpolation-direct-result-runtime");
+        let source_path = temp_root.join("string_interpolation_direct_result_runtime.apex");
+        let output_path = temp_root.join("string_interpolation_direct_result_runtime");
+        let source = r#"
+            function main(): Integer {
+                value: String = "{Result.ok(1)}";
+                return if (value == "Ok(1)") { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("string interpolation on direct Result.ok should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled string interpolation direct Result binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -21976,6 +22213,454 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_invalid_unary_negation_on_boolean_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-unary-neg-bool");
+        let source_path = temp_root.join("no_check_invalid_unary_neg_bool.apex");
+        let output_path = temp_root.join("no_check_invalid_unary_neg_bool");
+        let source = r#"
+            function main(): Integer {
+                return -true;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid unary negation on boolean should fail in codegen");
+        assert!(
+            err.contains("Cannot negate non-numeric type Boolean"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_invalid_unary_not_on_integer_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-unary-not-int");
+        let source_path = temp_root.join("no_check_invalid_unary_not_int.apex");
+        let output_path = temp_root.join("no_check_invalid_unary_not_int");
+        let source = r#"
+            function main(): Integer {
+                return if (!1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid unary not on integer should fail in codegen");
+        assert!(
+            err.contains("Cannot apply '!' to non-boolean type Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_boolean_if_statement_condition_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-if-stmt-condition");
+        let source_path = temp_root.join("no_check_invalid_if_stmt_condition.apex");
+        let output_path = temp_root.join("no_check_invalid_if_stmt_condition");
+        let source = r#"
+            function main(): Integer {
+                if (1) { return 0; }
+                return 1;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("non-boolean if statement condition should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_boolean_if_expression_condition_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-if-expr-condition");
+        let source_path = temp_root.join("no_check_invalid_if_expr_condition.apex");
+        let output_path = temp_root.join("no_check_invalid_if_expr_condition");
+        let source = r#"
+            function main(): Integer {
+                return if (1) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("non-boolean if expression condition should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_boolean_while_condition_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-while-condition");
+        let source_path = temp_root.join("no_check_invalid_while_condition.apex");
+        let output_path = temp_root.join("no_check_invalid_while_condition");
+        let source = r#"
+            function main(): Integer {
+                while (1) { return 0; }
+                return 1;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("non-boolean while condition should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_boolean_require_condition_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-require-condition");
+        let source_path = temp_root.join("no_check_invalid_require_condition.apex");
+        let output_path = temp_root.join("no_check_invalid_require_condition");
+        let source = r#"
+            function main(): None {
+                require(1, "boom");
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("non-boolean require condition should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_boolean_require_without_message_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-require-no-msg-condition");
+        let source_path = temp_root.join("no_check_invalid_require_no_msg_condition.apex");
+        let output_path = temp_root.join("no_check_invalid_require_no_msg_condition");
+        let source = r#"
+            function main(): None {
+                require(1);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("non-boolean require condition without message should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_boolean_assert_condition_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-assert-condition");
+        let source_path = temp_root.join("no_check_invalid_assert_condition.apex");
+        let output_path = temp_root.join("no_check_invalid_assert_condition");
+        let source = r#"
+            function main(): None {
+                assert(1);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("non-boolean assert condition should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_checked_rejects_non_boolean_assert_condition() {
+        let temp_root = make_temp_project_root("checked-invalid-assert-condition");
+        let source_path = temp_root.join("checked_invalid_assert_condition.apex");
+        let output_path = temp_root.join("checked_invalid_assert_condition");
+        let source = r#"
+            function main(): None {
+                assert(1);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("checked assert(Integer) should fail");
+        assert!(err.contains("assert() requires boolean condition"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_boolean_assert_true_condition_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-assert-true-condition");
+        let source_path = temp_root.join("no_check_invalid_assert_true_condition.apex");
+        let output_path = temp_root.join("no_check_invalid_assert_true_condition");
+        let source = r#"
+            function main(): None {
+                assert_true(1);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("non-boolean assert_true condition should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_checked_rejects_non_boolean_assert_true_condition() {
+        let temp_root = make_temp_project_root("checked-invalid-assert-true-condition");
+        let source_path = temp_root.join("checked_invalid_assert_true_condition.apex");
+        let output_path = temp_root.join("checked_invalid_assert_true_condition");
+        let source = r#"
+            function main(): None {
+                assert_true(1);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("checked assert_true(Integer) should fail");
+        assert!(err.contains("assert_true() requires boolean"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_boolean_assert_false_condition_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-assert-false-condition");
+        let source_path = temp_root.join("no_check_invalid_assert_false_condition.apex");
+        let output_path = temp_root.join("no_check_invalid_assert_false_condition");
+        let source = r#"
+            function main(): None {
+                assert_false(1);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("non-boolean assert_false condition should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_checked_rejects_non_boolean_assert_false_condition() {
+        let temp_root = make_temp_project_root("checked-invalid-assert-false-condition");
+        let source_path = temp_root.join("checked_invalid_assert_false_condition.apex");
+        let output_path = temp_root.join("checked_invalid_assert_false_condition");
+        let source = r#"
+            function main(): None {
+                assert_false(1);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("checked assert_false(Integer) should fail");
+        assert!(err.contains("assert_false() requires boolean"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_assert_eq_on_incompatible_types_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-assert-eq-types");
+        let source_path = temp_root.join("no_check_invalid_assert_eq_types.apex");
+        let output_path = temp_root.join("no_check_invalid_assert_eq_types");
+        let source = r#"
+            function main(): None {
+                assert_eq(1, true);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("assert_eq on incompatible types should fail in codegen");
+        assert!(err.contains("Cannot compare Integer and Boolean"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_assert_ne_on_incompatible_types_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-assert-ne-types");
+        let source_path = temp_root.join("no_check_invalid_assert_ne_types.apex");
+        let output_path = temp_root.join("no_check_invalid_assert_ne_types");
+        let source = r#"
+            function main(): None {
+                assert_ne(1, true);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("assert_ne on incompatible types should fail in codegen");
+        assert!(err.contains("Cannot compare Integer and Boolean"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_integer_string_index_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-string-index-type");
+        let source_path = temp_root.join("no_check_invalid_string_index_type.apex");
+        let output_path = temp_root.join("no_check_invalid_string_index_type");
+        let source = r#"
+            function main(): Integer {
+                ch: Char = "hi"[true];
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("string[Boolean] should fail in codegen");
+        assert!(
+            err.contains("Index must be Integer, found Boolean"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_integer_list_index_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-list-index-type");
+        let source_path = temp_root.join("no_check_invalid_list_index_type.apex");
+        let output_path = temp_root.join("no_check_invalid_list_index_type");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Integer> = List<Integer>();
+                xs.push(10);
+                xs.push(20);
+                return xs[true];
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("list[Boolean] should fail in codegen");
+        assert!(
+            err.contains("Index must be Integer, found Boolean"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_integer_list_index_assignment_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-list-index-assignment-type");
+        let source_path = temp_root.join("no_check_invalid_list_index_assignment_type.apex");
+        let output_path = temp_root.join("no_check_invalid_list_index_assignment_type");
+        let source = r#"
+            function main(): None {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(10);
+                xs[true] = 20;
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("list[Boolean] assignment should fail in codegen");
+        assert!(
+            err.contains("Index must be Integer, found Boolean"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_integer_for_loop_sugar_iterable_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-for-loop-sugar-iterable");
+        let source_path = temp_root.join("no_check_invalid_for_loop_sugar_iterable.apex");
+        let output_path = temp_root.join("no_check_invalid_for_loop_sugar_iterable");
+        let source = r#"
+            function main(): Integer {
+                mut total: Integer = 0;
+                for (i in true) {
+                    total = total + i;
+                }
+                return total;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("for-loop sugar over Boolean should fail in codegen");
+        assert!(err.contains("Cannot iterate over Boolean"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_match_literal_type_mismatch_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-match-literal-type");
+        let source_path = temp_root.join("no_check_invalid_match_literal_type.apex");
+        let output_path = temp_root.join("no_check_invalid_match_literal_type");
+        let source = r#"
+            function main(): Integer {
+                return match (true) {
+                    1 => 0,
+                    _ => 1,
+                };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("match literal type mismatch should fail in codegen");
+        assert!(
+            err.contains("Pattern type mismatch: expected Boolean, found Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_string_interpolation_on_boolean_runtime() {
         let temp_root = make_temp_project_root("string-interpolation-bool-runtime");
         let source_path = temp_root.join("string_interpolation_bool_runtime.apex");
@@ -22170,7 +22855,7 @@ function main(): Integer {
     }
 
     #[test]
-    fn compile_source_rejects_print_on_option_runtime() {
+    fn compile_source_runs_print_on_option_runtime() {
         let temp_root = make_temp_project_root("print-option-runtime");
         let source_path = temp_root.join("print_option_runtime.apex");
         let output_path = temp_root.join("print_option_runtime");
@@ -22184,9 +22869,128 @@ function main(): Integer {
         "#;
 
         fs::write(&source_path, source).expect("write source");
-        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
-            .expect_err("print on Option should fail until complex formatting exists");
-        assert!(err.contains("print()"), "{err}");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("print on Option should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled print Option binary");
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(stdout, "Some(1)");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_print_on_direct_option_none_runtime() {
+        let temp_root = make_temp_project_root("print-direct-option-none-runtime");
+        let source_path = temp_root.join("print_direct_option_none_runtime.apex");
+        let output_path = temp_root.join("print_direct_option_none_runtime");
+        let source = r#"
+            import std.io.*;
+
+            function main(): None {
+                print(Option.none());
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("print on direct Option.none should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled print direct Option.none binary");
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(stdout, "None");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_print_on_direct_result_error_with_option_none_runtime() {
+        let temp_root = make_temp_project_root("print-direct-result-error-option-none-runtime");
+        let source_path = temp_root.join("print_direct_result_error_option_none_runtime.apex");
+        let output_path = temp_root.join("print_direct_result_error_option_none_runtime");
+        let source = r#"
+            import std.io.*;
+
+            function main(): None {
+                print(Result.error(Option.none()));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("print on direct Result.error(Option.none()) should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled print direct Result.error(Option.none()) binary");
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(stdout, "Error(None)");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_print_on_result_runtime() {
+        let temp_root = make_temp_project_root("print-result-runtime");
+        let source_path = temp_root.join("print_result_runtime.apex");
+        let output_path = temp_root.join("print_result_runtime");
+        let source = r#"
+            import std.io.*;
+
+            function main(): None {
+                result: Result<Integer, String> = Result.error("boom");
+                print(result);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("print on Result should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled print Result binary");
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(stdout, "Error(boom)");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_print_on_direct_result_error_runtime() {
+        let temp_root = make_temp_project_root("print-direct-result-error-runtime");
+        let source_path = temp_root.join("print_direct_result_error_runtime.apex");
+        let output_path = temp_root.join("print_direct_result_error_runtime");
+        let source = r#"
+            import std.io.*;
+
+            function main(): None {
+                print(Result.error("boom"));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("print on direct Result.error should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled print direct Result.error binary");
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n");
+        assert_eq!(stdout, "Error(boom)");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -25132,6 +25936,29 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_rejects_builtin_assert_function_value_with_integer_parameter() {
+        let temp_root = make_temp_project_root("reject-builtin-assert-fn-integer-param");
+        let source_path = temp_root.join("reject_builtin_assert_fn_integer_param.apex");
+        let output_path = temp_root.join("reject_builtin_assert_fn_integer_param");
+        let source = r#"
+            function main(): Integer {
+                ensure: (Integer) -> None = assert;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("assert(Integer) function value should fail");
+        assert!(
+            err.contains("Type mismatch") || err.contains("assert"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_rejects_builtin_fail_function_value_with_integer_parameter() {
         let temp_root = make_temp_project_root("reject-builtin-fail-fn-integer-param");
         let source_path = temp_root.join("reject_builtin_fail_fn_integer_param.apex");
@@ -25148,6 +25975,52 @@ function main(): Integer {
             .expect_err("fail(Integer) function value should fail");
         assert!(
             err.contains("Type mismatch") || err.contains("fail"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_builtin_assert_true_function_value_with_integer_parameter() {
+        let temp_root = make_temp_project_root("reject-builtin-assert-true-fn-integer-param");
+        let source_path = temp_root.join("reject_builtin_assert_true_fn_integer_param.apex");
+        let output_path = temp_root.join("reject_builtin_assert_true_fn_integer_param");
+        let source = r#"
+            function main(): Integer {
+                ensure_true: (Integer) -> None = assert_true;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("assert_true(Integer) function value should fail");
+        assert!(
+            err.contains("Type mismatch") || err.contains("assert_true"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_builtin_assert_false_function_value_with_integer_parameter() {
+        let temp_root = make_temp_project_root("reject-builtin-assert-false-fn-integer-param");
+        let source_path = temp_root.join("reject_builtin_assert_false_fn_integer_param.apex");
+        let output_path = temp_root.join("reject_builtin_assert_false_fn_integer_param");
+        let source = r#"
+            function main(): Integer {
+                ensure_false: (Integer) -> None = assert_false;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("assert_false(Integer) function value should fail");
+        assert!(
+            err.contains("Type mismatch") || err.contains("assert_false"),
             "{err}"
         );
 

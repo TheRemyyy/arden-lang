@@ -230,7 +230,7 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn format_type_string(ty: &Type) -> String {
+    pub(crate) fn format_type_string(ty: &Type) -> String {
         match ty {
             Type::Integer => "Integer".to_string(),
             Type::Float => "Float".to_string(),
@@ -6141,7 +6141,7 @@ impl<'ctx> Codegen<'ctx> {
             }
             "assert" | "assert_true" | "assert_false" => {
                 params.len() == 1
-                    && matches!(params[0], Type::Boolean | Type::Integer)
+                    && matches!(params[0], Type::Boolean)
                     && matches!(ret.as_ref(), Type::None)
             }
             "fail" => {
@@ -8182,7 +8182,7 @@ impl<'ctx> Codegen<'ctx> {
         then_block: &Block,
         else_block: Option<&Block>,
     ) -> Result<()> {
-        let cond_val = self.compile_expr(&cond.node)?.into_int_value();
+        let cond_val = self.compile_condition_expr(&cond.node)?;
         let func = self
             .current_function
             .ok_or_else(|| CodegenError::new("if statement used outside function"))?;
@@ -8237,7 +8237,7 @@ impl<'ctx> Codegen<'ctx> {
         // First, check condition (entry test)
         self.builder.build_unconditional_branch(entry_bb).unwrap();
         self.builder.position_at_end(entry_bb);
-        let entry_cond = self.compile_expr(&cond.node)?.into_int_value();
+        let entry_cond = self.compile_condition_expr(&cond.node)?;
         self.builder
             .build_conditional_branch(entry_cond, body_bb, after_bb)
             .unwrap();
@@ -8258,7 +8258,7 @@ impl<'ctx> Codegen<'ctx> {
 
         // Loop condition check at end (loop rotation)
         self.builder.position_at_end(cond_bb);
-        let loop_cond = self.compile_expr(&cond.node)?.into_int_value();
+        let loop_cond = self.compile_condition_expr(&cond.node)?;
 
         // Branch prediction: likely to continue looping
         self.builder
@@ -8630,8 +8630,9 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap();
 
         // Default range values
-        let mut start_val = self.context.i64_type().const_int(0, false).into();
-        let mut end_val = self.context.i64_type().const_int(0, false).into();
+        let mut start_val: BasicValueEnum<'ctx> =
+            self.context.i64_type().const_int(0, false).into();
+        let mut end_val: BasicValueEnum<'ctx> = self.context.i64_type().const_int(0, false).into();
         let mut inclusive = false;
 
         match &iterable.node {
@@ -8641,16 +8642,16 @@ impl<'ctx> Codegen<'ctx> {
                 inclusive: inc,
             } => {
                 if let Some(s) = start {
-                    start_val = self.compile_expr(&s.node)?;
+                    start_val = self.compile_integer_iteration_bound(&s.node)?.into();
                 }
                 if let Some(e) = end {
-                    end_val = self.compile_expr(&e.node)?;
+                    end_val = self.compile_integer_iteration_bound(&e.node)?.into();
                 }
                 inclusive = *inc;
             }
             _ => {
                 // Treat as 0..N where N is the expression value
-                end_val = self.compile_expr(&iterable.node)?;
+                end_val = self.compile_integer_iteration_bound(&iterable.node)?.into();
             }
         }
 
@@ -8988,6 +8989,17 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
                 Pattern::Literal(lit) => {
+                    let pattern_ty = self.infer_expr_type(&Expr::Literal(lit.clone()), &[]);
+                    if self
+                        .common_compatible_codegen_type(&match_ty, &pattern_ty)
+                        .is_none()
+                    {
+                        return Err(CodegenError::new(format!(
+                            "Pattern type mismatch: expected {}, found {}",
+                            Self::format_type_string(&match_ty),
+                            Self::format_type_string(&pattern_ty)
+                        )));
+                    }
                     let pattern_val = self.compile_literal(lit)?;
                     let cond = if val.is_float_value() || pattern_val.is_float_value() {
                         let match_val = if val.is_float_value() {
@@ -9856,8 +9868,7 @@ impl<'ctx> Codegen<'ctx> {
 
             Expr::Require { condition, message } => {
                 // Compile require(condition) as an assert
-                let cond_val = self.compile_expr(&condition.node)?;
-                let cond = cond_val.into_int_value();
+                let cond = self.compile_condition_expr(&condition.node)?;
 
                 let current_fn = self
                     .current_function
@@ -10984,6 +10995,53 @@ impl<'ctx> Codegen<'ctx> {
         Ok(buffer)
     }
 
+    fn compile_concat_display_strings(
+        &mut self,
+        left: PointerValue<'ctx>,
+        right: PointerValue<'ctx>,
+        name: &str,
+    ) -> Result<PointerValue<'ctx>> {
+        let strlen_fn = self.get_or_declare_strlen();
+        let malloc = self.get_or_declare_malloc();
+        let strcpy_fn = self.get_or_declare_strcpy();
+        let strcat_fn = self.get_or_declare_strcat();
+
+        let left_len_call = self
+            .builder
+            .build_call(strlen_fn, &[left.into()], &format!("{name}_len1"))
+            .unwrap();
+        let left_len = self.extract_call_value(left_len_call)?.into_int_value();
+        let right_len_call = self
+            .builder
+            .build_call(strlen_fn, &[right.into()], &format!("{name}_len2"))
+            .unwrap();
+        let right_len = self.extract_call_value(right_len_call)?.into_int_value();
+        let total_len = self
+            .builder
+            .build_int_add(left_len, right_len, &format!("{name}_total"))
+            .unwrap();
+        let buffer_size = self
+            .builder
+            .build_int_add(
+                total_len,
+                self.context.i64_type().const_int(1, false),
+                &format!("{name}_bufsize"),
+            )
+            .unwrap();
+        let buffer_call = self
+            .builder
+            .build_call(malloc, &[buffer_size.into()], &format!("{name}_buf"))
+            .unwrap();
+        let buffer = self.extract_call_value(buffer_call)?.into_pointer_value();
+        self.builder
+            .build_call(strcpy_fn, &[buffer.into(), left.into()], "")
+            .unwrap();
+        self.builder
+            .build_call(strcat_fn, &[buffer.into(), right.into()], "")
+            .unwrap();
+        Ok(buffer)
+    }
+
     fn compile_value_to_display_string(
         &mut self,
         value: BasicValueEnum<'ctx>,
@@ -11031,6 +11089,286 @@ impl<'ctx> Codegen<'ctx> {
                 global.set_initializer(&none_s);
                 global.set_constant(true);
                 Ok(global.as_pointer_value())
+            }
+            Type::Option(inner_ty) => {
+                let current_fn = self
+                    .current_function
+                    .ok_or_else(|| CodegenError::new("Option display formatting used outside function"))?;
+                let option_ptr = self.materialize_value_pointer_for_type(
+                    value,
+                    &display_ty,
+                    "display_option_tmp",
+                )?;
+                let llvm_inner_ty = self.llvm_type(inner_ty);
+                let option_struct_type = self
+                    .context
+                    .struct_type(&[self.context.i8_type().into(), llvm_inner_ty], false);
+                let i32_type = self.context.i32_type();
+                let zero = i32_type.const_zero();
+                let one = i32_type.const_int(1, false);
+                let tag_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            option_struct_type.as_basic_type_enum(),
+                            option_ptr,
+                            &[zero, zero],
+                            "display_option_tag_ptr",
+                        )
+                        .unwrap()
+                };
+                let tag = self
+                    .builder
+                    .build_load(self.context.i8_type(), tag_ptr, "display_option_tag")
+                    .unwrap()
+                    .into_int_value();
+                let is_some = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        tag,
+                        self.context.i8_type().const_int(1, false),
+                        "display_option_is_some",
+                    )
+                    .unwrap();
+
+                let some_bb = self.context.append_basic_block(current_fn, "display_option_some");
+                let none_bb = self.context.append_basic_block(current_fn, "display_option_none");
+                let merge_bb = self.context.append_basic_block(current_fn, "display_option_merge");
+
+                self.builder
+                    .build_conditional_branch(is_some, some_bb, none_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(some_bb);
+                let value_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            option_struct_type.as_basic_type_enum(),
+                            option_ptr,
+                            &[zero, one],
+                            "display_option_value_ptr",
+                        )
+                        .unwrap()
+                };
+                let inner_value = self
+                    .builder
+                    .build_load(llvm_inner_ty, value_ptr, "display_option_value")
+                    .unwrap();
+                let inner_display =
+                    self.compile_value_to_display_string(inner_value, inner_ty.as_ref())?;
+                let some_prefix = self
+                    .builder
+                    .build_global_string_ptr(
+                        "Some(",
+                        &format!("display_option_some_prefix_{}", self.str_counter),
+                    )
+                    .unwrap();
+                self.str_counter += 1;
+                let some_suffix = self
+                    .builder
+                    .build_global_string_ptr(
+                        ")",
+                        &format!("display_option_some_suffix_{}", self.str_counter),
+                    )
+                    .unwrap();
+                self.str_counter += 1;
+                let prefixed = self.compile_concat_display_strings(
+                    some_prefix.as_pointer_value(),
+                    inner_display,
+                    "display_option_prefixed",
+                )?;
+                let some_display = self.compile_concat_display_strings(
+                    prefixed,
+                    some_suffix.as_pointer_value(),
+                    "display_option_joined",
+                )?;
+                let some_end = self
+                    .builder
+                    .get_insert_block()
+                    .ok_or_else(|| CodegenError::new("Option display some block missing predecessor"))?;
+                self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                self.builder.position_at_end(none_bb);
+                let none_display = self
+                    .builder
+                    .build_global_string_ptr(
+                        "None",
+                        &format!("display_option_none_{}", self.str_counter),
+                    )
+                    .unwrap();
+                self.str_counter += 1;
+                let none_end = self
+                    .builder
+                    .get_insert_block()
+                    .ok_or_else(|| CodegenError::new("Option display none block missing predecessor"))?;
+                self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                self.builder.position_at_end(merge_bb);
+                let display_phi = self
+                    .builder
+                    .build_phi(self.context.ptr_type(AddressSpace::default()), "display_option")
+                    .unwrap();
+                display_phi.add_incoming(&[
+                    (&some_display, some_end),
+                    (&none_display.as_pointer_value(), none_end),
+                ]);
+                Ok(display_phi.as_basic_value().into_pointer_value())
+            }
+            Type::Result(ok_ty, err_ty) => {
+                let current_fn = self.current_function.ok_or_else(|| {
+                    CodegenError::new("Result display formatting used outside function")
+                })?;
+                let result_ptr =
+                    self.materialize_value_pointer_for_type(value, &display_ty, "display_result_tmp")?;
+                let ok_llvm = self.llvm_type(ok_ty);
+                let err_llvm = self.llvm_type(err_ty);
+                let result_struct_type = self.context.struct_type(
+                    &[self.context.i8_type().into(), ok_llvm, err_llvm],
+                    false,
+                );
+                let i32_type = self.context.i32_type();
+                let zero = i32_type.const_zero();
+                let one = i32_type.const_int(1, false);
+                let two = i32_type.const_int(2, false);
+                let tag_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            result_struct_type.as_basic_type_enum(),
+                            result_ptr,
+                            &[zero, zero],
+                            "display_result_tag_ptr",
+                        )
+                        .unwrap()
+                };
+                let tag = self
+                    .builder
+                    .build_load(self.context.i8_type(), tag_ptr, "display_result_tag")
+                    .unwrap()
+                    .into_int_value();
+                let is_ok = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        tag,
+                        self.context.i8_type().const_int(1, false),
+                        "display_result_is_ok",
+                    )
+                    .unwrap();
+
+                let ok_bb = self.context.append_basic_block(current_fn, "display_result_ok");
+                let err_bb = self
+                    .context
+                    .append_basic_block(current_fn, "display_result_error");
+                let merge_bb = self
+                    .context
+                    .append_basic_block(current_fn, "display_result_merge");
+
+                self.builder
+                    .build_conditional_branch(is_ok, ok_bb, err_bb)
+                    .unwrap();
+
+                self.builder.position_at_end(ok_bb);
+                let ok_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            result_struct_type.as_basic_type_enum(),
+                            result_ptr,
+                            &[zero, one],
+                            "display_result_ok_ptr",
+                        )
+                        .unwrap()
+                };
+                let ok_value = self
+                    .builder
+                    .build_load(ok_llvm, ok_ptr, "display_result_ok_value")
+                    .unwrap();
+                let ok_display = self.compile_value_to_display_string(ok_value, ok_ty.as_ref())?;
+                let ok_prefix = self
+                    .builder
+                    .build_global_string_ptr(
+                        "Ok(",
+                        &format!("display_result_ok_prefix_{}", self.str_counter),
+                    )
+                    .unwrap();
+                self.str_counter += 1;
+                let ok_suffix = self
+                    .builder
+                    .build_global_string_ptr(
+                        ")",
+                        &format!("display_result_ok_suffix_{}", self.str_counter),
+                    )
+                    .unwrap();
+                self.str_counter += 1;
+                let ok_prefixed = self.compile_concat_display_strings(
+                    ok_prefix.as_pointer_value(),
+                    ok_display,
+                    "display_result_ok_prefixed",
+                )?;
+                let ok_joined = self.compile_concat_display_strings(
+                    ok_prefixed,
+                    ok_suffix.as_pointer_value(),
+                    "display_result_ok_joined",
+                )?;
+                let ok_end = self.builder.get_insert_block().ok_or_else(|| {
+                    CodegenError::new("Result display ok block missing predecessor")
+                })?;
+                self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                self.builder.position_at_end(err_bb);
+                let err_ptr = unsafe {
+                    self.builder
+                        .build_gep(
+                            result_struct_type.as_basic_type_enum(),
+                            result_ptr,
+                            &[zero, two],
+                            "display_result_error_ptr",
+                        )
+                        .unwrap()
+                };
+                let err_value = self
+                    .builder
+                    .build_load(err_llvm, err_ptr, "display_result_error_value")
+                    .unwrap();
+                let err_display =
+                    self.compile_value_to_display_string(err_value, err_ty.as_ref())?;
+                let err_prefix = self
+                    .builder
+                    .build_global_string_ptr(
+                        "Error(",
+                        &format!("display_result_error_prefix_{}", self.str_counter),
+                    )
+                    .unwrap();
+                self.str_counter += 1;
+                let err_suffix = self
+                    .builder
+                    .build_global_string_ptr(
+                        ")",
+                        &format!("display_result_error_suffix_{}", self.str_counter),
+                    )
+                    .unwrap();
+                self.str_counter += 1;
+                let err_prefixed = self.compile_concat_display_strings(
+                    err_prefix.as_pointer_value(),
+                    err_display,
+                    "display_result_error_prefixed",
+                )?;
+                let err_joined = self.compile_concat_display_strings(
+                    err_prefixed,
+                    err_suffix.as_pointer_value(),
+                    "display_result_error_joined",
+                )?;
+                let err_end = self.builder.get_insert_block().ok_or_else(|| {
+                    CodegenError::new("Result display error block missing predecessor")
+                })?;
+                self.builder.build_unconditional_branch(merge_bb).unwrap();
+
+                self.builder.position_at_end(merge_bb);
+                let display_phi = self
+                    .builder
+                    .build_phi(self.context.ptr_type(AddressSpace::default()), "display_result")
+                    .unwrap();
+                display_phi.add_incoming(&[(&ok_joined, ok_end), (&err_joined, err_end)]);
+                Ok(display_phi.as_basic_value().into_pointer_value())
             }
             Type::Char => self.compile_char_to_string(value.into_int_value()),
             Type::Integer | Type::Float => {
@@ -11093,7 +11431,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(buffer)
             }
             _ => Err(CodegenError::new(
-                "display formatting currently supports Integer, Float, Boolean, String, Char, and None",
+                "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting",
             )),
         }
     }
@@ -11105,8 +11443,7 @@ impl<'ctx> Codegen<'ctx> {
         else_branch: Option<&Vec<Spanned<Stmt>>>,
         expected_ty: Option<&Type>,
     ) -> Result<BasicValueEnum<'ctx>> {
-        let cond_val = self.compile_expr(condition)?;
-        let cond = cond_val.into_int_value();
+        let cond = self.compile_condition_expr(condition)?;
 
         let current_fn = self
             .current_function
@@ -11184,6 +11521,39 @@ impl<'ctx> Codegen<'ctx> {
         } else {
             Ok(then_result)
         }
+    }
+
+    fn compile_condition_expr(&mut self, expr: &Expr) -> Result<IntValue<'ctx>> {
+        let cond_ty = self.infer_expr_type(expr, &[]);
+        if !matches!(cond_ty, Type::Boolean) {
+            return Err(CodegenError::new(format!(
+                "Condition must be Boolean, found {}",
+                Self::format_type_string(&cond_ty)
+            )));
+        }
+        Ok(self.compile_expr(expr)?.into_int_value())
+    }
+
+    pub(crate) fn compile_integer_index_expr(&mut self, expr: &Expr) -> Result<IntValue<'ctx>> {
+        let index_ty = self.infer_expr_type(expr, &[]);
+        if !matches!(index_ty, Type::Integer) {
+            return Err(CodegenError::new(format!(
+                "Index must be Integer, found {}",
+                Self::format_type_string(&index_ty)
+            )));
+        }
+        Ok(self.compile_expr(expr)?.into_int_value())
+    }
+
+    fn compile_integer_iteration_bound(&mut self, expr: &Expr) -> Result<IntValue<'ctx>> {
+        let expr_ty = self.infer_expr_type(expr, &[]);
+        if !matches!(expr_ty, Type::Integer) {
+            return Err(CodegenError::new(format!(
+                "Cannot iterate over {}",
+                Self::format_type_string(&expr_ty)
+            )));
+        }
+        Ok(self.compile_expr(expr)?.into_int_value())
     }
 
     pub fn compile_literal(&mut self, lit: &Literal) -> Result<BasicValueEnum<'ctx>> {
@@ -11612,10 +11982,17 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_unary(&mut self, op: UnaryOp, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
+        let expr_ty = self.infer_expr_type(expr, &[]);
         let val = self.compile_expr(expr)?;
 
         match op {
             UnaryOp::Neg => {
+                if !expr_ty.is_numeric() {
+                    return Err(CodegenError::new(format!(
+                        "Cannot negate non-numeric type {}",
+                        Self::format_type_string(&expr_ty)
+                    )));
+                }
                 if val.is_int_value() {
                     Ok(self
                         .builder
@@ -11632,11 +12009,19 @@ impl<'ctx> Codegen<'ctx> {
                     Err(CodegenError::new("Cannot negate non-numeric value"))
                 }
             }
-            UnaryOp::Not => Ok(self
-                .builder
-                .build_not(val.into_int_value(), "not")
-                .unwrap()
-                .into()),
+            UnaryOp::Not => {
+                if !matches!(expr_ty, Type::Boolean) {
+                    return Err(CodegenError::new(format!(
+                        "Cannot apply '!' to non-boolean type {}",
+                        Self::format_type_string(&expr_ty)
+                    )));
+                }
+                Ok(self
+                    .builder
+                    .build_not(val.into_int_value(), "not")
+                    .unwrap()
+                    .into())
+            }
         }
     }
 
@@ -14265,7 +14650,7 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        let idx = self.compile_expr(index)?.into_int_value();
+        let idx = self.compile_integer_index_expr(index)?;
 
         if matches!(deref_object_ty, Some(Type::String)) {
             if let Expr::Literal(Literal::String(text)) = object {
@@ -17633,27 +18018,7 @@ impl<'ctx> Codegen<'ctx> {
             // Assertion functions for testing
             "assert" => {
                 // assert(condition: Boolean): None - panics if condition is false
-                let condition = self.compile_expr(&args[0].node)?;
-                let condition_bool = if condition.is_int_value() {
-                    let int_val = condition.into_int_value();
-                    // Handle both i1 (bool) and i64 (integer) types
-                    if int_val.get_type().get_bit_width() == 1 {
-                        // Already i1 (boolean)
-                        int_val
-                    } else {
-                        // Convert i64 to i1 (boolean)
-                        self.builder
-                            .build_int_compare(
-                                IntPredicate::NE,
-                                int_val,
-                                self.context.i64_type().const_int(0, false),
-                                "bool_cond",
-                            )
-                            .unwrap()
-                    }
-                } else {
-                    return Err(CodegenError::new("assert requires boolean condition"));
-                };
+                let condition_bool = self.compile_condition_expr(&args[0].node)?;
 
                 let current_fn = self
                     .current_function
@@ -17692,65 +18057,9 @@ impl<'ctx> Codegen<'ctx> {
 
             "assert_eq" => {
                 // assert_eq(a: T, b: T): None - panics if a != b
-                let a = self.compile_expr(&args[0].node)?;
-                let b = self.compile_expr(&args[1].node)?;
-
-                let equal = if a.is_float_value() || b.is_float_value() {
-                    let av = if a.is_float_value() {
-                        a.into_float_value()
-                    } else {
-                        self.builder
-                            .build_signed_int_to_float(
-                                a.into_int_value(),
-                                self.context.f64_type(),
-                                "assert_eq_lf",
-                            )
-                            .unwrap()
-                    };
-                    let bv = if b.is_float_value() {
-                        b.into_float_value()
-                    } else {
-                        self.builder
-                            .build_signed_int_to_float(
-                                b.into_int_value(),
-                                self.context.f64_type(),
-                                "assert_eq_rf",
-                            )
-                            .unwrap()
-                    };
-                    self.builder
-                        .build_float_compare(FloatPredicate::OEQ, av, bv, "eq_cmp")
-                        .unwrap()
-                } else if a.is_int_value() && b.is_int_value() {
-                    self.builder
-                        .build_int_compare(
-                            IntPredicate::EQ,
-                            a.into_int_value(),
-                            b.into_int_value(),
-                            "eq_cmp",
-                        )
-                        .unwrap()
-                } else if a.is_pointer_value() && b.is_pointer_value() {
-                    // String comparison
-                    let strcmp = self.get_or_declare_strcmp();
-                    let res = self
-                        .builder
-                        .build_call(strcmp, &[a.into(), b.into()], "cmp")
-                        .unwrap();
-                    let cmp_val = self.extract_call_value(res)?.into_int_value();
-                    self.builder
-                        .build_int_compare(
-                            IntPredicate::EQ,
-                            cmp_val,
-                            self.context.i32_type().const_int(0, false),
-                            "eq_cmp",
-                        )
-                        .unwrap()
-                } else {
-                    return Err(CodegenError::new(
-                        "assert_eq() arguments must lower to comparable runtime values",
-                    ));
-                };
+                let equal = self
+                    .compile_binary(BinOp::Eq, &args[0].node, &args[1].node)?
+                    .into_int_value();
 
                 let current_fn = self
                     .current_function
@@ -17794,64 +18103,9 @@ impl<'ctx> Codegen<'ctx> {
 
             "assert_ne" => {
                 // assert_ne(a: T, b: T): None - panics if a == b
-                let a = self.compile_expr(&args[0].node)?;
-                let b = self.compile_expr(&args[1].node)?;
-
-                let not_equal = if a.is_float_value() || b.is_float_value() {
-                    let av = if a.is_float_value() {
-                        a.into_float_value()
-                    } else {
-                        self.builder
-                            .build_signed_int_to_float(
-                                a.into_int_value(),
-                                self.context.f64_type(),
-                                "assert_ne_lf",
-                            )
-                            .unwrap()
-                    };
-                    let bv = if b.is_float_value() {
-                        b.into_float_value()
-                    } else {
-                        self.builder
-                            .build_signed_int_to_float(
-                                b.into_int_value(),
-                                self.context.f64_type(),
-                                "assert_ne_rf",
-                            )
-                            .unwrap()
-                    };
-                    self.builder
-                        .build_float_compare(FloatPredicate::ONE, av, bv, "ne_cmp")
-                        .unwrap()
-                } else if a.is_int_value() && b.is_int_value() {
-                    self.builder
-                        .build_int_compare(
-                            IntPredicate::NE,
-                            a.into_int_value(),
-                            b.into_int_value(),
-                            "ne_cmp",
-                        )
-                        .unwrap()
-                } else if a.is_pointer_value() && b.is_pointer_value() {
-                    let strcmp = self.get_or_declare_strcmp();
-                    let res = self
-                        .builder
-                        .build_call(strcmp, &[a.into(), b.into()], "cmp")
-                        .unwrap();
-                    let cmp_val = self.extract_call_value(res)?.into_int_value();
-                    self.builder
-                        .build_int_compare(
-                            IntPredicate::NE,
-                            cmp_val,
-                            self.context.i32_type().const_int(0, false),
-                            "ne_cmp",
-                        )
-                        .unwrap()
-                } else {
-                    return Err(CodegenError::new(
-                        "assert_ne() arguments must lower to comparable runtime values",
-                    ));
-                };
+                let not_equal = self
+                    .compile_binary(BinOp::NotEq, &args[0].node, &args[1].node)?
+                    .into_int_value();
 
                 let current_fn = self
                     .current_function
@@ -17895,25 +18149,7 @@ impl<'ctx> Codegen<'ctx> {
 
             "assert_true" => {
                 // assert_true(condition: Boolean): None - panics if condition is false
-                let condition = self.compile_expr(&args[0].node)?;
-                let condition_bool = if condition.is_int_value() {
-                    let int_val = condition.into_int_value();
-                    // Handle both i1 (bool) and i64 (integer) types
-                    if int_val.get_type().get_bit_width() == 1 {
-                        int_val
-                    } else {
-                        self.builder
-                            .build_int_compare(
-                                IntPredicate::NE,
-                                int_val,
-                                self.context.i64_type().const_int(0, false),
-                                "bool_cond",
-                            )
-                            .unwrap()
-                    }
-                } else {
-                    return Err(CodegenError::new("assert_true requires boolean condition"));
-                };
+                let condition_bool = self.compile_condition_expr(&args[0].node)?;
 
                 let current_fn = self
                     .current_function
@@ -17959,25 +18195,7 @@ impl<'ctx> Codegen<'ctx> {
 
             "assert_false" => {
                 // assert_false(condition: Boolean): None - panics if condition is true
-                let condition = self.compile_expr(&args[0].node)?;
-                let condition_bool = if condition.is_int_value() {
-                    let int_val = condition.into_int_value();
-                    // Handle both i1 (bool) and i64 (integer) types
-                    if int_val.get_type().get_bit_width() == 1 {
-                        int_val
-                    } else {
-                        self.builder
-                            .build_int_compare(
-                                IntPredicate::NE,
-                                int_val,
-                                self.context.i64_type().const_int(0, false),
-                                "bool_cond",
-                            )
-                            .unwrap()
-                    }
-                } else {
-                    return Err(CodegenError::new("assert_false requires boolean condition"));
-                };
+                let condition_bool = self.compile_condition_expr(&args[0].node)?;
 
                 let current_fn = self
                     .current_function

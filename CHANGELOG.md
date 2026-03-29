@@ -8,6 +8,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed match literal type enforcement in codegen when compiling with `--no-check`:
+  - invalid branches such as `match (true) { 1 => ... }` now fail with an explicit Apex codegen diagnostic instead of reaching Clang with an invalid branch condition type
+  - match-literal lowering now validates Apex pattern compatibility before choosing raw LLVM integer/float/pointer comparison paths
+- Fixed integer `for`-loop sugar validation in codegen when compiling with `--no-check`:
+  - invalid loops such as `for (i in true)` now fail with an explicit Apex codegen diagnostic instead of reaching Clang with broken integer comparisons like `icmp slt i64 ..., i1 true`
+  - unchecked `for (i in N)` lowering now reuses an Integer-only guard for the sugar-bound expression, keeping codegen aligned with checked builds
+- Fixed index type enforcement in codegen when compiling with `--no-check`:
+  - invalid index expressions such as `"hi"[true]`, `xs[true]`, and `xs[true] = 20` now fail with an explicit Apex codegen diagnostic instead of silently treating `Boolean` as an integer index or surfacing broken LLVM/Clang errors
+  - string and list index lowering now share the same Integer-only index guard, keeping unchecked codegen aligned with checked builds for both read and write paths
+- Fixed checked-build type enforcement for `assert(...)`, `assert_true(...)`, and `assert_false(...)`:
+  - direct checked builds now reject integer conditions like `assert(1)`, `assert_true(1)`, and `assert_false(1)` during semantic analysis instead of accidentally accepting them until later stages
+  - builtin function-value compatibility now matches the same Boolean-only contract, so invalid signatures like `(Integer) -> None = assert_true` fail instead of slipping through assignment checks
+- Fixed `assert_eq(...)` and `assert_ne(...)` codegen type enforcement when compiling with `--no-check`:
+  - incompatible comparisons such as `assert_eq(1, true)` and `assert_ne(1, true)` now fail with an explicit Apex codegen diagnostic instead of slipping through raw LLVM integer comparison lowering
+  - assertion equality lowering now reuses the compiler's normal `==` / `!=` implementation, so `assert_eq` and `assert_ne` stay aligned with checked builds for type rules and structural equality
+- Fixed non-boolean assertion builtin conditions in codegen when compiling with `--no-check`:
+  - `assert(1)`, `assert_true(1)`, and `assert_false(1)` now fail with an explicit Apex codegen diagnostic instead of silently treating integers as truthy/falsy assertion conditions
+  - assertion lowering now uses the same Boolean-only condition guard as other control-flow style constructs, keeping `assert*` behavior aligned with checked builds
+- Fixed non-boolean `require(...)` conditions in codegen when compiling with `--no-check`:
+  - `require(1)` and `require(1, "boom")` now fail with an explicit codegen diagnostic instead of emitting invalid LLVM branches that later explode in Clang with `branch condition must have 'i1' type`
+  - the `require` lowering path now uses the same Apex-Boolean condition guard as `if`, `if` expressions, and `while`
+- Fixed recursive display checks for nested direct constructor expressions:
+  - direct constructor forms such as `Option.some(Option.none())` and `Result.error(Option.none())` now compile inside `to_string(...)`, `print(...)`, and string interpolation instead of being rejected on nested unresolved payload markers like `Option<?Tn>`
+  - display validation now follows the active constructor payload expression recursively, so nested direct `Option`/`Result` constructors stay aligned with the existing runtime formatter without loosening checks for arbitrary non-displayable values
+- Fixed display checks for direct `Option.none()` expressions:
+  - `to_string(Option.none())`, `print(Option.none())`, and string interpolation like `"{Option.none()}"` now compile instead of being rejected on an unresolved `Option<?Tn>` inner type even though runtime rendering is always just `None`
+  - that keeps direct `Option.none()` display behavior aligned with the existing formatter without loosening checks for general unknown `Option<T>` payloads
+- Fixed display checks for direct `Result.ok(...)` and `Result.error(...)` constructor expressions:
+  - `to_string(Result.ok(...))`, `print(Result.error(...))`, and string interpolation like `"{Result.ok(...)}"` now compile when the active payload is displayable, instead of being rejected just because the inactive generic side remained inferred as `?Tn`
+  - that keeps direct `Result` constructor rendering aligned with the existing runtime formatter without loosening display checks for general `Result<T, E>` values whose payloads are not both displayable
+- Fixed display formatting for concrete `Result<T, E>` values when both payload types are displayable:
+  - `to_string(result)`, `print(result)`, and string interpolation like `"{result}"` now render `Ok(...)` / `Error(...)` for concrete `Result<T, E>` values instead of rejecting them at semantic-check time
+  - the formatter now recursively renders displayable `Result` payloads while still rejecting unsupported payload types with an explicit diagnostic
+- Fixed display formatting for `Option<T>` when `T` is itself displayable:
+  - `to_string(Option.some(...))`, `print(Option.some(...))`, and string interpolation like `"{Option.some(...)}"` now render `Some(...)` / `None` instead of failing during semantic checks
+  - the formatter recurses through nested displayable `Option` payloads, while still rejecting unsupported inner payload types with an explicit diagnostic
+- Fixed codegen-side return-type inference for static builtin calls:
+  - expressions such as `File.exists("dir")` and `File.delete("dir")` now keep their canonical builtin return type during codegen instead of falling through to the generic `Integer` fallback
+  - control-flow checks and other codegen-only inference paths now stay aligned with runtime lowering for field-style builtins like `File.*`, preventing bogus errors such as `Condition must be Boolean, found Integer`
 - Fixed generic interface references in inheritance clauses:
   - parser support for `class ... implements I<String>`, `class ... extends Base<String>`, and `interface ... extends Parent<String>` now accepts nominal generic references instead of stopping at `<...>` with errors like `Expected LBrace, found Some(Lt)`
   - interface metadata now preserves and instantiates generic parameters before method compatibility checks, so flows like `i: I<String> = C(); i.get().length()` typecheck and run with the concrete `String` signature instead of leaking raw interface type variables
@@ -93,6 +132,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed project-mode alias import invalidation after imported symbol removal:
   - namespace alias imports like `import lib as l` and exact import aliases like `import lib.add as inc` now also fall back to namespace-level dependency invalidation when the imported symbol disappears
   - incremental `build` no longer leaks stale alias rewrite/import state through cache reuse in those cases, so alias consumers fail in the semantic/import pipeline instead of reaching late codegen crashes such as `Unknown variable: l` or `Unknown function: lib__add`
+- Fixed invalid unary operator lowering in codegen when compiling with `--no-check`:
+  - unary negation and logical not now validate Apex operand types before lowering instead of trusting raw LLVM integer shapes for booleans and other scalar values
+  - invalid programs such as `-true` and `!1` now fail with explicit codegen diagnostics instead of silently miscompiling or surfacing a downstream clang IR error like `branch condition must have 'i1' type`
+- Fixed non-boolean control-flow conditions in codegen when compiling with `--no-check`:
+  - `if` statements, `if` expressions, and `while` loops now validate that their condition lowers from Apex `Boolean` before emitting LLVM branches
+  - invalid programs such as `if (1)`, `return if (1) { ... } else { ... }`, and `while (1) { ... }` now fail with explicit codegen diagnostics instead of surfacing downstream clang IR errors like `branch condition must have 'i1' type`
 - Fixed smart-pointer and non-constructible builtin constructor rules in typechecking:
   - `Box<T>`, `Rc<T>`, and `Arc<T>` constructors now reject extra arguments during semantic checks instead of letting invalid calls like `Box<Integer>(1, 2)` slip through
   - `Ptr<T>`, `Task<T>`, and `Range<T>` constructor calls now fail early with an explicit built-in-type diagnostic instead of inconsistently typechecking or falling through to `Unknown type`

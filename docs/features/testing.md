@@ -108,7 +108,7 @@ check: (Integer, Integer) -> None = assert_eq;
 ensure_false: (Boolean) -> None = assert_false;
 ```
 
-Those typed function values keep the same parameter rules as direct calls. For example, `assert` / `assert_true` / `assert_false` still require `Boolean` or `Integer`, and `fail` can be used as either `() -> None` or `(String) -> None`.
+Those typed function values keep the same parameter rules as direct calls. For example, `assert` / `assert_true` / `assert_false` require `Boolean`, and `fail` can be used as either `() -> None` or `(String) -> None`.
 Mixed numeric assertion parity also applies in higher-order form, so signatures like `(Integer, Float) -> None` for `assert_eq` and `(Float, Integer) -> None` for `assert_ne` work the same way as direct calls.
 
 ### assert_ne(a, b)

@@ -46,14 +46,37 @@ impl<'ctx> Codegen<'ctx> {
         self.normalize_codegen_type(&ty)
     }
 
-    fn infer_builtin_call_type(&self, callee: &Expr, args: &[Spanned<Expr>]) -> Option<Type> {
-        match callee {
-            Expr::Ident(name) if name == "println" => Some(Type::None),
-            Expr::Ident(name) if name == "to_string" => Some(Type::String),
-            Expr::Ident(name) if name == "range" => args
+    fn infer_builtin_function_return_type(
+        &self,
+        function_name: &str,
+        args: &[Spanned<Expr>],
+    ) -> Option<Type> {
+        match function_name {
+            "println" | "print" | "assert" | "assert_eq" | "assert_ne" | "assert_true"
+            | "assert_false" | "fail" | "exit" | "System__exit" | "Time__sleep" => Some(Type::None),
+            "read_line" | "to_string" | "File__read" | "Time__now" | "System__getenv"
+            | "System__exec" | "System__cwd" | "System__os" | "Args__get" | "Str__concat"
+            | "Str__upper" | "Str__lower" | "Str__trim" => Some(Type::String),
+            "File__write" | "File__exists" | "File__delete" | "Str__contains"
+            | "Str__startsWith" | "Str__endsWith" => Some(Type::Boolean),
+            "Time__unix" | "System__shell" | "Args__count" | "Str__len" | "Str__compare" => {
+                Some(Type::Integer)
+            }
+            "range" => args
                 .first()
                 .map(|arg| Type::Range(Box::new(self.infer_expr_type(&arg.node, &[]))))
                 .or_else(|| Some(Type::Range(Box::new(Type::Integer)))),
+            _ => None,
+        }
+    }
+
+    fn infer_builtin_call_type(&self, callee: &Expr, args: &[Spanned<Expr>]) -> Option<Type> {
+        if let Some(function_name) = self.resolve_contextual_function_value_name(callee) {
+            if let Some(ret_ty) = self.infer_builtin_function_return_type(&function_name, args) {
+                return Some(ret_ty);
+            }
+        }
+        match callee {
             Expr::Field { object, field } => {
                 let Expr::Ident(owner_name) = &object.node else {
                     return None;
@@ -67,6 +90,21 @@ impl<'ctx> Codegen<'ctx> {
                     ("Str", "contains") | ("Str", "startsWith") | ("Str", "endsWith") => {
                         Some(Type::Boolean)
                     }
+                    ("File", "read") => Some(Type::String),
+                    ("File", "write") | ("File", "exists") | ("File", "delete") => {
+                        Some(Type::Boolean)
+                    }
+                    ("Time", "now") => Some(Type::String),
+                    ("Time", "unix") => Some(Type::Integer),
+                    ("Time", "sleep") => Some(Type::None),
+                    ("System", "getenv")
+                    | ("System", "shell")
+                    | ("System", "exec")
+                    | ("System", "cwd")
+                    | ("System", "os") => Some(Type::String),
+                    ("System", "exit") => Some(Type::None),
+                    ("Args", "count") => Some(Type::Integer),
+                    ("Args", "get") => Some(Type::String),
                     ("Option", "some") => args.first().map(|first_arg| {
                         Type::Option(Box::new(self.infer_expr_type(&first_arg.node, &[])))
                     }),
@@ -1187,6 +1225,17 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
                 Pattern::Literal(lit) => {
+                    let pattern_ty = self.infer_expr_type(&Expr::Literal(lit.clone()), &[]);
+                    if self
+                        .common_compatible_codegen_type(&match_ty, &pattern_ty)
+                        .is_none()
+                    {
+                        return Err(CodegenError::new(format!(
+                            "Pattern type mismatch: expected {}, found {}",
+                            Self::format_type_string(&match_ty),
+                            Self::format_type_string(&pattern_ty)
+                        )));
+                    }
                     let pattern_val = self.compile_literal(lit)?;
                     let cond = if val.is_float_value() || pattern_val.is_float_value() {
                         let match_val = if val.is_float_value() {
@@ -1556,7 +1605,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Index { object, index } => {
-                let idx_val = self.compile_expr(&index.node)?.into_int_value();
+                let idx_val = self.compile_integer_index_expr(&index.node)?;
                 let object_ty = self.infer_object_type(&object.node);
                 let deref_object_ty = object_ty
                     .clone()
@@ -2734,7 +2783,9 @@ impl<'ctx> Codegen<'ctx> {
                 UnaryOp::Neg => self.infer_expr_type(&expr.node, params),
             },
             Expr::Call {
-                callee, type_args, ..
+                callee,
+                args,
+                type_args,
             } => match &callee.node {
                 Expr::Ident(name) if name == "println" => Type::None,
                 Expr::Ident(name) if name == "to_string" => Type::String,
@@ -2804,6 +2855,9 @@ impl<'ctx> Codegen<'ctx> {
                         {
                             return (**ret_ty).clone();
                         }
+                    }
+                    if let Some(ret_ty) = self.infer_builtin_call_type(&callee.node, args) {
+                        return ret_ty;
                     }
                     match &callee.node {
                         Expr::Field { object, field } => {
