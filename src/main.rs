@@ -2790,6 +2790,18 @@ fn resolve_symbol_owner_files_in_namespace(
     deps
 }
 
+fn namespace_dependency_files(
+    namespace: &str,
+    ctx: &DependencyResolutionContext<'_>,
+) -> HashSet<PathBuf> {
+    ctx.namespace_files_map
+        .get(namespace)
+        .into_iter()
+        .flatten()
+        .cloned()
+        .collect()
+}
+
 fn resolve_import_dependency_files(
     unit: &ParsedProjectUnit,
     import: &ImportDecl,
@@ -2801,12 +2813,16 @@ fn resolve_import_dependency_files(
 
     if import.path.ends_with(".*") {
         let namespace = import.path.trim_end_matches(".*");
-        return resolve_symbol_owner_files_in_namespace(
+        let owner_files = resolve_symbol_owner_files_in_namespace(
             namespace,
             referenced_symbols,
             qualified_symbol_refs,
             ctx,
         );
+        if owner_files.is_empty() {
+            return namespace_dependency_files(namespace, ctx);
+        }
+        return owner_files;
     }
 
     if let Some(owner_file) = import_path_owner_file(
@@ -2854,16 +2870,24 @@ fn resolve_import_dependency_files(
                 }
             }
         }
+        if deps.is_empty() {
+            return namespace_dependency_files(&import.path, ctx);
+        }
         return deps;
     }
 
     if let Some((namespace, _)) = import.path.rsplit_once('.') {
-        deps.extend(resolve_symbol_owner_files_in_namespace(
+        let owner_files = resolve_symbol_owner_files_in_namespace(
             namespace,
             referenced_symbols,
             qualified_symbol_refs,
             ctx,
-        ));
+        );
+        if owner_files.is_empty() {
+            deps.extend(namespace_dependency_files(namespace, ctx));
+        } else {
+            deps.extend(owner_files);
+        }
     }
 
     deps
@@ -21844,6 +21868,114 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_invalid_integer_boolean_addition_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-int-bool-add");
+        let source_path = temp_root.join("no_check_invalid_int_bool_add.apex");
+        let output_path = temp_root.join("no_check_invalid_int_bool_add");
+        let source = r#"
+            function main(): Integer {
+                return 1 + true;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid integer + boolean should fail in codegen without checks");
+        assert!(
+            err.contains("Arithmetic operator requires numeric types, got Integer and Boolean"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_invalid_integer_boolean_equality_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-int-bool-eq");
+        let source_path = temp_root.join("no_check_invalid_int_bool_eq.apex");
+        let output_path = temp_root.join("no_check_invalid_int_bool_eq");
+        let source = r#"
+            function main(): Integer {
+                return if (1 == true) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid integer == boolean should fail in codegen without checks");
+        assert!(err.contains("Cannot compare Integer and Boolean"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_invalid_boolean_comparison_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-bool-comparison");
+        let source_path = temp_root.join("no_check_invalid_bool_comparison.apex");
+        let output_path = temp_root.join("no_check_invalid_bool_comparison");
+        let source = r#"
+            function main(): Integer {
+                return if (true < false) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid boolean comparison should fail in codegen without checks");
+        assert!(
+            err.contains("Comparison requires numeric types, got Boolean and Boolean"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_invalid_integer_logical_and_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-int-logical-and");
+        let source_path = temp_root.join("no_check_invalid_int_logical_and.apex");
+        let output_path = temp_root.join("no_check_invalid_int_logical_and");
+        let source = r#"
+            function main(): Integer {
+                return if (1 && 2) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid integer logical and should fail in codegen without checks");
+        assert!(
+            err.contains("Logical operator requires Boolean types, got Integer and Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_invalid_interpolated_integer_boolean_addition_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-interp-int-bool-add");
+        let source_path = temp_root.join("no_check_invalid_interp_int_bool_add.apex");
+        let output_path = temp_root.join("no_check_invalid_interp_int_bool_add");
+        let source = r#"
+            function main(): None {
+                println("{1 + true}");
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid interpolated integer + boolean should fail in codegen");
+        assert!(
+            err.contains("Arithmetic operator requires numeric types, got Integer and Boolean"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_string_interpolation_on_boolean_runtime() {
         let temp_root = make_temp_project_root("string-interpolation-bool-runtime");
         let source_path = temp_root.join("string_interpolation_bool_runtime.apex");
@@ -31006,6 +31138,205 @@ function main(): Integer {
             graph.get(&app.file).cloned().unwrap_or_default(),
             HashSet::from([PathBuf::from("src/lib_foo.apex")])
         );
+    }
+
+    #[test]
+    fn dependency_graph_keeps_wildcard_namespace_dependencies_when_symbol_disappears() {
+        let mut app = make_unit("src/main.apex", "app", &["lib.*"]);
+        app.referenced_symbols = vec!["foo".to_string()];
+        let mut foo = make_unit("src/lib_foo.apex", "lib", &[]);
+        foo.function_names = vec!["other".to_string()];
+        let mut bar = make_unit("src/lib_bar.apex", "lib", &[]);
+        bar.function_names = vec!["bar".to_string()];
+        let parsed_files = vec![app.clone(), foo, bar];
+        let namespace_files_map = HashMap::from([
+            ("app".to_string(), vec![PathBuf::from("src/main.apex")]),
+            (
+                "lib".to_string(),
+                vec![
+                    PathBuf::from("src/lib_bar.apex"),
+                    PathBuf::from("src/lib_foo.apex"),
+                ],
+            ),
+        ]);
+        let namespace_function_files = HashMap::from([(
+            "lib".to_string(),
+            HashMap::from([
+                ("other".to_string(), PathBuf::from("src/lib_foo.apex")),
+                ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+            ]),
+        )]);
+        let ctx = DependencyResolutionContext {
+            namespace_files_map: &namespace_files_map,
+            namespace_function_files: &namespace_function_files,
+            namespace_class_files: &HashMap::new(),
+            namespace_interface_files: empty_namespace_interface_files(),
+            namespace_module_files: &HashMap::new(),
+            global_function_map: &HashMap::from([
+                ("other".to_string(), "lib".to_string()),
+                ("bar".to_string(), "lib".to_string()),
+            ]),
+            global_function_file_map: &HashMap::from([
+                ("other".to_string(), PathBuf::from("src/lib_foo.apex")),
+                ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+            ]),
+            global_class_map: &HashMap::new(),
+            global_class_file_map: &HashMap::new(),
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
+            global_enum_map: &HashMap::new(),
+            global_enum_file_map: &HashMap::new(),
+            global_module_map: &HashMap::new(),
+            global_module_file_map: &HashMap::new(),
+        };
+
+        let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None);
+        assert_eq!(
+            graph.get(&app.file).cloned().unwrap_or_default(),
+            HashSet::from([
+                PathBuf::from("src/lib_bar.apex"),
+                PathBuf::from("src/lib_foo.apex")
+            ])
+        );
+    }
+
+    #[test]
+    fn project_build_rechecks_wildcard_import_dependents_after_symbol_removal() {
+        let temp_root = make_temp_project_root("project-build-wildcard-symbol-removal");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.*;\nfunction main(): Integer { return add(1); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial wildcard project build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("rewrite helper without imported symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail after wildcard-imported symbol removal");
+            assert!(
+                err.contains("Undefined variable: add")
+                    || err.contains("Unknown function: add")
+                    || err.contains("Import check failed"),
+                "{err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_rechecks_namespace_alias_dependents_after_symbol_removal() {
+        let temp_root = make_temp_project_root("project-build-namespace-alias-symbol-removal");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib as l;\nfunction main(): Integer { return l.add(1); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial namespace-alias project build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("rewrite helper without namespace-alias symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail after namespace-alias symbol removal");
+            assert!(
+                err.contains("Undefined variable: l")
+                    || err.contains("Unknown variable: l")
+                    || err.contains("Unknown method")
+                    || err.contains("Import check failed"),
+                "{err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_rechecks_exact_import_alias_dependents_after_symbol_removal() {
+        let temp_root = make_temp_project_root("project-build-exact-import-alias-symbol-removal");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport lib.add as inc;\nfunction main(): Integer { return inc(1); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial exact-import-alias project build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("rewrite helper without exact-import alias symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail after exact-import alias symbol removal");
+            assert!(
+                err.contains("Undefined variable: inc")
+                    || err.contains("Unknown function: lib__add")
+                    || err.contains("Import check failed"),
+                "{err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]

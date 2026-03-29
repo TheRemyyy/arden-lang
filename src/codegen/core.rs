@@ -11271,6 +11271,8 @@ impl<'ctx> Codegen<'ctx> {
         left_ty: &Type,
         right_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
+        self.ensure_binary_operator_supported(op, left_ty, right_ty)?;
+
         if left_ty.is_numeric()
             && right_ty.is_numeric()
             && (matches!(left_ty, Type::Float) || matches!(right_ty, Type::Float))
@@ -11511,6 +11513,66 @@ impl<'ctx> Codegen<'ctx> {
             Self::format_type_string(left_ty),
             Self::format_type_string(right_ty)
         )))
+    }
+
+    fn ensure_binary_operator_supported(
+        &self,
+        op: BinOp,
+        left_ty: &Type,
+        right_ty: &Type,
+    ) -> Result<()> {
+        match op {
+            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
+                if matches!(op, BinOp::Add)
+                    && matches!(left_ty, Type::String)
+                    && matches!(right_ty, Type::String)
+                {
+                    return Ok(());
+                }
+                if left_ty.is_numeric() && right_ty.is_numeric() {
+                    Ok(())
+                } else {
+                    Err(CodegenError::new(format!(
+                        "Arithmetic operator requires numeric types, got {} and {}",
+                        Self::format_type_string(left_ty),
+                        Self::format_type_string(right_ty)
+                    )))
+                }
+            }
+            BinOp::Eq | BinOp::NotEq => {
+                if left_ty == right_ty || (left_ty.is_numeric() && right_ty.is_numeric()) {
+                    Ok(())
+                } else {
+                    Err(CodegenError::new(format!(
+                        "Cannot compare {} and {}",
+                        Self::format_type_string(left_ty),
+                        Self::format_type_string(right_ty)
+                    )))
+                }
+            }
+            BinOp::Lt | BinOp::LtEq | BinOp::Gt | BinOp::GtEq => {
+                if left_ty.is_numeric() && right_ty.is_numeric() {
+                    Ok(())
+                } else {
+                    Err(CodegenError::new(format!(
+                        "Comparison requires numeric types, got {} and {}",
+                        Self::format_type_string(left_ty),
+                        Self::format_type_string(right_ty)
+                    )))
+                }
+            }
+            BinOp::And | BinOp::Or => {
+                if matches!(left_ty, Type::Boolean) && matches!(right_ty, Type::Boolean) {
+                    Ok(())
+                } else {
+                    Err(CodegenError::new(format!(
+                        "Logical operator requires Boolean types, got {} and {}",
+                        Self::format_type_string(left_ty),
+                        Self::format_type_string(right_ty)
+                    )))
+                }
+            }
+        }
     }
 
     fn guard_nonzero_integer_divisor(

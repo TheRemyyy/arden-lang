@@ -84,6 +84,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed mutable parameter bindings after codegen assignment mutability tracking:
   - `mut` parameters in functions, methods, constructors, lambdas, and async functions now preserve their mutability when lowered into local codegen variables instead of being downgraded to immutable bindings
   - valid flows like reassigning a `mut value: Integer` parameter now compile and run again instead of failing with bogus codegen errors such as `Cannot assign to immutable variable 'value'`
+- Fixed invalid binary operator lowering in codegen when compiling with `--no-check`:
+  - arithmetic, comparison, equality, and logical operators now validate Apex operand types before lowering instead of trusting raw LLVM integer shapes for booleans and other scalar values
+  - invalid programs such as `1 + true`, `1 == true`, `true < false`, `1 && 2`, and interpolated expressions like `"{1 + true}"` now fail with explicit codegen diagnostics instead of silently producing wrong results or surfacing a downstream clang IR error
+- Fixed project-mode wildcard import invalidation after imported symbol removal:
+  - dependency graph entries for `import lib.*` now keep namespace-level dependencies when a previously used symbol disappears, instead of severing all downstream edges for the importing file
+  - incremental `build` now rechecks files that depended on wildcard-imported symbols after API removals, so cases like deleting `add` from `lib.*` fail during semantic analysis instead of leaking through cache reuse and crashing later in codegen with `Unknown function: add`
+- Fixed project-mode alias import invalidation after imported symbol removal:
+  - namespace alias imports like `import lib as l` and exact import aliases like `import lib.add as inc` now also fall back to namespace-level dependency invalidation when the imported symbol disappears
+  - incremental `build` no longer leaks stale alias rewrite/import state through cache reuse in those cases, so alias consumers fail in the semantic/import pipeline instead of reaching late codegen crashes such as `Unknown variable: l` or `Unknown function: lib__add`
 - Fixed smart-pointer and non-constructible builtin constructor rules in typechecking:
   - `Box<T>`, `Rc<T>`, and `Arc<T>` constructors now reject extra arguments during semantic checks instead of letting invalid calls like `Box<Integer>(1, 2)` slip through
   - `Ptr<T>`, `Task<T>`, and `Range<T>` constructor calls now fail early with an explicit built-in-type diagnostic instead of inconsistently typechecking or falling through to `Unknown type`
