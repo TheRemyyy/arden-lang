@@ -41,6 +41,7 @@ pub type Result<T> = std::result::Result<T, CodegenError>;
 pub struct Variable<'ctx> {
     pub ptr: PointerValue<'ctx>,
     pub ty: Type,
+    pub mutable: bool,
 }
 
 /// Class info
@@ -6852,6 +6853,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: normalized_param_ty,
+                    mutable: param.mutable,
                 },
             );
         }
@@ -6886,6 +6888,7 @@ impl<'ctx> Codegen<'ctx> {
             Variable {
                 ptr: this_alloca,
                 ty: Type::Named(class.name.clone()),
+                mutable: false,
             },
         );
 
@@ -6948,6 +6951,7 @@ impl<'ctx> Codegen<'ctx> {
             Variable {
                 ptr: this_alloca,
                 ty: Type::Named(class.name.clone()),
+                mutable: false,
             },
         );
 
@@ -6972,6 +6976,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: normalized_param_ty,
+                    mutable: param.mutable,
                 },
             );
         }
@@ -7624,6 +7629,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: param.ty.clone(),
+                    mutable: param.mutable,
                 },
             );
         }
@@ -7919,6 +7925,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: normalized_param_ty,
+                    mutable: param.mutable,
                 },
             );
         }
@@ -7958,7 +7965,7 @@ impl<'ctx> Codegen<'ctx> {
                 name,
                 ty,
                 value,
-                mutable: _,
+                mutable,
             } => {
                 let normalized_ty = self.normalize_codegen_type(ty);
                 let val = self.compile_expr_with_expected_type(&value.node, &normalized_ty)?;
@@ -7972,11 +7979,13 @@ impl<'ctx> Codegen<'ctx> {
                     Variable {
                         ptr: alloca,
                         ty: normalized_ty,
+                        mutable: *mutable,
                     },
                 );
             }
 
             Stmt::Assign { target, value } => {
+                self.ensure_assignment_target_mutable(&target.node)?;
                 if let Some((op, rhs)) =
                     Self::match_compound_assign_target(&target.node, &value.node)
                 {
@@ -8284,6 +8293,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: var_alloca,
                     ty: iter_ty.clone(),
+                    mutable: false,
                 },
             );
 
@@ -8447,6 +8457,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: var_alloca,
                     ty: iter_ty.clone(),
+                    mutable: false,
                 },
             );
 
@@ -8529,6 +8540,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: var_alloca,
                     ty: iter_ty.clone(),
+                    mutable: false,
                 },
             );
 
@@ -8651,6 +8663,7 @@ impl<'ctx> Codegen<'ctx> {
             Variable {
                 ptr: var_alloca,
                 ty: ty.clone(),
+                mutable: false,
             },
         );
 
@@ -9128,6 +9141,7 @@ impl<'ctx> Codegen<'ctx> {
                             Variable {
                                 ptr: alloca,
                                 ty: match_ty.clone(),
+                                mutable: false,
                             },
                         );
                     }
@@ -9159,6 +9173,7 @@ impl<'ctx> Codegen<'ctx> {
                             Variable {
                                 ptr: alloca,
                                 ty: option_inner_ty.clone().unwrap_or(Type::Integer),
+                                mutable: false,
                             },
                         );
                     } else if is_result_match && variant_leaf == "Ok" && !bindings.is_empty() {
@@ -9179,6 +9194,7 @@ impl<'ctx> Codegen<'ctx> {
                                     .as_ref()
                                     .map(|(ok, _)| ok.clone())
                                     .unwrap_or(Type::Integer),
+                                mutable: false,
                             },
                         );
                     } else if is_result_match && variant_leaf == "Error" && !bindings.is_empty() {
@@ -9199,6 +9215,7 @@ impl<'ctx> Codegen<'ctx> {
                                     .as_ref()
                                     .map(|(_, err)| err.clone())
                                     .unwrap_or(Type::String),
+                                mutable: false,
                             },
                         );
                     } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
@@ -9227,6 +9244,7 @@ impl<'ctx> Codegen<'ctx> {
                                             Variable {
                                                 ptr: alloca,
                                                 ty: field_ty.clone(),
+                                                mutable: false,
                                             },
                                         );
                                     }
@@ -9497,6 +9515,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: ty.clone(),
+                    mutable: false,
                 },
             );
         }
@@ -10320,6 +10339,7 @@ impl<'ctx> Codegen<'ctx> {
                     Variable {
                         ptr: alloca,
                         ty: param_ty.clone(),
+                        mutable: false,
                     },
                 );
                 synthetic_args.push(Spanned::new(Expr::Ident(param_name), Span::default()));
@@ -14476,24 +14496,114 @@ impl<'ctx> Codegen<'ctx> {
 
         match &normalized_ty {
             Type::List(_) => {
+                if args.len() > 1 {
+                    return Err(CodegenError::new(format!(
+                        "Constructor {} expects 0 or 1 arguments, got {}",
+                        Self::format_type_string(&normalized_ty),
+                        args.len()
+                    )));
+                }
                 if args.len() == 1 {
-                    if let Expr::Literal(Literal::Integer(size)) = &args[0].node {
-                        if *size > 0 {
-                            return self.create_fixed_list(*size as u64, Some(&normalized_ty));
-                        }
+                    let capacity = self.compile_expr(&args[0].node)?;
+                    if !capacity.is_int_value() {
+                        return Err(CodegenError::new(format!(
+                            "Constructor {} expects optional Integer capacity, got {}",
+                            Self::format_type_string(&normalized_ty),
+                            Self::format_type_string(&self.infer_expr_type(&args[0].node, &[]))
+                        )));
                     }
+                    return self.create_list_with_capacity_value(
+                        capacity.into_int_value(),
+                        Some(&normalized_ty),
+                    );
                 }
                 return self.create_empty_list(Some(&normalized_ty));
             }
             Type::Map(_, _) => {
+                if !args.is_empty() {
+                    return Err(CodegenError::new(format!(
+                        "Constructor {} expects 0 arguments, got {}",
+                        Self::format_type_string(&normalized_ty),
+                        args.len()
+                    )));
+                }
                 return self.create_empty_map_for_type(&normalized_ty);
             }
-            Type::Option(inner) => return self.create_option_none_typed(inner),
-            Type::Result(ok, err) => return self.create_default_result_typed(ok, err),
-            Type::Set(_) => return self.create_empty_set_for_type(&normalized_ty),
-            Type::Box(_) => return self.create_empty_box_typed(&normalized_ty),
-            Type::Rc(_) => return self.create_empty_rc_typed(&normalized_ty),
-            Type::Arc(_) => return self.create_empty_arc_typed(&normalized_ty),
+            Type::Option(inner) => {
+                if !args.is_empty() {
+                    return Err(CodegenError::new(format!(
+                        "Constructor {} expects 0 arguments, got {}",
+                        Self::format_type_string(&normalized_ty),
+                        args.len()
+                    )));
+                }
+                return self.create_option_none_typed(inner);
+            }
+            Type::Result(ok, err) => {
+                if !args.is_empty() {
+                    return Err(CodegenError::new(format!(
+                        "Constructor {} expects 0 arguments, got {}",
+                        Self::format_type_string(&normalized_ty),
+                        args.len()
+                    )));
+                }
+                return self.create_default_result_typed(ok, err);
+            }
+            Type::Set(_) => {
+                if !args.is_empty() {
+                    return Err(CodegenError::new(format!(
+                        "Constructor {} expects 0 arguments, got {}",
+                        Self::format_type_string(&normalized_ty),
+                        args.len()
+                    )));
+                }
+                return self.create_empty_set_for_type(&normalized_ty);
+            }
+            Type::Box(inner) => {
+                if args.len() > 1 {
+                    return Err(CodegenError::new(format!(
+                        "Constructor {} expects 0 or 1 arguments, got {}",
+                        Self::format_type_string(&normalized_ty),
+                        args.len()
+                    )));
+                }
+                if let Some(arg) = args.first() {
+                    let payload =
+                        self.compile_expr_with_expected_type(&arg.node, inner.as_ref())?;
+                    return self.create_box_typed(payload, &normalized_ty);
+                }
+                return self.create_empty_box_typed(&normalized_ty);
+            }
+            Type::Rc(inner) => {
+                if args.len() > 1 {
+                    return Err(CodegenError::new(format!(
+                        "Constructor {} expects 0 or 1 arguments, got {}",
+                        Self::format_type_string(&normalized_ty),
+                        args.len()
+                    )));
+                }
+                if let Some(arg) = args.first() {
+                    let payload =
+                        self.compile_expr_with_expected_type(&arg.node, inner.as_ref())?;
+                    return self.create_rc_typed(payload, &normalized_ty);
+                }
+                return self.create_empty_rc_typed(&normalized_ty);
+            }
+            Type::Arc(inner) => {
+                if args.len() > 1 {
+                    return Err(CodegenError::new(format!(
+                        "Constructor {} expects 0 or 1 arguments, got {}",
+                        Self::format_type_string(&normalized_ty),
+                        args.len()
+                    )));
+                }
+                if let Some(arg) = args.first() {
+                    let payload =
+                        self.compile_expr_with_expected_type(&arg.node, inner.as_ref())?;
+                    return self.create_arc_typed(payload, &normalized_ty);
+                }
+                return self.create_empty_arc_typed(&normalized_ty);
+            }
             _ => {}
         }
 

@@ -6,6 +6,8 @@ Apex provides built-in collection types for managing groups of data. These are i
 
 `List<T>` is a dynamic array that grows automatically.
 
+`List<T>(capacity)` optionally preallocates backing storage, but the list still starts empty with `length() == 0`.
+
 > **Note**: `Set<T>` and `Map<K, V>` are currently defined in the type system but standard library (methods) support is still in development. The following documentation for Maps refers to the intended API.
 
 ### List Methods

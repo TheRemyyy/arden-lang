@@ -47,7 +47,10 @@ class Boxed {
 
 box: Boxed = Boxed(42);
 ref: &Boxed = &box;
-nums: List<Integer> = List<Integer>(1, 2, 3);
+nums: List<Integer> = List<Integer>();
+nums.push(1);
+nums.push(2);
+nums.push(3);
 nums_ref: &List<Integer> = &nums;
 
 v: Integer = ref.value;

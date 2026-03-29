@@ -68,6 +68,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed cascading diagnostics for builtin constructors with unknown arguments:
   - `List`, `Map`, `Set`, `Option`, and `Result` constructors now stop after the primary missing-symbol failure instead of appending a second constructor-arity/type error against `unknown`
   - expressions like `List<Integer>(nope)`, `Map<String, Integer>(nope)`, `Set<Integer>(nope)`, `Option<Integer>(nope)`, and `Result<Integer, String>(nope)` now preserve only the original root cause diagnostic
+- Fixed negative list preallocation capacities:
+  - `List<T>(capacity)` now rejects negative constant capacities during typecheck instead of silently compiling an invalid preallocation request into codegen
+  - calls like `List<Integer>(-1)` now fail fast with `List constructor capacity cannot be negative`
+- Fixed `List<T>(capacity)` runtime constructor semantics:
+  - list constructors now treat their integer argument as preallocated capacity instead of incorrectly materializing `length == capacity` zero-filled elements
+  - runtime capacity expressions now honor non-literal values and fail cleanly on negative capacities instead of silently falling back to the default empty-list allocation
+- Fixed builtin constructor validation in codegen when compiling with `--no-check`:
+  - invalid builtin constructor calls such as `List<Integer>(1, 2)`, `List<Integer>("bad")`, and `Map<String, Integer>(1)` now fail in codegen instead of silently compiling to default empty values
+  - built-in `Box<T>(value)`, `Rc<T>(value)`, and `Arc<T>(value)` constructors now also preserve their payloads in the no-check codegen path instead of silently allocating zero-initialized heap storage
+  - that closes silent-miscompile paths where skipping semantic checks could previously discard constructor arguments without any diagnostic
+- Fixed assignment mutability enforcement in codegen when compiling with `--no-check`:
+  - assignments now preserve immutable binding rules in the no-check codegen path, so `value = ...`, `view[0] = ...`, and `*ref = ...` no longer silently mutate immutable locals or data behind immutable references
+  - invalid assignments that semantic checking would already reject now fail during codegen with the same root-cause diagnostics instead of compiling into successful runtime mutations
+- Fixed mutable parameter bindings after codegen assignment mutability tracking:
+  - `mut` parameters in functions, methods, constructors, lambdas, and async functions now preserve their mutability when lowered into local codegen variables instead of being downgraded to immutable bindings
+  - valid flows like reassigning a `mut value: Integer` parameter now compile and run again instead of failing with bogus codegen errors such as `Cannot assign to immutable variable 'value'`
+- Fixed smart-pointer and non-constructible builtin constructor rules in typechecking:
+  - `Box<T>`, `Rc<T>`, and `Arc<T>` constructors now reject extra arguments during semantic checks instead of letting invalid calls like `Box<Integer>(1, 2)` slip through
+  - `Ptr<T>`, `Task<T>`, and `Range<T>` constructor calls now fail early with an explicit built-in-type diagnostic instead of inconsistently typechecking or falling through to `Unknown type`
 - Fixed explicit generic function values:
   - expressions like `id<Integer>` now parse as specialized first-class function values instead of leaving `<Integer>` in the token stream and failing with parser errors such as `Expected expression, found Some(TyInteger)`
   - specialized function values now typecheck and codegen through the existing generic specialization pipeline, so assignments like `f: (Integer) -> Integer = id<Integer>; f(7)` compile and run

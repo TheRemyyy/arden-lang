@@ -21508,6 +21508,342 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_invalid_list_constructor_arity_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-list-ctor-arity");
+        let source_path = temp_root.join("no_check_invalid_list_ctor_arity.apex");
+        let output_path = temp_root.join("no_check_invalid_list_ctor_arity");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Integer> = List<Integer>(1, 2);
+                return xs.length();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid list constructor arity should fail in codegen without checks");
+        assert!(
+            err.contains("Constructor List<Integer> expects 0 or 1 arguments, got 2"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_non_integer_list_capacity_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-list-capacity-type");
+        let source_path = temp_root.join("no_check_invalid_list_capacity_type.apex");
+        let output_path = temp_root.join("no_check_invalid_list_capacity_type");
+        let source = r#"
+            function main(): Integer {
+                xs: List<Integer> = List<Integer>("bad");
+                return xs.length();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("non-integer list capacity should fail in codegen without checks");
+        assert!(
+            err.contains("Constructor List<Integer> expects optional Integer capacity, got String"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_invalid_map_constructor_arity_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-map-ctor-arity");
+        let source_path = temp_root.join("no_check_invalid_map_ctor_arity.apex");
+        let output_path = temp_root.join("no_check_invalid_map_ctor_arity");
+        let source = r#"
+            function main(): Integer {
+                items: Map<String, Integer> = Map<String, Integer>(1);
+                return items.length();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid map constructor arity should fail in codegen without checks");
+        assert!(
+            err.contains("Constructor Map<String, Integer> expects 0 arguments, got 1"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_preserves_box_constructor_payload_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-box-payload-runtime");
+        let source_path = temp_root.join("no_check_box_payload_runtime.apex");
+        let output_path = temp_root.join("no_check_box_payload_runtime");
+        let source = r#"
+            function main(): Integer {
+                value: Box<Integer> = Box<Integer>(41);
+                return *value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("Box payload constructor should codegen without checks");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled no-check box payload binary");
+        assert_eq!(status.code(), Some(41));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_preserves_rc_constructor_payload_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-rc-payload-runtime");
+        let source_path = temp_root.join("no_check_rc_payload_runtime.apex");
+        let output_path = temp_root.join("no_check_rc_payload_runtime");
+        let source = r#"
+            function main(): Integer {
+                value: Rc<Integer> = Rc<Integer>(42);
+                return *value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("Rc payload constructor should codegen without checks");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled no-check rc payload binary");
+        assert_eq!(status.code(), Some(42));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_preserves_arc_constructor_payload_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-arc-payload-runtime");
+        let source_path = temp_root.join("no_check_arc_payload_runtime.apex");
+        let output_path = temp_root.join("no_check_arc_payload_runtime");
+        let source = r#"
+            function main(): Integer {
+                value: Arc<Integer> = Arc<Integer>(43);
+                return *value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("Arc payload constructor should codegen without checks");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled no-check arc payload binary");
+        assert_eq!(status.code(), Some(43));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_assignment_to_immutable_variable_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-immutable-local-assign");
+        let source_path = temp_root.join("no_check_immutable_local_assign.apex");
+        let output_path = temp_root.join("no_check_immutable_local_assign");
+        let source = r#"
+            function main(): Integer {
+                value: Integer = 1;
+                value = 9;
+                return value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("immutable local assignment should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot assign to immutable variable 'value'"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_assignment_through_immutable_reference_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-immutable-ref-assign");
+        let source_path = temp_root.join("no_check_immutable_ref_assign.apex");
+        let output_path = temp_root.join("no_check_immutable_ref_assign");
+        let source = r#"
+            function main(): Integer {
+                mut xs: List<Integer> = List<Integer>();
+                xs.push(1);
+                view: &List<Integer> = &xs;
+                view[0] = 7;
+                return xs[0];
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("immutable reference assignment should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot assign through immutable reference 'view'"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_deref_assignment_through_immutable_reference_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-immutable-deref-assign");
+        let source_path = temp_root.join("no_check_immutable_deref_assign.apex");
+        let output_path = temp_root.join("no_check_immutable_deref_assign");
+        let source = r#"
+            function main(): Integer {
+                mut value: Integer = 1;
+                r: &Integer = &value;
+                *r = 9;
+                return value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("immutable deref assignment should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot assign through immutable reference 'r'"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_function_parameter_assignment_runtime() {
+        let temp_root = make_temp_project_root("mutable-function-parameter-assignment-runtime");
+        let source_path = temp_root.join("mutable_function_parameter_assignment_runtime.apex");
+        let output_path = temp_root.join("mutable_function_parameter_assignment_runtime");
+        let source = r#"
+            function bump(mut value: Integer): Integer {
+                value = value + 3;
+                return value;
+            }
+
+            function main(): Integer {
+                return if (bump(4) == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable function parameter assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable function parameter binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_method_parameter_assignment_runtime() {
+        let temp_root = make_temp_project_root("mutable-method-parameter-assignment-runtime");
+        let source_path = temp_root.join("mutable_method_parameter_assignment_runtime.apex");
+        let output_path = temp_root.join("mutable_method_parameter_assignment_runtime");
+        let source = r#"
+            class Counter {
+                function bump(mut value: Integer): Integer {
+                    value += 5;
+                    return value;
+                }
+            }
+
+            function main(): Integer {
+                counter: Counter = Counter();
+                return if (counter.bump(2) == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable method parameter assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable method parameter binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_constructor_parameter_assignment_runtime() {
+        let temp_root = make_temp_project_root("mutable-constructor-parameter-assignment-runtime");
+        let source_path = temp_root.join("mutable_constructor_parameter_assignment_runtime.apex");
+        let output_path = temp_root.join("mutable_constructor_parameter_assignment_runtime");
+        let source = r#"
+            class Boxed {
+                value: Integer;
+
+                constructor(mut value: Integer) {
+                    value += 2;
+                    this.value = value;
+                }
+            }
+
+            function main(): Integer {
+                boxed: Boxed = Boxed(5);
+                return if (boxed.value == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable constructor parameter assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable constructor parameter binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_mutable_async_parameter_assignment_runtime() {
+        let temp_root = make_temp_project_root("mutable-async-parameter-assignment-runtime");
+        let source_path = temp_root.join("mutable_async_parameter_assignment_runtime.apex");
+        let output_path = temp_root.join("mutable_async_parameter_assignment_runtime");
+        let source = r#"
+            async function bump(mut value: Integer): Integer {
+                value = value * 2;
+                return value;
+            }
+
+            function main(): Integer {
+                return if (await(bump(6)) == 12) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("mutable async parameter assignment should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled mutable async parameter binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_string_interpolation_on_boolean_runtime() {
         let temp_root = make_temp_project_root("string-interpolation-bool-runtime");
         let source_path = temp_root.join("string_interpolation_bool_runtime.apex");
@@ -26226,14 +26562,17 @@ function main(): Integer {
     }
 
     #[test]
-    fn compile_source_runs_fixed_length_list_constructor_with_zero_initialized_elements() {
-        let temp_root = make_temp_project_root("fixed-list-zero-init-runtime");
-        let source_path = temp_root.join("fixed_list_zero_init_runtime.apex");
-        let output_path = temp_root.join("fixed_list_zero_init_runtime");
+    fn compile_source_runs_list_constructor_with_preallocated_integer_capacity() {
+        let temp_root = make_temp_project_root("list-capacity-runtime");
+        let source_path = temp_root.join("list_capacity_runtime.apex");
+        let output_path = temp_root.join("list_capacity_runtime");
         let source = r#"
             function main(): Integer {
                 xs: List<Integer> = List<Integer>(3);
-                if (xs.length() == 3 && xs.get(0) == 0 && xs.get(2) == 0) {
+                xs.push(10);
+                xs.push(20);
+                xs.push(30);
+                if (xs.length() == 3 && xs.get(0) == 10 && xs.get(2) == 30) {
                     return 80;
                 }
                 return 0;
@@ -26242,25 +26581,27 @@ function main(): Integer {
 
         fs::write(&source_path, source).expect("write source");
         compile_source(source, &source_path, &output_path, false, true, None, None)
-            .expect("fixed-length integer list constructor should codegen");
+            .expect("list constructor with integer capacity should codegen");
 
         let status = std::process::Command::new(&output_path)
             .status()
-            .expect("run compiled fixed-length integer list binary");
+            .expect("run compiled list capacity binary");
         assert_eq!(status.code(), Some(80));
 
         let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]
-    fn compile_source_runs_fixed_length_option_list_constructor_with_typed_layout() {
-        let temp_root = make_temp_project_root("fixed-option-list-runtime");
-        let source_path = temp_root.join("fixed_option_list_runtime.apex");
-        let output_path = temp_root.join("fixed_option_list_runtime");
+    fn compile_source_runs_list_constructor_with_preallocated_option_capacity() {
+        let temp_root = make_temp_project_root("option-list-capacity-runtime");
+        let source_path = temp_root.join("option_list_capacity_runtime.apex");
+        let output_path = temp_root.join("option_list_capacity_runtime");
         let source = r#"
             function main(): Integer {
                 xs: List<Option<Integer>> = List<Option<Integer>>(2);
-                if (xs.length() == 2 && xs.get(0).is_none() && xs.get(1).is_none()) {
+                xs.push(Option<Integer>());
+                xs.push(Option.some(9));
+                if (xs.length() == 2 && xs.get(0).is_none() && xs.get(1).unwrap() == 9) {
                     return 81;
                 }
                 return 0;
@@ -26269,12 +26610,44 @@ function main(): Integer {
 
         fs::write(&source_path, source).expect("write source");
         compile_source(source, &source_path, &output_path, false, true, None, None)
-            .expect("fixed-length option list constructor should codegen");
+            .expect("list constructor with option capacity should codegen");
 
         let status = std::process::Command::new(&output_path)
             .status()
-            .expect("run compiled fixed-length option list binary");
+            .expect("run compiled option list capacity binary");
         assert_eq!(status.code(), Some(81));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_fails_runtime_on_negative_list_constructor_capacity_expression() {
+        let temp_root = make_temp_project_root("negative-list-capacity-runtime");
+        let source_path = temp_root.join("negative_list_capacity_runtime.apex");
+        let output_path = temp_root.join("negative_list_capacity_runtime");
+        let source = r#"
+            function main(): Integer {
+                cap: Integer = 1 - 2;
+                xs: List<Integer> = List<Integer>(cap);
+                return xs.length();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("negative runtime list capacity source should codegen");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled negative list capacity binary");
+        assert_eq!(output.status.code(), Some(1));
+        assert!(
+            String::from_utf8_lossy(&output.stdout)
+                .contains("List constructor capacity cannot be negative"),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -26432,12 +26805,11 @@ function main(): Integer {
         let source_path = temp_root.join("await_timeout_zero_pending_runtime.apex");
         let output_path = temp_root.join("await_timeout_zero_pending_runtime");
         let source = r#"
+            import std.time.*;
+
             function work(): Task<Integer> {
                 return async {
-                    mut i: Integer = 0;
-                    while (i < 1000000) {
-                        i = i + 1;
-                    }
+                    Time.sleep(50);
                     return 7;
                 };
             }

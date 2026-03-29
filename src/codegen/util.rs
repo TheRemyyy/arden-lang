@@ -991,6 +991,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: ty.clone(),
+                    mutable: true,
                 },
             );
         }
@@ -1014,6 +1015,7 @@ impl<'ctx> Codegen<'ctx> {
                 Variable {
                     ptr: alloca,
                     ty: param.ty.clone(),
+                    mutable: param.mutable,
                 },
             );
         }
@@ -1335,6 +1337,7 @@ impl<'ctx> Codegen<'ctx> {
                             Variable {
                                 ptr: alloca,
                                 ty: match_ty.clone(),
+                                mutable: false,
                             },
                         );
                     }
@@ -1366,6 +1369,7 @@ impl<'ctx> Codegen<'ctx> {
                             Variable {
                                 ptr: alloca,
                                 ty: option_inner_ty.clone().unwrap_or(Type::Integer),
+                                mutable: false,
                             },
                         );
                     } else if variant_leaf == "Ok" && !bindings.is_empty() {
@@ -1386,6 +1390,7 @@ impl<'ctx> Codegen<'ctx> {
                                     .as_ref()
                                     .map(|(ok, _)| ok.clone())
                                     .unwrap_or(Type::Integer),
+                                mutable: false,
                             },
                         );
                     } else if variant_leaf == "Error" && !bindings.is_empty() {
@@ -1406,6 +1411,7 @@ impl<'ctx> Codegen<'ctx> {
                                     .as_ref()
                                     .map(|(_, err)| err.clone())
                                     .unwrap_or(Type::String),
+                                mutable: false,
                             },
                         );
                     } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
@@ -1434,6 +1440,7 @@ impl<'ctx> Codegen<'ctx> {
                                             Variable {
                                                 ptr: alloca,
                                                 ty: field_ty.clone(),
+                                                mutable: false,
                                             },
                                         );
                                     }
@@ -1697,6 +1704,45 @@ impl<'ctx> Codegen<'ctx> {
             }
             Expr::Deref(inner) => Ok(self.compile_expr(&inner.node)?.into_pointer_value()),
             _ => Err(CodegenError::new("Invalid lvalue")),
+        }
+    }
+
+    pub fn ensure_assignment_target_mutable(&self, expr: &Expr) -> Result<()> {
+        match expr {
+            Expr::Ident(name) => {
+                let Some(var) = self.variables.get(name) else {
+                    return Err(CodegenError::new(format!("Unknown variable: {}", name)));
+                };
+                match &var.ty {
+                    Type::MutRef(_) => Ok(()),
+                    Type::Ref(_) => Err(CodegenError::new(format!(
+                        "Cannot assign through immutable reference '{}'",
+                        name
+                    ))),
+                    _ if !var.mutable => Err(CodegenError::new(format!(
+                        "Cannot assign to immutable variable '{}'",
+                        name
+                    ))),
+                    _ => Ok(()),
+                }
+            }
+            Expr::Field { object, .. } | Expr::Index { object, .. } => {
+                self.ensure_assignment_target_mutable(&object.node)
+            }
+            Expr::Deref(inner) => match self.infer_object_type(&inner.node) {
+                Some(Type::Ref(_)) => match &inner.node {
+                    Expr::Ident(name) => Err(CodegenError::new(format!(
+                        "Cannot assign through immutable reference '{}'",
+                        name
+                    ))),
+                    _ => Err(CodegenError::new(
+                        "Cannot assign through immutable reference",
+                    )),
+                },
+                _ => Ok(()),
+            },
+            Expr::This => Ok(()),
+            _ => Ok(()),
         }
     }
 

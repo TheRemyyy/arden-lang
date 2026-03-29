@@ -5526,6 +5526,19 @@ impl TypeChecker {
 
                 // Handle generic built-in types (e.g., List<Integer>, Set<String>)
                 if scoped_ty.contains('<') && scoped_ty.ends_with('>') {
+                    if scoped_ty.starts_with("Ptr<")
+                        || scoped_ty.starts_with("Task<")
+                        || scoped_ty.starts_with("Range<")
+                    {
+                        self.error(
+                            format!(
+                                "Cannot construct built-in type '{}'",
+                                Self::format_diagnostic_class_name(&scoped_ty)
+                            ),
+                            span.clone(),
+                        );
+                        return self.parse_type_string(&scoped_ty);
+                    }
                     let resolved = self.parse_type_string(&scoped_ty);
                     if !matches!(resolved, ResolvedType::Class(_))
                         && !matches!(resolved, ResolvedType::Unknown)
@@ -6018,7 +6031,13 @@ impl TypeChecker {
         {
             match arg_types.as_slice() {
                 [] => {}
-                [ResolvedType::Integer] => {}
+                [ResolvedType::Integer] => {
+                    self.check_non_negative_integer_const(
+                        &args[0].node,
+                        args[0].span.clone(),
+                        "List constructor capacity cannot be negative",
+                    );
+                }
                 [ResolvedType::Unknown] => {}
                 [other] => {
                     self.error(
@@ -6041,6 +6060,51 @@ impl TypeChecker {
                     );
                 }
             }
+            return;
+        }
+
+        let allows_optional_single_value_arg = ty_name == "Box"
+            || ty_name.starts_with("Box<")
+            || ty_name == "Rc"
+            || ty_name.starts_with("Rc<")
+            || ty_name == "Arc"
+            || ty_name.starts_with("Arc<")
+            || matches!(
+                resolved,
+                ResolvedType::Box(_) | ResolvedType::Rc(_) | ResolvedType::Arc(_)
+            );
+        if allows_optional_single_value_arg {
+            if args.len() > 1 {
+                self.error(
+                    format!(
+                        "Constructor {} expects 0 or 1 arguments, got {}",
+                        ty_name,
+                        args.len()
+                    ),
+                    span,
+                );
+            }
+            return;
+        }
+
+        let non_constructible_builtin = ty_name == "Ptr"
+            || ty_name.starts_with("Ptr<")
+            || ty_name == "Task"
+            || ty_name.starts_with("Task<")
+            || ty_name == "Range"
+            || ty_name.starts_with("Range<")
+            || matches!(
+                resolved,
+                ResolvedType::Ptr(_) | ResolvedType::Task(_) | ResolvedType::Range(_)
+            );
+        if non_constructible_builtin {
+            self.error(
+                format!(
+                    "Cannot construct built-in type '{}'",
+                    Self::format_diagnostic_class_name(ty_name)
+                ),
+                span,
+            );
             return;
         }
 
@@ -9851,6 +9915,12 @@ mod tests {
             function main(): None {
                 xs: List<Integer> = List<Integer>();
                 ys: List<Integer> = List<Integer>(32);
+                box_empty: Box<Integer> = Box<Integer>();
+                box_value: Box<Integer> = Box<Integer>(7);
+                rc_empty: Rc<Integer> = Rc<Integer>();
+                rc_value: Rc<Integer> = Rc<Integer>(8);
+                arc_empty: Arc<Integer> = Arc<Integer>();
+                arc_value: Arc<Integer> = Arc<Integer>(9);
                 m: Map<String, Integer> = Map<String, Integer>();
                 s: Set<Integer> = Set<Integer>();
                 o: Option<Integer> = Option<Integer>();
@@ -9859,6 +9929,86 @@ mod tests {
             }
         "#;
         check_source(src).expect("valid built-in generic constructors should typecheck");
+    }
+
+    #[test]
+    fn rejects_invalid_box_rc_arc_constructor_arguments() {
+        let src = r#"
+            function main(): None {
+                b: Box<Integer> = Box<Integer>(1, 2);
+                r: Rc<Integer> = Rc<Integer>(1, 2);
+                a: Arc<Integer> = Arc<Integer>(1, 2);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("invalid Box/Rc/Arc constructors should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Constructor Box<Integer> expects 0 or 1 arguments, got 2"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("Constructor Rc<Integer> expects 0 or 1 arguments, got 2"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("Constructor Arc<Integer> expects 0 or 1 arguments, got 2"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_ptr_task_range_constructor_calls() {
+        let src = r#"
+            function main(): None {
+                p: Ptr<Integer> = Ptr<Integer>();
+                t: Task<Integer> = Task<Integer>();
+                r: Range<Integer> = Range<Integer>();
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("Ptr/Task/Range constructors should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Cannot construct built-in type 'Ptr<Integer>'"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("Cannot construct built-in type 'Task<Integer>'"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("Cannot construct built-in type 'Range<Integer>'"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_negative_list_constructor_capacity() {
+        let src = r#"
+            function main(): None {
+                xs: List<Integer> = List<Integer>(-1);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("negative list capacity should fail");
+        let joined = errors
+            .iter()
+            .map(|error| error.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("List constructor capacity cannot be negative"),
+            "{joined}"
+        );
     }
 
     #[test]

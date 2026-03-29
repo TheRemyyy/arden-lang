@@ -2093,7 +2093,7 @@ impl<'ctx> Codegen<'ctx> {
                 .unwrap()
         };
         self.builder
-            .build_store(length_ptr, self.context.i64_type().const_int(size, false))
+            .build_store(length_ptr, self.context.i64_type().const_zero())
             .unwrap();
 
         let malloc = self.get_or_declare_malloc();
@@ -2129,6 +2129,139 @@ impl<'ctx> Codegen<'ctx> {
         self.builder
             .build_store(data_ptr_field, data_i8_ptr)
             .unwrap();
+
+        Ok(self.builder.build_load(list_type, alloca, "list").unwrap())
+    }
+
+    pub fn create_list_with_capacity_value(
+        &mut self,
+        requested_capacity: IntValue<'ctx>,
+        list_ty: Option<&Type>,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let current_fn = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("List constructor capacity used outside function"))?;
+        let (_, elem_size) = if let Some(list_ty) = list_ty {
+            self.list_element_layout_from_list_type(list_ty)
+        } else {
+            self.list_element_layout_default()
+        };
+
+        let list_type = self.context.struct_type(
+            &[
+                self.context.i64_type().into(),
+                self.context.i64_type().into(),
+                self.context.ptr_type(AddressSpace::default()).into(),
+            ],
+            false,
+        );
+        let alloca = self.builder.build_alloca(list_type, "list").unwrap();
+        let i32_type = self.context.i32_type();
+        let i64_type = self.context.i64_type();
+        let zero = i32_type.const_zero();
+
+        let negative_bb = self
+            .context
+            .append_basic_block(current_fn, "list_ctor_negative_capacity");
+        let valid_bb = self
+            .context
+            .append_basic_block(current_fn, "list_ctor_capacity_valid");
+        let is_negative = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SLT,
+                requested_capacity,
+                i64_type.const_zero(),
+                "list_ctor_capacity_negative",
+            )
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_negative, negative_bb, valid_bb)
+            .unwrap();
+
+        self.builder.position_at_end(negative_bb);
+        self.emit_runtime_error(
+            "List constructor capacity cannot be negative",
+            "list_ctor_negative_capacity_runtime_error",
+        )?;
+
+        self.builder.position_at_end(valid_bb);
+        let use_default_capacity = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                requested_capacity,
+                i64_type.const_zero(),
+                "list_ctor_capacity_is_zero",
+            )
+            .unwrap();
+        let effective_capacity = self
+            .builder
+            .build_select(
+                use_default_capacity,
+                i64_type.const_int(8, false),
+                requested_capacity,
+                "list_ctor_effective_capacity",
+            )
+            .unwrap()
+            .into_int_value();
+
+        let capacity_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    list_type.as_basic_type_enum(),
+                    alloca,
+                    &[zero, i32_type.const_zero()],
+                    "capacity",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(capacity_ptr, effective_capacity)
+            .unwrap();
+
+        let length_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    list_type.as_basic_type_enum(),
+                    alloca,
+                    &[zero, i32_type.const_int(1, false)],
+                    "length",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(length_ptr, i64_type.const_zero())
+            .unwrap();
+
+        let malloc = self.get_or_declare_malloc();
+        let total_size = self
+            .builder
+            .build_int_mul(
+                effective_capacity,
+                i64_type.const_int(elem_size, false),
+                "list_ctor_total_size",
+            )
+            .unwrap();
+        let data_call = self
+            .builder
+            .build_call(malloc, &[total_size.into()], "list_ctor_data")
+            .unwrap();
+        let data_ptr = self.extract_call_pointer_value(
+            data_call,
+            "malloc did not produce a pointer while allocating list constructor storage",
+        )?;
+        let data_ptr_field = unsafe {
+            self.builder
+                .build_gep(
+                    list_type.as_basic_type_enum(),
+                    alloca,
+                    &[zero, i32_type.const_int(2, false)],
+                    "data_ptr",
+                )
+                .unwrap()
+        };
+        self.builder.build_store(data_ptr_field, data_ptr).unwrap();
 
         Ok(self.builder.build_load(list_type, alloca, "list").unwrap())
     }
@@ -2573,6 +2706,29 @@ impl<'ctx> Codegen<'ctx> {
         Ok(ptr.into())
     }
 
+    fn create_heap_value_with_payload(
+        &mut self,
+        value_ty: &Type,
+        payload: BasicValueEnum<'ctx>,
+        allocation_name: &str,
+        context_name: &str,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let malloc = self.get_or_declare_malloc();
+        let llvm_ty = self.llvm_type(value_ty);
+        let size_bytes = self.storage_size_of_llvm_type(llvm_ty);
+        let size = self.context.i64_type().const_int(size_bytes, false);
+        let call_result = self
+            .builder
+            .build_call(malloc, &[size.into()], allocation_name)
+            .unwrap();
+        let ptr = self.extract_call_pointer_value(
+            call_result,
+            &format!("malloc did not produce a pointer while allocating {context_name} storage"),
+        )?;
+        self.builder.build_store(ptr, payload).unwrap();
+        Ok(ptr.into())
+    }
+
     fn create_zero_initialized_class_instance(
         &mut self,
         class_name: &str,
@@ -2719,6 +2875,18 @@ impl<'ctx> Codegen<'ctx> {
         self.create_zero_initialized_heap_value(inner_ty, "box", "Box")
     }
 
+    pub fn create_box_typed(
+        &mut self,
+        payload: BasicValueEnum<'ctx>,
+        box_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let inner_ty = match self.deref_codegen_type(box_ty) {
+            Type::Box(inner) => inner.as_ref(),
+            _ => &Type::Integer,
+        };
+        self.create_heap_value_with_payload(inner_ty, payload, "box", "Box")
+    }
+
     pub fn create_empty_rc(&mut self) -> Result<BasicValueEnum<'ctx>> {
         self.create_empty_rc_typed(&Type::Integer)
     }
@@ -2731,6 +2899,18 @@ impl<'ctx> Codegen<'ctx> {
         self.create_zero_initialized_heap_value(inner_ty, "rc", "Rc")
     }
 
+    pub fn create_rc_typed(
+        &mut self,
+        payload: BasicValueEnum<'ctx>,
+        rc_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let inner_ty = match self.deref_codegen_type(rc_ty) {
+            Type::Rc(inner) => inner.as_ref(),
+            _ => &Type::Integer,
+        };
+        self.create_heap_value_with_payload(inner_ty, payload, "rc", "Rc")
+    }
+
     pub fn create_empty_arc(&mut self) -> Result<BasicValueEnum<'ctx>> {
         self.create_empty_arc_typed(&Type::Integer)
     }
@@ -2741,6 +2921,18 @@ impl<'ctx> Codegen<'ctx> {
             _ => &Type::Integer,
         };
         self.create_zero_initialized_heap_value(inner_ty, "arc", "Arc")
+    }
+
+    pub fn create_arc_typed(
+        &mut self,
+        payload: BasicValueEnum<'ctx>,
+        arc_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let inner_ty = match self.deref_codegen_type(arc_ty) {
+            Type::Arc(inner) => inner.as_ref(),
+            _ => &Type::Integer,
+        };
+        self.create_heap_value_with_payload(inner_ty, payload, "arc", "Arc")
     }
 
     pub fn compile_list_method(

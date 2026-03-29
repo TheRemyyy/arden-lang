@@ -86,5 +86,6 @@ See [Ownership and Borrowing](../advanced/ownership.md) for more details.
 Built-in generic constructor argument rules are checked at compile time:
 
 - `List<T>()` and `List<T>(capacity: Integer)` are valid.
+- `List<T>(capacity)` preallocates backing storage only; it does not create `capacity` elements or change `length()`.
 - `Map<K, V>()`, `Set<T>()`, `Option<T>()`, and `Result<T, E>()` accept no value arguments.
 - Passing extra or incompatible constructor arguments is a type error.
