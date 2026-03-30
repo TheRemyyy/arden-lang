@@ -5381,6 +5381,53 @@ impl<'ctx> Codegen<'ctx> {
         )
     }
 
+    fn validate_stdlib_arg_count(&self, name: &str, args: &[Spanned<Expr>]) -> Result<()> {
+        let expected = match name {
+            "read_line" | "Time__unix" | "System__cwd" | "System__os" | "Math__random"
+            | "Math__pi" | "Math__e" | "Args__count" => Some((0usize, 0usize)),
+            "Math__abs" | "Math__sqrt" | "Math__sin" | "Math__cos" | "Math__tan"
+            | "Math__floor" | "Math__ceil" | "Math__round" | "Math__log" | "Math__log10"
+            | "Math__exp" | "to_float" | "to_int" | "to_string" | "Str__len" | "Str__upper"
+            | "Str__lower" | "Str__trim" | "System__exit" | "exit" | "File__read"
+            | "File__exists" | "File__delete" | "Time__now" | "Time__sleep" | "System__getenv"
+            | "System__shell" | "System__exec" | "Args__get" | "assert" | "assert_true"
+            | "assert_false" => Some((1, 1)),
+            "Math__min" | "Math__max" | "Math__pow" | "Str__compare" | "Str__concat"
+            | "Str__contains" | "Str__startsWith" | "Str__endsWith" | "File__write"
+            | "assert_eq" | "assert_ne" => Some((2, 2)),
+            "range" => Some((2, 3)),
+            "fail" => Some((0, 1)),
+            _ => None,
+        };
+
+        if let Some((min_args, max_args)) = expected {
+            if args.len() < min_args || args.len() > max_args {
+                return if min_args == max_args {
+                    Err(CodegenError::new(format!(
+                        "{}() expects {} argument(s), got {}",
+                        name,
+                        min_args,
+                        args.len()
+                    )))
+                } else if name == "range" {
+                    Err(CodegenError::new(
+                        "range() requires 2 or 3 arguments: range(start, end) or range(start, end, step)",
+                    ))
+                } else {
+                    Err(CodegenError::new(format!(
+                        "{}() expects {} or {} argument(s), got {}",
+                        name,
+                        min_args,
+                        max_args,
+                        args.len()
+                    )))
+                };
+            }
+        }
+
+        Ok(())
+    }
+
     /// Compile full program.
     pub fn compile(&mut self, program: &Program) -> Result<()> {
         self.compile_internal(program, None, None)
@@ -8489,7 +8536,7 @@ impl<'ctx> Codegen<'ctx> {
                 )
                 .unwrap();
             let has_next = self
-                .compile_range_method_on_value(loaded_range, &iterable_ty, "has_next")?
+                .compile_range_method_on_value(loaded_range, &iterable_ty, "has_next", &[])?
                 .into_int_value();
             self.builder
                 .build_conditional_branch(has_next, body_bb, after_bb)
@@ -8505,7 +8552,7 @@ impl<'ctx> Codegen<'ctx> {
                 )
                 .unwrap();
             let next_value =
-                self.compile_range_method_on_value(loaded_range, &iterable_ty, "next")?;
+                self.compile_range_method_on_value(loaded_range, &iterable_ty, "next", &[])?;
             let iter_value =
                 self.adapt_for_loop_binding_value(next_value, &inner, &iter_ty, "for_range_obj")?;
             self.builder.build_store(var_alloca, iter_value).unwrap();
@@ -9082,10 +9129,19 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap_or_else(|| pattern_variant_leaf(variant_name));
                     let resolved_enum_name =
                         resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
+                    let matches_builtin_variant = (is_option_match
+                        && matches!(variant_leaf, "Some" | "None"))
+                        || (is_result_match && matches!(variant_leaf, "Ok" | "Error"));
+                    let enum_variant_info = resolved_enum_name
+                        .or(enum_match_name.as_ref())
+                        .and_then(|enum_name| {
+                            self.enums
+                                .get(enum_name)
+                                .and_then(|enum_info| enum_info.variants.get(variant_leaf))
+                                .map(|variant_info| (enum_name, variant_info))
+                        });
                     // Built-in Option / Result matching
-                    if (is_option_match && matches!(variant_leaf, "Some" | "None"))
-                        || (is_result_match && matches!(variant_leaf, "Ok" | "Error"))
-                    {
+                    if matches_builtin_variant {
                         let expected_tag = match variant_leaf {
                             "Some" | "Ok" => 1u64,
                             _ => 0u64,
@@ -9107,37 +9163,32 @@ impl<'ctx> Codegen<'ctx> {
                         self.builder
                             .build_conditional_branch(cond, arm_bb, next_bb)
                             .unwrap();
-                    } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
-                    {
-                        if let Some(enum_info) = self.enums.get(enum_name) {
-                            if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
-                                let tag = self
-                                    .builder
-                                    .build_extract_value(val.into_struct_value(), 0, "tag")
-                                    .unwrap()
-                                    .into_int_value();
-                                let cond = self
-                                    .builder
-                                    .build_int_compare(
-                                        IntPredicate::EQ,
-                                        tag,
-                                        self.context
-                                            .i8_type()
-                                            .const_int(variant_info.tag as u64, false),
-                                        "match_enum_variant_eq",
-                                    )
-                                    .unwrap();
-                                self.builder
-                                    .build_conditional_branch(cond, arm_bb, next_bb)
-                                    .unwrap();
-                            } else {
-                                self.builder.build_unconditional_branch(next_bb).unwrap();
-                            }
-                        } else {
-                            self.builder.build_unconditional_branch(next_bb).unwrap();
-                        }
+                    } else if let Some((_, variant_info)) = enum_variant_info {
+                        let tag = self
+                            .builder
+                            .build_extract_value(val.into_struct_value(), 0, "tag")
+                            .unwrap()
+                            .into_int_value();
+                        let cond = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::EQ,
+                                tag,
+                                self.context
+                                    .i8_type()
+                                    .const_int(variant_info.tag as u64, false),
+                                "match_enum_variant_eq",
+                            )
+                            .unwrap();
+                        self.builder
+                            .build_conditional_branch(cond, arm_bb, next_bb)
+                            .unwrap();
                     } else {
-                        self.builder.build_unconditional_branch(next_bb).unwrap();
+                        return Err(CodegenError::new(format!(
+                            "Cannot match variant {} on type {}",
+                            variant_leaf,
+                            Self::format_type_string(&match_ty)
+                        )));
                     }
                 }
             }
@@ -9884,6 +9935,13 @@ impl<'ctx> Codegen<'ctx> {
                 // Fail block - call abort or print message
                 self.builder.position_at_end(fail_block);
                 if let Some(msg) = message {
+                    let msg_ty = self.infer_expr_type(&msg.node, &[]);
+                    if !matches!(msg_ty, Type::String) {
+                        return Err(CodegenError::new(format!(
+                            "require() message must be String, got {}",
+                            Self::format_type_string(&msg_ty)
+                        )));
+                    }
                     // Print the error message
                     let msg_spanned = Spanned::new(msg.node.clone(), msg.span.clone());
                     self.compile_print(&[msg_spanned], true)?;
@@ -9965,6 +10023,12 @@ impl<'ctx> Codegen<'ctx> {
                             return self.create_option_some_typed(value, inner_ty);
                         }
                         ("Option", "none", Type::Option(inner_ty)) => {
+                            if !args.is_empty() {
+                                return Err(CodegenError::new(format!(
+                                    "Option.none() expects 0 argument(s), got {}",
+                                    args.len()
+                                )));
+                            }
                             return self.create_option_none_typed(inner_ty);
                         }
                         ("Result", "ok", Type::Result(ok_ty, err_ty)) => {
@@ -11545,6 +11609,20 @@ impl<'ctx> Codegen<'ctx> {
         Ok(self.compile_expr(expr)?.into_int_value())
     }
 
+    pub(crate) fn compile_non_negative_integer_index_expr(
+        &mut self,
+        expr: &Expr,
+        negative_diagnostic: &str,
+    ) -> Result<IntValue<'ctx>> {
+        if matches!(
+            TypeChecker::eval_numeric_const_expr(expr),
+            Some(NumericConst::Integer(value)) if value < 0
+        ) {
+            return Err(CodegenError::new(negative_diagnostic));
+        }
+        self.compile_integer_index_expr(expr)
+    }
+
     fn compile_integer_iteration_bound(&mut self, expr: &Expr) -> Result<IntValue<'ctx>> {
         let expr_ty = self.infer_expr_type(expr, &[]);
         if !matches!(expr_ty, Type::Integer) {
@@ -11554,6 +11632,18 @@ impl<'ctx> Codegen<'ctx> {
             )));
         }
         Ok(self.compile_expr(expr)?.into_int_value())
+    }
+
+    fn compile_string_argument_expr(
+        &mut self,
+        expr: &Expr,
+        diagnostic: impl Into<String>,
+    ) -> Result<PointerValue<'ctx>> {
+        let expr_ty = self.infer_expr_type(expr, &[]);
+        if !matches!(expr_ty, Type::String) {
+            return Err(CodegenError::new(diagnostic.into()));
+        }
+        Ok(self.compile_expr(expr)?.into_pointer_value())
     }
 
     pub fn compile_literal(&mut self, lit: &Literal) -> Result<BasicValueEnum<'ctx>> {
@@ -12087,6 +12177,12 @@ impl<'ctx> Codegen<'ctx> {
                         return self.create_option_some(val);
                     }
                     ("Option", "none") => {
+                        if !args.is_empty() {
+                            return Err(CodegenError::new(format!(
+                                "Option.none() expects 0 argument(s), got {}",
+                                args.len()
+                            )));
+                        }
                         if let Type::Option(inner_ty) = &inferred_expr_ty {
                             return self.create_option_none_typed(inner_ty);
                         }
@@ -12628,11 +12724,11 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Type::Option(_) => {
                     let option_val = self.compile_expr(object)?;
-                    return self.compile_option_method_on_value(option_val, ty, method);
+                    return self.compile_option_method_on_value(option_val, ty, method, args);
                 }
                 Type::Result(_, _) => {
                     let result_val = self.compile_expr(object)?;
-                    return self.compile_result_method_on_value(result_val, ty, method);
+                    return self.compile_result_method_on_value(result_val, ty, method, args);
                 }
                 Type::Range(_) => {
                     match object {
@@ -12649,7 +12745,7 @@ impl<'ctx> Codegen<'ctx> {
                                     "range_field_ptr",
                                 )
                                 .unwrap();
-                            return self.compile_range_method_on_value(range_ptr, ty, method);
+                            return self.compile_range_method_on_value(range_ptr, ty, method, args);
                         }
                         _ => {}
                     }
@@ -12658,7 +12754,7 @@ impl<'ctx> Codegen<'ctx> {
                     } else {
                         self.compile_expr(object)?
                     };
-                    return self.compile_range_method_on_value(range_val, ty, method);
+                    return self.compile_range_method_on_value(range_val, ty, method, args);
                 }
                 Type::Task(inner) => {
                     return self.compile_task_method(object, inner, method, args);
@@ -12678,6 +12774,10 @@ impl<'ctx> Codegen<'ctx> {
                         };
                         return self.compile_utf8_string_length_runtime(s.into_pointer_value());
                     }
+                    return Err(CodegenError::new(format!(
+                        "Unknown String method: {}",
+                        method
+                    )));
                 }
                 _ => {}
             }
@@ -12688,6 +12788,15 @@ impl<'ctx> Codegen<'ctx> {
         } else {
             self.compile_expr(object)?
         };
+
+        if let Some(obj_ty) = deref_obj_ty.as_ref() {
+            if self.type_to_class_name(obj_ty).is_none() {
+                return Err(CodegenError::new(format!(
+                    "Cannot call method on type {}",
+                    Self::format_type_string(obj_ty)
+                )));
+            }
+        }
 
         // Get class name from inferred type
         let class_name = deref_obj_ty
@@ -13000,6 +13109,14 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(self.context.i8_type().const_int(0, false).into())
             }
             "await_timeout" => {
+                if matches!(
+                    TypeChecker::eval_numeric_const_expr(&args[0].node),
+                    Some(NumericConst::Integer(value)) if value < 0
+                ) {
+                    return Err(CodegenError::new(
+                        "Task.await_timeout() timeout must be non-negative",
+                    ));
+                }
                 let ms = self.compile_expr(&args[0].node)?;
                 if !ms.is_int_value() {
                     return Err(CodegenError::new(
@@ -13392,6 +13509,14 @@ impl<'ctx> Codegen<'ctx> {
 
         // Get class name using type inference
         let obj_ty = self.infer_object_type(object);
+        if let Some(obj_ty) = obj_ty.as_ref() {
+            if self.unwrap_class_like_type(obj_ty).is_none() {
+                return Err(CodegenError::new(format!(
+                    "Cannot access field on type {}",
+                    Self::format_type_string(obj_ty)
+                )));
+            }
+        }
         let obj_ptr = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
             self.compile_deref(object)?.into_pointer_value()
         } else {
@@ -13641,6 +13766,14 @@ impl<'ctx> Codegen<'ctx> {
     /// Get pointer to a field (for in-place modifications on collections)
     pub fn compile_field_ptr(&mut self, object: &Expr, field: &str) -> Result<PointerValue<'ctx>> {
         let obj_ty = self.infer_object_type(object);
+        if let Some(obj_ty) = obj_ty.as_ref() {
+            if self.unwrap_class_like_type(obj_ty).is_none() {
+                return Err(CodegenError::new(format!(
+                    "Cannot access field on type {}",
+                    Self::format_type_string(obj_ty)
+                )));
+            }
+        }
         let obj_ptr = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
             self.compile_deref(object)?.into_pointer_value()
         } else {
@@ -14650,7 +14783,14 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        let idx = self.compile_integer_index_expr(index)?;
+        let negative_diagnostic = if matches!(deref_object_ty, Some(Type::String)) {
+            "String index cannot be negative"
+        } else if matches!(deref_object_ty, Some(Type::List(_))) {
+            "List index cannot be negative"
+        } else {
+            "Index cannot be negative"
+        };
+        let idx = self.compile_non_negative_integer_index_expr(index, negative_diagnostic)?;
 
         if matches!(deref_object_ty, Some(Type::String)) {
             if let Expr::Literal(Literal::String(text)) = object {
@@ -14658,6 +14798,9 @@ impl<'ctx> Codegen<'ctx> {
                 if let Some(NumericConst::Integer(index_value)) =
                     TypeChecker::eval_numeric_const_expr(index)
                 {
+                    if index_value >= 0 && (index_value as usize) >= char_values.len() {
+                        return Err(CodegenError::new("String index out of bounds"));
+                    }
                     if let Some(ch) = (index_value >= 0)
                         .then_some(index_value as usize)
                         .and_then(|idx| char_values.get(idx).copied())
@@ -14951,6 +15094,14 @@ impl<'ctx> Codegen<'ctx> {
                     )));
                 }
                 if args.len() == 1 {
+                    if matches!(
+                        TypeChecker::eval_numeric_const_expr(&args[0].node),
+                        Some(NumericConst::Integer(value)) if value < 0
+                    ) {
+                        return Err(CodegenError::new(
+                            "List constructor capacity cannot be negative",
+                        ));
+                    }
                     let capacity = self.compile_expr(&args[0].node)?;
                     if !capacity.is_int_value() {
                         return Err(CodegenError::new(format!(
@@ -15378,6 +15529,7 @@ impl<'ctx> Codegen<'ctx> {
         name: &str,
         args: &[Spanned<Expr>],
     ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        self.validate_stdlib_arg_count(name, args)?;
         match name {
             // Math functions
             "Math__abs" => {
@@ -15788,6 +15940,13 @@ impl<'ctx> Codegen<'ctx> {
 
             // Type conversion functions
             "to_float" => {
+                let arg_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !matches!(arg_ty, Type::Integer | Type::Float) {
+                    return Err(CodegenError::new(format!(
+                        "to_float() requires Integer or Float, got {}",
+                        Self::format_type_string(&arg_ty)
+                    )));
+                }
                 let val = self.compile_expr(&args[0].node)?;
                 if val.is_int_value() {
                     let result = self
@@ -15804,6 +15963,13 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             "to_int" => {
+                let arg_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !matches!(arg_ty, Type::Integer | Type::Float | Type::String) {
+                    return Err(CodegenError::new(format!(
+                        "to_int() requires Integer, Float, or String, got {}",
+                        Self::format_type_string(&arg_ty)
+                    )));
+                }
                 let val = self.compile_expr(&args[0].node)?;
                 if val.is_float_value() {
                     let result = self
@@ -15850,13 +16016,26 @@ impl<'ctx> Codegen<'ctx> {
 
             // String functions
             "Str__len" => {
+                let s_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !matches!(s_ty, Type::String) {
+                    return Err(CodegenError::new(format!(
+                        "Str.len() requires String, got {}",
+                        Self::format_type_string(&s_ty)
+                    )));
+                }
                 let s = self.compile_expr(&args[0].node)?;
                 self.compile_utf8_string_length_runtime(s.into_pointer_value())
                     .map(Some)
             }
             "Str__compare" => {
-                let s1 = self.compile_expr(&args[0].node)?;
-                let s2 = self.compile_expr(&args[1].node)?;
+                let s1 = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "Str.compare() requires String arguments",
+                )?;
+                let s2 = self.compile_string_argument_expr(
+                    &args[1].node,
+                    "Str.compare() requires String arguments",
+                )?;
                 let strcmp_fn = self.get_or_declare_strcmp();
                 let call = self
                     .builder
@@ -15872,8 +16051,14 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Str__concat" => {
                 // Allocate new buffer and concatenate
-                let s1 = self.compile_expr(&args[0].node)?;
-                let s2 = self.compile_expr(&args[1].node)?;
+                let s1 = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "Str.concat() requires String arguments",
+                )?;
+                let s2 = self.compile_string_argument_expr(
+                    &args[1].node,
+                    "Str.concat() requires String arguments",
+                )?;
 
                 let strlen_fn = self.get_or_declare_strlen();
                 let malloc = self.get_or_declare_malloc();
@@ -15922,20 +16107,24 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "Str__upper" => {
-                let s = self.compile_expr(&args[0].node)?;
+                let s = self
+                    .compile_string_argument_expr(&args[0].node, "Str.upper() requires String")?;
                 let toupper_fn = self.get_or_declare_toupper();
-                self.compile_string_transform(s, toupper_fn).map(Some)
+                self.compile_string_transform(s.into(), toupper_fn)
+                    .map(Some)
             }
 
             "Str__lower" => {
-                let s = self.compile_expr(&args[0].node)?;
+                let s = self
+                    .compile_string_argument_expr(&args[0].node, "Str.lower() requires String")?;
                 let tolower_fn = self.get_or_declare_tolower();
-                self.compile_string_transform(s, tolower_fn).map(Some)
+                self.compile_string_transform(s.into(), tolower_fn)
+                    .map(Some)
             }
 
             "Str__trim" => {
-                let s = self.compile_expr(&args[0].node)?;
-                let s_ptr = s.into_pointer_value();
+                let s_ptr =
+                    self.compile_string_argument_expr(&args[0].node, "Str.trim() requires String")?;
                 let strlen_fn = self.get_or_declare_strlen();
                 let isspace_fn = self.get_or_declare_isspace();
                 let malloc_fn = self.get_or_declare_malloc();
@@ -16138,8 +16327,14 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "Str__contains" => {
-                let s = self.compile_expr(&args[0].node)?;
-                let sub = self.compile_expr(&args[1].node)?;
+                let s = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "Str.contains() requires two String arguments",
+                )?;
+                let sub = self.compile_string_argument_expr(
+                    &args[1].node,
+                    "Str.contains() requires two String arguments",
+                )?;
                 let strstr = self.get_or_declare_strstr();
                 let res = self
                     .builder
@@ -16151,8 +16346,14 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(found.into()))
             }
             "Str__startsWith" => {
-                let s = self.compile_expr(&args[0].node)?;
-                let pre = self.compile_expr(&args[1].node)?;
+                let s = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "Str.startsWith() requires two String arguments",
+                )?;
+                let pre = self.compile_string_argument_expr(
+                    &args[1].node,
+                    "Str.startsWith() requires two String arguments",
+                )?;
                 let strlen = self.get_or_declare_strlen();
                 let strncmp = self.get_or_declare_strncmp();
 
@@ -16184,8 +16385,14 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(is_zero.into()))
             }
             "Str__endsWith" => {
-                let s = self.compile_expr(&args[0].node)?;
-                let suf = self.compile_expr(&args[1].node)?;
+                let s = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "Str.endsWith() requires two String arguments",
+                )?;
+                let suf = self.compile_string_argument_expr(
+                    &args[1].node,
+                    "Str.endsWith() requires two String arguments",
+                )?;
                 let strlen = self.get_or_declare_strlen();
                 let strcmp = self.get_or_declare_strcmp();
 
@@ -16212,12 +16419,7 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
                 let s_suffix_ptr = unsafe {
                     self.builder
-                        .build_gep(
-                            self.context.i8_type(),
-                            s.into_pointer_value(),
-                            &[start_idx],
-                            "",
-                        )
+                        .build_gep(self.context.i8_type(), s, &[start_idx], "")
                         .unwrap()
                 };
 
@@ -16464,6 +16666,10 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(final_buffer))
             }
             "System__exit" | "exit" => {
+                let code_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !matches!(code_ty, Type::Integer) {
+                    return Err(CodegenError::new("exit() requires Integer code"));
+                }
                 let code = self.compile_expr(&args[0].node)?;
                 let exit_fn = self.get_or_declare_exit();
                 let code_i32 = self
@@ -16478,6 +16684,26 @@ impl<'ctx> Codegen<'ctx> {
             "range" => {
                 // range(start, end) or range(start, end, step)
                 // Returns a Range struct { start, end, step, current }
+                let arg_types = args
+                    .iter()
+                    .map(|arg| self.infer_expr_type(&arg.node, &[]))
+                    .collect::<Vec<_>>();
+                let all_integer = arg_types.iter().all(|ty| matches!(ty, Type::Integer));
+                let all_float = arg_types.iter().all(|ty| matches!(ty, Type::Float));
+                if !all_integer && !all_float {
+                    return Err(CodegenError::new(
+                        "range() arguments must be all Integer or all Float",
+                    ));
+                }
+                if let Some(step) = args.get(2) {
+                    if matches!(
+                        TypeChecker::eval_numeric_const_expr(&step.node),
+                        Some(NumericConst::Integer(0) | NumericConst::Float(0.0))
+                    ) {
+                        return Err(CodegenError::new("range() step cannot be 0"));
+                    }
+                }
+
                 let start = self.compile_expr(&args[0].node)?;
                 let end = self.compile_expr(&args[1].node)?;
                 let step = if args.len() == 3 {
@@ -16501,8 +16727,14 @@ impl<'ctx> Codegen<'ctx> {
 
             // File I/O
             "File__write" => {
-                let path = self.compile_expr(&args[0].node)?;
-                let content = self.compile_expr(&args[1].node)?;
+                let path = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "File.write() path must be String",
+                )?;
+                let content = self.compile_string_argument_expr(
+                    &args[1].node,
+                    "File.write() content must be String",
+                )?;
 
                 let fopen = self.get_or_declare_fopen();
                 let fputs = self.get_or_declare_fputs();
@@ -16612,6 +16844,13 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "File__read" => {
+                let path_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !matches!(path_ty, Type::String) {
+                    return Err(CodegenError::new(format!(
+                        "File.read() requires String path, got {}",
+                        Self::format_type_string(&path_ty)
+                    )));
+                }
                 let path = self.compile_expr(&args[0].node)?;
 
                 let fopen = self.get_or_declare_fopen();
@@ -16871,6 +17110,13 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "File__exists" => {
+                let path_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !matches!(path_ty, Type::String) {
+                    return Err(CodegenError::new(format!(
+                        "File.exists() requires String path, got {}",
+                        Self::format_type_string(&path_ty)
+                    )));
+                }
                 let path = self.compile_expr(&args[0].node)?;
                 let fopen = self.get_or_declare_fopen();
                 let fclose = self.get_or_declare_fclose();
@@ -16957,6 +17203,13 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "File__delete" => {
+                let path_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !matches!(path_ty, Type::String) {
+                    return Err(CodegenError::new(format!(
+                        "File.delete() requires String path, got {}",
+                        Self::format_type_string(&path_ty)
+                    )));
+                }
                 let path = self.compile_expr(&args[0].node)?;
                 let fopen = self.get_or_declare_fopen();
                 let fclose = self.get_or_declare_fclose();
@@ -17089,7 +17342,10 @@ impl<'ctx> Codegen<'ctx> {
 
             // Time Functions
             "Time__now" => {
-                let format = self.compile_expr(&args[0].node)?;
+                let format = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "Time.now() requires String format",
+                )?;
                 let time_fn = self.get_or_declare_time();
                 let localtime_fn = self.get_or_declare_localtime();
                 let strftime_fn = self.get_or_declare_strftime();
@@ -17219,7 +17475,7 @@ impl<'ctx> Codegen<'ctx> {
                     .build_select(
                         is_zero,
                         default_fmt_global.as_pointer_value(),
-                        format.into_pointer_value(),
+                        format,
                         "fmt",
                     )
                     .unwrap();
@@ -17252,6 +17508,20 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "Time__sleep" => {
+                let ms_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !matches!(ms_ty, Type::Integer) {
+                    return Err(CodegenError::new(
+                        "Time.sleep(ms) requires Integer milliseconds",
+                    ));
+                }
+                if matches!(
+                    TypeChecker::eval_numeric_const_expr(&args[0].node),
+                    Some(NumericConst::Integer(value)) if value < 0
+                ) {
+                    return Err(CodegenError::new(
+                        "Time.sleep() milliseconds must be non-negative",
+                    ));
+                }
                 let ms = self.compile_expr(&args[0].node)?;
                 if !ms.is_int_value() {
                     return Err(CodegenError::new(
@@ -17322,7 +17592,10 @@ impl<'ctx> Codegen<'ctx> {
 
             // System Functions
             "System__getenv" => {
-                let name = self.compile_expr(&args[0].node)?;
+                let name = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "System.getenv() requires String name",
+                )?;
                 let getenv_fn = self.get_or_declare_getenv();
                 let res = self
                     .builder
@@ -17366,7 +17639,10 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "System__shell" => {
-                let cmd = self.compile_expr(&args[0].node)?;
+                let cmd = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "System.shell() requires String command",
+                )?;
                 let system_fn = self.get_or_declare_system();
                 let res = self
                     .builder
@@ -17484,7 +17760,10 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "System__exec" => {
-                let cmd = self.compile_expr(&args[0].node)?;
+                let cmd = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "System.exec() requires String command",
+                )?;
                 let popen_fn = self.get_or_declare_popen();
                 let pclose_fn = self.get_or_declare_pclose();
                 let fread_fn = self.get_or_declare_fread();
@@ -17921,6 +18200,16 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "Args__get" => {
+                let index_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !matches!(index_ty, Type::Integer) {
+                    return Err(CodegenError::new("Args.get() requires Integer index"));
+                }
+                if matches!(
+                    TypeChecker::eval_numeric_const_expr(&args[0].node),
+                    Some(NumericConst::Integer(value)) if value < 0
+                ) {
+                    return Err(CodegenError::new("Args.get() index cannot be negative"));
+                }
                 let index = self.compile_expr(&args[0].node)?.into_int_value();
                 let argc_global = self.module.get_global("_apex_argc").unwrap();
                 let argv_global = self.module.get_global("_apex_argv").unwrap();
@@ -18251,7 +18540,10 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
 
                 if !args.is_empty() {
-                    let msg = self.compile_expr(&args[0].node)?;
+                    let msg = self.compile_string_argument_expr(
+                        &args[0].node,
+                        "fail() requires String message",
+                    )?;
                     self.builder.build_call(printf, &[msg.into()], "").unwrap();
                 }
 

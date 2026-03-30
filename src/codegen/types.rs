@@ -789,6 +789,25 @@ impl<'ctx> Codegen<'ctx> {
         (self.context.i64_type().into(), 8)
     }
 
+    fn validate_builtin_method_arg_count(
+        &self,
+        receiver_type: &str,
+        method: &str,
+        args: &[Spanned<Expr>],
+        expected: usize,
+    ) -> Result<()> {
+        if args.len() != expected {
+            return Err(CodegenError::new(format!(
+                "{}.{}() expects {} argument(s), got {}",
+                receiver_type,
+                method,
+                expected,
+                args.len()
+            )));
+        }
+        Ok(())
+    }
+
     // === Set<T> methods ===
 
     pub fn compile_set_method(
@@ -814,6 +833,13 @@ impl<'ctx> Codegen<'ctx> {
         method: &str,
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
+        match method {
+            "length" => self.validate_builtin_method_arg_count("Set", method, args, 0)?,
+            "add" | "contains" | "remove" => {
+                self.validate_builtin_method_arg_count("Set", method, args, 1)?
+            }
+            _ => {}
+        }
         let set_ptr = self.materialize_value_pointer_for_type(set_value, set_ty, "set_tmp")?;
         let set_type = self.context.struct_type(
             &[
@@ -1259,7 +1285,7 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         option_name: &str,
         method: &str,
-        _args: &[Spanned<Expr>],
+        args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (ptr, ty) = {
             let var = self
@@ -1268,7 +1294,7 @@ impl<'ctx> Codegen<'ctx> {
                 .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", option_name)))?;
             (var.ptr, var.ty.clone())
         };
-        self.compile_option_method_on_value(ptr.into(), &ty, method)
+        self.compile_option_method_on_value(ptr.into(), &ty, method, args)
     }
 
     pub fn compile_option_method_on_value(
@@ -1276,7 +1302,14 @@ impl<'ctx> Codegen<'ctx> {
         option_value: BasicValueEnum<'ctx>,
         option_expr_ty: &Type,
         method: &str,
+        args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
+        match method {
+            "is_some" | "is_none" | "unwrap" => {
+                self.validate_builtin_method_arg_count("Option", method, args, 0)?
+            }
+            _ => {}
+        }
         let option_ptr =
             self.materialize_value_pointer_for_type(option_value, option_expr_ty, "option_tmp")?;
         // Assuming Option<T> is { is_some: i8, value: T }
@@ -1437,7 +1470,7 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         result_name: &str,
         method: &str,
-        _args: &[Spanned<Expr>],
+        args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (ptr, ty) = {
             let var = self
@@ -1446,7 +1479,7 @@ impl<'ctx> Codegen<'ctx> {
                 .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", result_name)))?;
             (var.ptr, var.ty.clone())
         };
-        self.compile_result_method_on_value(ptr.into(), &ty, method)
+        self.compile_result_method_on_value(ptr.into(), &ty, method, args)
     }
 
     pub fn compile_result_method_on_value(
@@ -1454,7 +1487,14 @@ impl<'ctx> Codegen<'ctx> {
         result_value: BasicValueEnum<'ctx>,
         result_expr_ty: &Type,
         method: &str,
+        args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
+        match method {
+            "is_ok" | "is_error" | "unwrap" => {
+                self.validate_builtin_method_arg_count("Result", method, args, 0)?
+            }
+            _ => {}
+        }
         let result_ptr =
             self.materialize_value_pointer_for_type(result_value, result_expr_ty, "result_tmp")?;
         // Result<T, E> is struct { is_ok: i8, ok_value: T, err_value: E }
@@ -2958,6 +2998,12 @@ impl<'ctx> Codegen<'ctx> {
         method: &str,
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
+        match method {
+            "length" | "pop" => self.validate_builtin_method_arg_count("List", method, args, 0)?,
+            "push" | "get" => self.validate_builtin_method_arg_count("List", method, args, 1)?,
+            "set" => self.validate_builtin_method_arg_count("List", method, args, 2)?,
+            _ => {}
+        }
         let list_ptr = self.materialize_value_pointer_for_type(list_value, list_ty, "list_tmp")?;
         let (elem_llvm_ty, elem_size) =
             self.list_element_layout_from_list_type(self.deref_codegen_type(list_ty));
@@ -3111,7 +3157,10 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(self.context.i64_type(), length_ptr, "len")
                     .unwrap()
                     .into_int_value();
-                let index = self.compile_expr(&args[0].node)?.into_int_value();
+                let index = self.compile_non_negative_integer_index_expr(
+                    &args[0].node,
+                    "List.get() index cannot be negative",
+                )?;
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.get used outside function"))?;
@@ -3331,7 +3380,10 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(self.context.i64_type(), length_ptr, "len")
                     .unwrap()
                     .into_int_value();
-                let index = self.compile_expr(&args[0].node)?.into_int_value();
+                let index = self.compile_non_negative_integer_index_expr(
+                    &args[0].node,
+                    "List.set() index cannot be negative",
+                )?;
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.set used outside function"))?;
@@ -3429,6 +3481,12 @@ impl<'ctx> Codegen<'ctx> {
         method: &str,
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
+        match method {
+            "length" | "pop" => self.validate_builtin_method_arg_count("List", method, args, 0)?,
+            "push" | "get" => self.validate_builtin_method_arg_count("List", method, args, 1)?,
+            "set" => self.validate_builtin_method_arg_count("List", method, args, 2)?,
+            _ => {}
+        }
         let (elem_llvm_ty, elem_size) = self.list_element_layout_from_list_type(list_ty);
         let list_type = self.context.struct_type(
             &[
@@ -3590,7 +3648,10 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(self.context.i64_type(), length_ptr, "len")
                     .unwrap()
                     .into_int_value();
-                let index = self.compile_expr(&args[0].node)?.into_int_value();
+                let index = self.compile_non_negative_integer_index_expr(
+                    &args[0].node,
+                    "List.get() index cannot be negative",
+                )?;
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.get used outside function"))?;
@@ -3689,7 +3750,10 @@ impl<'ctx> Codegen<'ctx> {
                     .build_load(self.context.i64_type(), length_ptr, "len")
                     .unwrap()
                     .into_int_value();
-                let index = self.compile_expr(&args[0].node)?.into_int_value();
+                let index = self.compile_non_negative_integer_index_expr(
+                    &args[0].node,
+                    "List.set() index cannot be negative",
+                )?;
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("List.set used outside function"))?;
@@ -3911,6 +3975,12 @@ impl<'ctx> Codegen<'ctx> {
         method: &str,
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
+        match method {
+            "length" => self.validate_builtin_method_arg_count("Map", method, args, 0)?,
+            "get" | "contains" => self.validate_builtin_method_arg_count("Map", method, args, 1)?,
+            "insert" | "set" => self.validate_builtin_method_arg_count("Map", method, args, 2)?,
+            _ => {}
+        }
         let map_ptr = self.materialize_value_pointer_for_type(map_value, map_expr_ty, "map_tmp")?;
         let map_type = self.context.struct_type(
             &[
@@ -4818,7 +4888,7 @@ impl<'ctx> Codegen<'ctx> {
         &mut self,
         range_name: &str,
         method: &str,
-        _args: &[Spanned<Expr>],
+        args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
         let (range_ptr, range_ty) = {
             let var = self
@@ -4833,7 +4903,7 @@ impl<'ctx> Codegen<'ctx> {
                 .into_pointer_value();
             (range_ptr, var.ty.clone())
         };
-        self.compile_range_method_on_value(range_ptr.into(), &range_ty, method)
+        self.compile_range_method_on_value(range_ptr.into(), &range_ty, method, args)
     }
 
     pub fn compile_range_method_on_value(
@@ -4841,7 +4911,14 @@ impl<'ctx> Codegen<'ctx> {
         range_value: BasicValueEnum<'ctx>,
         range_expr_ty: &Type,
         method: &str,
+        args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
+        match method {
+            "has_next" | "next" => {
+                self.validate_builtin_method_arg_count("Range", method, args, 0)?
+            }
+            _ => {}
+        }
         let range_ptr = match range_value {
             BasicValueEnum::PointerValue(ptr) => ptr,
             _ => {

@@ -1318,7 +1318,18 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap_or_else(|| pattern_variant_leaf(variant_name));
                     let resolved_enum_name =
                         resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
-                    if matches!(variant_leaf, "Some" | "None" | "Ok" | "Error") {
+                    let matches_builtin_variant = matches!(variant_leaf, "Some" | "None")
+                        && option_inner_ty.is_some()
+                        || matches!(variant_leaf, "Ok" | "Error") && result_inner_tys.is_some();
+                    let enum_variant_info = resolved_enum_name
+                        .or(enum_match_name.as_ref())
+                        .and_then(|enum_name| {
+                            self.enums
+                                .get(enum_name)
+                                .and_then(|enum_info| enum_info.variants.get(variant_leaf))
+                                .map(|variant_info| (enum_name, variant_info))
+                        });
+                    if matches_builtin_variant {
                         let expected_tag = match variant_leaf {
                             "Some" | "Ok" => 1u64,
                             _ => 0u64,
@@ -1340,37 +1351,32 @@ impl<'ctx> Codegen<'ctx> {
                         self.builder
                             .build_conditional_branch(cond, arm_bb, next_bb)
                             .unwrap();
-                    } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
-                    {
-                        if let Some(enum_info) = self.enums.get(enum_name) {
-                            if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
-                                let tag = self
-                                    .builder
-                                    .build_extract_value(val.into_struct_value(), 0, "tag")
-                                    .unwrap()
-                                    .into_int_value();
-                                let cond = self
-                                    .builder
-                                    .build_int_compare(
-                                        IntPredicate::EQ,
-                                        tag,
-                                        self.context
-                                            .i8_type()
-                                            .const_int(variant_info.tag as u64, false),
-                                        "match_expr_enum_variant_eq",
-                                    )
-                                    .unwrap();
-                                self.builder
-                                    .build_conditional_branch(cond, arm_bb, next_bb)
-                                    .unwrap();
-                            } else {
-                                self.builder.build_unconditional_branch(next_bb).unwrap();
-                            }
-                        } else {
-                            self.builder.build_unconditional_branch(next_bb).unwrap();
-                        }
+                    } else if let Some((_, variant_info)) = enum_variant_info {
+                        let tag = self
+                            .builder
+                            .build_extract_value(val.into_struct_value(), 0, "tag")
+                            .unwrap()
+                            .into_int_value();
+                        let cond = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::EQ,
+                                tag,
+                                self.context
+                                    .i8_type()
+                                    .const_int(variant_info.tag as u64, false),
+                                "match_expr_enum_variant_eq",
+                            )
+                            .unwrap();
+                        self.builder
+                            .build_conditional_branch(cond, arm_bb, next_bb)
+                            .unwrap();
                     } else {
-                        self.builder.build_unconditional_branch(next_bb).unwrap();
+                        return Err(CodegenError::new(format!(
+                            "Cannot match variant {} on type {}",
+                            variant_leaf,
+                            Self::format_type_string(&match_ty)
+                        )));
                     }
                 }
             }
@@ -1403,7 +1409,7 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap_or_else(|| pattern_variant_leaf(variant_name));
                     let resolved_enum_name =
                         resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
-                    if variant_leaf == "Some" && !bindings.is_empty() {
+                    if option_inner_ty.is_some() && variant_leaf == "Some" && !bindings.is_empty() {
                         let inner = self
                             .builder
                             .build_extract_value(val.into_struct_value(), 1, "some_inner")
@@ -1421,7 +1427,10 @@ impl<'ctx> Codegen<'ctx> {
                                 mutable: false,
                             },
                         );
-                    } else if variant_leaf == "Ok" && !bindings.is_empty() {
+                    } else if result_inner_tys.is_some()
+                        && variant_leaf == "Ok"
+                        && !bindings.is_empty()
+                    {
                         let inner = self
                             .builder
                             .build_extract_value(val.into_struct_value(), 1, "ok_inner")
@@ -1442,7 +1451,10 @@ impl<'ctx> Codegen<'ctx> {
                                 mutable: false,
                             },
                         );
-                    } else if variant_leaf == "Error" && !bindings.is_empty() {
+                    } else if result_inner_tys.is_some()
+                        && variant_leaf == "Error"
+                        && !bindings.is_empty()
+                    {
                         let inner = self
                             .builder
                             .build_extract_value(val.into_struct_value(), 2, "err_inner")
@@ -1567,6 +1579,14 @@ impl<'ctx> Codegen<'ctx> {
                 .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", name))),
             Expr::Field { object, field } => {
                 let object_ty = self.infer_object_type(&object.node);
+                if let Some(object_ty) = object_ty.as_ref() {
+                    if self.type_to_class_name(object_ty).is_none() {
+                        return Err(CodegenError::new(format!(
+                            "Cannot access field on type {}",
+                            Self::format_type_string(object_ty)
+                        )));
+                    }
+                }
                 let obj_ptr = if matches!(object_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
                     self.compile_deref(&object.node)?.into_pointer_value()
                 } else {
@@ -1605,7 +1625,10 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Index { object, index } => {
-                let idx_val = self.compile_integer_index_expr(&index.node)?;
+                let idx_val = self.compile_non_negative_integer_index_expr(
+                    &index.node,
+                    "List index cannot be negative",
+                )?;
                 let object_ty = self.infer_object_type(&object.node);
                 let deref_object_ty = object_ty
                     .clone()

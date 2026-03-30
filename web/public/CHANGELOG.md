@@ -8,6 +8,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed unchecked builtin method arity validation in backend codegen:
+  - invalid `--no-check` calls such as `xs.length(1)`, `values.get(1, 2)`, `values.contains(1, 2)`, `Option.some(1).unwrap(1)`, `Result.ok(1).unwrap(1)`, and `range(0, 3).next(1)` now fail with explicit Apex diagnostics instead of compiling or falling through to broken IR/runtime paths
+  - unchecked lowering for `List`, `Map`, `Set`, `Option`, `Result`, and `Range` methods now enforces the same method arity guards before backend dispatch
+- Fixed unchecked `Option.none(...)` constructor arity validation in backend codegen:
+  - invalid `--no-check` calls such as `Option.none(1)` now fail with the same Apex diagnostic as checked builds instead of silently compiling and discarding unexpected arguments
+  - both expected-type constructor lowering and general static-call lowering now enforce the zero-argument contract for `Option.none()`
+- Fixed unchecked stdlib-function arity validation in backend codegen:
+  - invalid `--no-check` calls such as `Math.abs()`, `Math.pi(1)`, and `exit()` now fail with explicit Apex diagnostics instead of panicking on missing arguments or silently compiling extra arguments
+  - stdlib dispatch now enforces the checked-mode arity contracts for math, string, file, time, system, args, assertion, conversion, and range builtins before backend lowering
+- Fixed string-only builtin argument validation in codegen when compiling with `--no-check`:
+  - calls such as `System.shell(true)` and `File.exists(true)` now fail with explicit Apex type diagnostics instead of silently passing non-string LLVM values into C string APIs
+  - calls such as `fail(true)` now also fail early instead of passing a non-string LLVM value into `%s` formatting during panic printing
+  - calls such as `Str.upper(true)`, `Str.trim(true)`, `Str.compare(true, "a")`, and `require(false, true)` now fail with Apex diagnostics instead of panicking inside the compiler or silently flowing through raw C string routines
+  - unchecked lowering for `File.read/write/exists/delete`, `Time.now`, `System.getenv/shell/exec`, `fail(message)`, `require(..., message)`, and the `Str.len/compare/concat/upper/lower/trim/contains/startsWith/endsWith` family now validates `String` arguments before emitting runtime calls
+- Fixed unchecked conversion builtin validation in codegen for `to_float(...)` and `to_int(...)`:
+  - invalid calls such as `to_float("8")` and `to_float(true)` now fail with Apex type diagnostics instead of reaching Clang with broken return-type IR
+  - invalid calls such as `to_int(true)` now fail in codegen instead of silently treating a Boolean LLVM value as an `Integer`
+- Fixed unchecked constant validation drift in codegen for negative and zero-only builtins:
+  - invalid constant calls such as `range(0, 10, 0)`, `Time.sleep(-1)`, `Args.get(-1)`, and `task.await_timeout(-1)` now fail during codegen with the same Apex diagnostics as checked builds instead of compiling and only failing later at runtime
+  - unchecked lowering now preserves compile-time constant guards for zero range steps and negative timeout/sleep/index literals
+- Fixed unchecked negative index constant validation for list and string access paths:
+  - invalid constant access such as `xs[-1]`, `s[-1]`, `xs.get(-1)`, and `xs.set(-1, 99)` now fails during codegen with the same Apex diagnostics as checked builds instead of compiling and only failing at runtime bounds checks
+  - direct index lowering and `List.get/set` method lowering now preserve compile-time negative-index guards under `--no-check`
+- Fixed unchecked negative list-constructor capacity constants in codegen:
+  - invalid constant construction such as `List<Integer>(-1)` now fails during codegen with the same Apex diagnostic as checked builds instead of compiling and only failing at runtime
+  - dynamic negative capacities still keep the existing runtime guard, but compile-time negative literals now get rejected before IR emission
+- Fixed unchecked constant string literal out-of-bounds indexing in codegen:
+  - invalid constant access such as `"abc"[5]` and `"🚀"[1]` now fails during codegen with the same Apex diagnostic as checked builds instead of compiling and only failing at runtime
+  - string-literal index lowering now preserves compile-time char-count bounds checks under `--no-check`
+- Fixed unchecked invalid method-call diagnostics on non-object primitive receivers:
+  - invalid calls such as `flag.length()` or `value.length()` now fail with explicit Apex type diagnostics like `Cannot call method on type Boolean` instead of surfacing the internal codegen fallback `Cannot determine object type for method call`
+  - unchecked method-call lowering now reports unsupported receiver types before attempting class-only dispatch resolution
+- Fixed unchecked invalid field-access diagnostics on non-object primitive receivers:
+  - invalid access such as `flag.value` or `value.value` now fails with explicit Apex type diagnostics like `Cannot access field on type Boolean` instead of panicking inside the compiler during pointer lowering
+  - unchecked field-access lowering now rejects unsupported receiver types before attempting class-only field dispatch
+  - invalid field assignment such as `flag.value = false` now also fails with the same Apex diagnostic instead of panicking in the lvalue field-pointer path
+- Fixed unchecked unknown String-method diagnostics in codegen:
+  - invalid calls such as `s.missing()` now fail with `Unknown String method: missing` to match checked builds instead of the broader fallback `Cannot call method on type String`
+- Fixed `Args.get(...)` argument validation in codegen when compiling with `--no-check`:
+  - invalid calls such as `Args.get(true)` now fail with an explicit Apex type diagnostic instead of reaching Clang with a broken integer bounds comparison
+  - unchecked `Args.get(...)` lowering now validates that the index expression is an Apex `Integer` before emitting bounds checks
+- Fixed `Time.sleep(...)` argument validation in codegen when compiling with `--no-check`:
+  - invalid calls such as `Time.sleep(true)` now fail with an explicit Apex type diagnostic instead of compiling and then tripping the runtime negative-millisecond guard after Boolean sign-extension
+  - unchecked `Time.sleep(...)` lowering now validates that the millisecond argument is an Apex `Integer` before integer casting and runtime range checks
+- Fixed `exit(...)` argument validation in codegen when compiling with `--no-check`:
+  - invalid calls such as `exit(true)` now fail with the same Apex diagnostic as checked builds instead of silently truncating a non-integer LLVM value into an exit status
+  - unchecked `exit(...)` lowering now validates that the exit code is an Apex `Integer` before emitting the final truncation/call sequence
+- Fixed `range(...)` builtin argument validation in codegen when compiling with `--no-check`:
+  - invalid calls such as `range(true, 3)` now fail with the same Apex diagnostic as checked builds instead of surfacing a lower-level internal codegen message about mismatched start/end/step shapes
+  - unchecked `range(...)` lowering now validates its argument family before constructing the runtime range object
+- Fixed `match` expression payload binding for user enums whose variant names overlap builtin ones:
+  - user enums such as `enum E { Some(String), ... }` now bind payloads correctly inside `match` expressions instead of misrouting through builtin `Option`/`Result` extraction logic and failing later in codegen
+  - `match` expression payload binding now only treats `Some` / `Ok` / `Error` specially when the matched Apex type is actually `Option` or `Result`
+- Fixed invalid variant-pattern handling in codegen when compiling with `--no-check`:
+  - invalid patterns such as `match (true) { Some(v) => ... }` now fail with an explicit Apex codegen diagnostic instead of either panicking inside the compiler or silently falling through as if the pattern were just absent
+  - `match` statements and `match` expressions now both validate that builtin and enum variant patterns are compatible with the matched Apex type before touching struct-tag lowering
 - Fixed match literal type enforcement in codegen when compiling with `--no-check`:
   - invalid branches such as `match (true) { 1 => ... }` now fail with an explicit Apex codegen diagnostic instead of reaching Clang with an invalid branch condition type
   - match-literal lowering now validates Apex pattern compatibility before choosing raw LLVM integer/float/pointer comparison paths
