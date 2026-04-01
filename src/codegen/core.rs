@@ -5428,6 +5428,39 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
+    fn validate_numeric_stdlib_arg(&self, name: &str, expr: &Expr) -> Result<Type> {
+        let arg_ty = self.infer_expr_type(expr, &[]);
+        if !matches!(arg_ty, Type::Integer | Type::Float) {
+            return Err(CodegenError::new(format!(
+                "{}() requires numeric type, got {}",
+                name,
+                Self::format_type_string(&arg_ty)
+            )));
+        }
+        Ok(arg_ty)
+    }
+
+    fn validate_numeric_stdlib_pair(
+        &self,
+        name: &str,
+        left: &Expr,
+        right: &Expr,
+    ) -> Result<(Type, Type)> {
+        let left_ty = self.infer_expr_type(left, &[]);
+        let right_ty = self.infer_expr_type(right, &[]);
+        if !matches!(left_ty, Type::Integer | Type::Float)
+            || !matches!(right_ty, Type::Integer | Type::Float)
+        {
+            return Err(CodegenError::new(format!(
+                "{}() arguments must be numeric types, got {} and {}",
+                name,
+                Self::format_type_string(&left_ty),
+                Self::format_type_string(&right_ty)
+            )));
+        }
+        Ok((left_ty, right_ty))
+    }
+
     /// Compile full program.
     pub fn compile(&mut self, program: &Program) -> Result<()> {
         self.compile_internal(program, None, None)
@@ -5915,6 +5948,14 @@ impl<'ctx> Codegen<'ctx> {
 
                         if path_parts.len() == 2 {
                             let owner = self.resolve_module_alias(&path_parts[0]);
+                            if matches!(owner.as_str(), "Option" | "Result") {
+                                let static_container_name = format!("{}__{}", owner, field);
+                                if Self::is_contextual_static_container_function_value(
+                                    &static_container_name,
+                                ) {
+                                    return Some(static_container_name);
+                                }
+                            }
                             let builtin_name = format!("{}__{}", owner, field);
                             if Self::is_supported_builtin_function_name(&builtin_name) {
                                 return Some(builtin_name);
@@ -5929,6 +5970,14 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 if let Expr::Ident(owner_name) = &object.node {
                     let owner = self.resolve_module_alias(owner_name);
+                    if matches!(owner.as_str(), "Option" | "Result") {
+                        let static_container_name = format!("{}__{}", owner, field);
+                        if Self::is_contextual_static_container_function_value(
+                            &static_container_name,
+                        ) {
+                            return Some(static_container_name);
+                        }
+                    }
                     let builtin_name = format!("{}__{}", owner, field);
                     if Self::is_supported_builtin_function_name(&builtin_name) {
                         return Some(builtin_name);
@@ -5938,6 +5987,13 @@ impl<'ctx> Codegen<'ctx> {
             }
             _ => None,
         }
+    }
+
+    fn is_contextual_static_container_function_value(name: &str) -> bool {
+        matches!(
+            name,
+            "Option__some" | "Option__none" | "Result__ok" | "Result__error"
+        )
     }
 
     fn is_supported_builtin_function_name(name: &str) -> bool {
@@ -5998,6 +6054,10 @@ impl<'ctx> Codegen<'ctx> {
                 | "Str__contains"
                 | "Str__startsWith"
                 | "Str__endsWith"
+                | "Option__some"
+                | "Option__none"
+                | "Result__ok"
+                | "Result__error"
         )
     }
 
@@ -6058,10 +6118,27 @@ impl<'ctx> Codegen<'ctx> {
                     | "fail"
                     | "exit"
                     | "range"
+                    | "Option__some"
+                    | "Option__none"
+                    | "Result__ok"
+                    | "Result__error"
             );
         };
 
         match name {
+            "Option__some" => {
+                params.len() == 1
+                    && matches!(ret.as_ref(), Type::Option(inner) if params[0] == inner.as_ref().clone())
+            }
+            "Option__none" => params.is_empty() && matches!(ret.as_ref(), Type::Option(_)),
+            "Result__ok" => {
+                params.len() == 1
+                    && matches!(ret.as_ref(), Type::Result(ok, _) if params[0] == ok.as_ref().clone())
+            }
+            "Result__error" => {
+                params.len() == 1
+                    && matches!(ret.as_ref(), Type::Result(_, err) if params[0] == err.as_ref().clone())
+            }
             "read_line" | "System__cwd" | "System__os" => {
                 params.is_empty() && matches!(ret.as_ref(), Type::String)
             }
@@ -10008,6 +10085,11 @@ impl<'ctx> Codegen<'ctx> {
         expr: &Expr,
         expected_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
+        if let Some(closure) =
+            self.compile_enum_variant_function_value_with_expected_type(expr, expected_ty)?
+        {
+            return Ok(closure);
+        }
         if let Expr::Call { callee, args, .. } = expr {
             if let Expr::Field { object, field } = &callee.node {
                 if let Expr::Ident(type_name) = &object.node {
@@ -10127,6 +10209,157 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         Ok(value)
+    }
+
+    fn resolve_enum_variant_function_value(
+        &self,
+        expr: &Expr,
+    ) -> Option<(String, EnumVariantInfo)> {
+        if let Expr::Ident(name) = expr {
+            if let Some((enum_name, variant_name)) = name.rsplit_once("__") {
+                if let Some(enum_info) = self.enums.get(enum_name) {
+                    if let Some(variant_info) = enum_info.variants.get(variant_name) {
+                        return Some((enum_name.to_string(), variant_info.clone()));
+                    }
+                }
+            }
+            let (enum_name, variant_name) = self.resolve_import_alias_variant(name)?;
+            let enum_info = self.enums.get(&enum_name)?;
+            let variant_info = enum_info.variants.get(&variant_name)?.clone();
+            return Some((enum_name, variant_info));
+        }
+
+        let Expr::Field { object, field } = expr else {
+            return None;
+        };
+
+        if let Some(path_parts) = Self::flatten_field_chain(expr) {
+            if path_parts.len() >= 2 {
+                let owner_source = path_parts[..path_parts.len() - 1].join(".");
+                if let Some(resolved_owner) =
+                    self.resolve_alias_qualified_codegen_type_name(&owner_source)
+                {
+                    if let Some(enum_info) = self.enums.get(&resolved_owner) {
+                        let variant_name = path_parts.last()?;
+                        if let Some(variant_info) = enum_info.variants.get(variant_name) {
+                            return Some((resolved_owner, variant_info.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        let Expr::Ident(owner_name) = &object.node else {
+            return None;
+        };
+        let resolved_owner = self
+            .resolve_alias_qualified_codegen_type_name(owner_name)
+            .unwrap_or_else(|| self.resolve_module_alias(owner_name));
+        let enum_info = self.enums.get(&resolved_owner)?;
+        let variant_info = enum_info.variants.get(field)?.clone();
+        Some((resolved_owner, variant_info))
+    }
+
+    fn compile_enum_variant_function_value_with_expected_type(
+        &mut self,
+        expr: &Expr,
+        expected_ty: &Type,
+    ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        let Type::Function(param_types, ret_type) = expected_ty else {
+            return Ok(None);
+        };
+        let Some((enum_name, variant_info)) = self.resolve_enum_variant_function_value(expr) else {
+            return Ok(None);
+        };
+        let actual_ty = Type::Function(
+            variant_info.fields.clone(),
+            Box::new(Type::Named(enum_name.clone())),
+        );
+        if &actual_ty != expected_ty {
+            return Err(CodegenError::new(format!(
+                "Type mismatch: expected {}, got {}",
+                Self::format_type_string(expected_ty),
+                Self::format_type_string(&actual_ty)
+            )));
+        }
+
+        let wrapper_name = format!(
+            "__enum_variant_fn_value_{}_{}_{}",
+            enum_name,
+            variant_info.tag,
+            Self::type_specialization_suffix(expected_ty)
+        );
+        let wrapper_fn = if let Some(existing) = self.module.get_function(&wrapper_name) {
+            existing
+        } else {
+            let ptr_type = self.context.ptr_type(AddressSpace::default());
+            let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
+            for param_ty in param_types {
+                llvm_params.push(self.llvm_type(param_ty).into());
+            }
+            let wrapper_fn_type = match self.llvm_type(ret_type) {
+                BasicTypeEnum::IntType(i) => i.fn_type(&llvm_params, false),
+                BasicTypeEnum::FloatType(f) => f.fn_type(&llvm_params, false),
+                BasicTypeEnum::PointerType(p) => p.fn_type(&llvm_params, false),
+                BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
+                _ => self.context.i8_type().fn_type(&llvm_params, false),
+            };
+            let wrapper_fn = self
+                .module
+                .add_function(&wrapper_name, wrapper_fn_type, None);
+
+            let saved_function = self.current_function;
+            let saved_return_type = self.current_return_type.clone();
+            let saved_insert_block = self.builder.get_insert_block();
+
+            self.current_function = Some(wrapper_fn);
+            self.current_return_type = Some(expected_ty.clone());
+
+            let entry = self.context.append_basic_block(wrapper_fn, "entry");
+            self.builder.position_at_end(entry);
+
+            let mut values = Vec::with_capacity(variant_info.fields.len());
+            for index in 0..variant_info.fields.len() {
+                let llvm_param = wrapper_fn
+                    .get_nth_param((index + 1) as u32)
+                    .ok_or_else(|| CodegenError::new("missing enum variant wrapper parameter"))?;
+                values.push(llvm_param);
+            }
+            let value = self.build_enum_value(&enum_name, &variant_info, &values)?;
+            self.builder.build_return(Some(&value)).map_err(|e| {
+                CodegenError::new(format!("enum variant wrapper return failed: {}", e))
+            })?;
+
+            self.current_function = saved_function;
+            self.current_return_type = saved_return_type;
+            if let Some(block) = saved_insert_block {
+                self.builder.position_at_end(block);
+            }
+
+            wrapper_fn
+        };
+
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let closure_ty = self
+            .context
+            .struct_type(&[ptr_type.into(), ptr_type.into()], false);
+        let mut closure = closure_ty.get_undef();
+        closure = self
+            .builder
+            .build_insert_value(
+                closure,
+                wrapper_fn.as_global_value().as_pointer_value(),
+                0,
+                "enum_variant_fn",
+            )
+            .unwrap()
+            .into_struct_value();
+        closure = self
+            .builder
+            .build_insert_value(closure, ptr_type.const_null(), 1, "enum_variant_env")
+            .unwrap()
+            .into_struct_value();
+        Ok(Some(closure.into()))
     }
 
     fn compile_expr_for_llvm_param(
@@ -10297,7 +10530,11 @@ impl<'ctx> Codegen<'ctx> {
         {
             actual_ty
         } else {
-            return Ok(None);
+            return Err(CodegenError::new(format!(
+                "Type mismatch: expected {}, got {}",
+                Self::format_type_string(expected_ty),
+                Self::builtin_function_value_diagnostic_signature(name)
+            )));
         };
 
         let actual_closure = self.compile_builtin_function_value_with_type(name, &actual_ty)?;
@@ -10308,11 +10545,71 @@ impl<'ctx> Codegen<'ctx> {
         self.compile_function_value_adapter_from_closure(actual_closure, &actual_ty, expected_ty)
     }
 
+    fn builtin_function_value_diagnostic_signature(name: &str) -> &'static str {
+        match name {
+            "Option__some" => "(unknown) -> Option<unknown>",
+            "Option__none" => "() -> Option<unknown>",
+            "Result__ok" => "(unknown) -> Result<unknown, unknown>",
+            "Result__error" => "(unknown) -> Result<unknown, unknown>",
+            "read_line" | "System__cwd" | "System__os" => "() -> String",
+            "File__read" | "System__getenv" | "System__exec" | "Time__now" => "(String) -> String",
+            "System__shell" => "(String) -> Integer",
+            "File__write" => "(String, String) -> Boolean",
+            "File__exists" | "File__delete" => "(String) -> Boolean",
+            "System__exit" | "exit" | "Time__sleep" => "(Integer) -> None",
+            "Time__unix" | "Args__count" => "() -> Integer",
+            "Args__get" => "(Integer) -> String",
+            "Math__abs" => "(unknown) -> unknown",
+            "Math__min" | "Math__max" => "(unknown, unknown) -> unknown",
+            "Math__pow" => "(unknown, unknown) -> Float",
+            "Math__sqrt" | "Math__sin" | "Math__cos" | "Math__tan" | "Math__floor"
+            | "Math__ceil" | "Math__round" | "Math__log" | "Math__log10" | "Math__exp" => {
+                "(unknown) -> Float"
+            }
+            "Math__pi" | "Math__e" | "Math__random" => "() -> Float",
+            "Str__len" => "(String) -> Integer",
+            "Str__compare" => "(String, String) -> Integer",
+            "Str__concat" => "(String, String) -> String",
+            "Str__upper" | "Str__lower" | "Str__trim" => "(String) -> String",
+            "Str__contains" | "Str__startsWith" | "Str__endsWith" => "(String, String) -> Boolean",
+            "to_float" => "(unknown) -> Float",
+            "to_int" => "(unknown) -> Integer",
+            "to_string" => "(unknown) -> String",
+            "assert" | "assert_true" | "assert_false" | "fail" => "(unknown) -> None",
+            "assert_eq" | "assert_ne" => "(unknown, unknown) -> None",
+            "range" => "(unknown, unknown) -> unknown",
+            _ => "builtin function",
+        }
+    }
+
     fn builtin_function_value_concrete_type_for_expected(
         name: &str,
         expected: &Type,
     ) -> Option<Type> {
         match (name, expected) {
+            ("Option__some", Type::Function(params, ret))
+                if params.len() == 1
+                    && matches!(ret.as_ref(), Type::Option(inner) if params[0] == inner.as_ref().clone()) =>
+            {
+                Some(expected.clone())
+            }
+            ("Option__none", Type::Function(params, ret))
+                if params.is_empty() && matches!(ret.as_ref(), Type::Option(_)) =>
+            {
+                Some(expected.clone())
+            }
+            ("Result__ok", Type::Function(params, ret))
+                if params.len() == 1
+                    && matches!(ret.as_ref(), Type::Result(ok, _) if params[0] == ok.as_ref().clone()) =>
+            {
+                Some(expected.clone())
+            }
+            ("Result__error", Type::Function(params, ret))
+                if params.len() == 1
+                    && matches!(ret.as_ref(), Type::Result(_, err) if params[0] == err.as_ref().clone()) =>
+            {
+                Some(expected.clone())
+            }
             ("Math__abs", Type::Function(params, ret))
                 if params.len() == 1
                     && matches!(params[0], Type::Integer)
@@ -10394,12 +10691,14 @@ impl<'ctx> Codegen<'ctx> {
             let entry = self.context.append_basic_block(wrapper_fn, "entry");
             self.builder.position_at_end(entry);
 
+            let mut wrapper_args = Vec::with_capacity(param_types.len());
             let mut synthetic_args = Vec::with_capacity(param_types.len());
             for (index, param_ty) in param_types.iter().enumerate() {
                 let param_name = format!("__builtin_arg_{index}");
                 let llvm_param = wrapper_fn
                     .get_nth_param((index + 1) as u32)
                     .ok_or_else(|| CodegenError::new("missing builtin wrapper parameter"))?;
+                wrapper_args.push(llvm_param);
                 let alloca = self
                     .builder
                     .build_alloca(self.llvm_type(param_ty), &param_name)
@@ -10420,7 +10719,62 @@ impl<'ctx> Codegen<'ctx> {
                 synthetic_args.push(Spanned::new(Expr::Ident(param_name), Span::default()));
             }
 
-            let result = self.compile_stdlib_function(name, &synthetic_args)?;
+            let result = match name {
+                "Option__some" => {
+                    let inner_ty = match ret_type.as_ref() {
+                        Type::Option(inner_ty) => inner_ty.as_ref(),
+                        _ => {
+                            return Err(CodegenError::new(
+                                "Option.some function value requires Option return type",
+                            ))
+                        }
+                    };
+                    let value = wrapper_args.first().copied().ok_or_else(|| {
+                        CodegenError::new("Option.some function value missing argument")
+                    })?;
+                    Some(self.create_option_some_typed(value, inner_ty)?)
+                }
+                "Option__none" => {
+                    let inner_ty = match ret_type.as_ref() {
+                        Type::Option(inner_ty) => inner_ty.as_ref(),
+                        _ => {
+                            return Err(CodegenError::new(
+                                "Option.none function value requires Option return type",
+                            ))
+                        }
+                    };
+                    Some(self.create_option_none_typed(inner_ty)?)
+                }
+                "Result__ok" => {
+                    let (ok_ty, err_ty) = match ret_type.as_ref() {
+                        Type::Result(ok_ty, err_ty) => (ok_ty.as_ref(), err_ty.as_ref()),
+                        _ => {
+                            return Err(CodegenError::new(
+                                "Result.ok function value requires Result return type",
+                            ))
+                        }
+                    };
+                    let value = wrapper_args.first().copied().ok_or_else(|| {
+                        CodegenError::new("Result.ok function value missing argument")
+                    })?;
+                    Some(self.create_result_ok_typed(value, ok_ty, err_ty)?)
+                }
+                "Result__error" => {
+                    let (ok_ty, err_ty) = match ret_type.as_ref() {
+                        Type::Result(ok_ty, err_ty) => (ok_ty.as_ref(), err_ty.as_ref()),
+                        _ => {
+                            return Err(CodegenError::new(
+                                "Result.error function value requires Result return type",
+                            ))
+                        }
+                    };
+                    let value = wrapper_args.first().copied().ok_or_else(|| {
+                        CodegenError::new("Result.error function value missing argument")
+                    })?;
+                    Some(self.create_result_error_typed(value, ok_ty, err_ty)?)
+                }
+                _ => self.compile_stdlib_function(name, &synthetic_args)?,
+            };
             if matches!(ret_type.as_ref(), Type::None) {
                 self.builder
                     .build_return(Some(&self.context.i8_type().const_int(0, false)))
@@ -15533,6 +15887,7 @@ impl<'ctx> Codegen<'ctx> {
         match name {
             // Math functions
             "Math__abs" => {
+                self.validate_numeric_stdlib_arg("Math.abs", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 if val.is_int_value() {
                     let v = val.into_int_value();
@@ -15578,6 +15933,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             "Math__min" => {
+                self.validate_numeric_stdlib_pair("Math.min", &args[0].node, &args[1].node)?;
                 let a = self.compile_expr(&args[0].node)?;
                 let b = self.compile_expr(&args[1].node)?;
                 if a.is_float_value() || b.is_float_value() {
@@ -15623,6 +15979,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             "Math__max" => {
+                self.validate_numeric_stdlib_pair("Math.max", &args[0].node, &args[1].node)?;
                 let a = self.compile_expr(&args[0].node)?;
                 let b = self.compile_expr(&args[1].node)?;
                 if a.is_float_value() || b.is_float_value() {
@@ -15668,6 +16025,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             "Math__sqrt" => {
+                self.validate_numeric_stdlib_arg("Math.sqrt", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let sqrt = self.get_or_declare_math_func("sqrt", true);
                 let fval = if val.is_int_value() {
@@ -15689,6 +16047,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__pow" => {
+                self.validate_numeric_stdlib_pair("Math.pow", &args[0].node, &args[1].node)?;
                 let base = self.compile_expr(&args[0].node)?;
                 let exp = self.compile_expr(&args[1].node)?;
                 let pow_fn = self.get_or_declare_math_func2("pow");
@@ -15723,6 +16082,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__sin" => {
+                self.validate_numeric_stdlib_arg("Math.sin", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let sin_fn = self.get_or_declare_math_func("sin", true);
                 let fval = if val.is_int_value() {
@@ -15744,6 +16104,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__cos" => {
+                self.validate_numeric_stdlib_arg("Math.cos", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let cos_fn = self.get_or_declare_math_func("cos", true);
                 let fval = if val.is_int_value() {
@@ -15765,6 +16126,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__tan" => {
+                self.validate_numeric_stdlib_arg("Math.tan", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let tan_fn = self.get_or_declare_math_func("tan", true);
                 let fval = if val.is_int_value() {
@@ -15786,6 +16148,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__floor" => {
+                self.validate_numeric_stdlib_arg("Math.floor", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let floor_fn = self.get_or_declare_math_func("floor", true);
                 let fval = if val.is_int_value() {
@@ -15807,6 +16170,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__ceil" => {
+                self.validate_numeric_stdlib_arg("Math.ceil", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let ceil_fn = self.get_or_declare_math_func("ceil", true);
                 let fval = if val.is_int_value() {
@@ -15828,6 +16192,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__round" => {
+                self.validate_numeric_stdlib_arg("Math.round", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let round_fn = self.get_or_declare_math_func("round", true);
                 let fval = if val.is_int_value() {
@@ -15849,6 +16214,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__log" => {
+                self.validate_numeric_stdlib_arg("Math.log", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let log_fn = self.get_or_declare_math_func("log", true);
                 let fval = if val.is_int_value() {
@@ -15870,6 +16236,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__log10" => {
+                self.validate_numeric_stdlib_arg("Math.log10", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let log10_fn = self.get_or_declare_math_func("log10", true);
                 let fval = if val.is_int_value() {
@@ -15891,6 +16258,7 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(self.extract_call_value(call)?))
             }
             "Math__exp" => {
+                self.validate_numeric_stdlib_arg("Math.exp", &args[0].node)?;
                 let val = self.compile_expr(&args[0].node)?;
                 let exp_fn = self.get_or_declare_math_func("exp", true);
                 let fval = if val.is_int_value() {

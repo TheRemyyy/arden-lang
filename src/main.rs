@@ -13802,6 +13802,78 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_supports_imported_payload_enum_variant_function_value_aliases() {
+        let temp_root = make_temp_project_root("imported-payload-enum-variant-fn-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nenum E { Wrap(Integer) }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.E.Wrap as WrapCtor;\nfunction main(): Integer { f: (Integer) -> E = WrapCtor; value: E = f(7); return match (value) { E.Wrap(v) => { if (v == 7) { 0 } else { 1 } } }; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support imported payload enum variant function value aliases",
+            );
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run imported payload enum variant function value alias binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_imported_unit_enum_variant_function_value_aliases() {
+        let temp_root = make_temp_project_root("imported-unit-enum-variant-fn-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nenum Mode { A, B }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.Mode.A as Pick;\nfunction main(): Integer { f: () -> Mode = Pick; return if (f() == Mode.A) { 0 } else { 1 }; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support imported unit enum variant function value aliases",
+            );
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run imported unit enum variant function value alias binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_rejects_colliding_top_level_enum_names_across_namespaces() {
         let temp_root = make_temp_project_root("colliding-enum-project");
         let src_dir = temp_root.join("src");
@@ -23879,6 +23951,104 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_math_abs_boolean_argument_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-math-abs-boolean");
+        let source_path = temp_root.join("no_check_invalid_math_abs_boolean.apex");
+        let output_path = temp_root.join("no_check_invalid_math_abs_boolean");
+        let source = r#"
+            import std.math.*;
+
+            function main(): Integer {
+                value: Boolean = true;
+                return Math.abs(value);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("Math.abs(Boolean) should fail in codegen");
+        assert!(
+            err.contains("Math.abs() requires numeric type, got Boolean"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_math_min_boolean_arguments_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-math-min-boolean");
+        let source_path = temp_root.join("no_check_invalid_math_min_boolean.apex");
+        let output_path = temp_root.join("no_check_invalid_math_min_boolean");
+        let source = r#"
+            import std.math.*;
+
+            function main(): Integer {
+                value: Boolean = Math.min(true, false);
+                return if (value) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("Math.min(Boolean, Boolean) should fail in codegen");
+        assert!(
+            err.contains("Math.min() arguments must be numeric types, got Boolean and Boolean"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_invalid_to_float_function_value_signature() {
+        let temp_root = make_temp_project_root("no-check-invalid-to-float-fn-value-signature");
+        let source_path = temp_root.join("no_check_invalid_to_float_fn_value_signature.apex");
+        let output_path = temp_root.join("no_check_invalid_to_float_fn_value_signature");
+        let source = r#"
+            function main(): Integer {
+                f: (Boolean) -> Float = to_float;
+                value: Float = f(true);
+                return if (value == 1.0) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid to_float function value signature should fail in codegen");
+        assert!(
+            err.contains("Type mismatch: expected (Boolean) -> Float, got (unknown) -> Float"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_invalid_assert_true_function_value_signature() {
+        let temp_root = make_temp_project_root("no-check-invalid-assert-true-fn-value-signature");
+        let source_path = temp_root.join("no_check_invalid_assert_true_fn_value_signature.apex");
+        let output_path = temp_root.join("no_check_invalid_assert_true_fn_value_signature");
+        let source = r#"
+            function main(): Integer {
+                ensure_true: (Integer) -> None = assert_true;
+                ensure_true(1);
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid assert_true function value signature should fail in codegen");
+        assert!(
+            err.contains("Type mismatch: expected (Integer) -> None, got (unknown) -> None"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_match_literal_type_mismatch_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-match-literal-type");
         let source_path = temp_root.join("no_check_invalid_match_literal_type.apex");
@@ -25489,6 +25659,206 @@ function main(): Integer {
             String::from_utf8_lossy(&output.stderr)
         );
         assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_option_some_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-option-some-function-value-runtime");
+        let source_path = temp_root.join("direct_option_some_function_value_runtime.apex");
+        let output_path = temp_root.join("direct_option_some_function_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                wrap: (Integer) -> Option<Integer> = Option.some;
+                value: Option<Integer> = wrap(7);
+                return if (value == Option.some(7)) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Option.some function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Option.some function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_option_none_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-option-none-function-value-runtime");
+        let source_path = temp_root.join("direct_option_none_function_value_runtime.apex");
+        let output_path = temp_root.join("direct_option_none_function_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                empty: () -> Option<Integer> = Option.none;
+                value: Option<Integer> = empty();
+                return if (value == Option.none()) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Option.none function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Option.none function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_result_ok_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-result-ok-function-value-runtime");
+        let source_path = temp_root.join("direct_result_ok_function_value_runtime.apex");
+        let output_path = temp_root.join("direct_result_ok_function_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                wrap: (Integer) -> Result<Integer, String> = Result.ok;
+                value: Result<Integer, String> = wrap(7);
+                return if (value == Result.ok(7)) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Result.ok function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Result.ok function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_result_error_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-result-error-function-value-runtime");
+        let source_path = temp_root.join("direct_result_error_function_value_runtime.apex");
+        let output_path = temp_root.join("direct_result_error_function_value_runtime");
+        let source = r#"
+            function main(): Integer {
+                wrap: (String) -> Result<Integer, String> = Result.error;
+                value: Result<Integer, String> = wrap("boom");
+                return if (value == Result.error("boom")) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct Result.error function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct Result.error function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_direct_option_some_function_value_type_mismatch() {
+        let temp_root = make_temp_project_root("direct-option-some-function-value-type-mismatch");
+        let source_path = temp_root.join("direct_option_some_function_value_type_mismatch.apex");
+        let output_path = temp_root.join("direct_option_some_function_value_type_mismatch");
+        let source = r#"
+            function main(): Integer {
+                wrap: (String) -> Option<Integer> = Option.some;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("direct Option.some mismatch should fail");
+        assert!(
+            err.contains("Type mismatch: expected (String) -> Option<Integer>, got (unknown) -> Option<unknown>"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_enum_payload_variant_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-enum-payload-variant-function-value");
+        let source_path = temp_root.join("direct_enum_payload_variant_function_value.apex");
+        let output_path = temp_root.join("direct_enum_payload_variant_function_value");
+        let source = r#"
+            enum Boxed { Wrap(Integer) }
+            function main(): Integer {
+                wrap: (Integer) -> Boxed = Boxed.Wrap;
+                value: Boxed = wrap(7);
+                return match (value) {
+                    Boxed.Wrap(v) => { if (v == 7) { 0 } else { 1 } }
+                };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct enum payload variant function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct enum payload variant function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_direct_enum_unit_variant_function_value_runtime() {
+        let temp_root = make_temp_project_root("direct-enum-unit-variant-function-value");
+        let source_path = temp_root.join("direct_enum_unit_variant_function_value.apex");
+        let output_path = temp_root.join("direct_enum_unit_variant_function_value");
+        let source = r#"
+            enum Mode { A, B }
+            function main(): Integer {
+                pick: () -> Mode = Mode.A;
+                return if (pick() == Mode.A) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("direct enum unit variant function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled direct enum unit variant function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_direct_enum_variant_function_value_type_mismatch() {
+        let temp_root = make_temp_project_root("direct-enum-variant-function-value-type-mismatch");
+        let source_path = temp_root.join("direct_enum_variant_function_value_type_mismatch.apex");
+        let output_path = temp_root.join("direct_enum_variant_function_value_type_mismatch");
+        let source = r#"
+            enum Boxed { Wrap(Integer) }
+            function main(): Integer {
+                wrap: (String) -> Boxed = Boxed.Wrap;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("direct enum variant mismatch should fail");
+        assert!(
+            err.contains("Type mismatch: expected (String) -> Boxed, got (Integer) -> Boxed"),
+            "unexpected error: {err}"
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }

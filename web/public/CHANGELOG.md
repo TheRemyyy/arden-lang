@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed direct `Option`/`Result` static constructor function values in contextual typing and codegen:
+  - direct bindings such as `wrap: (Integer) -> Option<Integer> = Option.some`, `empty: () -> Option<Integer> = Option.none`, `okf: (Integer) -> Result<Integer, String> = Result.ok`, and `errf: (String) -> Result<Integer, String> = Result.error` now typecheck and compile correctly instead of failing with `Undefined variable: Option` / `Undefined variable: Result`
+  - contextual function-value resolution now treats generic `Option`/`Result` static constructors as first-class function values and lowers them through typed wrapper closures, preserving proper signature mismatch diagnostics for invalid bindings
+- Fixed direct user enum variant constructor function values in contextual typing and codegen:
+  - bindings such as `wrap: (Integer) -> Boxed = Boxed.Wrap` and `pick: () -> Mode = Mode.A` now compile as first-class constructor closures instead of failing with enum-arity errors or being treated as plain enum values
+  - expected-function contextual typing now lifts enum payload and unit variants into constructor closures while preserving explicit `Type mismatch` diagnostics for invalid signatures
+  - exact-import aliases for enum variants such as `import app.E.Wrap as WrapCtor` and `import app.Mode.A as Pick` now also work in function-value position instead of failing in project builds with `Undefined variable: app__E__Wrap` / `app__Mode__A`
 - Fixed unchecked builtin method arity validation in backend codegen:
   - invalid `--no-check` calls such as `xs.length(1)`, `values.get(1, 2)`, `values.contains(1, 2)`, `Option.some(1).unwrap(1)`, `Result.ok(1).unwrap(1)`, and `range(0, 3).next(1)` now fail with explicit Apex diagnostics instead of compiling or falling through to broken IR/runtime paths
   - unchecked lowering for `List`, `Map`, `Set`, `Option`, `Result`, and `Range` methods now enforces the same method arity guards before backend dispatch
@@ -17,6 +24,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked stdlib-function arity validation in backend codegen:
   - invalid `--no-check` calls such as `Math.abs()`, `Math.pi(1)`, and `exit()` now fail with explicit Apex diagnostics instead of panicking on missing arguments or silently compiling extra arguments
   - stdlib dispatch now enforces the checked-mode arity contracts for math, string, file, time, system, args, assertion, conversion, and range builtins before backend lowering
+- Fixed numeric-contract enforcement for `Math` builtins:
+  - invalid calls such as `Math.abs(true)` and `Math.min(true, false)` now fail with explicit Apex diagnostics instead of producing broken LLVM IR or silently returning inverted Boolean results
+  - `Math.min/max` now reject non-numeric arguments during checked analysis as well, matching the runtime/codegen contract already implied by the numeric math APIs
+  - invalid function-value bindings such as `f: (Boolean) -> Boolean = Math.abs` and `f: (Boolean, Boolean) -> Boolean = Math.min` now fail during typechecking instead of slipping through contextual builtin-function fallback with `unknown` placeholders
+- Fixed placeholder builtin-function value leakage in contextual typing:
+  - invalid bindings such as `f: (Boolean) -> Float = to_float`, `f: (Boolean) -> Integer = to_int`, `f: (Boolean) -> None = fail`, and `f: (Integer) -> None = assert_true` now fail during typechecking instead of being accepted through `(unknown)` placeholder signatures
+  - contextual builtin-function matching now rejects unresolved `unknown` placeholder signatures unless the builtin explicitly matches the requested concrete function type
+- Fixed unchecked builtin function-value mismatch diagnostics in backend codegen:
+  - invalid `--no-check` bindings such as `f: (Boolean) -> Float = to_float` and `f: (Integer) -> None = assert_true` now fail with explicit `Type mismatch` diagnostics instead of falling through to the misleading backend error `Unknown variable`
+  - contextual builtin function-value lowering now reports signature mismatches directly when the builtin name is known but the requested function type is incompatible
 - Fixed string-only builtin argument validation in codegen when compiling with `--no-check`:
   - calls such as `System.shell(true)` and `File.exists(true)` now fail with explicit Apex type diagnostics instead of silently passing non-string LLVM values into C string APIs
   - calls such as `fail(true)` now also fail early instead of passing a non-string LLVM value into `%s` formatting during panic printing

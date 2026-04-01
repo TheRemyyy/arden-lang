@@ -460,6 +460,39 @@ impl TypeChecker {
         }
     }
 
+    fn resolved_type_contains_unknown(ty: &ResolvedType) -> bool {
+        match ty {
+            ResolvedType::Unknown => true,
+            ResolvedType::Option(inner)
+            | ResolvedType::Set(inner)
+            | ResolvedType::Ref(inner)
+            | ResolvedType::MutRef(inner)
+            | ResolvedType::Box(inner)
+            | ResolvedType::Rc(inner)
+            | ResolvedType::Arc(inner)
+            | ResolvedType::Ptr(inner)
+            | ResolvedType::Task(inner)
+            | ResolvedType::Range(inner) => Self::resolved_type_contains_unknown(inner),
+            ResolvedType::Result(ok, err) | ResolvedType::Map(ok, err) => {
+                Self::resolved_type_contains_unknown(ok)
+                    || Self::resolved_type_contains_unknown(err)
+            }
+            ResolvedType::List(inner) => Self::resolved_type_contains_unknown(inner),
+            ResolvedType::Function(params, ret) => {
+                params.iter().any(Self::resolved_type_contains_unknown)
+                    || Self::resolved_type_contains_unknown(ret)
+            }
+            ResolvedType::Integer
+            | ResolvedType::Float
+            | ResolvedType::Boolean
+            | ResolvedType::String
+            | ResolvedType::Char
+            | ResolvedType::None
+            | ResolvedType::Class(_)
+            | ResolvedType::TypeVar(_) => false,
+        }
+    }
+
     fn peel_reference_type(ty: &ResolvedType) -> &ResolvedType {
         match ty {
             ResolvedType::Ref(inner) | ResolvedType::MutRef(inner) => {
@@ -4316,6 +4349,14 @@ impl TypeChecker {
 
                         if path_parts.len() == 2 {
                             let builtin_owner = self.resolve_builtin_module_alias(&path_parts[0]);
+                            if matches!(builtin_owner.as_str(), "Option" | "Result") {
+                                let static_container_name = format!("{}__{}", builtin_owner, field);
+                                if Self::is_contextual_static_container_function_value(
+                                    &static_container_name,
+                                ) {
+                                    return Some(static_container_name);
+                                }
+                            }
                             let builtin_name = format!("{}__{}", builtin_owner, field);
                             if Self::builtin_matches_expected_function_type(
                                 &builtin_name,
@@ -4336,6 +4377,14 @@ impl TypeChecker {
                 }
                 if let Expr::Ident(owner_name) = &object.node {
                     let resolved_owner = self.resolve_builtin_module_alias(owner_name);
+                    if matches!(resolved_owner.as_str(), "Option" | "Result") {
+                        let static_container_name = format!("{}__{}", resolved_owner, field);
+                        if Self::is_contextual_static_container_function_value(
+                            &static_container_name,
+                        ) {
+                            return Some(static_container_name);
+                        }
+                    }
                     let builtin_name = format!("{}__{}", resolved_owner, field);
                     if Self::builtin_matches_expected_function_type(
                         &builtin_name,
@@ -4348,6 +4397,13 @@ impl TypeChecker {
             }
             _ => None,
         }
+    }
+
+    fn is_contextual_static_container_function_value(name: &str) -> bool {
+        matches!(
+            name,
+            "Option__some" | "Option__none" | "Result__ok" | "Result__error"
+        )
     }
 
     fn builtin_matches_expected_function_type(name: &str, expected: &ResolvedType) -> bool {
@@ -4407,10 +4463,27 @@ impl TypeChecker {
                     | "fail"
                     | "exit"
                     | "range"
+                    | "Option__some"
+                    | "Option__none"
+                    | "Result__ok"
+                    | "Result__error"
             );
         };
 
         match name {
+            "Option__some" => {
+                params.len() == 1
+                    && matches!(ret.as_ref(), ResolvedType::Option(inner) if params[0] == inner.as_ref().clone())
+            }
+            "Option__none" => params.is_empty() && matches!(ret.as_ref(), ResolvedType::Option(_)),
+            "Result__ok" => {
+                params.len() == 1
+                    && matches!(ret.as_ref(), ResolvedType::Result(ok, _) if params[0] == ok.as_ref().clone())
+            }
+            "Result__error" => {
+                params.len() == 1
+                    && matches!(ret.as_ref(), ResolvedType::Result(_, err) if params[0] == err.as_ref().clone())
+            }
             "read_line" | "System__cwd" | "System__os" => {
                 params.is_empty() && matches!(ret.as_ref(), ResolvedType::String)
             }
@@ -4567,6 +4640,28 @@ impl TypeChecker {
 
     fn builtin_function_value_type(name: &str) -> Option<ResolvedType> {
         match name {
+            "Option__some" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown],
+                Box::new(ResolvedType::Option(Box::new(ResolvedType::Unknown))),
+            )),
+            "Option__none" => Some(ResolvedType::Function(
+                vec![],
+                Box::new(ResolvedType::Option(Box::new(ResolvedType::Unknown))),
+            )),
+            "Result__ok" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown],
+                Box::new(ResolvedType::Result(
+                    Box::new(ResolvedType::Unknown),
+                    Box::new(ResolvedType::Unknown),
+                )),
+            )),
+            "Result__error" => Some(ResolvedType::Function(
+                vec![ResolvedType::Unknown],
+                Box::new(ResolvedType::Result(
+                    Box::new(ResolvedType::Unknown),
+                    Box::new(ResolvedType::Unknown),
+                )),
+            )),
             "read_line" | "System__cwd" | "System__os" => Some(ResolvedType::Function(
                 vec![],
                 Box::new(ResolvedType::String),
@@ -4671,6 +4766,29 @@ impl TypeChecker {
         expected: &ResolvedType,
     ) -> Option<ResolvedType> {
         match (name, expected) {
+            ("Option__some", ResolvedType::Function(params, ret))
+                if params.len() == 1
+                    && matches!(ret.as_ref(), ResolvedType::Option(inner) if params[0] == inner.as_ref().clone()) =>
+            {
+                Some(expected.clone())
+            }
+            ("Option__none", ResolvedType::Function(params, ret))
+                if params.is_empty() && matches!(ret.as_ref(), ResolvedType::Option(_)) =>
+            {
+                Some(expected.clone())
+            }
+            ("Result__ok", ResolvedType::Function(params, ret))
+                if params.len() == 1
+                    && matches!(ret.as_ref(), ResolvedType::Result(ok, _) if params[0] == ok.as_ref().clone()) =>
+            {
+                Some(expected.clone())
+            }
+            ("Result__error", ResolvedType::Function(params, ret))
+                if params.len() == 1
+                    && matches!(ret.as_ref(), ResolvedType::Result(_, err) if params[0] == err.as_ref().clone()) =>
+            {
+                Some(expected.clone())
+            }
             ("Math__abs", ResolvedType::Function(params, ret))
                 if params.len() == 1
                     && matches!(params[0], ResolvedType::Integer)
@@ -4704,8 +4822,85 @@ impl TypeChecker {
                     Box::new(ResolvedType::Float),
                 ))
             }
+            ("Math__abs", ResolvedType::Function(_, _))
+            | ("Math__min" | "Math__max", ResolvedType::Function(_, _))
+            | ("Math__pow", ResolvedType::Function(_, _)) => None,
             _ => Self::builtin_function_value_type(name),
         }
+    }
+
+    fn resolve_enum_variant_function_value(
+        &self,
+        expr: &Expr,
+    ) -> Option<(String, Vec<ResolvedType>)> {
+        if let Expr::Ident(name) = expr {
+            if let Some((enum_name, variant_name)) = name.rsplit_once("__") {
+                if let Some(enum_info) = self.enums.get(enum_name) {
+                    if let Some(fields) = enum_info.variants.get(variant_name) {
+                        return Some((enum_name.to_string(), fields.clone()));
+                    }
+                }
+            }
+            let (enum_name, variant_name) = self.resolve_import_alias_variant(name)?;
+            let enum_info = self.enums.get(&enum_name)?;
+            let fields = enum_info.variants.get(&variant_name)?.clone();
+            return Some((enum_name, fields));
+        }
+
+        let Expr::Field { object, field } = expr else {
+            return None;
+        };
+
+        if let Some(path_parts) = Self::flatten_field_chain(expr) {
+            if path_parts.len() >= 2 {
+                let owner_source = path_parts[..path_parts.len() - 1].join(".");
+                if let Some(resolved_owner) = self.resolve_nominal_reference_name(&owner_source) {
+                    if let Some(enum_info) = self.enums.get(&resolved_owner) {
+                        let variant_name = path_parts.last()?;
+                        if let Some(fields) = enum_info.variants.get(variant_name) {
+                            return Some((resolved_owner, fields.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        let Expr::Ident(owner_name) = &object.node else {
+            return None;
+        };
+        let resolved_owner = self
+            .resolve_import_alias_symbol(owner_name)
+            .or_else(|| self.resolve_nominal_reference_name(owner_name))
+            .or_else(|| self.resolve_enum_name(owner_name))?;
+        let enum_info = self.enums.get(&resolved_owner)?;
+        let fields = enum_info.variants.get(field)?.clone();
+        Some((resolved_owner, fields))
+    }
+
+    fn check_enum_variant_function_value_with_expected_type(
+        &mut self,
+        expr: &Expr,
+        expected: &ResolvedType,
+        span: &Span,
+    ) -> Option<ResolvedType> {
+        let ResolvedType::Function(_, _) = expected else {
+            return None;
+        };
+        let (enum_name, field_types) = self.resolve_enum_variant_function_value(expr)?;
+        let actual_ty =
+            ResolvedType::Function(field_types, Box::new(ResolvedType::Class(enum_name)));
+        if self.types_compatible(expected, &actual_ty) {
+            return Some(actual_ty);
+        }
+        self.error(
+            format!(
+                "Type mismatch: expected {}, got {}",
+                Self::format_resolved_type_for_diagnostic(expected),
+                Self::format_resolved_type_for_diagnostic(&actual_ty)
+            ),
+            span.clone(),
+        );
+        Some(ResolvedType::Unknown)
     }
 
     /// Check an expression and return its type
@@ -4715,6 +4910,13 @@ impl TypeChecker {
         span: Span,
         expected: Option<&ResolvedType>,
     ) -> ResolvedType {
+        if let Some(expected_ty) = expected {
+            if let Some(actual_ty) =
+                self.check_enum_variant_function_value_with_expected_type(expr, expected_ty, &span)
+            {
+                return actual_ty;
+            }
+        }
         if let (
             Expr::Call {
                 callee,
@@ -4773,12 +4975,25 @@ impl TypeChecker {
                     if Self::builtin_matches_expected_function_type(&name, expected_ty) {
                         return expected_ty.clone();
                     }
-                    if let Some(actual_ty) =
+                    let actual_ty =
                         Self::builtin_function_value_concrete_type_for_expected(&name, expected_ty)
-                    {
-                        if self.types_compatible(expected_ty, &actual_ty) {
-                            return actual_ty;
-                        }
+                            .or_else(|| Self::builtin_function_value_type(&name))
+                            .unwrap_or(ResolvedType::Unknown);
+                    if Self::resolved_type_contains_unknown(&actual_ty) {
+                        let actual_ty = Self::builtin_function_value_type(&name)
+                            .unwrap_or(ResolvedType::Unknown);
+                        self.error(
+                            format!(
+                                "Type mismatch: expected {}, got {}",
+                                Self::format_resolved_type_for_diagnostic(expected_ty),
+                                Self::format_resolved_type_for_diagnostic(&actual_ty)
+                            ),
+                            span,
+                        );
+                        return ResolvedType::Unknown;
+                    }
+                    if self.types_compatible(expected_ty, &actual_ty) {
+                        return actual_ty;
                     }
                 }
             }
@@ -7127,7 +7342,20 @@ impl TypeChecker {
                 if args.len() >= 2 {
                     let t1 = self.check_expr(&args[0].node, args[0].span.clone());
                     let t2 = self.check_expr(&args[1].node, args[1].span.clone());
-                    if let Some(common_type) = self.common_compatible_type(&t1, &t2) {
+                    if matches!(t1, ResolvedType::Unknown) || matches!(t2, ResolvedType::Unknown) {
+                        Some(ResolvedType::Unknown)
+                    } else if !t1.is_numeric() || !t2.is_numeric() {
+                        self.error(
+                            format!(
+                                "{}() arguments must be numeric types, got {} and {}",
+                                func_name,
+                                Self::format_resolved_type_for_diagnostic(&t1),
+                                Self::format_resolved_type_for_diagnostic(&t2)
+                            ),
+                            span,
+                        );
+                        Some(ResolvedType::Unknown)
+                    } else if let Some(common_type) = self.common_compatible_type(&t1, &t2) {
                         Some(common_type)
                     } else {
                         self.error(
@@ -9935,6 +10163,97 @@ mod tests {
         );
         assert!(
             joined.contains("Constructor Set<Integer> expects 0 arguments"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_non_numeric_math_min_max_arguments() {
+        let src = r#"
+            function main(): None {
+                low: Boolean = Math.min(true, false);
+                high: Boolean = Math.max(true, false);
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("non-numeric Math.min/max should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Math.min() arguments must be numeric types, got Boolean and Boolean"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("Math.max() arguments must be numeric types, got Boolean and Boolean"),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_non_numeric_math_function_value_signatures() {
+        let src = r#"
+            import std.math.*;
+
+            function main(): None {
+                abs_fn: (Boolean) -> Boolean = Math.abs;
+                min_fn: (Boolean, Boolean) -> Boolean = Math.min;
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("non-numeric Math function values should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined
+                .contains("Type mismatch: expected (Boolean) -> Boolean, got (unknown) -> unknown"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains(
+                "Type mismatch: expected (Boolean, Boolean) -> Boolean, got (unknown, unknown) -> unknown"
+            ),
+            "{joined}"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_builtin_function_value_signatures_with_unknown_placeholders() {
+        let src = r#"
+            function main(): None {
+                to_float_fn: (Boolean) -> Float = to_float;
+                to_int_fn: (Boolean) -> Integer = to_int;
+                fail_fn: (Boolean) -> None = fail;
+                assert_true_fn: (Integer) -> None = assert_true;
+                return None;
+            }
+        "#;
+        let errors = check_source(src).expect_err("invalid builtin function values should fail");
+        let joined = errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            joined.contains("Type mismatch: expected (Boolean) -> Float, got (unknown) -> Float"),
+            "{joined}"
+        );
+        assert!(
+            joined
+                .contains("Type mismatch: expected (Boolean) -> Integer, got (unknown) -> Integer"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("Type mismatch: expected (Boolean) -> None, got (unknown) -> None"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("Type mismatch: expected (Integer) -> None, got (unknown) -> None"),
             "{joined}"
         );
     }
