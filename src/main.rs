@@ -1456,6 +1456,20 @@ fn codegen_program_for_unit(
     _dependency_closure: Option<&HashSet<PathBuf>>,
     _declaration_symbols: Option<&HashSet<String>>,
 ) -> Program {
+    codegen_program_for_units(
+        rewritten_files,
+        rewritten_file_indices,
+        &[active_file.to_path_buf()],
+        _dependency_closure,
+    )
+}
+
+fn codegen_program_for_units(
+    rewritten_files: &[RewrittenProjectUnit],
+    rewritten_file_indices: &HashMap<PathBuf, usize>,
+    active_files: &[PathBuf],
+    dependency_closure: Option<&HashSet<PathBuf>>,
+) -> Program {
     fn merge_codegen_declarations(
         output: &mut Vec<Spanned<Decl>>,
         incoming: &[Spanned<Decl>],
@@ -1525,17 +1539,20 @@ fn codegen_program_for_unit(
         declarations: Vec::new(),
     };
     let mut seen_specializations = HashSet::new();
+    let active_file_set = active_files.iter().cloned().collect::<HashSet<_>>();
 
     let specialization_demand_files = rewritten_files
         .iter()
         .filter(|unit| unit.has_specialization_demand)
         .map(|unit| unit.file.clone())
         .collect::<HashSet<_>>();
-    let active_file_has_specialization_demand = rewritten_file_indices
-        .get(active_file)
-        .and_then(|index| rewritten_files.get(*index))
-        .is_some_and(|unit| unit.has_specialization_demand);
-    let mut relevant_files = _dependency_closure
+    let active_file_has_specialization_demand = active_files.iter().any(|active_file| {
+        rewritten_file_indices
+            .get(active_file)
+            .and_then(|index| rewritten_files.get(*index))
+            .is_some_and(|unit| unit.has_specialization_demand)
+    });
+    let mut relevant_files = dependency_closure
         .map(|closure| closure.iter().cloned().collect::<Vec<_>>())
         .unwrap_or_else(|| {
             rewritten_files
@@ -1546,11 +1563,13 @@ fn codegen_program_for_unit(
     relevant_files.extend(
         specialization_demand_files
             .iter()
-            .filter(|file| file.as_path() != active_file)
+            .filter(|file| !active_file_set.contains(*file))
             .cloned(),
     );
-    if !relevant_files.iter().any(|file| file == active_file) {
-        relevant_files.push(active_file.to_path_buf());
+    for active_file in active_files {
+        if !relevant_files.iter().any(|file| file == active_file) {
+            relevant_files.push(active_file.clone());
+        }
     }
     relevant_files.sort();
     relevant_files.dedup();
@@ -1560,7 +1579,7 @@ fn codegen_program_for_unit(
             continue;
         };
         let unit = &rewritten_files[index];
-        let source_program = if file == active_file {
+        let source_program = if active_file_set.contains(&file) {
             unit.program.clone()
         } else if active_file_has_specialization_demand {
             // Explicit generic specialization in the active unit may depend on full generic
@@ -1826,7 +1845,7 @@ struct DeclarationClosure {
 fn declaration_symbols_for_unit(
     root_file: &Path,
     root_active_symbols: &HashSet<String>,
-    forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
+    precomputed_dependency_closures: &PrecomputedDependencyClosures,
     reference_metadata: &HashMap<PathBuf, CodegenReferenceMetadata>,
     entry_namespace: &str,
     symbol_lookup: &ProjectSymbolLookup,
@@ -1843,7 +1862,8 @@ fn declaration_symbols_for_unit(
     timings: Option<&DeclarationClosureTimingTotals>,
 ) -> DeclarationClosure {
     let closure_seed_started_at = Instant::now();
-    let mut closure_files = transitive_dependencies(forward_graph, root_file);
+    let mut closure_files =
+        transitive_dependencies_from_precomputed(precomputed_dependency_closures, root_file);
     closure_files.insert(root_file.to_path_buf());
     if let Some(timings) = timings {
         timings
@@ -2367,7 +2387,29 @@ struct RewrittenFileCacheEntry {
 }
 
 const OBJECT_CACHE_SCHEMA: &str = "v3";
+const OBJECT_SHARD_CACHE_SCHEMA: &str = "v1";
 const LINK_MANIFEST_CACHE_SCHEMA: &str = "v1";
+const OBJECT_CODEGEN_SHARD_SIZE: usize = 32;
+const OBJECT_CODEGEN_SHARD_THRESHOLD: usize = 256;
+
+fn env_usize_override(name: &str, default: usize) -> usize {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+fn object_codegen_shard_size() -> usize {
+    env_usize_override("APEX_OBJECT_SHARD_SIZE", OBJECT_CODEGEN_SHARD_SIZE)
+}
+
+fn object_codegen_shard_threshold() -> usize {
+    env_usize_override(
+        "APEX_OBJECT_SHARD_THRESHOLD",
+        OBJECT_CODEGEN_SHARD_THRESHOLD,
+    )
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ObjectCacheEntry {
@@ -2376,6 +2418,21 @@ struct ObjectCacheEntry {
     semantic_fingerprint: String,
     rewrite_context_fingerprint: String,
     object_build_fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct ObjectShardMemberFingerprint {
+    file: PathBuf,
+    semantic_fingerprint: String,
+    rewrite_context_fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ObjectShardCacheEntry {
+    schema: String,
+    compiler_version: String,
+    object_build_fingerprint: String,
+    members: Vec<ObjectShardMemberFingerprint>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -3375,28 +3432,55 @@ fn transitive_dependencies(
     out
 }
 
-#[allow(dead_code)]
+struct PrecomputedDependencyClosures {
+    files: Vec<PathBuf>,
+    file_indices: HashMap<PathBuf, usize>,
+    closures: Vec<Vec<u64>>,
+}
+
 fn precompute_all_transitive_dependencies(
     forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
-) -> HashMap<PathBuf, HashSet<PathBuf>> {
+) -> PrecomputedDependencyClosures {
+    fn empty_words(word_count: usize) -> Vec<u64> {
+        vec![0; word_count]
+    }
+
+    fn set_bit(words: &mut [u64], index: usize) {
+        let word = index / 64;
+        let bit = index % 64;
+        words[word] |= 1u64 << bit;
+    }
+
+    fn union_words(dst: &mut [u64], src: &[u64]) {
+        for (dst_word, src_word) in dst.iter_mut().zip(src.iter()) {
+            *dst_word |= *src_word;
+        }
+    }
+
     fn visit(
         file: &PathBuf,
         forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
-        memo: &mut HashMap<PathBuf, HashSet<PathBuf>>,
+        file_indices: &HashMap<PathBuf, usize>,
+        word_count: usize,
+        memo: &mut HashMap<PathBuf, Vec<u64>>,
         visiting: &mut HashSet<PathBuf>,
-    ) -> HashSet<PathBuf> {
+    ) -> Vec<u64> {
         if let Some(cached) = memo.get(file) {
             return cached.clone();
         }
         if !visiting.insert(file.clone()) {
-            return HashSet::new();
+            return empty_words(word_count);
         }
 
-        let mut closure = HashSet::new();
+        let mut closure = empty_words(word_count);
         if let Some(deps) = forward_graph.get(file) {
             for dep in deps {
-                closure.insert(dep.clone());
-                closure.extend(visit(dep, forward_graph, memo, visiting));
+                if let Some(dep_index) = file_indices.get(dep) {
+                    set_bit(&mut closure, *dep_index);
+                }
+                let dep_closure =
+                    visit(dep, forward_graph, file_indices, word_count, memo, visiting);
+                union_words(&mut closure, &dep_closure);
             }
         }
 
@@ -3405,16 +3489,67 @@ fn precompute_all_transitive_dependencies(
         closure
     }
 
-    let mut memo = HashMap::new();
-    let mut visiting = HashSet::new();
     let mut files: Vec<PathBuf> = forward_graph.keys().cloned().collect();
     files.sort();
+    let file_indices = files
+        .iter()
+        .enumerate()
+        .map(|(index, file)| (file.clone(), index))
+        .collect::<HashMap<_, _>>();
+    let word_count = files.len().div_ceil(64);
+    let mut memo = HashMap::new();
+    let mut visiting = HashSet::new();
 
-    for file in files {
-        visit(&file, forward_graph, &mut memo, &mut visiting);
+    for file in &files {
+        visit(
+            file,
+            forward_graph,
+            &file_indices,
+            word_count,
+            &mut memo,
+            &mut visiting,
+        );
     }
 
-    memo
+    let closures = files
+        .iter()
+        .map(|file| memo.remove(file).unwrap_or_else(|| empty_words(word_count)))
+        .collect();
+
+    PrecomputedDependencyClosures {
+        files,
+        file_indices,
+        closures,
+    }
+}
+
+fn transitive_dependencies_from_precomputed(
+    precomputed: &PrecomputedDependencyClosures,
+    root: &Path,
+) -> HashSet<PathBuf> {
+    let Some(root_index) = precomputed.file_indices.get(root).copied() else {
+        return HashSet::new();
+    };
+    let Some(words) = precomputed.closures.get(root_index) else {
+        return HashSet::new();
+    };
+    let mut out = HashSet::new();
+    for (word_index, word) in words.iter().copied().enumerate() {
+        if word == 0 {
+            continue;
+        }
+        let base = word_index * 64;
+        for bit in 0..64 {
+            if (word & (1u64 << bit)) == 0 {
+                continue;
+            }
+            let file_index = base + bit;
+            if let Some(file) = precomputed.files.get(file_index) {
+                out.insert(file.clone());
+            }
+        }
+    }
+    out
 }
 
 fn dependency_graph_cache_from_state(
@@ -4196,10 +4331,38 @@ struct ObjectCachePaths {
     meta_path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+struct ObjectShardCachePaths {
+    object_path: PathBuf,
+    meta_path: PathBuf,
+}
+
 fn object_cache_paths(project_root: &Path, file: &Path) -> ObjectCachePaths {
     ObjectCachePaths {
         object_path: object_cache_object_path(project_root, file),
         meta_path: object_cache_meta_path(project_root, file),
+    }
+}
+
+fn object_shard_cache_key(files: &[PathBuf]) -> String {
+    let mut hasher = stable_hasher();
+    for file in files {
+        file.hash(&mut hasher);
+    }
+    format!("{:016x}", hasher.finish())
+}
+
+fn object_shard_cache_paths(project_root: &Path, files: &[PathBuf]) -> ObjectShardCachePaths {
+    let key = object_shard_cache_key(files);
+    ObjectShardCachePaths {
+        object_path: project_root
+            .join(".apexcache")
+            .join("object_shards")
+            .join(format!("{key}.{}", object_ext())),
+        meta_path: project_root
+            .join(".apexcache")
+            .join("object_shards")
+            .join(format!("{key}.json")),
     }
 }
 
@@ -4348,6 +4511,56 @@ fn save_object_cache_meta(
         object_build_fingerprint: object_build_fingerprint.to_string(),
     };
     write_cache_blob(&cache_paths.meta_path, "object cache meta", &meta)
+}
+
+fn load_object_shard_cache_hit(
+    cache_paths: &ObjectShardCachePaths,
+    members: &[ObjectShardMemberFingerprint],
+    object_build_fingerprint: &str,
+) -> Result<Option<PathBuf>, String> {
+    if !cache_paths.meta_path.exists() || !cache_paths.object_path.exists() {
+        return Ok(None);
+    }
+    let meta: ObjectShardCacheEntry =
+        match read_cache_blob(&cache_paths.meta_path, "object shard cache meta")? {
+            Some(meta) => meta,
+            None => return Ok(None),
+        };
+
+    if meta.schema != OBJECT_SHARD_CACHE_SCHEMA
+        || meta.compiler_version != env!("CARGO_PKG_VERSION")
+        || meta.object_build_fingerprint != object_build_fingerprint
+        || meta.members != members
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(cache_paths.object_path.clone()))
+}
+
+fn save_object_shard_cache_meta(
+    cache_paths: &ObjectShardCachePaths,
+    members: &[ObjectShardMemberFingerprint],
+    object_build_fingerprint: &str,
+) -> Result<(), String> {
+    if let Some(parent) = cache_paths.meta_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "{}: Failed to create object shard cache directory '{}': {}",
+                "error".red().bold(),
+                parent.display(),
+                e
+            )
+        })?;
+    }
+
+    let meta = ObjectShardCacheEntry {
+        schema: OBJECT_SHARD_CACHE_SCHEMA.to_string(),
+        compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+        object_build_fingerprint: object_build_fingerprint.to_string(),
+        members: members.to_vec(),
+    };
+    write_cache_blob(&cache_paths.meta_path, "object shard cache meta", &meta)
 }
 
 fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectUnit, String> {
@@ -6748,6 +6961,8 @@ fn build_project(
                 )
             })
             .collect();
+        let precomputed_dependency_closures =
+            precompute_all_transitive_dependencies(&file_dependency_graph);
         let file_namespaces: HashMap<PathBuf, String> = parsed_files
             .iter()
             .map(|unit| (unit.file.clone(), unit.namespace.clone()))
@@ -6757,40 +6972,113 @@ fn build_project(
             .iter()
             .filter(|unit| !unit.active_symbols.is_empty())
             .count();
-        let cache_probe_results: Vec<Result<(usize, Option<PathBuf>), String>> = build_timings
-            .measure("object cache probe", || {
-                Ok::<_, String>(
-                    rewritten_files
-                        .par_iter()
-                        .enumerate()
-                        .map(|(index, unit)| {
-                            if unit.active_symbols.is_empty() {
-                                return Ok((index, None));
+        #[derive(Clone)]
+        struct ObjectCodegenShard {
+            member_indices: Vec<usize>,
+            member_files: Vec<PathBuf>,
+            member_fingerprints: Vec<ObjectShardMemberFingerprint>,
+            cache_paths: Option<ObjectShardCachePaths>,
+        }
+
+        let active_indices = rewritten_files
+            .iter()
+            .enumerate()
+            .filter_map(|(index, unit)| (!unit.active_symbols.is_empty()).then_some(index))
+            .collect::<Vec<_>>();
+        let object_shard_size = object_codegen_shard_size();
+        let object_shard_threshold = object_codegen_shard_threshold();
+        let use_object_shards = active_indices.len() >= object_shard_threshold;
+        let object_shards = if use_object_shards {
+            active_indices
+                .chunks(object_shard_size)
+                .map(|chunk| {
+                    let member_indices = chunk.to_vec();
+                    let member_files = member_indices
+                        .iter()
+                        .map(|index| rewritten_files[*index].file.clone())
+                        .collect::<Vec<_>>();
+                    let member_fingerprints = member_indices
+                        .iter()
+                        .map(|index| {
+                            let unit = &rewritten_files[*index];
+                            ObjectShardMemberFingerprint {
+                                file: unit.file.clone(),
+                                semantic_fingerprint: unit.semantic_fingerprint.clone(),
+                                rewrite_context_fingerprint: unit
+                                    .rewrite_context_fingerprint
+                                    .clone(),
                             }
-                            let cache_paths = object_cache_paths_by_file
-                                .get(&unit.file)
-                                .expect("object cache paths should exist for rewritten unit");
-                            let cached_obj = load_object_cache_hit(
-                                cache_paths,
-                                &unit.semantic_fingerprint,
-                                &unit.rewrite_context_fingerprint,
-                                &object_build_fingerprint,
-                            )?;
-                            Ok((index, cached_obj))
+                        })
+                        .collect::<Vec<_>>();
+                    let cache_paths = Some(object_shard_cache_paths(&project_root, &member_files));
+                    ObjectCodegenShard {
+                        member_indices,
+                        member_files,
+                        member_fingerprints,
+                        cache_paths,
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            active_indices
+                .iter()
+                .map(|index| {
+                    let unit = &rewritten_files[*index];
+                    ObjectCodegenShard {
+                        member_indices: vec![*index],
+                        member_files: vec![unit.file.clone()],
+                        member_fingerprints: vec![ObjectShardMemberFingerprint {
+                            file: unit.file.clone(),
+                            semantic_fingerprint: unit.semantic_fingerprint.clone(),
+                            rewrite_context_fingerprint: unit.rewrite_context_fingerprint.clone(),
+                        }],
+                        cache_paths: None,
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let cache_probe_results: Vec<Result<(Vec<usize>, Option<PathBuf>), String>> =
+            build_timings.measure("object cache probe", || {
+                Ok::<_, String>(
+                    object_shards
+                        .par_iter()
+                        .map(|shard| {
+                            let cached_obj = if let Some(cache_paths) = &shard.cache_paths {
+                                load_object_shard_cache_hit(
+                                    cache_paths,
+                                    &shard.member_fingerprints,
+                                    &object_build_fingerprint,
+                                )?
+                            } else {
+                                let index = shard.member_indices[0];
+                                let unit = &rewritten_files[index];
+                                let cache_paths = object_cache_paths_by_file
+                                    .get(&unit.file)
+                                    .expect("object cache paths should exist for rewritten unit");
+                                load_object_cache_hit(
+                                    cache_paths,
+                                    &unit.semantic_fingerprint,
+                                    &unit.rewrite_context_fingerprint,
+                                    &object_build_fingerprint,
+                                )?
+                            };
+                            Ok((shard.member_indices.clone(), cached_obj))
                         })
                         .collect(),
                 )
             })?;
 
         let mut object_cache_hits: usize = 0;
-        let mut cache_misses: Vec<(usize, &RewrittenProjectUnit)> = Vec::new();
-        for result in cache_probe_results {
-            let (index, cached_obj) = result?;
+        let mut cache_misses: Vec<ObjectCodegenShard> = Vec::new();
+        for (shard, result) in object_shards.iter().zip(cache_probe_results) {
+            let (member_indices, cached_obj) = result?;
             if let Some(cached_obj) = cached_obj {
-                object_paths[index] = Some(cached_obj);
-                object_cache_hits += 1;
-            } else if !rewritten_files[index].active_symbols.is_empty() {
-                cache_misses.push((index, &rewritten_files[index]));
+                for index in member_indices {
+                    object_paths[index] = Some(cached_obj.clone());
+                    object_cache_hits += 1;
+                }
+            } else {
+                cache_misses.push(shard.clone());
             }
         }
         build_timings.record_counts(
@@ -6798,7 +7086,9 @@ fn build_project(
             &[
                 ("candidates", object_candidate_count),
                 ("reused", object_cache_hits),
-                ("missed", cache_misses.len()),
+                ("missed", object_candidate_count.saturating_sub(object_cache_hits)),
+                ("shards", object_shards.len()),
+                ("missed_shards", cache_misses.len()),
             ],
         );
 
@@ -6810,31 +7100,46 @@ fn build_project(
             build_timings.measure("object codegen", || {
                 cache_misses
                     .par_iter()
-                    .map(|(index, unit)| {
-                        let cache_paths = object_cache_paths_by_file
-                            .get(&unit.file)
-                            .expect("object cache paths should exist for rewritten unit");
-                        let obj_path = cache_paths.object_path.clone();
+                    .map(|shard| {
+                        let obj_path = if let Some(cache_paths) = &shard.cache_paths {
+                            cache_paths.object_path.clone()
+                        } else {
+                            let unit = &rewritten_files[shard.member_indices[0]];
+                            object_cache_paths_by_file
+                                .get(&unit.file)
+                                .expect("object cache paths should exist for rewritten unit")
+                                .object_path
+                                .clone()
+                        };
                         let declaration_closure_started_at = Instant::now();
-                        let declaration_closure = declaration_symbols_for_unit(
-                            &unit.file,
-                            &unit.active_symbols,
-                            &file_dependency_graph,
-                            &codegen_reference_metadata,
-                            &entry_namespace,
-                            &project_symbol_lookup,
-                            &global_function_map,
-                            &global_function_file_map,
-                            &global_class_map,
-                            &global_class_file_map,
-                            &global_interface_map,
-                            &global_interface_file_map,
-                            &global_enum_map,
-                            &global_enum_file_map,
-                            &global_module_map,
-                            &global_module_file_map,
-                            Some(declaration_closure_timing_totals.as_ref()),
-                        );
+                        let mut batch_active_symbols = HashSet::new();
+                        let mut batch_declaration_symbols = HashSet::new();
+                        let mut batch_closure_files = HashSet::new();
+                        for index in &shard.member_indices {
+                            let unit = &rewritten_files[*index];
+                            let declaration_closure = declaration_symbols_for_unit(
+                                &unit.file,
+                                &unit.active_symbols,
+                                &precomputed_dependency_closures,
+                                &codegen_reference_metadata,
+                                &entry_namespace,
+                                &project_symbol_lookup,
+                                &global_function_map,
+                                &global_function_file_map,
+                                &global_class_map,
+                                &global_class_file_map,
+                                &global_interface_map,
+                                &global_interface_file_map,
+                                &global_enum_map,
+                                &global_enum_file_map,
+                                &global_module_map,
+                                &global_module_file_map,
+                                Some(declaration_closure_timing_totals.as_ref()),
+                            );
+                            batch_active_symbols.extend(unit.active_symbols.iter().cloned());
+                            batch_declaration_symbols.extend(declaration_closure.symbols);
+                            batch_closure_files.extend(declaration_closure.files);
+                        }
                         object_codegen_timing_totals
                             .declaration_closure_ns
                             .fetch_add(
@@ -6842,15 +7147,16 @@ fn build_project(
                                 Ordering::Relaxed,
                             );
                         let codegen_program_started_at = Instant::now();
-                        let codegen_program = if unit.has_specialization_demand {
+                        let codegen_program = if shard.member_indices.iter().any(|index| {
+                            rewritten_files[*index].has_specialization_demand
+                        }) {
                             combined_program_for_files(&rewritten_files)
                         } else {
-                            codegen_program_for_unit(
+                            codegen_program_for_units(
                                 &rewritten_files,
                                 &rewritten_file_indices,
-                                &unit.file,
-                                Some(&declaration_closure.files),
-                                Some(&declaration_closure.symbols),
+                                &shard.member_files,
+                                Some(&batch_closure_files),
                             )
                         };
                         object_codegen_timing_totals.codegen_program_ns.fetch_add(
@@ -6858,16 +7164,19 @@ fn build_project(
                             Ordering::Relaxed,
                         );
                         let closure_body_symbols_started_at = Instant::now();
-                        let mut codegen_active_symbols = unit.active_symbols.clone();
-                        codegen_active_symbols.extend(closure_body_symbols_for_unit(
-                            &unit.file,
-                            file_namespaces
-                                .get(&unit.file)
-                                .expect("namespace should exist for rewritten unit"),
-                            &declaration_closure.symbols,
-                            &global_function_file_map,
-                            &global_class_file_map,
-                        ));
+                        let mut codegen_active_symbols = batch_active_symbols;
+                        for index in &shard.member_indices {
+                            let unit = &rewritten_files[*index];
+                            codegen_active_symbols.extend(closure_body_symbols_for_unit(
+                                &unit.file,
+                                file_namespaces
+                                    .get(&unit.file)
+                                    .expect("namespace should exist for rewritten unit"),
+                                &batch_declaration_symbols,
+                                &global_function_file_map,
+                                &global_class_file_map,
+                            ));
+                        }
                         object_codegen_timing_totals
                             .closure_body_symbols_ns
                             .fetch_add(
@@ -6877,11 +7186,11 @@ fn build_project(
                         let llvm_emit_started_at = Instant::now();
                         compile_program_ast_to_object_filtered(
                             &codegen_program,
-                            &unit.file,
+                            &shard.member_files[0],
                             &obj_path,
                             &link,
                             &codegen_active_symbols,
-                            &declaration_closure.symbols,
+                            &batch_declaration_symbols,
                             Some(object_emit_timing_totals.as_ref()),
                         )?;
                         object_codegen_timing_totals.llvm_emit_ns.fetch_add(
@@ -6889,26 +7198,46 @@ fn build_project(
                             Ordering::Relaxed,
                         );
                         let cache_save_started_at = Instant::now();
-                        save_object_cache_meta(
-                            cache_paths,
-                            &unit.semantic_fingerprint,
-                            &unit.rewrite_context_fingerprint,
-                            &object_build_fingerprint,
-                        )?;
+                        if let Some(cache_paths) = &shard.cache_paths {
+                            save_object_shard_cache_meta(
+                                cache_paths,
+                                &shard.member_fingerprints,
+                                &object_build_fingerprint,
+                            )?;
+                        } else {
+                            let unit = &rewritten_files[shard.member_indices[0]];
+                            let cache_paths = object_cache_paths_by_file
+                                .get(&unit.file)
+                                .expect("object cache paths should exist for rewritten unit");
+                            save_object_cache_meta(
+                                cache_paths,
+                                &unit.semantic_fingerprint,
+                                &unit.rewrite_context_fingerprint,
+                                &object_build_fingerprint,
+                            )?;
+                        }
                         object_codegen_timing_totals.cache_save_ns.fetch_add(
                             elapsed_nanos_u64(cache_save_started_at),
                             Ordering::Relaxed,
                         );
-                        Ok::<(usize, PathBuf), String>((*index, obj_path))
+                        Ok::<Vec<(usize, PathBuf)>, String>(
+                            shard
+                                .member_indices
+                                .iter()
+                                .map(|index| (*index, obj_path.clone()))
+                                .collect(),
+                        )
                     })
                     .collect::<Result<Vec<_>, String>>()
+                    .map(|results| results.into_iter().flatten().collect())
             })?;
         build_timings.record_counts(
             "object codegen",
             &[
                 ("candidates", object_candidate_count),
                 ("reused", object_cache_hits),
-                ("rebuilt", compiled_results.len()),
+                ("rebuilt", object_candidate_count.saturating_sub(object_cache_hits)),
+                ("rebuilt_shards", cache_misses.len()),
             ],
         );
         build_timings.record_duration_ns(
@@ -8845,9 +9174,10 @@ mod tests {
         load_semantic_cached_fingerprint, new_project, parse_file, parse_project_unit,
         precompute_all_transitive_dependencies, read_cache_blob, reusable_component_fingerprints,
         run_project, run_tests, semantic_program_fingerprint, should_skip_final_link,
-        show_project_info, transitive_dependents, typecheck_summary_cache_from_state,
-        typecheck_summary_cache_matches, DependencyGraphCache, DependencyGraphFileEntry,
-        DependencyResolutionContext, LinkConfig, LinkManifestCache, OutputKind,
+        show_project_info, transitive_dependents, transitive_dependencies_from_precomputed,
+        typecheck_summary_cache_from_state, typecheck_summary_cache_matches,
+        DependencyGraphCache, DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig,
+        LinkManifestCache, OutputKind,
         ParsedFileCacheEntry, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
         DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
     };
@@ -38371,9 +38701,7 @@ function main(): Integer {
 
         let all = precompute_all_transitive_dependencies(&graph);
         assert_eq!(
-            all.get(&PathBuf::from("a.apex"))
-                .cloned()
-                .unwrap_or_default(),
+            transitive_dependencies_from_precomputed(&all, Path::new("a.apex")),
             HashSet::from([
                 PathBuf::from("b.apex"),
                 PathBuf::from("c.apex"),
