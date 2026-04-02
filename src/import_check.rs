@@ -146,6 +146,16 @@ fn looks_like_function_symbol(name: &str) -> bool {
         .is_some_and(|ch| ch.is_ascii_lowercase() || ch == '_')
 }
 
+fn builtin_exact_import_alias_canonical(path: &str) -> Option<&'static str> {
+    match path {
+        "Option.Some" => Some("Option__some"),
+        "Option.None" => Some("Option__none"),
+        "Result.Ok" => Some("Result__ok"),
+        "Result.Error" => Some("Result__error"),
+        _ => None,
+    }
+}
+
 fn direct_wildcard_member_name(
     import_path: &str,
     owner_ns: &str,
@@ -234,6 +244,7 @@ impl<'a> ImportChecker<'a> {
                     let is_known_symbol_alias = function_namespaces
                         .get(symbol)
                         .is_some_and(|ns| ns == &symbol_ns)
+                        || builtin_exact_import_alias_canonical(&path).is_some()
                         || known_namespaces.contains(&symbol_ns)
                         || known_namespaces.contains(&current_qualified_symbol_ns)
                         || Self::path_has_known_namespace_prefix(&known_namespace_paths, &path)

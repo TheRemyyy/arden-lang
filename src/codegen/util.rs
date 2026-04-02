@@ -1883,7 +1883,29 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Literal(Literal::Char(_)) => Some(Type::Char),
             Expr::Literal(Literal::None) => Some(Type::None),
             Expr::StringInterp(_) => Some(Type::String),
-            Expr::Construct { ty, .. } => parse_type_source(ty).ok(),
+            Expr::Construct { ty, .. } => {
+                if let Some((base_name, explicit_type_args)) =
+                    Self::parse_construct_nominal_type_source(ty)
+                {
+                    if let Some(resolved_name) =
+                        self.resolve_alias_qualified_codegen_type_name(&base_name)
+                    {
+                        if explicit_type_args.is_empty() {
+                            return Some(Type::Named(resolved_name));
+                        }
+                        if resolved_name.contains("__spec__") {
+                            return Some(Type::Named(resolved_name));
+                        }
+                        if let Some(normalized) = self.normalize_user_defined_generic_type(
+                            &resolved_name,
+                            &explicit_type_args,
+                        ) {
+                            return Some(normalized);
+                        }
+                    }
+                }
+                parse_type_source(ty).ok()
+            }
             Expr::Unary { op, expr } => match op {
                 UnaryOp::Neg => {
                     let inner_ty = self.infer_object_type(&expr.node)?;
@@ -2228,10 +2250,75 @@ impl<'ctx> Codegen<'ctx> {
         if left == right {
             return Some(left.clone());
         }
+        let left_spec = self.specialized_class_compat_key(left);
+        let right_spec = self.specialized_class_compat_key(right);
+        if left_spec.is_some() && left_spec == right_spec {
+            return match (left, right) {
+                (Type::Named(name), _) if name.contains("__spec__") => {
+                    Some(Type::Named(name.clone()))
+                }
+                (_, Type::Named(name)) if name.contains("__spec__") => {
+                    Some(Type::Named(name.clone()))
+                }
+                _ => Some(left.clone()),
+            };
+        }
         if left.is_numeric() && right.is_numeric() {
             return Some(Type::Float);
         }
         None
+    }
+
+    fn specialized_class_compat_key(&self, ty: &Type) -> Option<String> {
+        match ty {
+            Type::Named(name) if name.contains("__spec__") => Some(name.clone()),
+            Type::Generic(name, args) => Some(Self::generic_class_spec_name(name, args)),
+            Type::Option(inner) => Some(Self::generic_class_spec_name(
+                "Option",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Result(ok, err) => Some(Self::generic_class_spec_name(
+                "Result",
+                &[ok.as_ref().clone(), err.as_ref().clone()],
+            )),
+            Type::List(inner) => Some(Self::generic_class_spec_name(
+                "List",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Map(key, value) => Some(Self::generic_class_spec_name(
+                "Map",
+                &[key.as_ref().clone(), value.as_ref().clone()],
+            )),
+            Type::Set(inner) => Some(Self::generic_class_spec_name(
+                "Set",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Box(inner) => Some(Self::generic_class_spec_name(
+                "Box",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Rc(inner) => Some(Self::generic_class_spec_name(
+                "Rc",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Arc(inner) => Some(Self::generic_class_spec_name(
+                "Arc",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Ptr(inner) => Some(Self::generic_class_spec_name(
+                "Ptr",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Task(inner) => Some(Self::generic_class_spec_name(
+                "Task",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Range(inner) => Some(Self::generic_class_spec_name(
+                "Range",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            _ => None,
+        }
     }
 
     fn merge_codegen_branch_type(&self, acc: Option<Type>, next: Type) -> Option<Type> {
@@ -2293,7 +2380,7 @@ impl<'ctx> Codegen<'ctx> {
                                 {
                                     params.push(Parameter {
                                         name: binding.clone(),
-                                        ty: field.clone(),
+                                        ty: self.normalize_codegen_type(field),
                                         mutable: false,
                                         mode: crate::ast::ParamMode::Owned,
                                     });
@@ -3072,7 +3159,29 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Type::Integer
             }
-            Expr::Construct { ty, .. } => parse_type_source(ty).unwrap_or(Type::Integer),
+            Expr::Construct { ty, .. } => {
+                if let Some((base_name, explicit_type_args)) =
+                    Self::parse_construct_nominal_type_source(ty)
+                {
+                    if let Some(resolved_name) =
+                        self.resolve_alias_qualified_codegen_type_name(&base_name)
+                    {
+                        if explicit_type_args.is_empty() {
+                            return Type::Named(resolved_name);
+                        }
+                        if resolved_name.contains("__spec__") {
+                            return Type::Named(resolved_name);
+                        }
+                        if let Some(normalized) = self.normalize_user_defined_generic_type(
+                            &resolved_name,
+                            &explicit_type_args,
+                        ) {
+                            return normalized;
+                        }
+                    }
+                }
+                parse_type_source(ty).unwrap_or(Type::Integer)
+            }
             Expr::Index { object, .. } => {
                 match self.deref_codegen_type(&self.infer_expr_type(&object.node, params)) {
                     Type::List(inner) => (**inner).clone(),

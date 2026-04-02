@@ -14,13 +14,17 @@ This directory contains a structured benchmark suite that compares Apex against 
 - `sum_loop`: integer-heavy pseudo-random accumulation loop.
 - `prime_count`: sieve-based prime counting.
 - `matrix_mul`: dense integer matrix multiplication (flattened arrays).
+- `matrix_mul_heavy`: heavier dense integer matrix multiplication (220x220) for a more meaningful CPU-bound runtime pass.
 - `compile_project_10_files`: compile stress benchmark on generated 10-file projects per language.
 - `compile_project_synthetic_mega_graph`: compile stress benchmark on a generated 1400-file synthetic mega-graph project per language.
+- `compile_project_extreme_graph`: much larger compile stress benchmark on a generated 2200-file synthetic dependency graph.
 - `incremental_rebuild_1_file`: compiles a generated 10-file project, mutates one file, then recompiles.
 - `incremental_rebuild_central_file`: same generated 10-file project, but mutates the shared central file before rebuild.
 - `incremental_rebuild_mega_project_10_files`: compiles a generated 120-file mega-project, applies syntax-only edits to 10 files, then rebuilds to expose cold vs hot behavior.
 - `incremental_rebuild_synthetic_mega_graph`: compiles a generated 1400-file synthetic mega-graph project, applies syntax-only edits to 40 spread-out files, then rebuilds.
 - `incremental_rebuild_synthetic_mega_graph_mixed_invalidation`: compiles a generated 1400-file synthetic mega-graph project, then rebuilds after mixed leaf edits plus API-surface invalidation across selected groups.
+- `incremental_rebuild_extreme_graph`: compiles a generated 2200-file dependency graph, applies syntax-only edits to 64 spread-out files, then rebuilds.
+- `incremental_rebuild_extreme_graph_mixed_invalidation`: compiles a generated 2200-file dependency graph, then rebuilds after 40 leaf edits plus 12 shared API-surface invalidations.
 
 ## Directory Layout
 
@@ -74,19 +78,30 @@ Default run behavior:
 - synthetic mega-graph incremental rebuild scenario: `incremental_rebuild_synthetic_mega_graph`
 - synthetic mega-graph mixed invalidation scenario: `incremental_rebuild_synthetic_mega_graph_mixed_invalidation`
 
+Heavier opt-in workloads are excluded from the default suite to keep the baseline run practical:
+- runtime: `matrix_mul_heavy`
+- compile: `compile_project_extreme_graph`
+- incremental: `incremental_rebuild_extreme_graph`, `incremental_rebuild_extreme_graph_mixed_invalidation`
+
 Useful options:
 
 ```bash
 python3 benchmark/run.py --repeats 7 --warmup 1
+python3 benchmark/run.py --include-extreme
 python3 benchmark/run.py --bench prime_count
+python3 benchmark/run.py --bench matrix_mul_heavy
 python3 benchmark/run.py --bench compile_project_10_files
 python3 benchmark/run.py --bench compile_project_synthetic_mega_graph
+python3 benchmark/run.py --bench compile_project_extreme_graph
 python3 benchmark/run.py --bench incremental_rebuild_1_file
 python3 benchmark/run.py --bench incremental_rebuild_central_file
 python3 benchmark/run.py --bench incremental_rebuild_mega_project_10_files
 python3 benchmark/run.py --bench incremental_rebuild_synthetic_mega_graph
 python3 benchmark/run.py --bench incremental_rebuild_synthetic_mega_graph_mixed_invalidation
+python3 benchmark/run.py --bench incremental_rebuild_extreme_graph
+python3 benchmark/run.py --bench incremental_rebuild_extreme_graph_mixed_invalidation
 python3 benchmark/run.py --bench compile_project_10_files --compile-mode cold
+python3 benchmark/run.py --bench compile_project_extreme_graph --compile-mode hot --apex-timings
 python3 benchmark/run.py --no-build
 python3 benchmark/run.py --apex-opt-level 3
 python3 benchmark/run.py --apex-target x86_64-unknown-linux-gnu
@@ -103,10 +118,16 @@ Both include:
 - summary stats (min/mean/median/stddev/max)
 - speedups relative to Apex
 - correctness checksums
+- optional Apex per-phase build timings when `--apex-timings` is enabled
 
 For `compile_project_10_files` and `compile_project_synthetic_mega_graph`:
 - `--compile-mode hot` keeps compile caches/artifacts between runs (incremental-friendly).
 - `--compile-mode cold` clears artifacts between timed runs; for Apex this also removes `.apexcache`.
+
+For compile and incremental scenarios with `--apex-timings`:
+- the runner passes `--timings` to Apex project builds
+- Markdown and JSON reports include averaged Apex phase timings plus the last observed per-phase counters
+- this makes it easier to see whether Apex time is going into parse, semantic, object codegen, or final link instead of only comparing one wall-clock number
 
 For `compile_project_synthetic_mega_graph` specifically:
 - each language compiles a generated 1400-file project with 96 helper functions per file
@@ -115,6 +136,12 @@ For `compile_project_synthetic_mega_graph` specifically:
 - each file exports a hot path plus multiple extra cross-file wiring functions to stress declaration volume, symbol resolution, invalidation, and code generation on a wide multi-file DAG
 - this is a synthetic stress benchmark, not a model of a real Chromium-scale codebase
 - this is the compile-time counterpart to the synthetic mega-graph incremental rebuild benchmark
+
+For `compile_project_extreme_graph` specifically:
+- each language compiles a generated 2200-file project with 112 helper functions per file
+- the dependency graph is wider and deeper than the regular synthetic mega-graph benchmark
+- the goal is to put more pressure on parser throughput, graph construction, semantic invalidation, and final link behavior
+- this is intentionally expensive and therefore opt-in rather than part of the default suite
 
 For `incremental_rebuild_1_file` and `incremental_rebuild_central_file`:
 - each measured cycle does:
@@ -143,6 +170,17 @@ For `incremental_rebuild_synthetic_mega_graph_mixed_invalidation`:
 - API-surface changes across 8 group bridge modules, plus caller rewrites in every file that depends on those groups
 - this is the benchmark intended to approximate a more realistic "dirty set" than pure no-op or comment-only rebuilds
 - it is still synthetic, but it exercises parser, declaration, type/symbol, and dependency invalidation paths together
+
+For `incremental_rebuild_extreme_graph`:
+- each measured cycle generates the same 2200-file extreme dependency graph used by `compile_project_extreme_graph`
+- the first timing is a cold build on a fresh project
+- the second timing is a hot rebuild after syntax-only edits in 64 spread-out files
+- this is the "pressure test" version of the synthetic incremental benchmark
+
+For `incremental_rebuild_extreme_graph_mixed_invalidation`:
+- each measured cycle cold-builds the 2200-file extreme graph, then rebuilds after a mixed dirty set
+- the rebuild combines syntax-only edits across 40 leaf files with API-surface changes across 12 shared bridge groups
+- this is the harshest compile benchmark in the suite and is intended to stress non-trivial invalidation rather than cache-hit demos
 
 ## Notes
 

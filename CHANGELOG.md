@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed class constructor function values for checked and unchecked builds:
+  - generic constructors such as `Box<Integer>` now work as first-class function values in both semantic and codegen paths, so bindings like `ctor: (Integer) -> Box<Integer> = Box<Integer>` compile and run instead of failing with `Undefined variable: Box`
+  - exact-import class aliases such as `import Box as B; ctor = B<Integer>` now also compile and run instead of failing with `Undefined variable: B`
+  - nested exact-import class aliases such as `import M.Box as B; ctor: (Integer) -> M.Box<Integer> = B<Integer>` now also compile and run instead of leaking a backend `Undefined variable: B` during constructor function-value lowering
+  - constructor function-value lowering now reuses declared `Class__new` signatures, keeping checked and `--no-check` behavior aligned for direct and aliased class constructors
+- Fixed direct nested generic class specialization in codegen:
+  - nested generic constructions such as `M.Box<Integer>(6).value` and `M.Box<Integer>(6).get()` now compile and run instead of reaching Clang with broken IR that returned raw pointers from `main()`
+  - generic class specialization discovery now recognizes direct dotted class template names like `M.Box` in addition to mangled/internal forms, so nested generic classes emit their concrete `__spec__...` class and constructor metadata before codegen
+- Fixed inferred generic constructor function values in codegen:
+  - contextual bindings such as `ctor: (Integer) -> Box<Integer> = Box`, `import M.Box as B; ctor = B`, and `import U as u; ctor = u.M.Box` now compile and run instead of failing in codegen with `Undefined variable: ...`
+  - constructor function-value lowering now matches expected return types against specialized class families like `Box__spec__...`, so omitted explicit type arguments still resolve to the correct generic constructor from context
+- Fixed wildcard-imported nested generic class constructors in codegen:
+  - direct wildcard calls such as `import M.*; Box<Integer>(13).value` and `Box<Integer>(13).get()` now compile and run in checked and `--no-check` builds instead of emitting unspecialized `M__Box__new` IR that returned raw pointers from `main()`
+  - generic class instantiation discovery now resolves uniquely matching leaf class names like `Box` back to their mangled template keys during specialization collection, so wildcard imports emit the required `M__Box__spec__...` classes before codegen
 - Fixed `--no-check` undefined symbol diagnostics in codegen:
   - unknown variables in method receivers, field roots, and function-value bindings now report the same user-facing `Undefined variable: ...` error as checked builds instead of leaking backend-only `Unknown variable: ...` messages
   - unknown direct calls now report `Undefined function: ...` instead of the internal backend wording `Unknown function: ...`
@@ -48,6 +62,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed imported enum-variant alias constructor handling for checked and unchecked builds:
   - invalid alias calls such as `import Boxed.Wrap as WrapCtor; WrapCtor<Integer>(1)` now report `Enum variant 'Boxed.Wrap' does not accept type arguments` instead of falling through to bogus type-constructor errors like `Unknown type: WrapCtor<Integer>`
   - unchecked single-file builds now also compile and run payload variant aliases such as `WrapCtor(7)` directly through `construct` lowering instead of treating the alias as a missing class constructor
+- Fixed unchecked entrypoint validation for invalid `main()` signatures:
+  - `--no-check` single-file and project builds now reject invalid entrypoints such as `function main(): String` with the normal Apex diagnostic `main() must return None or Integer` instead of leaking broken LLVM IR to Clang
+  - frontend compile paths now validate top-level `main()` signatures before unchecked codegen, so invalid entrypoints fail consistently even when semantic passes are skipped
+- Fixed exact-import aliases for built-in `Option` / `Result` variant constructors and function values:
+  - aliases such as `import Option.Some as Present` and `import Result.Ok as Success` now work in checked and unchecked builds for direct constructor-style calls (`Present(7)`, `Success(5)`) and first-class function values (`wrap = Present`)
+  - explicit type arguments on those aliases such as `Present<Integer>(1)` now fail cleanly with the built-in diagnostic `Built-in function 'Option.some' does not accept type arguments` instead of leaking import-check namespace-alias errors or backend `Unknown variant` / `Unknown enum` failures
 - Fixed unchecked explicit-type-argument diagnostics on non-function class fields:
   - invalid `--no-check` forms such as `Box(1).value<Integer>()` and `Box(1).value<Integer>` now match checked builds with `Unknown method 'value' for class 'Box'` and `Unknown field 'value' on class 'Box'` respectively
   - explicit generic call/function-value lowering no longer falls through to misleading non-function-call or internal unspecialized-generic backend errors when the target is just a plain field

@@ -1084,6 +1084,145 @@ impl<'ctx> Codegen<'ctx> {
         (matches.len() == 1).then(|| matches[0].clone())
     }
 
+    fn resolve_class_template_key(
+        class_templates: &HashMap<String, GenericClassTemplate>,
+        import_aliases: &HashMap<String, String>,
+        callee: &Expr,
+    ) -> Option<String> {
+        let mut candidates = Vec::new();
+        let mut push_candidate = |candidate: String| {
+            if !candidate.is_empty() && !candidates.contains(&candidate) {
+                candidates.push(candidate);
+            }
+        };
+
+        if let Some(direct_key) = Self::template_key_for_callee(callee) {
+            push_candidate(direct_key);
+        }
+
+        match callee {
+            Expr::Ident(name) => {
+                if let Some(path) = import_aliases.get(name) {
+                    if !path.ends_with(".*") {
+                        push_candidate(path.replace('.', "__"));
+                        if let Some(symbol) = path.rsplit('.').next() {
+                            push_candidate(symbol.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {
+                if let Some(path_parts) = Self::flatten_field_chain(callee) {
+                    if path_parts.len() >= 2 {
+                        if let Some(path) = import_aliases.get(&path_parts[0]) {
+                            if !path.ends_with(".*") {
+                                push_candidate(
+                                    format!("{}.{}", path, path_parts[1..].join("."))
+                                        .replace('.', "__"),
+                                );
+                                if let Some(leaf) = path_parts.last() {
+                                    push_candidate(leaf.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for candidate in &candidates {
+            if class_templates.contains_key(candidate) {
+                return Some(candidate.clone());
+            }
+        }
+
+        let mut matches = candidates
+            .iter()
+            .flat_map(|candidate| {
+                let leaf_name = candidate.rsplit("__").next().unwrap_or(candidate);
+                let suffix = format!("__{}", leaf_name);
+                class_templates
+                    .keys()
+                    .filter(move |template_key| {
+                        *template_key == leaf_name || template_key.ends_with(&suffix)
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        (matches.len() == 1).then(|| matches[0].clone())
+    }
+
+    fn resolve_class_template_name(
+        class_templates: &HashMap<String, GenericClassTemplate>,
+        import_aliases: &HashMap<String, String>,
+        name: &str,
+    ) -> Option<String> {
+        if !name.contains('.') {
+            let mut wildcard_matches = import_aliases
+                .values()
+                .filter_map(|path| path.strip_suffix(".*"))
+                .filter_map(|module_path| {
+                    let dotted = format!("{}.{}", module_path, name);
+                    if class_templates.contains_key(&dotted) {
+                        return Some(dotted);
+                    }
+                    let mangled = dotted.replace('.', "__");
+                    class_templates.contains_key(&mangled).then_some(mangled)
+                })
+                .collect::<Vec<_>>();
+            wildcard_matches.sort_unstable();
+            wildcard_matches.dedup();
+            if wildcard_matches.len() == 1 {
+                return Some(wildcard_matches[0].clone());
+            }
+        }
+
+        if class_templates.contains_key(name) {
+            return Some(name.to_string());
+        }
+        if name.contains('.') {
+            let mangled = name.replace('.', "__");
+            if class_templates.contains_key(&mangled) {
+                return Some(mangled);
+            }
+        }
+        if let Some((alias, rest)) = name.split_once('.') {
+            if let Some(path) = import_aliases.get(alias) {
+                let dotted = format!("{}.{}", path, rest);
+                if class_templates.contains_key(&dotted) {
+                    return Some(dotted);
+                }
+                let mangled = dotted.replace('.', "__");
+                if class_templates.contains_key(&mangled) {
+                    return Some(mangled);
+                }
+            }
+        }
+        if let Some(path) = import_aliases.get(name) {
+            if class_templates.contains_key(path) {
+                return Some(path.clone());
+            }
+            let mangled = path.replace('.', "__");
+            if class_templates.contains_key(&mangled) {
+                return Some(mangled);
+            }
+        }
+
+        let leaf_name = name.rsplit('.').next().unwrap_or(name);
+        let suffix = format!("__{}", leaf_name);
+        let mut matches = class_templates
+            .keys()
+            .filter(|template_key| *template_key == leaf_name || template_key.ends_with(&suffix))
+            .cloned()
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        (matches.len() == 1).then(|| matches[0].clone())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn rewrite_stmt_generic_calls(
         stmt: &Stmt,
@@ -2361,29 +2500,6 @@ impl<'ctx> Codegen<'ctx> {
         in_scope_generics: &HashSet<String>,
         instantiations: &mut HashMap<String, Vec<Type>>,
     ) {
-        let resolve_template_name = |name: &str| {
-            if class_templates.contains_key(name) {
-                return Some(name.to_string());
-            }
-            if let Some((alias, rest)) = name.split_once('.') {
-                if let Some(path) = import_aliases.get(alias) {
-                    let dotted = format!("{}.{}", path, rest);
-                    if class_templates.contains_key(&dotted) {
-                        return Some(dotted);
-                    }
-                    let mangled = dotted.replace('.', "__");
-                    if class_templates.contains_key(&mangled) {
-                        return Some(mangled);
-                    }
-                }
-            }
-            let path = import_aliases.get(name)?;
-            if class_templates.contains_key(path) {
-                return Some(path.clone());
-            }
-            let mangled = path.replace('.', "__");
-            class_templates.contains_key(&mangled).then_some(mangled)
-        };
         let maybe_record_builtin_like =
             |name: &str, args: &[Type], instantiations: &mut HashMap<String, Vec<Type>>| {
                 if class_templates.contains_key(name)
@@ -2407,7 +2523,9 @@ impl<'ctx> Codegen<'ctx> {
                         instantiations,
                     );
                 }
-                if let Some(resolved_name) = resolve_template_name(name) {
+                if let Some(resolved_name) =
+                    Self::resolve_class_template_name(class_templates, import_aliases, name)
+                {
                     if !args
                         .iter()
                         .any(|arg| Self::type_contains_generic_names(arg, in_scope_generics))
@@ -2624,29 +2742,6 @@ impl<'ctx> Codegen<'ctx> {
         in_scope_generics: &HashSet<String>,
         instantiations: &mut HashMap<String, Vec<Type>>,
     ) {
-        let resolve_template_name = |name: &str| {
-            if class_templates.contains_key(name) {
-                return Some(name.to_string());
-            }
-            if let Some((alias, rest)) = name.split_once('.') {
-                if let Some(path) = import_aliases.get(alias) {
-                    let dotted = format!("{}.{}", path, rest);
-                    if class_templates.contains_key(&dotted) {
-                        return Some(dotted);
-                    }
-                    let mangled = dotted.replace('.', "__");
-                    if class_templates.contains_key(&mangled) {
-                        return Some(mangled);
-                    }
-                }
-            }
-            let path = import_aliases.get(name)?;
-            if class_templates.contains_key(path) {
-                return Some(path.clone());
-            }
-            let mangled = path.replace('.', "__");
-            class_templates.contains_key(&mangled).then_some(mangled)
-        };
         match expr {
             Expr::Call {
                 callee,
@@ -2681,7 +2776,11 @@ impl<'ctx> Codegen<'ctx> {
                 if !type_args.is_empty() {
                     if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
                         let full_path = path_parts.join(".");
-                        if let Some(resolved_name) = resolve_template_name(&full_path) {
+                        if let Some(resolved_name) = Self::resolve_class_template_name(
+                            class_templates,
+                            import_aliases,
+                            &full_path,
+                        ) {
                             if !type_args.iter().any(|arg| {
                                 Self::type_contains_generic_names(arg, in_scope_generics)
                             }) {
@@ -2710,10 +2809,34 @@ impl<'ctx> Codegen<'ctx> {
                         instantiations,
                     );
                 }
+                if let Some(template_key) = match &callee.node {
+                    Expr::Ident(name) => {
+                        Self::resolve_class_template_name(class_templates, import_aliases, name)
+                    }
+                    _ => Self::flatten_field_chain(&callee.node)
+                        .map(|parts| parts.join("."))
+                        .and_then(|full_path| {
+                            Self::resolve_class_template_name(
+                                class_templates,
+                                import_aliases,
+                                &full_path,
+                            )
+                        }),
+                } {
+                    if !type_args
+                        .iter()
+                        .any(|arg| Self::type_contains_generic_names(arg, in_scope_generics))
+                    {
+                        instantiations
+                            .entry(Self::generic_class_spec_name(&template_key, type_args))
+                            .or_insert_with(|| type_args.clone());
+                    }
+                }
             }
             Expr::Construct { ty, args } => {
-                if let Ok(Type::Generic(name, type_args)) = parse_type_source(ty) {
-                    let resolved_name = resolve_template_name(&name);
+                if let Some((name, type_args)) = Self::parse_construct_nominal_type_source(ty) {
+                    let resolved_name =
+                        Self::resolve_class_template_name(class_templates, import_aliases, &name);
                     if let Some(resolved_name) = resolved_name {
                         if !type_args
                             .iter()
@@ -3591,6 +3714,16 @@ impl<'ctx> Codegen<'ctx> {
                             callee: Box::new(rewritten_callee),
                             type_args: type_args.clone(),
                         }
+                    }
+                } else if let Some(template_key) =
+                    Self::resolve_class_template_key(class_templates, import_aliases, &callee.node)
+                {
+                    Expr::GenericFunctionValue {
+                        callee: Box::new(Spanned::new(
+                            Expr::Ident(template_key),
+                            rewritten_callee.span,
+                        )),
+                        type_args: type_args.clone(),
                     }
                 } else {
                     Expr::GenericFunctionValue {
@@ -4935,17 +5068,7 @@ impl<'ctx> Codegen<'ctx> {
         }
         let mut generated_classes: Vec<Spanned<Decl>> = Vec::new();
         let mut pending_decls = program.declarations.clone();
-        let import_aliases = program
-            .declarations
-            .iter()
-            .filter_map(|decl| match &decl.node {
-                Decl::Import(import) => import
-                    .alias
-                    .as_ref()
-                    .map(|alias| (alias.clone(), import.path.clone())),
-                _ => None,
-            })
-            .collect::<HashMap<_, _>>();
+        let import_aliases = Self::collect_import_resolution_paths(program);
 
         loop {
             let mut discovered = HashMap::new();
@@ -5447,21 +5570,26 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn collect_import_resolution_paths(program: &Program) -> HashMap<String, String> {
+        let mut import_paths = HashMap::new();
+        for decl in &program.declarations {
+            let Decl::Import(import) = &decl.node else {
+                continue;
+            };
+            if let Some(alias) = &import.alias {
+                import_paths.insert(alias.clone(), import.path.clone());
+            } else if import.path.ends_with(".*") {
+                import_paths.insert(import.path.clone(), import.path.clone());
+            }
+        }
+        import_paths
+    }
+
     fn specialize_explicit_generic_calls(program: &Program) -> Result<Program> {
         let mut function_templates: HashMap<String, GenericTemplate> = HashMap::new();
         let mut method_templates: HashMap<String, Vec<GenericTemplate>> = HashMap::new();
         let mut class_templates: HashMap<String, GenericClassTemplate> = HashMap::new();
-        let import_aliases = program
-            .declarations
-            .iter()
-            .filter_map(|decl| match &decl.node {
-                Decl::Import(import) => import
-                    .alias
-                    .as_ref()
-                    .map(|alias| (alias.clone(), import.path.clone())),
-                _ => None,
-            })
-            .collect::<HashMap<_, _>>();
+        let import_aliases = Self::collect_import_resolution_paths(program);
         for decl in &program.declarations {
             Self::collect_generic_templates_from_decl(
                 decl,
@@ -5471,7 +5599,10 @@ impl<'ctx> Codegen<'ctx> {
             );
             Self::collect_generic_class_templates_from_decl(decl, None, &mut class_templates);
         }
-        if function_templates.is_empty() && method_templates.is_empty() {
+        if function_templates.is_empty()
+            && method_templates.is_empty()
+            && class_templates.is_empty()
+        {
             return Ok(program.clone());
         }
 
@@ -5808,6 +5939,9 @@ impl<'ctx> Codegen<'ctx> {
                 if let Some(alias) = &import.alias {
                     self.import_aliases
                         .insert(alias.clone(), import.path.clone());
+                } else if import.path.ends_with(".*") {
+                    self.import_aliases
+                        .insert(import.path.clone(), import.path.clone());
                 }
             }
         }
@@ -6041,6 +6175,9 @@ impl<'ctx> Codegen<'ctx> {
         let Some(path) = self.import_aliases.get(name) else {
             return name.to_string();
         };
+        if let Some(canonical) = Self::builtin_exact_import_alias_canonical(path) {
+            return canonical.to_string();
+        }
         if path.ends_with(".*") {
             return name.to_string();
         }
@@ -6112,11 +6249,81 @@ impl<'ctx> Codegen<'ctx> {
         (matches.len() == 1).then(|| (matches[0].clone(), variant_name.to_string()))
     }
 
-    fn parse_construct_nominal_type_source(ty: &str) -> Option<(String, Vec<Type>)> {
-        match parse_type_source(ty).ok()? {
-            Type::Named(name) => Some((name, Vec::new())),
-            Type::Generic(name, args) => Some((name, args)),
+    fn builtin_exact_import_alias_canonical(path: &str) -> Option<&'static str> {
+        match path {
+            "Option.Some" => Some("Option__some"),
+            "Option.None" => Some("Option__none"),
+            "Result.Ok" => Some("Result__ok"),
+            "Result.Error" => Some("Result__error"),
             _ => None,
+        }
+    }
+
+    fn split_generic_args_static(s: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut current = String::new();
+        let mut angle_depth = 0usize;
+        let mut paren_depth = 0usize;
+
+        for ch in s.chars() {
+            match ch {
+                '<' => {
+                    angle_depth += 1;
+                    current.push(ch);
+                }
+                '>' => {
+                    angle_depth = angle_depth.saturating_sub(1);
+                    current.push(ch);
+                }
+                '(' => {
+                    paren_depth += 1;
+                    current.push(ch);
+                }
+                ')' => {
+                    paren_depth = paren_depth.saturating_sub(1);
+                    current.push(ch);
+                }
+                ',' if angle_depth == 0 && paren_depth == 0 => {
+                    let trimmed = current.trim();
+                    if !trimmed.is_empty() {
+                        parts.push(trimmed.to_string());
+                    }
+                    current.clear();
+                }
+                _ => current.push(ch),
+            }
+        }
+
+        let trimmed = current.trim();
+        if !trimmed.is_empty() {
+            parts.push(trimmed.to_string());
+        }
+
+        parts
+    }
+
+    pub(crate) fn parse_construct_nominal_type_source(ty: &str) -> Option<(String, Vec<Type>)> {
+        let trimmed = ty.trim();
+        if let Some(start) = trimmed.find('<') {
+            let end = trimmed.rfind('>')?;
+            if end <= start {
+                return None;
+            }
+            let name = trimmed[..start].trim();
+            if name.is_empty() {
+                return None;
+            }
+            let args = Self::split_generic_args_static(&trimmed[start + 1..end])
+                .into_iter()
+                .map(|arg| parse_type_source(&arg).ok())
+                .collect::<Option<Vec<_>>>()?;
+            Some((name.to_string(), args))
+        } else {
+            match parse_type_source(trimmed).ok()? {
+                Type::Named(name) => Some((name, Vec::new())),
+                Type::Generic(name, args) => Some((name, args)),
+                _ => Some((trimmed.to_string(), Vec::new())),
+            }
         }
     }
 
@@ -6203,6 +6410,157 @@ impl<'ctx> Codegen<'ctx> {
             }
             _ => None,
         }
+    }
+
+    fn nominal_function_value_type_source(expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Ident(name) => Some(name.clone()),
+            Expr::Field { .. } => Some(Self::flatten_field_chain(expr)?.join(".")),
+            _ => None,
+        }
+    }
+
+    fn resolve_class_constructor_function_value(
+        &self,
+        expr: &Expr,
+        explicit_type_args: Option<&[Type]>,
+        expected_ty: &Type,
+    ) -> Option<(String, Type)> {
+        fn class_template_family(name: &str) -> &str {
+            name.split("__spec__")
+                .next()
+                .unwrap_or(name)
+                .split('<')
+                .next()
+                .unwrap_or(name)
+        }
+        let mut type_source = match expr {
+            Expr::Ident(name) => {
+                if let Some(path) = self.import_aliases.get(name) {
+                    if !path.ends_with(".*") && self.canonical_codegen_type_name(path).is_some() {
+                        path.clone()
+                    } else {
+                        name.clone()
+                    }
+                } else {
+                    name.clone()
+                }
+            }
+            Expr::Field { .. } => Self::flatten_field_chain(expr)?.join("."),
+            _ => return None,
+        };
+        if let Some(type_args) = explicit_type_args {
+            type_source = format!(
+                "{}<{}>",
+                type_source,
+                type_args
+                    .iter()
+                    .map(Self::format_type_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        } else if let Type::Function(_, ret) = expected_ty {
+            if let Type::Named(expected_name) | Type::Generic(expected_name, _) = ret.as_ref() {
+                let resolved_base = self.resolve_alias_qualified_codegen_type_name(&type_source)?;
+                let expected_base = class_template_family(expected_name);
+                let resolved_base_name = class_template_family(&resolved_base);
+                if expected_base == resolved_base_name {
+                    type_source = expected_name.clone();
+                }
+            }
+        }
+
+        let parsed_ty = parse_type_source(&type_source).ok()?;
+        let normalized_ty = self.normalize_codegen_type(&parsed_ty);
+        let (class_name, class_args) = match &normalized_ty {
+            Type::Named(name) => {
+                if let Type::Function(_, ret) = expected_ty {
+                    if let Type::Generic(expected_name, expected_args) = ret.as_ref() {
+                        if expected_name == name {
+                            (name.clone(), expected_args.clone())
+                        } else {
+                            (name.clone(), Vec::new())
+                        }
+                    } else {
+                        (name.clone(), Vec::new())
+                    }
+                } else {
+                    (name.clone(), Vec::new())
+                }
+            }
+            Type::Generic(name, args) => (name.clone(), args.clone()),
+            _ => return None,
+        };
+        let func_name = format!("{}__new", class_name);
+        let (func_name, unresolved_ty) = if let Some((_, ty)) = self.functions.get(&func_name) {
+            (func_name, ty.clone())
+        } else if let Some((base_name, _)) = class_name.split_once("__spec__") {
+            let base_func_name = format!("{}__new", base_name);
+            let (_, ty) = self.functions.get(&base_func_name)?;
+            (base_func_name, ty.clone())
+        } else {
+            return None;
+        };
+
+        let mut bindings = HashMap::new();
+        if let Some(class_info) = self.classes.get(&class_name).or_else(|| {
+            class_name
+                .split_once("__spec__")
+                .and_then(|(base_name, _)| self.classes.get(base_name))
+        }) {
+            for (generic_name, arg) in class_info.generic_params.iter().zip(class_args.iter()) {
+                bindings.insert(generic_name.clone(), arg.clone());
+            }
+        }
+
+        let actual_ty = if bindings.is_empty() {
+            unresolved_ty
+        } else {
+            let substituted = Self::substitute_type(&unresolved_ty, &bindings);
+            match substituted {
+                Type::Function(params, _) => Type::Function(params, Box::new(normalized_ty)),
+                _ => substituted,
+            }
+        };
+
+        Some((func_name, actual_ty))
+    }
+
+    fn compile_class_constructor_function_value_with_expected_type(
+        &mut self,
+        expr: &Expr,
+        explicit_type_args: Option<&[Type]>,
+        expected_ty: &Type,
+    ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        let Some((name, actual_ty)) =
+            self.resolve_class_constructor_function_value(expr, explicit_type_args, expected_ty)
+        else {
+            return Ok(None);
+        };
+        let Some((func, _)) = self.functions.get(&name).cloned() else {
+            return Ok(None);
+        };
+        let struct_ty = self.llvm_type(&actual_ty).into_struct_type();
+        let mut closure = struct_ty.get_undef();
+        let fn_ptr = func.as_global_value().as_pointer_value();
+        let null_env = self.context.ptr_type(AddressSpace::default()).const_null();
+
+        closure = self
+            .builder
+            .build_insert_value(closure, fn_ptr, 0, "ctor_fn")
+            .unwrap()
+            .into_struct_value();
+        closure = self
+            .builder
+            .build_insert_value(closure, null_env, 1, "ctor_env")
+            .unwrap()
+            .into_struct_value();
+
+        if &actual_ty == expected_ty {
+            return Ok(Some(closure.into()));
+        }
+
+        self.compile_function_value_adapter_from_closure(closure.into(), &actual_ty, expected_ty)
     }
 
     fn is_contextual_static_container_function_value(name: &str) -> bool {
@@ -10395,6 +10753,21 @@ impl<'ctx> Codegen<'ctx> {
         expr: &Expr,
         expected_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
+        if let Expr::GenericFunctionValue { callee, type_args } = expr {
+            if let Some(closure) = self
+                .compile_class_constructor_function_value_with_expected_type(
+                    &callee.node,
+                    Some(type_args),
+                    expected_ty,
+                )?
+            {
+                return Ok(closure);
+            }
+        } else if let Some(closure) = self
+            .compile_class_constructor_function_value_with_expected_type(expr, None, expected_ty)?
+        {
+            return Ok(closure);
+        }
         if let Some(closure) =
             self.compile_enum_variant_function_value_with_expected_type(expr, expected_ty)?
         {
@@ -15806,6 +16179,56 @@ impl<'ctx> Codegen<'ctx> {
 
         if let Some((base_name, explicit_type_args)) = Self::parse_construct_nominal_type_source(ty)
         {
+            let resolved_builtin = self.resolve_function_alias(&base_name);
+            if resolved_builtin != base_name
+                && Self::is_supported_builtin_function_name(&resolved_builtin)
+            {
+                if !explicit_type_args.is_empty() {
+                    return Err(CodegenError::new(format!(
+                        "Built-in function '{}' does not accept type arguments",
+                        resolved_builtin.replace("__", ".")
+                    )));
+                }
+                match resolved_builtin.as_str() {
+                    "Option__some" => {
+                        if args.len() != 1 {
+                            return Err(CodegenError::new(
+                                "Option.some() requires exactly 1 argument",
+                            ));
+                        }
+                        let value = self.compile_expr(&args[0].node)?;
+                        return self.create_option_some(value);
+                    }
+                    "Option__none" => {
+                        if !args.is_empty() {
+                            return Err(CodegenError::new(format!(
+                                "Option.none() expects 0 argument(s), got {}",
+                                args.len()
+                            )));
+                        }
+                        return self.create_option_none();
+                    }
+                    "Result__ok" => {
+                        if args.len() != 1 {
+                            return Err(CodegenError::new(
+                                "Result.ok() requires exactly 1 argument",
+                            ));
+                        }
+                        let value = self.compile_expr(&args[0].node)?;
+                        return self.create_result_ok(value);
+                    }
+                    "Result__error" => {
+                        if args.len() != 1 {
+                            return Err(CodegenError::new(
+                                "Result.error() requires exactly 1 argument",
+                            ));
+                        }
+                        let value = self.compile_expr(&args[0].node)?;
+                        return self.create_result_error(value);
+                    }
+                    _ => {}
+                }
+            }
             if let Some((enum_name, variant_name)) = self.resolve_import_alias_variant(&base_name) {
                 if !explicit_type_args.is_empty() {
                     return Err(CodegenError::new(format!(

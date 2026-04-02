@@ -5441,6 +5441,33 @@ fn build_project(
     }
 
     let entry_path = config.get_entry_path(&project_root);
+    if !do_check {
+        let entry_source = fs::read_to_string(&entry_path).map_err(|e| {
+            format!(
+                "{}: Failed to read entry file '{}': {}",
+                "error".red().bold(),
+                entry_path.display(),
+                e
+            )
+        })?;
+        let entry_program = parsed_files
+            .iter()
+            .find(|unit| unit.file == entry_path)
+            .map(|unit| &unit.program)
+            .ok_or_else(|| {
+                format!(
+                    "{}: Entry file '{}' was not parsed",
+                    "error".red().bold(),
+                    entry_path.display()
+                )
+            })?;
+        let entry_filename = entry_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("main.apex");
+        validate_entry_main_signature(entry_program, &entry_source, entry_filename)?;
+    }
+
     let mut namespace_functions: HashMap<String, HashSet<String>> = HashMap::new();
     for unit in &parsed_files {
         let entry = namespace_functions
@@ -6403,6 +6430,20 @@ fn compile_file(
 
     ensure_output_parent_dir(&output_path)?;
 
+    if !do_check {
+        let filename = file
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("input.apex");
+        let tokens = lexer::tokenize(&source)
+            .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
+        let mut parser = Parser::new(tokens);
+        let program = parser
+            .parse_program()
+            .map_err(|e| format_parse_error(&e, &source, filename))?;
+        validate_entry_main_signature(&program, &source, filename)?;
+    }
+
     compile_source(
         &source,
         file,
@@ -6993,6 +7034,65 @@ fn extract_namespace(program: &ast::Program) -> String {
         .package
         .clone()
         .unwrap_or_else(|| "global".to_string())
+}
+
+fn validate_entry_main_signature(
+    program: &Program,
+    source: &str,
+    filename: &str,
+) -> Result<(), String> {
+    let mut errors = Vec::new();
+    for decl in &program.declarations {
+        let Decl::Function(func) = &decl.node else {
+            continue;
+        };
+        if func.name != "main" {
+            continue;
+        }
+
+        if !func.generic_params.is_empty() {
+            errors.push(typeck::TypeError::new(
+                "main() cannot declare generic parameters",
+                decl.span.clone(),
+            ));
+        }
+        if !func.params.is_empty() {
+            errors.push(typeck::TypeError::new(
+                "main() cannot declare parameters",
+                decl.span.clone(),
+            ));
+        }
+        if func.is_async {
+            errors.push(typeck::TypeError::new(
+                "main() cannot be async; use a synchronous main() entrypoint",
+                decl.span.clone(),
+            ));
+        }
+        if func.is_extern || func.extern_abi.is_some() {
+            errors.push(typeck::TypeError::new(
+                "main() cannot be declared extern",
+                decl.span.clone(),
+            ));
+        }
+        if func.is_variadic {
+            errors.push(typeck::TypeError::new(
+                "main() cannot be variadic",
+                decl.span.clone(),
+            ));
+        }
+        if !matches!(func.return_type, Type::None | Type::Integer) {
+            errors.push(typeck::TypeError::new(
+                "main() must return None or Integer",
+                decl.span.clone(),
+            ));
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(typeck::format_errors(&errors, source, filename))
+    }
 }
 
 /// Extract imports from a program
@@ -24668,6 +24768,404 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_no_check_runs_imported_option_some_alias_runtime() {
+        let temp_root = make_temp_project_root("no-check-imported-option-some-alias-runtime");
+        let source_path = temp_root.join("no_check_imported_option_some_alias_runtime.apex");
+        let output_path = temp_root.join("no_check_imported_option_some_alias_runtime");
+        let source = r#"
+            import Option.Some as Present;
+
+            function main(): Integer {
+                value: Option<Integer> = Present(4);
+                return if (value.unwrap() == 4) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked imported Option.Some alias should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unchecked imported Option.Some alias binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_imported_option_some_alias_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("no-check-imported-option-some-alias-fn-value-runtime");
+        let source_path =
+            temp_root.join("no_check_imported_option_some_alias_fn_value_runtime.apex");
+        let output_path = temp_root.join("no_check_imported_option_some_alias_fn_value_runtime");
+        let source = r#"
+            import Option.Some as Present;
+
+            function main(): Integer {
+                wrap: (Integer) -> Option<Integer> = Present;
+                value: Option<Integer> = wrap(6);
+                return if (value.unwrap() == 6) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked imported Option.Some alias function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unchecked imported Option.Some alias function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_generic_class_constructor_function_value_runtime() {
+        let temp_root = make_temp_project_root("no-check-generic-class-ctor-fn-value-runtime");
+        let source_path = temp_root.join("no_check_generic_class_ctor_fn_value_runtime.apex");
+        let output_path = temp_root.join("no_check_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                ctor: (Integer) -> Box<Integer> = Box<Integer>;
+                return ctor(3).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked generic class constructor function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unchecked generic class constructor function value binary");
+        assert_eq!(status.code(), Some(3));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_imported_generic_class_constructor_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("no-check-imported-generic-class-ctor-fn-value-runtime");
+        let source_path =
+            temp_root.join("no_check_imported_generic_class_ctor_fn_value_runtime.apex");
+        let output_path = temp_root.join("no_check_imported_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            import Box as B;
+
+            function main(): Integer {
+                ctor: (Integer) -> Box<Integer> = B<Integer>;
+                return ctor(4).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked imported generic class constructor function value should codegen");
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled unchecked imported generic class constructor function value binary",
+        );
+        assert_eq!(status.code(), Some(4));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_imported_nested_generic_class_constructor_function_value_runtime(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-imported-nested-generic-class-ctor-fn-value-runtime");
+        let source_path =
+            temp_root.join("no_check_imported_nested_generic_class_ctor_fn_value_runtime.apex");
+        let output_path =
+            temp_root.join("no_check_imported_nested_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import M.Box as B;
+
+            function main(): Integer {
+                ctor: (Integer) -> M.Box<Integer> = B<Integer>;
+                return ctor(6).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None).expect(
+            "unchecked imported nested generic class constructor function value should codegen",
+        );
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled unchecked imported nested generic class constructor function value binary",
+        );
+        assert_eq!(status.code(), Some(6));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_inferred_generic_class_constructor_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("no-check-inferred-generic-class-ctor-fn-value-runtime");
+        let source_path =
+            temp_root.join("no_check_inferred_generic_class_ctor_fn_value_runtime.apex");
+        let output_path = temp_root.join("no_check_inferred_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                ctor: (Integer) -> Box<Integer> = Box;
+                return ctor(8).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked inferred generic class constructor function value should codegen");
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled unchecked inferred generic class constructor function value binary",
+        );
+        assert_eq!(status.code(), Some(8));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_imported_inferred_generic_class_constructor_function_value_runtime(
+    ) {
+        let temp_root = make_temp_project_root(
+            "no-check-imported-inferred-generic-class-ctor-fn-value-runtime",
+        );
+        let source_path =
+            temp_root.join("no_check_imported_inferred_generic_class_ctor_fn_value_runtime.apex");
+        let output_path =
+            temp_root.join("no_check_imported_inferred_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import M.Box as B;
+
+            function main(): Integer {
+                ctor: (Integer) -> M.Box<Integer> = B;
+                return ctor(8).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None).expect(
+            "unchecked imported inferred generic class constructor function value should codegen",
+        );
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled unchecked imported inferred generic class constructor function value binary",
+        );
+        assert_eq!(status.code(), Some(8));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_namespace_alias_inferred_generic_class_constructor_function_value_runtime(
+    ) {
+        let temp_root = make_temp_project_root(
+            "no-check-namespace-alias-inferred-generic-class-ctor-fn-value-runtime",
+        );
+        let source_path = temp_root
+            .join("no_check_namespace_alias_inferred_generic_class_ctor_fn_value_runtime.apex");
+        let output_path =
+            temp_root.join("no_check_namespace_alias_inferred_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            module U {
+                module M {
+                    class Box<T> {
+                        value: T;
+                        constructor(value: T) { this.value = value; }
+                    }
+                }
+            }
+
+            import U as u;
+
+            function main(): Integer {
+                ctor: (Integer) -> u.M.Box<Integer> = u.M.Box;
+                return ctor(9).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked namespace alias inferred generic class constructor function value should codegen");
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled unchecked namespace alias inferred generic class constructor function value binary",
+        );
+        assert_eq!(status.code(), Some(9));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_nested_generic_class_field_access_runtime() {
+        let temp_root = make_temp_project_root("no-check-nested-generic-class-field-runtime");
+        let source_path = temp_root.join("no_check_nested_generic_class_field_runtime.apex");
+        let output_path = temp_root.join("no_check_nested_generic_class_field_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                return M.Box<Integer>(6).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked nested generic class field access should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unchecked nested generic class field access binary");
+        assert_eq!(status.code(), Some(6));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_nested_generic_class_method_runtime() {
+        let temp_root = make_temp_project_root("no-check-nested-generic-class-method-runtime");
+        let source_path = temp_root.join("no_check_nested_generic_class_method_runtime.apex");
+        let output_path = temp_root.join("no_check_nested_generic_class_method_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                    function get(): T { return this.value; }
+                }
+            }
+
+            function main(): Integer {
+                return M.Box<Integer>(6).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked nested generic class method call should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unchecked nested generic class method call binary");
+        assert_eq!(status.code(), Some(6));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_wildcard_imported_nested_generic_class_field_access_runtime() {
+        let temp_root =
+            make_temp_project_root("no-check-wildcard-imported-nested-generic-class-field-runtime");
+        let source_path =
+            temp_root.join("no_check_wildcard_imported_nested_generic_class_field_runtime.apex");
+        let output_path =
+            temp_root.join("no_check_wildcard_imported_nested_generic_class_field_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import M.*;
+
+            function main(): Integer {
+                return Box<Integer>(13).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked wildcard imported nested generic class field access should codegen");
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled unchecked wildcard imported nested generic class field access binary",
+        );
+        assert_eq!(status.code(), Some(13));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_wildcard_imported_nested_generic_class_method_runtime() {
+        let temp_root = make_temp_project_root(
+            "no-check-wildcard-imported-nested-generic-class-method-runtime",
+        );
+        let source_path =
+            temp_root.join("no_check_wildcard_imported_nested_generic_class_method_runtime.apex");
+        let output_path =
+            temp_root.join("no_check_wildcard_imported_nested_generic_class_method_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                    function get(): T { return this.value; }
+                }
+            }
+
+            import M.*;
+
+            function main(): Integer {
+                return Box<Integer>(13).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked wildcard imported nested generic class method should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unchecked wildcard imported nested generic class method binary");
+        assert_eq!(status.code(), Some(13));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_option_static_call_type_args_cleanly() {
         let temp_root = make_temp_project_root("no-check-option-static-call-type-args");
         let source_path = temp_root.join("no_check_option_static_call_type_args.apex");
@@ -24690,6 +25188,31 @@ function main(): Integer {
             "{err}"
         );
         assert!(!err.contains("Clang failed"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_imported_option_some_alias_type_args_cleanly() {
+        let temp_root = make_temp_project_root("no-check-imported-option-some-alias-type-args");
+        let source_path = temp_root.join("no_check_imported_option_some_alias_type_args.apex");
+        let output_path = temp_root.join("no_check_imported_option_some_alias_type_args");
+        let source = r#"
+            import Option.Some as Present;
+
+            function main(): Option<Integer> {
+                return Present<Integer>(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("imported Option.Some alias type args should fail in codegen");
+        assert!(
+            err.contains("Built-in function 'Option.some' does not accept type arguments"),
+            "{err}"
+        );
+        assert!(!err.contains("Unknown variant 'Some'"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -26365,6 +26888,335 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_generic_class_constructor_function_value_runtime() {
+        let temp_root = make_temp_project_root("generic-class-ctor-fn-value-runtime");
+        let source_path = temp_root.join("generic_class_ctor_fn_value_runtime.apex");
+        let output_path = temp_root.join("generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                ctor: (Integer) -> Box<Integer> = Box<Integer>;
+                return ctor(3).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("generic class constructor function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled generic class constructor function value binary");
+        assert_eq!(status.code(), Some(3));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_generic_class_constructor_function_value_runtime() {
+        let temp_root = make_temp_project_root("imported-generic-class-ctor-fn-value-runtime");
+        let source_path = temp_root.join("imported_generic_class_ctor_fn_value_runtime.apex");
+        let output_path = temp_root.join("imported_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            import Box as B;
+
+            function main(): Integer {
+                ctor: (Integer) -> Box<Integer> = B<Integer>;
+                return ctor(4).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported generic class constructor function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported generic class constructor function value binary");
+        assert_eq!(status.code(), Some(4));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_nested_generic_class_constructor_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("imported-nested-generic-class-ctor-fn-value-runtime");
+        let source_path =
+            temp_root.join("imported_nested_generic_class_ctor_fn_value_runtime.apex");
+        let output_path = temp_root.join("imported_nested_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import M.Box as B;
+
+            function main(): Integer {
+                ctor: (Integer) -> M.Box<Integer> = B<Integer>;
+                return ctor(6).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported nested generic class constructor function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported nested generic class constructor function value binary");
+        assert_eq!(status.code(), Some(6));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_inferred_generic_class_constructor_function_value_runtime() {
+        let temp_root = make_temp_project_root("inferred-generic-class-ctor-fn-value-runtime");
+        let source_path = temp_root.join("inferred_generic_class_ctor_fn_value_runtime.apex");
+        let output_path = temp_root.join("inferred_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                ctor: (Integer) -> Box<Integer> = Box;
+                return ctor(8).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("inferred generic class constructor function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled inferred generic class constructor function value binary");
+        assert_eq!(status.code(), Some(8));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_inferred_generic_class_constructor_function_value_runtime() {
+        let temp_root =
+            make_temp_project_root("imported-inferred-generic-class-ctor-fn-value-runtime");
+        let source_path =
+            temp_root.join("imported_inferred_generic_class_ctor_fn_value_runtime.apex");
+        let output_path = temp_root.join("imported_inferred_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import M.Box as B;
+
+            function main(): Integer {
+                ctor: (Integer) -> M.Box<Integer> = B;
+                return ctor(8).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported inferred generic class constructor function value should codegen");
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled imported inferred generic class constructor function value binary",
+        );
+        assert_eq!(status.code(), Some(8));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_namespace_alias_inferred_generic_class_constructor_function_value_runtime(
+    ) {
+        let temp_root =
+            make_temp_project_root("namespace-alias-inferred-generic-class-ctor-fn-value-runtime");
+        let source_path =
+            temp_root.join("namespace_alias_inferred_generic_class_ctor_fn_value_runtime.apex");
+        let output_path =
+            temp_root.join("namespace_alias_inferred_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            module U {
+                module M {
+                    class Box<T> {
+                        value: T;
+                        constructor(value: T) { this.value = value; }
+                    }
+                }
+            }
+
+            import U as u;
+
+            function main(): Integer {
+                ctor: (Integer) -> u.M.Box<Integer> = u.M.Box;
+                return ctor(9).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None).expect(
+            "namespace alias inferred generic class constructor function value should codegen",
+        );
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled namespace alias inferred generic class constructor function value binary",
+        );
+        assert_eq!(status.code(), Some(9));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_nested_generic_class_field_access_runtime() {
+        let temp_root = make_temp_project_root("nested-generic-class-field-runtime");
+        let source_path = temp_root.join("nested_generic_class_field_runtime.apex");
+        let output_path = temp_root.join("nested_generic_class_field_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                return M.Box<Integer>(6).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested generic class field access should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled nested generic class field access binary");
+        assert_eq!(status.code(), Some(6));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_nested_generic_class_method_runtime() {
+        let temp_root = make_temp_project_root("nested-generic-class-method-runtime");
+        let source_path = temp_root.join("nested_generic_class_method_runtime.apex");
+        let output_path = temp_root.join("nested_generic_class_method_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                    function get(): T { return this.value; }
+                }
+            }
+
+            function main(): Integer {
+                return M.Box<Integer>(6).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("nested generic class method call should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled nested generic class method call binary");
+        assert_eq!(status.code(), Some(6));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_wildcard_imported_nested_generic_class_field_access_runtime() {
+        let temp_root =
+            make_temp_project_root("wildcard-imported-nested-generic-class-field-runtime");
+        let source_path =
+            temp_root.join("wildcard_imported_nested_generic_class_field_runtime.apex");
+        let output_path = temp_root.join("wildcard_imported_nested_generic_class_field_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import M.*;
+
+            function main(): Integer {
+                return Box<Integer>(13).value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("wildcard imported nested generic class field access should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled wildcard imported nested generic class field access binary");
+        assert_eq!(status.code(), Some(13));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_wildcard_imported_nested_generic_class_method_runtime() {
+        let temp_root =
+            make_temp_project_root("wildcard-imported-nested-generic-class-method-runtime");
+        let source_path =
+            temp_root.join("wildcard_imported_nested_generic_class_method_runtime.apex");
+        let output_path = temp_root.join("wildcard_imported_nested_generic_class_method_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                    function get(): T { return this.value; }
+                }
+            }
+
+            import M.*;
+
+            function main(): Integer {
+                return Box<Integer>(13).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("wildcard imported nested generic class method should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled wildcard imported nested generic class method binary");
+        assert_eq!(status.code(), Some(13));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_imported_enum_type_alias_variant_runtime() {
         let temp_root = make_temp_project_root("imported-enum-type-alias-variant-runtime");
         let source_path = temp_root.join("imported_enum_type_alias_variant_runtime.apex");
@@ -27683,6 +28535,85 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled imported alias explicit generic function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_option_some_alias_runtime() {
+        let temp_root = make_temp_project_root("imported-option-some-alias-runtime");
+        let source_path = temp_root.join("imported_option_some_alias_runtime.apex");
+        let output_path = temp_root.join("imported_option_some_alias_runtime");
+        let source = r#"
+            import Option.Some as Present;
+
+            function main(): Integer {
+                value: Option<Integer> = Present(7);
+                return if (value.unwrap() == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported Option.Some alias should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported Option.Some alias binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_option_some_alias_function_value_runtime() {
+        let temp_root = make_temp_project_root("imported-option-some-alias-fn-value-runtime");
+        let source_path = temp_root.join("imported_option_some_alias_fn_value_runtime.apex");
+        let output_path = temp_root.join("imported_option_some_alias_fn_value_runtime");
+        let source = r#"
+            import Option.Some as Present;
+
+            function main(): Integer {
+                wrap: (Integer) -> Option<Integer> = Present;
+                value: Option<Integer> = wrap(9);
+                return if (value.unwrap() == 9) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported Option.Some alias function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported Option.Some alias function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_result_ok_alias_runtime() {
+        let temp_root = make_temp_project_root("imported-result-ok-alias-runtime");
+        let source_path = temp_root.join("imported_result_ok_alias_runtime.apex");
+        let output_path = temp_root.join("imported_result_ok_alias_runtime");
+        let source = r#"
+            import Result.Ok as Success;
+
+            function main(): Integer {
+                value: Result<Integer, String> = Success(5);
+                return if (value.unwrap() == 5) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported Result.Ok alias should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported Result.Ok alias binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
@@ -29913,6 +30844,25 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_file_no_check_rejects_main_with_string_return_type_cleanly() {
+        let temp_root = make_temp_project_root("main-string-return-type-nocheck");
+        let source_path = temp_root.join("main_string_return_type_nocheck.apex");
+        let source = r#"
+            function main(): String {
+                return "oops";
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_file(&source_path, None, false, false, None, None)
+            .expect_err("unchecked main string return type should fail before codegen");
+        assert!(err.contains("main() must return None or Integer"), "{err}");
+        assert!(!err.contains("Clang failed"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_rejects_main_with_parameters() {
         let temp_root = make_temp_project_root("main-parameters");
         let source_path = temp_root.join("main_parameters.apex");
@@ -31219,6 +32169,27 @@ function main(): Integer {
             .status()
             .expect("run direct constructor method project binary");
         assert_eq!(status.code(), Some(23));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_run_no_check_rejects_main_with_string_return_type_cleanly() {
+        let temp_root = make_temp_project_root("project-main-string-return-type-nocheck");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction main(): String { return \"oops\"; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, false, false, false)
+                .expect_err("unchecked project build should reject invalid main signature");
+            assert!(err.contains("main() must return None or Integer"), "{err}");
+            assert!(!err.contains("Clang failed"), "{err}");
+        });
 
         let _ = fs::remove_dir_all(temp_root);
     }

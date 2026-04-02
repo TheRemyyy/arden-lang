@@ -19,6 +19,10 @@ benchmark/bin/sum_loop_apex
 benchmark/bin/sum_loop_c
 benchmark/bin/sum_loop_rust
 benchmark/bin/sum_loop_go
+benchmark/bin/matrix_mul_heavy_apex
+benchmark/bin/matrix_mul_heavy_c
+benchmark/bin/matrix_mul_heavy_rust
+benchmark/bin/matrix_mul_heavy_go
 benchmark/results/latest.json
 benchmark/results/latest.md
 benchmark/generated/
@@ -41,9 +45,3 @@ examples/.apexcache/
 fuzz/artifacts/
 fuzz/coverage/
 fuzz/corpus/
-
-# Bug hunting
-CLAUDE.md
-.claude/settings.local.json
-docs/superpowers/
-.worktrees/

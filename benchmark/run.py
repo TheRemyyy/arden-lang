@@ -17,12 +17,36 @@ class BenchmarkSpec:
     name: str
     description: str
     kind: str = "runtime"
+    default_enabled: bool = True
+
+
+@dataclass(frozen=True)
+class SyntheticGraphConfig:
+    file_count: int
+    funcs_per_file: int
+    mutate_count: int
+    max_deps: int
+    group_size: int
+    mixed_leaf_edits: int
+    mixed_group_edits: int
+
+
+@dataclass(frozen=True)
+class TimedCompileResult:
+    elapsed_s: float
+    stdout: str
+    stderr: str
 
 
 BENCHMARKS: List[BenchmarkSpec] = [
     BenchmarkSpec("sum_loop", "Integer-heavy pseudo-random accumulation loop"),
     BenchmarkSpec("prime_count", "Prime counting via sieve"),
     BenchmarkSpec("matrix_mul", "Dense matrix multiplication (100x100)"),
+    BenchmarkSpec(
+        "matrix_mul_heavy",
+        "Dense integer matrix multiplication (220x220) for a heavier CPU-bound runtime pass",
+        default_enabled=False,
+    ),
     BenchmarkSpec(
         "compile_project_10_files",
         "Compile stress test on generated 10-file project per language",
@@ -32,6 +56,12 @@ BENCHMARKS: List[BenchmarkSpec] = [
         "compile_project_synthetic_mega_graph",
         "Compile stress test on a generated 1400-file synthetic mega-graph project per language",
         kind="compile",
+    ),
+    BenchmarkSpec(
+        "compile_project_extreme_graph",
+        "Compile stress test on a generated 2200-file extreme synthetic dependency graph per language",
+        kind="compile",
+        default_enabled=False,
     ),
     BenchmarkSpec(
         "incremental_rebuild_1_file",
@@ -58,16 +88,45 @@ BENCHMARKS: List[BenchmarkSpec] = [
         "Compile a generated synthetic mega-graph project, then rebuild after mixed leaf edits and API-surface invalidation",
         kind="incremental_mixed_synthetic_mega_graph",
     ),
+    BenchmarkSpec(
+        "incremental_rebuild_extreme_graph",
+        "Compile a generated 2200-file extreme dependency graph, apply syntax-only edits to many files, then rebuild",
+        kind="incremental_batch_extreme_graph",
+        default_enabled=False,
+    ),
+    BenchmarkSpec(
+        "incremental_rebuild_extreme_graph_mixed_invalidation",
+        "Compile a generated 2200-file extreme dependency graph, then rebuild after leaf edits plus shared API invalidation",
+        kind="incremental_mixed_extreme_graph",
+        default_enabled=False,
+    ),
 ]
 
 LANGUAGES = ("apex", "rust", "go")
-SYNTHETIC_MEGA_GRAPH_FILE_COUNT = 1400
-SYNTHETIC_MEGA_GRAPH_FUNCS_PER_FILE = 96
-SYNTHETIC_MEGA_GRAPH_MUTATE_COUNT = 40
-SYNTHETIC_MEGA_GRAPH_MAX_DEPS = 6
-SYNTHETIC_MEGA_GRAPH_GROUP_SIZE = 50
-SYNTHETIC_MEGA_GRAPH_MIXED_LEAF_EDITS = 24
-SYNTHETIC_MEGA_GRAPH_MIXED_GROUP_EDITS = 8
+SYNTHETIC_MEGA_GRAPH_CONFIG = SyntheticGraphConfig(
+    file_count=1400,
+    funcs_per_file=96,
+    mutate_count=40,
+    max_deps=6,
+    group_size=50,
+    mixed_leaf_edits=24,
+    mixed_group_edits=8,
+)
+EXTREME_GRAPH_CONFIG = SyntheticGraphConfig(
+    file_count=2200,
+    funcs_per_file=112,
+    mutate_count=64,
+    max_deps=8,
+    group_size=44,
+    mixed_leaf_edits=40,
+    mixed_group_edits=12,
+)
+
+
+def select_synthetic_graph_config(bench_name: str) -> SyntheticGraphConfig:
+    if "extreme_graph" in bench_name:
+        return EXTREME_GRAPH_CONFIG
+    return SYNTHETIC_MEGA_GRAPH_CONFIG
 
 
 def is_windows() -> bool:
@@ -153,7 +212,9 @@ def compile_go(root: Path, bench: str, out: Path) -> None:
         raise RuntimeError(f"Failed to compile Go benchmark {bench}:\n{proc.stderr}")
 
 
-def timed_compile(cmd: List[str], cwd: Path, env: Dict[str, str] | None = None) -> float:
+def timed_compile(
+    cmd: List[str], cwd: Path, env: Dict[str, str] | None = None
+) -> TimedCompileResult:
     start = time.perf_counter()
     proc = run_cmd(cmd, cwd, env=env)
     elapsed = time.perf_counter() - start
@@ -161,10 +222,10 @@ def timed_compile(cmd: List[str], cwd: Path, env: Dict[str, str] | None = None) 
         raise RuntimeError(
             f"Compile failed: {' '.join(cmd)}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
         )
-    return elapsed
+    return TimedCompileResult(elapsed_s=elapsed, stdout=proc.stdout, stderr=proc.stderr)
 
 
-def timed_compile_with_retry(lang: str, job: Dict, retries: int = 1) -> float:
+def timed_compile_with_retry(lang: str, job: Dict, retries: int = 1) -> TimedCompileResult:
     for attempt in range(retries + 1):
         try:
             return timed_compile(job["cmd"], job["cwd"], env=job["env"])
@@ -181,6 +242,80 @@ def timed_compile_with_retry(lang: str, job: Dict, retries: int = 1) -> float:
             raise
 
     raise RuntimeError("unreachable")
+
+
+def parse_build_timings(output: str) -> Dict[str, Dict]:
+    lines = output.splitlines()
+    try:
+        start = lines.index("Build timings") + 1
+    except ValueError:
+        return {}
+
+    timings: Dict[str, Dict] = {}
+    for raw_line in lines[start:]:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if " ms" not in line:
+            continue
+
+        ms_index = line.rfind(" ms")
+        if ms_index == -1:
+            continue
+        number_start = ms_index - 1
+        while number_start >= 0 and (line[number_start].isdigit() or line[number_start] == "."):
+            number_start -= 1
+        number_start += 1
+        label = line[:number_start].strip()
+        if not label:
+            continue
+        try:
+            ms_value = float(line[number_start:ms_index].strip())
+        except ValueError:
+            continue
+
+        counters: Dict[str, int] = {}
+        counters_part = line[ms_index + len(" ms"):].strip()
+        if counters_part:
+            for item in counters_part.split(","):
+                key, sep, value = item.strip().partition("=")
+                if not sep:
+                    continue
+                try:
+                    counters[key] = int(value)
+                except ValueError:
+                    continue
+
+        timings[label] = {"ms": ms_value, "counters": counters}
+    return timings
+
+
+def summarize_apex_phase_timings(samples: List[Dict[str, Dict]]) -> List[Dict]:
+    if not samples:
+        return []
+
+    labels: List[str] = []
+    for sample in samples:
+        for label in sample:
+            if label not in labels:
+                labels.append(label)
+
+    summary: List[Dict] = []
+    for label in labels:
+        label_samples = [sample[label] for sample in samples if label in sample]
+        if not label_samples:
+            continue
+        mean_ms = statistics.mean(item["ms"] for item in label_samples)
+        counters = label_samples[-1]["counters"]
+        summary.append(
+            {
+                "label": label,
+                "mean_ms": mean_ms,
+                "runs": len(label_samples),
+                "counters": counters,
+            }
+        )
+    return summary
 
 
 def run_checksum(binary: Path, cwd: Path) -> int:
@@ -384,7 +519,7 @@ def generate_incremental_rebuild_mega_project_10_files(root: Path, bench_name: s
     )
 
 
-def synthetic_mega_graph_dependency_indices(index: int) -> List[int]:
+def synthetic_graph_dependency_indices(index: int, max_deps: int) -> List[int]:
     if index <= 0:
         return []
 
@@ -404,17 +539,21 @@ def synthetic_mega_graph_dependency_indices(index: int) -> List[int]:
     for candidate in candidates:
         if 0 <= candidate < index and candidate not in deps:
             deps.append(candidate)
-        if len(deps) == SYNTHETIC_MEGA_GRAPH_MAX_DEPS:
+        if len(deps) == max_deps:
             break
     return deps
 
 
-def generate_compile_project_synthetic_mega_graph(
-    root: Path, bench_name: str, mutate_count: int = 10
+def generate_compile_project_synthetic_graph(
+    root: Path,
+    bench_name: str,
+    config: SyntheticGraphConfig,
+    mutate_count: int | None = None,
 ) -> Dict[str, Dict[str, Path]]:
-    file_count = SYNTHETIC_MEGA_GRAPH_FILE_COUNT
-    funcs_per_file = SYNTHETIC_MEGA_GRAPH_FUNCS_PER_FILE
-    group_size = SYNTHETIC_MEGA_GRAPH_GROUP_SIZE
+    file_count = config.file_count
+    funcs_per_file = config.funcs_per_file
+    group_size = config.group_size
+    effective_mutate_count = mutate_count if mutate_count is not None else config.mutate_count
     generated_root = root / "benchmark" / "generated" / bench_name
     if generated_root.exists():
         shutil.rmtree(generated_root)
@@ -549,7 +688,7 @@ def generate_compile_project_synthetic_mega_graph(
         )
 
     for i, part in enumerate(part_names):
-        deps = synthetic_mega_graph_dependency_indices(i)
+        deps = synthetic_graph_dependency_indices(i, config.max_deps)
         group_idx = i // group_size
         group_name = group_names[group_idx]
         group_salt = 1000 + group_idx * 37
@@ -695,9 +834,9 @@ def generate_compile_project_synthetic_mega_graph(
     go_main.extend(["    fmt.Println(acc)", "}"])
     (go_dir / "main.go").write_text("\n".join(go_main) + "\n", encoding="utf-8")
 
-    apex_mutate_sources = pick_mutation_targets(apex_part_files, mutate_count, "batch_spread")
-    rust_mutate_sources = pick_mutation_targets(rust_part_files, mutate_count, "batch_spread")
-    go_mutate_sources = pick_mutation_targets(go_part_files, mutate_count, "batch_spread")
+    apex_mutate_sources = pick_mutation_targets(apex_part_files, effective_mutate_count, "batch_spread")
+    rust_mutate_sources = pick_mutation_targets(rust_part_files, effective_mutate_count, "batch_spread")
+    go_mutate_sources = pick_mutation_targets(go_part_files, effective_mutate_count, "batch_spread")
 
     def spread_group_plans(plans: List[Dict], count: int) -> List[Dict]:
         if not plans:
@@ -715,24 +854,30 @@ def generate_compile_project_synthetic_mega_graph(
             "binary": apex_dir / bench_name,
             "mutate_source": apex_mutate_sources[0],
             "mutate_sources": apex_mutate_sources,
-            "mixed_leaf_sources": pick_mutation_targets(apex_part_files, SYNTHETIC_MEGA_GRAPH_MIXED_LEAF_EDITS, "batch_spread"),
-            "mixed_groups": spread_group_plans(apex_group_plans, SYNTHETIC_MEGA_GRAPH_MIXED_GROUP_EDITS),
+            "mixed_leaf_sources": pick_mutation_targets(
+                apex_part_files, config.mixed_leaf_edits, "batch_spread"
+            ),
+            "mixed_groups": spread_group_plans(apex_group_plans, config.mixed_group_edits),
         },
         "rust": {
             "project_dir": rust_dir,
             "binary": rust_dir / f"{bench_name}_rust",
             "mutate_source": rust_mutate_sources[0],
             "mutate_sources": rust_mutate_sources,
-            "mixed_leaf_sources": pick_mutation_targets(rust_part_files, SYNTHETIC_MEGA_GRAPH_MIXED_LEAF_EDITS, "batch_spread"),
-            "mixed_groups": spread_group_plans(rust_group_plans, SYNTHETIC_MEGA_GRAPH_MIXED_GROUP_EDITS),
+            "mixed_leaf_sources": pick_mutation_targets(
+                rust_part_files, config.mixed_leaf_edits, "batch_spread"
+            ),
+            "mixed_groups": spread_group_plans(rust_group_plans, config.mixed_group_edits),
         },
         "go": {
             "project_dir": go_dir,
             "binary": go_dir / f"{bench_name}_go",
             "mutate_source": go_mutate_sources[0],
             "mutate_sources": go_mutate_sources,
-            "mixed_leaf_sources": pick_mutation_targets(go_part_files, SYNTHETIC_MEGA_GRAPH_MIXED_LEAF_EDITS, "batch_spread"),
-            "mixed_groups": spread_group_plans(go_group_plans, SYNTHETIC_MEGA_GRAPH_MIXED_GROUP_EDITS),
+            "mixed_leaf_sources": pick_mutation_targets(
+                go_part_files, config.mixed_leaf_edits, "batch_spread"
+            ),
+            "mixed_groups": spread_group_plans(go_group_plans, config.mixed_group_edits),
         },
     }
 
@@ -741,11 +886,15 @@ def make_compile_jobs(
     root: Path,
     compile_projects: Dict[str, Dict[str, Path]],
     build_env: Dict[str, str],
+    apex_timings: bool,
 ) -> Dict[str, Dict]:
     compiler = root / "target" / "release" / "apex-compiler"
+    apex_cmd = [str(compiler), "build", "--no-check"]
+    if apex_timings:
+        apex_cmd.append("--timings")
     return {
         "apex": {
-            "cmd": [str(compiler), "build", "--no-check"],
+            "cmd": apex_cmd,
             "cwd": compile_projects["apex"]["project_dir"],
             "env": build_env,
             "binary": exe_path(compile_projects["apex"]["binary"]),
@@ -930,6 +1079,7 @@ def build_markdown(result: Dict) -> str:
     lines.append(f"- Warmup runs: `{result['warmup']}`")
     lines.append(f"- Apex opt level: `{result.get('apex_opt_level', 'n/a')}`")
     lines.append(f"- Apex target: `{result.get('apex_target') or 'native/default'}`")
+    lines.append(f"- Apex phase timings: `{'enabled' if result.get('apex_timings') else 'disabled'}`")
     lines.append(f"- Compile mode: `{result.get('compile_mode', 'n/a')}`")
     lines.append("")
 
@@ -979,6 +1129,20 @@ def build_markdown(result: Dict) -> str:
                 f"| {lang.capitalize()} speedup | {bench['speedup_vs_apex'][lang]:.3f}x |"
             )
         lines.append("")
+
+        for section in bench.get("apex_phase_timing_sections") or []:
+            lines.append(f"{section['label']} (`--timings`, mean of measured runs):")
+            lines.append("")
+            lines.append("| Phase | Mean (ms) | Last counters |")
+            lines.append("|---|---:|---|")
+            for phase in section.get("phases", []):
+                counters = ", ".join(
+                    f"{key}={value}" for key, value in phase.get("counters", {}).items()
+                )
+                lines.append(
+                    f"| {phase['label']} | {phase['mean_ms']:.3f} | {counters or '-'} |"
+                )
+            lines.append("")
 
     return "\n".join(lines) + "\n"
 
@@ -1037,6 +1201,16 @@ def main() -> int:
         default="hot",
         help="Compile benchmark mode: hot keeps caches/artifacts; cold clears artifacts between timed runs.",
     )
+    parser.add_argument(
+        "--include-extreme",
+        action="store_true",
+        help="Include opt-in heavy runtime/compile benchmarks in the default suite.",
+    )
+    parser.add_argument(
+        "--apex-timings",
+        action="store_true",
+        help="Pass --timings to Apex project builds and record per-phase timing breakdowns in reports.",
+    )
     args = parser.parse_args()
 
     if args.repeats < 1:
@@ -1064,7 +1238,12 @@ def main() -> int:
         if proc.returncode != 0:
             raise RuntimeError(f"Failed to build Apex compiler:\n{proc.stderr}")
 
-    selected = [b for b in BENCHMARKS if args.bench is None or b.name == args.bench]
+    selected = [
+        b
+        for b in BENCHMARKS
+        if (args.bench is None or b.name == args.bench)
+        and (args.bench is not None or args.include_extreme or b.default_enabled)
+    ]
 
     # Default run includes compile hot+cold and incremental view together.
     if args.bench is None:
@@ -1095,6 +1274,7 @@ def main() -> int:
         "warmup": args.warmup,
         "apex_opt_level": args.apex_opt_level,
         "apex_target": args.apex_target,
+        "apex_timings": args.apex_timings,
         "compile_mode": "mixed" if args.bench is None else args.compile_mode,
         "benchmarks": [],
     }
@@ -1164,15 +1344,18 @@ def main() -> int:
                 compile_mode = "cold"
                 base_name = spec.name[: -len("_cold")]
 
-            if base_name == "compile_project_synthetic_mega_graph":
-                compile_projects = generate_compile_project_synthetic_mega_graph(root, base_name)
+            if "synthetic_mega_graph" in base_name or "extreme_graph" in base_name:
+                compile_projects = generate_compile_project_synthetic_graph(
+                    root, base_name, select_synthetic_graph_config(base_name)
+                )
             else:
                 compile_projects = generate_compile_project_10_files(root, base_name)
-            compile_jobs = make_compile_jobs(root, compile_projects, build_env)
+            compile_jobs = make_compile_jobs(root, compile_projects, build_env, args.apex_timings)
 
             for lang in LANGUAGES:
                 print(f"Compiling {lang}...")
                 job = compile_jobs[lang]
+                apex_timing_samples: List[Dict[str, Dict]] = []
 
                 for _ in range(args.warmup):
                     if compile_mode == "cold":
@@ -1183,7 +1366,10 @@ def main() -> int:
                 for _ in range(args.repeats):
                     if compile_mode == "cold":
                         clean_compile_artifacts(lang, job)
-                    samples.append(timed_compile_with_retry(lang, job))
+                    compile_result = timed_compile_with_retry(lang, job)
+                    samples.append(compile_result.elapsed_s)
+                    if lang == "apex" and args.apex_timings:
+                        apex_timing_samples.append(parse_build_timings(compile_result.stdout))
 
                 # Defensive guard for rare transient linker artifact misses in Apex cold mode.
                 if not Path(job["binary"]).exists():
@@ -1203,6 +1389,10 @@ def main() -> int:
                     "stats": stats,
                     "metric": "compile",
                 }
+                if lang == "apex" and args.apex_timings:
+                    lang_data[lang]["phase_timings"] = summarize_apex_phase_timings(
+                        apex_timing_samples
+                    )
             benchmark_compile_mode = compile_mode
         elif spec.kind == "incremental":
             benchmark_compile_mode = args.compile_mode
@@ -1212,30 +1402,41 @@ def main() -> int:
                 first_samples: List[float] = []
                 second_samples: List[float] = []
                 checksums: List[int] = []
+                apex_first_phase_samples: List[Dict[str, Dict]] = []
+                apex_second_phase_samples: List[Dict[str, Dict]] = []
 
                 cycles = args.warmup + args.repeats
                 for i in range(cycles):
                     cycle_projects = generate_compile_project_10_files(
                         root, spec.name, mutation_profile=mutation_profile
                     )
-                    cycle_jobs = make_compile_jobs(root, cycle_projects, build_env)
+                    cycle_jobs = make_compile_jobs(
+                        root, cycle_projects, build_env, args.apex_timings
+                    )
                     job = cycle_jobs[lang]
 
                     if benchmark_compile_mode == "cold":
                         clean_compile_artifacts(lang, job)
-                    first_elapsed = timed_compile_with_retry(lang, job)
+                    first_result = timed_compile_with_retry(lang, job)
 
                     apply_incremental_source_change(lang, Path(job["mutate_source"]), f"{i}")
-                    second_elapsed = timed_compile_with_retry(lang, job)
+                    second_result = timed_compile_with_retry(lang, job)
 
                     if not Path(job["binary"]).exists():
                         timed_compile_with_retry(lang, job, retries=2)
                     checksum = run_checksum(job["binary"], job["cwd"])
 
                     if i >= args.warmup:
-                        first_samples.append(first_elapsed)
-                        second_samples.append(second_elapsed)
+                        first_samples.append(first_result.elapsed_s)
+                        second_samples.append(second_result.elapsed_s)
                         checksums.append(checksum)
+                        if lang == "apex" and args.apex_timings:
+                            apex_first_phase_samples.append(
+                                parse_build_timings(first_result.stdout)
+                            )
+                            apex_second_phase_samples.append(
+                                parse_build_timings(second_result.stdout)
+                            )
 
                 if len(set(checksums)) != 1:
                     raise RuntimeError(
@@ -1261,6 +1462,13 @@ def main() -> int:
                     "stats": second_stats,
                     "metric": "incremental_compile_second",
                 }
+                if lang == "apex" and args.apex_timings:
+                    lang_data[lang]["phase_timings_first"] = summarize_apex_phase_timings(
+                        apex_first_phase_samples
+                    )
+                    lang_data[lang]["phase_timings_second"] = summarize_apex_phase_timings(
+                        apex_second_phase_samples
+                    )
             phase_one_label = "full compile mean (s)"
             phase_two_label = "rebuild mean (s)"
             ratio_label = "rebuild/full"
@@ -1271,30 +1479,41 @@ def main() -> int:
                 first_samples: List[float] = []
                 second_samples: List[float] = []
                 checksums: List[int] = []
+                apex_first_phase_samples: List[Dict[str, Dict]] = []
+                apex_second_phase_samples: List[Dict[str, Dict]] = []
 
                 cycles = args.warmup + args.repeats
                 for i in range(cycles):
                     cycle_projects = generate_incremental_rebuild_mega_project_10_files(
                         root, spec.name
                     )
-                    cycle_jobs = make_compile_jobs(root, cycle_projects, build_env)
+                    cycle_jobs = make_compile_jobs(
+                        root, cycle_projects, build_env, args.apex_timings
+                    )
                     job = cycle_jobs[lang]
 
                     clean_compile_artifacts(lang, job)
-                    first_elapsed = timed_compile_with_retry(lang, job)
+                    first_result = timed_compile_with_retry(lang, job)
 
                     mutate_sources = [Path(p) for p in job.get("mutate_sources", [])]
                     apply_incremental_source_changes(lang, mutate_sources, f"{i}")
-                    second_elapsed = timed_compile_with_retry(lang, job)
+                    second_result = timed_compile_with_retry(lang, job)
 
                     if not Path(job["binary"]).exists():
                         timed_compile_with_retry(lang, job, retries=2)
                     checksum = run_checksum(job["binary"], job["cwd"])
 
                     if i >= args.warmup:
-                        first_samples.append(first_elapsed)
-                        second_samples.append(second_elapsed)
+                        first_samples.append(first_result.elapsed_s)
+                        second_samples.append(second_result.elapsed_s)
                         checksums.append(checksum)
+                        if lang == "apex" and args.apex_timings:
+                            apex_first_phase_samples.append(
+                                parse_build_timings(first_result.stdout)
+                            )
+                            apex_second_phase_samples.append(
+                                parse_build_timings(second_result.stdout)
+                            )
 
                 if len(set(checksums)) != 1:
                     raise RuntimeError(
@@ -1320,40 +1539,59 @@ def main() -> int:
                     "stats": second_stats,
                     "metric": "incremental_compile_second",
                 }
+                if lang == "apex" and args.apex_timings:
+                    lang_data[lang]["phase_timings_first"] = summarize_apex_phase_timings(
+                        apex_first_phase_samples
+                    )
+                    lang_data[lang]["phase_timings_second"] = summarize_apex_phase_timings(
+                        apex_second_phase_samples
+                    )
             phase_one_label = "cold full build mean (s)"
             phase_two_label = "hot rebuild after 10 edits mean (s)"
             ratio_label = "hot/cold"
-        elif spec.kind == "incremental_batch_synthetic_mega_graph":
+        elif spec.kind in ("incremental_batch_synthetic_mega_graph", "incremental_batch_extreme_graph"):
             benchmark_compile_mode = "cold_then_hot_batch_edit"
+            graph_config = select_synthetic_graph_config(spec.name)
             for lang in LANGUAGES:
-                print(f"Synthetic mega-graph incremental compile {lang}...")
+                print(f"Synthetic graph incremental compile {lang}...")
                 first_samples: List[float] = []
                 second_samples: List[float] = []
                 checksums: List[int] = []
+                apex_first_phase_samples: List[Dict[str, Dict]] = []
+                apex_second_phase_samples: List[Dict[str, Dict]] = []
 
                 cycles = args.warmup + args.repeats
                 for i in range(cycles):
-                    cycle_projects = generate_compile_project_synthetic_mega_graph(
-                        root, spec.name, mutate_count=SYNTHETIC_MEGA_GRAPH_MUTATE_COUNT
+                    cycle_projects = generate_compile_project_synthetic_graph(
+                        root, spec.name, graph_config, mutate_count=graph_config.mutate_count
                     )
-                    cycle_jobs = make_compile_jobs(root, cycle_projects, build_env)
+                    cycle_jobs = make_compile_jobs(
+                        root, cycle_projects, build_env, args.apex_timings
+                    )
                     job = cycle_jobs[lang]
 
                     clean_compile_artifacts(lang, job)
-                    first_elapsed = timed_compile_with_retry(lang, job)
+                    first_result = timed_compile_with_retry(lang, job)
 
                     mutate_sources = [Path(p) for p in job.get("mutate_sources", [])]
                     apply_incremental_source_changes(lang, mutate_sources, f"{i}")
-                    second_elapsed = timed_compile_with_retry(lang, job)
+                    second_result = timed_compile_with_retry(lang, job)
 
                     if not Path(job["binary"]).exists():
                         timed_compile_with_retry(lang, job, retries=2)
                     checksum = run_checksum(job["binary"], job["cwd"])
 
                     if i >= args.warmup:
-                        first_samples.append(first_elapsed)
-                        second_samples.append(second_elapsed)
+                        first_samples.append(first_result.elapsed_s)
+                        second_samples.append(second_result.elapsed_s)
                         checksums.append(checksum)
+                        if lang == "apex" and args.apex_timings:
+                            apex_first_phase_samples.append(
+                                parse_build_timings(first_result.stdout)
+                            )
+                            apex_second_phase_samples.append(
+                                parse_build_timings(second_result.stdout)
+                            )
 
                 if len(set(checksums)) != 1:
                     raise RuntimeError(
@@ -1379,39 +1617,58 @@ def main() -> int:
                     "stats": second_stats,
                     "metric": "incremental_compile_second",
                 }
+                if lang == "apex" and args.apex_timings:
+                    lang_data[lang]["phase_timings_first"] = summarize_apex_phase_timings(
+                        apex_first_phase_samples
+                    )
+                    lang_data[lang]["phase_timings_second"] = summarize_apex_phase_timings(
+                        apex_second_phase_samples
+                    )
             phase_one_label = "cold full build mean (s)"
-            phase_two_label = f"hot rebuild after {SYNTHETIC_MEGA_GRAPH_MUTATE_COUNT} edits mean (s)"
+            phase_two_label = f"hot rebuild after {graph_config.mutate_count} edits mean (s)"
             ratio_label = "hot/cold"
-        elif spec.kind == "incremental_mixed_synthetic_mega_graph":
+        elif spec.kind in ("incremental_mixed_synthetic_mega_graph", "incremental_mixed_extreme_graph"):
             benchmark_compile_mode = "cold_then_hot_mixed_invalidation"
+            graph_config = select_synthetic_graph_config(spec.name)
             for lang in LANGUAGES:
-                print(f"Synthetic mega-graph mixed invalidation compile {lang}...")
+                print(f"Synthetic graph mixed invalidation compile {lang}...")
                 first_samples: List[float] = []
                 second_samples: List[float] = []
                 checksums: List[int] = []
+                apex_first_phase_samples: List[Dict[str, Dict]] = []
+                apex_second_phase_samples: List[Dict[str, Dict]] = []
 
                 cycles = args.warmup + args.repeats
                 for i in range(cycles):
-                    cycle_projects = generate_compile_project_synthetic_mega_graph(
-                        root, spec.name, mutate_count=SYNTHETIC_MEGA_GRAPH_MUTATE_COUNT
+                    cycle_projects = generate_compile_project_synthetic_graph(
+                        root, spec.name, graph_config, mutate_count=graph_config.mutate_count
                     )
-                    cycle_jobs = make_compile_jobs(root, cycle_projects, build_env)
+                    cycle_jobs = make_compile_jobs(
+                        root, cycle_projects, build_env, args.apex_timings
+                    )
                     job = cycle_jobs[lang]
 
                     clean_compile_artifacts(lang, job)
-                    first_elapsed = timed_compile_with_retry(lang, job)
+                    first_result = timed_compile_with_retry(lang, job)
 
                     apply_mixed_invalidation_changes(lang, job, f"{i}")
-                    second_elapsed = timed_compile_with_retry(lang, job)
+                    second_result = timed_compile_with_retry(lang, job)
 
                     if not Path(job["binary"]).exists():
                         timed_compile_with_retry(lang, job, retries=2)
                     checksum = run_checksum(job["binary"], job["cwd"])
 
                     if i >= args.warmup:
-                        first_samples.append(first_elapsed)
-                        second_samples.append(second_elapsed)
+                        first_samples.append(first_result.elapsed_s)
+                        second_samples.append(second_result.elapsed_s)
                         checksums.append(checksum)
+                        if lang == "apex" and args.apex_timings:
+                            apex_first_phase_samples.append(
+                                parse_build_timings(first_result.stdout)
+                            )
+                            apex_second_phase_samples.append(
+                                parse_build_timings(second_result.stdout)
+                            )
 
                 if len(set(checksums)) != 1:
                     raise RuntimeError(
@@ -1437,10 +1694,17 @@ def main() -> int:
                     "stats": second_stats,
                     "metric": "incremental_compile_second",
                 }
+                if lang == "apex" and args.apex_timings:
+                    lang_data[lang]["phase_timings_first"] = summarize_apex_phase_timings(
+                        apex_first_phase_samples
+                    )
+                    lang_data[lang]["phase_timings_second"] = summarize_apex_phase_timings(
+                        apex_second_phase_samples
+                    )
             phase_one_label = "cold full build mean (s)"
             phase_two_label = (
-                f"mixed rebuild mean (leaf {SYNTHETIC_MEGA_GRAPH_MIXED_LEAF_EDITS} + "
-                f"{SYNTHETIC_MEGA_GRAPH_MIXED_GROUP_EDITS} API groups)"
+                f"mixed rebuild mean (leaf {graph_config.mixed_leaf_edits} + "
+                f"{graph_config.mixed_group_edits} API groups)"
             )
             ratio_label = "mixed/cold"
         else:
@@ -1452,18 +1716,35 @@ def main() -> int:
             for lang in LANGUAGES
             if lang != "apex"
         }
+        apex_phase_timing_sections: List[Dict] = []
+        apex_compile_phase_timings = lang_data["apex"].get("phase_timings")
+        if apex_compile_phase_timings:
+            apex_phase_timing_sections.append(
+                {"label": "Apex build phase timings", "phases": apex_compile_phase_timings}
+            )
+        apex_first_phase_timings = lang_data["apex"].get("phase_timings_first")
+        if apex_first_phase_timings:
+            apex_phase_timing_sections.append(
+                {"label": f"Apex {phase_one_label}", "phases": apex_first_phase_timings}
+            )
+        apex_second_phase_timings = lang_data["apex"].get("phase_timings_second")
+        if apex_second_phase_timings:
+            apex_phase_timing_sections.append(
+                {"label": f"Apex {phase_two_label}", "phases": apex_second_phase_timings}
+            )
 
         report["benchmarks"].append(
             {
                 "name": spec.name,
                 "description": spec.description,
                 "kind": spec.kind,
-                "compile_mode": benchmark_compile_mode if spec.kind in ("compile", "incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph") else None,
-                "phase_one_label": phase_one_label if spec.kind in ("incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph") else None,
-                "phase_two_label": phase_two_label if spec.kind in ("incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph") else None,
-                "ratio_label": ratio_label if spec.kind in ("incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph") else None,
+                "compile_mode": benchmark_compile_mode if spec.kind in ("compile", "incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph", "incremental_batch_extreme_graph", "incremental_mixed_extreme_graph") else None,
+                "phase_one_label": phase_one_label if spec.kind in ("incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph", "incremental_batch_extreme_graph", "incremental_mixed_extreme_graph") else None,
+                "phase_two_label": phase_two_label if spec.kind in ("incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph", "incremental_batch_extreme_graph", "incremental_mixed_extreme_graph") else None,
+                "ratio_label": ratio_label if spec.kind in ("incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph", "incremental_batch_extreme_graph", "incremental_mixed_extreme_graph") else None,
                 "languages": lang_data,
                 "speedup_vs_apex": speedups,
+                "apex_phase_timing_sections": apex_phase_timing_sections,
             }
         )
 

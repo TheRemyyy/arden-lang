@@ -583,6 +583,9 @@ impl TypeChecker {
             return None;
         }
         let path = self.import_aliases.get(alias_ident)?;
+        if let Some(canonical) = Self::builtin_exact_import_alias_canonical(path) {
+            return Some(canonical.to_string());
+        }
         if path.ends_with(".*") {
             return None;
         }
@@ -652,6 +655,16 @@ impl TypeChecker {
         match parse_type_source(ty).ok()? {
             Type::Named(name) => Some((name, Vec::new())),
             Type::Generic(name, args) => Some((name, args)),
+            _ => None,
+        }
+    }
+
+    fn builtin_exact_import_alias_canonical(path: &str) -> Option<&'static str> {
+        match path {
+            "Option.Some" => Some("Option__some"),
+            "Option.None" => Some("Option__none"),
+            "Result.Ok" => Some("Result__ok"),
+            "Result.Error" => Some("Result__error"),
             _ => None,
         }
     }
@@ -4407,6 +4420,80 @@ impl TypeChecker {
         }
     }
 
+    fn nominal_function_value_type_source(expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Ident(name) => Some(name.clone()),
+            Expr::Field { .. } => Some(Self::flatten_field_chain(expr)?.join(".")),
+            _ => None,
+        }
+    }
+
+    fn resolve_class_constructor_function_value_type(
+        &mut self,
+        expr: &Expr,
+        explicit_type_args: Option<&[Type]>,
+        expected: Option<&ResolvedType>,
+        span: Span,
+    ) -> Option<ResolvedType> {
+        let mut type_source = Self::nominal_function_value_type_source(expr)?;
+        if let Some(type_args) = explicit_type_args {
+            type_source = format!(
+                "{}<{}>",
+                type_source,
+                type_args
+                    .iter()
+                    .map(Self::format_ast_type_source)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        } else if let Some(ResolvedType::Function(_, ret)) = expected {
+            if let ResolvedType::Class(expected_class_name) = ret.as_ref() {
+                let resolved_base = self.resolve_nominal_reference_name(&type_source)?;
+                if self.class_base_name(expected_class_name) == self.class_base_name(&resolved_base)
+                {
+                    type_source = expected_class_name.clone();
+                }
+            }
+        }
+
+        let scoped_ty = self.resolve_type_source_string(&type_source);
+        let (class_name, class_substitutions) = self.instantiated_class_substitutions(&scoped_ty);
+        let class = self.classes.get(&class_name).cloned()?;
+
+        self.validate_class_type_argument_bounds(&scoped_ty, span.clone(), "Constructor");
+        self.check_class_visibility(&class_name, span.clone());
+
+        let ctor_params = class
+            .constructor
+            .as_ref()
+            .map(|params| {
+                params
+                    .iter()
+                    .map(|(_, ty)| Self::substitute_type_vars(ty, &class_substitutions))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let actual_ty =
+            ResolvedType::Function(ctor_params, Box::new(self.parse_type_string(&scoped_ty)));
+
+        if let Some(expected_ty) = expected {
+            if self.types_compatible(expected_ty, &actual_ty) {
+                return Some(actual_ty);
+            }
+            self.error(
+                format!(
+                    "Type mismatch: expected {}, got {}",
+                    Self::format_resolved_type_for_diagnostic(expected_ty),
+                    Self::format_resolved_type_for_diagnostic(&actual_ty)
+                ),
+                span,
+            );
+            return Some(ResolvedType::Unknown);
+        }
+
+        Some(actual_ty)
+    }
+
     fn is_contextual_static_container_function_value(name: &str) -> bool {
         matches!(
             name,
@@ -4976,6 +5063,23 @@ impl TypeChecker {
         }
         if let Some(expected_ty) = expected {
             if matches!(expected_ty, ResolvedType::Function(_, _)) {
+                if let Expr::GenericFunctionValue { callee, type_args } = expr {
+                    if let Some(actual_ty) = self.resolve_class_constructor_function_value_type(
+                        &callee.node,
+                        Some(type_args),
+                        Some(expected_ty),
+                        span.clone(),
+                    ) {
+                        return actual_ty;
+                    }
+                } else if let Some(actual_ty) = self.resolve_class_constructor_function_value_type(
+                    expr,
+                    None,
+                    Some(expected_ty),
+                    span.clone(),
+                ) {
+                    return actual_ty;
+                }
                 if let Some(name) = self.resolve_contextual_function_value_name(expr) {
                     if self.functions.contains_key(&name) {
                         return self.function_value_type_or_error(&name, span);
@@ -5379,6 +5483,13 @@ impl TypeChecker {
                 } else if let Some(function_name) = self.resolve_function_value_name(name) {
                     let function_name = function_name.to_owned();
                     self.function_value_type_or_error(&function_name, span)
+                } else if let Some(actual_ty) = self.resolve_class_constructor_function_value_type(
+                    expr,
+                    None,
+                    None,
+                    span.clone(),
+                ) {
+                    actual_ty
                 } else {
                     self.error(format!("Undefined variable: {}", name), span);
                     ResolvedType::Unknown
@@ -5436,6 +5547,15 @@ impl TypeChecker {
                             return ResolvedType::Unknown;
                         };
                         self.instantiate_function_value_type(&function_name, &sig, type_args, span)
+                    } else if let Some(actual_ty) = self
+                        .resolve_class_constructor_function_value_type(
+                            expr,
+                            Some(type_args),
+                            None,
+                            span.clone(),
+                        )
+                    {
+                        actual_ty
                     } else {
                         self.error(format!("Undefined variable: {}", name), span);
                         ResolvedType::Unknown
@@ -5806,6 +5926,24 @@ impl TypeChecker {
                 if let Some((base_name, explicit_type_args)) =
                     Self::parse_construct_nominal_type_source(ty)
                 {
+                    if let Some(canonical_name) = self
+                        .resolve_import_alias_symbol(&base_name)
+                        .filter(|name| Self::builtin_function_value_type(name).is_some())
+                    {
+                        if !explicit_type_args.is_empty() {
+                            self.error(
+                                format!(
+                                    "Built-in function '{}' does not accept type arguments",
+                                    canonical_name.replace("__", ".")
+                                ),
+                                span.clone(),
+                            );
+                            return ResolvedType::Unknown;
+                        }
+                        return self
+                            .check_builtin_call(&canonical_name, args, span.clone())
+                            .unwrap_or(ResolvedType::Unknown);
+                    }
                     if let Some((enum_name, variant_name)) =
                         self.resolve_import_alias_variant(&base_name)
                     {
@@ -6701,7 +6839,13 @@ impl TypeChecker {
             _ => None,
         };
         let aliased_variant_call = match callee {
-            Expr::Ident(name) => self.resolve_import_alias_variant(name),
+            Expr::Ident(name)
+                if canonical_ident_call.as_deref().is_none_or(|resolved| {
+                    Self::builtin_function_value_type(resolved).is_none()
+                }) =>
+            {
+                self.resolve_import_alias_variant(name)
+            }
             _ => None,
         };
 
