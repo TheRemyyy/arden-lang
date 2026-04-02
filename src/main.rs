@@ -636,6 +636,23 @@ struct TypecheckSummaryFileEntry {
     component_fingerprint: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SymbolLookupResolution {
+    owner_namespace: String,
+    symbol_name: String,
+    owner_file: PathBuf,
+}
+
+type ExactSymbolLookup = HashMap<String, Option<SymbolLookupResolution>>;
+type WildcardMemberLookup =
+    HashMap<String, HashMap<String, Option<SymbolLookupResolution>>>;
+
+#[derive(Debug, Clone)]
+struct ProjectSymbolLookup {
+    exact: ExactSymbolLookup,
+    wildcard_members: WildcardMemberLookup,
+}
+
 struct BuildTimingPhase {
     label: String,
     ms: f64,
@@ -1678,88 +1695,25 @@ fn extend_declaration_symbols_for_reference(
 fn resolve_exact_imported_symbol_file<'a>(
     namespace_path: &str,
     symbol_name: &str,
-    global_symbol_map: &HashMap<String, String>,
-    global_symbol_file_map: &'a HashMap<String, PathBuf>,
+    symbol_lookup: &'a ProjectSymbolLookup,
 ) -> Option<(String, String, &'a PathBuf)> {
-    if global_symbol_map
-        .get(symbol_name)
-        .is_some_and(|owner_ns| owner_ns == namespace_path)
-    {
-        return global_symbol_file_map
-            .get(symbol_name)
-            .map(|file| (namespace_path.to_string(), symbol_name.to_string(), file));
-    }
-
-    let full_path = format!("{}.{}", namespace_path, symbol_name);
-    let mut matches = global_symbol_map
-        .iter()
-        .filter_map(|(candidate, owner_ns)| {
-            let candidate_path = format!("{}.{}", owner_ns, candidate.replace("__", "."));
-            (candidate_path == full_path).then(|| {
-                global_symbol_file_map
-                    .get(candidate)
-                    .map(|file| (owner_ns.clone(), candidate.clone(), file))
-            })?
-        })
-        .collect::<Vec<_>>();
-    matches.sort_unstable_by(|a, b| a.1.cmp(&b.1));
-    matches.dedup_by(|a, b| a.0 == b.0 && a.1 == b.1);
-    (matches.len() == 1).then(|| matches.swap_remove(0))
+    let full_path = qualified_symbol_path(namespace_path, symbol_name);
+    exact_symbol_resolution(symbol_lookup, &full_path).map(|resolution| {
+        (
+            resolution.owner_namespace.clone(),
+            resolution.symbol_name.clone(),
+            &resolution.owner_file,
+        )
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
 fn resolve_exact_imported_symbol_owner<'a>(
     namespace_path: &str,
     symbol_name: &str,
-    global_function_map: &HashMap<String, String>,
-    global_function_file_map: &'a HashMap<String, PathBuf>,
-    global_class_map: &HashMap<String, String>,
-    global_class_file_map: &'a HashMap<String, PathBuf>,
-    global_interface_map: &HashMap<String, String>,
-    global_interface_file_map: &'a HashMap<String, PathBuf>,
-    global_enum_map: &HashMap<String, String>,
-    global_enum_file_map: &'a HashMap<String, PathBuf>,
-    global_module_map: &HashMap<String, String>,
-    global_module_file_map: &'a HashMap<String, PathBuf>,
+    symbol_lookup: &'a ProjectSymbolLookup,
 ) -> Option<(String, String, &'a PathBuf)> {
-    resolve_exact_imported_symbol_file(
-        namespace_path,
-        symbol_name,
-        global_function_map,
-        global_function_file_map,
-    )
-    .or_else(|| {
-        resolve_exact_imported_symbol_file(
-            namespace_path,
-            symbol_name,
-            global_class_map,
-            global_class_file_map,
-        )
-    })
-    .or_else(|| {
-        resolve_exact_imported_symbol_file(
-            namespace_path,
-            symbol_name,
-            global_interface_map,
-            global_interface_file_map,
-        )
-    })
-    .or_else(|| {
-        resolve_exact_imported_symbol_file(
-            namespace_path,
-            symbol_name,
-            global_enum_map,
-            global_enum_file_map,
-        )
-    })
-    .or_else(|| {
-        resolve_exact_imported_symbol_file(
-            namespace_path,
-            symbol_name,
-            global_module_map,
-            global_module_file_map,
-        )
-    })
+    resolve_exact_imported_symbol_file(namespace_path, symbol_name, symbol_lookup)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1769,6 +1723,7 @@ fn extend_declaration_symbols_for_exact_import(
     declaration_symbols: &mut HashSet<String>,
     stack: &mut Vec<PathBuf>,
     closure_files: &HashSet<PathBuf>,
+    symbol_lookup: &ProjectSymbolLookup,
     global_function_map: &HashMap<String, String>,
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
@@ -1787,16 +1742,7 @@ fn extend_declaration_symbols_for_exact_import(
     if let Some((owner_ns, symbol_name, owner_file)) = resolve_exact_imported_symbol_owner(
         namespace,
         symbol,
-        global_function_map,
-        global_function_file_map,
-        global_class_map,
-        global_class_file_map,
-        global_interface_map,
-        global_interface_file_map,
-        global_enum_map,
-        global_enum_file_map,
-        global_module_map,
-        global_module_file_map,
+        symbol_lookup,
     ) {
         if closure_files.contains(owner_file) {
             declaration_symbols.insert(mangle_project_symbol_for_codegen(
@@ -1813,8 +1759,7 @@ fn extend_declaration_symbols_for_exact_import(
         if let Some((owner_ns, resolved_enum_name, owner_file)) = resolve_exact_imported_symbol_file(
             enum_namespace,
             enum_name,
-            global_enum_map,
-            global_enum_file_map,
+            symbol_lookup,
         ) {
             if closure_files.contains(owner_file) {
                 declaration_symbols.insert(mangle_project_symbol_for_codegen(
@@ -1884,6 +1829,7 @@ fn declaration_symbols_for_unit(
     forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
     reference_metadata: &HashMap<PathBuf, CodegenReferenceMetadata>,
     entry_namespace: &str,
+    symbol_lookup: &ProjectSymbolLookup,
     global_function_map: &HashMap<String, String>,
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
@@ -1948,11 +1894,7 @@ fn declaration_symbols_for_unit(
                     if let Some((owner_ns, candidate)) = resolve_symbol_in_namespace_path(
                         namespace,
                         std::slice::from_ref(symbol),
-                        global_function_map,
-                        global_class_map,
-                        global_interface_map,
-                        global_enum_map,
-                        global_module_map,
+                        symbol_lookup,
                     ) {
                         let owner_file = global_function_file_map
                             .get(&candidate)
@@ -1990,6 +1932,7 @@ fn declaration_symbols_for_unit(
                 &mut declaration_symbols,
                 &mut stack,
                 &closure_files,
+                symbol_lookup,
                 global_function_map,
                 global_function_file_map,
                 global_class_map,
@@ -2018,11 +1961,7 @@ fn declaration_symbols_for_unit(
                     if let Some((owner_ns, candidate)) = resolve_symbol_in_namespace_path(
                         &import.path,
                         rest,
-                        global_function_map,
-                        global_class_map,
-                        global_interface_map,
-                        global_enum_map,
-                        global_module_map,
+                        symbol_lookup,
                     ) {
                         let owner_file = global_function_file_map
                             .get(&candidate)
@@ -2609,79 +2548,191 @@ fn hash_file_api_fingerprint(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn import_path_owner_file<'a>(
-    path: &str,
-    global_function_map: &HashMap<String, String>,
-    global_function_file_map: &'a HashMap<String, PathBuf>,
-    global_class_map: &HashMap<String, String>,
-    global_class_file_map: &'a HashMap<String, PathBuf>,
-    global_interface_map: &HashMap<String, String>,
-    global_interface_file_map: &'a HashMap<String, PathBuf>,
-    global_enum_map: &HashMap<String, String>,
-    global_enum_file_map: &'a HashMap<String, PathBuf>,
-    global_module_map: &HashMap<String, String>,
-    global_module_file_map: &'a HashMap<String, PathBuf>,
-) -> Option<&'a PathBuf> {
-    let (namespace, symbol) = path.rsplit_once('.')?;
+fn qualified_symbol_path(namespace: &str, symbol_name: &str) -> String {
+    if namespace.is_empty() {
+        symbol_name.replace("__", ".")
+    } else {
+        format!("{}.{}", namespace, symbol_name.replace("__", "."))
+    }
+}
 
-    if let Some((_, _, owner_file)) = resolve_exact_imported_symbol_owner(
-        namespace,
-        symbol,
-        global_function_map,
-        global_function_file_map,
-        global_class_map,
-        global_class_file_map,
-        global_interface_map,
-        global_interface_file_map,
-        global_enum_map,
-        global_enum_file_map,
-        global_module_map,
-        global_module_file_map,
-    ) {
-        return Some(owner_file);
+fn qualified_symbol_path_for_parts(namespace: &str, member_parts: &[String]) -> Option<String> {
+    if member_parts.is_empty() {
+        return None;
     }
 
-    if let Some((enum_namespace, enum_name)) = namespace.rsplit_once('.') {
-        if let Some((_, _, owner_file)) = resolve_exact_imported_symbol_file(
-            enum_namespace,
-            enum_name,
-            global_enum_map,
-            global_enum_file_map,
-        ) {
-            return Some(owner_file);
+    Some(if namespace.is_empty() {
+        member_parts.join(".")
+    } else {
+        format!("{}.{}", namespace, member_parts.join("."))
+    })
+}
+
+fn wildcard_member_import_path(owner_namespace: &str, symbol_name: &str) -> (String, String) {
+    let mut parts = symbol_name.split("__").collect::<Vec<_>>();
+    if parts.len() == 1 {
+        return (owner_namespace.to_string(), symbol_name.to_string());
+    }
+
+    let member_name = parts.pop().unwrap_or_default().to_string();
+    let import_namespace = format!("{}.{}", owner_namespace, parts.join("."));
+    (import_namespace, member_name)
+}
+
+fn insert_lookup_resolution(
+    target: &mut HashMap<String, Option<SymbolLookupResolution>>,
+    key: String,
+    resolution: SymbolLookupResolution,
+) {
+    match target.entry(key) {
+        std::collections::hash_map::Entry::Vacant(entry) => {
+            entry.insert(Some(resolution));
+        }
+        std::collections::hash_map::Entry::Occupied(mut entry) => {
+            let unchanged = entry.get().as_ref().is_some_and(|current| current == &resolution);
+            if !unchanged {
+                entry.insert(None);
+            }
+        }
+    }
+}
+
+fn insert_symbol_lookup_entry(
+    exact_lookup: &mut ExactSymbolLookup,
+    wildcard_lookup: &mut WildcardMemberLookup,
+    owner_namespace: &str,
+    symbol_name: &str,
+    owner_file: &Path,
+) {
+    let resolution = SymbolLookupResolution {
+        owner_namespace: owner_namespace.to_string(),
+        symbol_name: symbol_name.to_string(),
+        owner_file: owner_file.to_path_buf(),
+    };
+    insert_lookup_resolution(
+        exact_lookup,
+        qualified_symbol_path(owner_namespace, symbol_name),
+        resolution.clone(),
+    );
+
+    let (import_namespace, member_name) =
+        wildcard_member_import_path(owner_namespace, symbol_name);
+    insert_lookup_resolution(
+        wildcard_lookup.entry(import_namespace).or_default(),
+        member_name,
+        resolution,
+    );
+}
+
+fn build_project_symbol_lookup(
+    global_function_map: &HashMap<String, String>,
+    global_function_file_map: &HashMap<String, PathBuf>,
+    global_class_map: &HashMap<String, String>,
+    global_class_file_map: &HashMap<String, PathBuf>,
+    global_interface_map: &HashMap<String, String>,
+    global_interface_file_map: &HashMap<String, PathBuf>,
+    global_enum_map: &HashMap<String, String>,
+    global_enum_file_map: &HashMap<String, PathBuf>,
+    global_module_map: &HashMap<String, String>,
+    global_module_file_map: &HashMap<String, PathBuf>,
+) -> ProjectSymbolLookup {
+    let mut exact = HashMap::new();
+    let mut wildcard_members = HashMap::new();
+
+    for (symbol_name, owner_namespace) in global_function_map {
+        if let Some(owner_file) = global_function_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
+        }
+    }
+    for (symbol_name, owner_namespace) in global_class_map {
+        if let Some(owner_file) = global_class_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
+        }
+    }
+    for (symbol_name, owner_namespace) in global_interface_map {
+        if let Some(owner_file) = global_interface_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
+        }
+    }
+    for (symbol_name, owner_namespace) in global_enum_map {
+        if let Some(owner_file) = global_enum_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
+        }
+    }
+    for (symbol_name, owner_namespace) in global_module_map {
+        if let Some(owner_file) = global_module_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
         }
     }
 
-    if global_function_map
-        .get(symbol)
-        .is_some_and(|owner_ns| owner_ns == namespace)
-    {
-        return global_function_file_map.get(symbol);
+    ProjectSymbolLookup {
+        exact,
+        wildcard_members,
     }
-    if global_class_map
-        .get(symbol)
-        .is_some_and(|owner_ns| owner_ns == namespace)
-    {
-        return global_class_file_map.get(symbol);
+}
+
+fn exact_symbol_resolution<'a>(
+    lookup: &'a ProjectSymbolLookup,
+    qualified_path: &str,
+) -> Option<&'a SymbolLookupResolution> {
+    lookup.exact.get(qualified_path).and_then(Option::as_ref)
+}
+
+fn wildcard_symbol_resolution<'a>(
+    lookup: &'a ProjectSymbolLookup,
+    import_namespace: &str,
+    member_name: &str,
+) -> Option<&'a SymbolLookupResolution> {
+    lookup
+        .wildcard_members
+        .get(import_namespace)
+        .and_then(|members| members.get(member_name))
+        .and_then(Option::as_ref)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn import_path_owner_file<'a>(
+    path: &str,
+    symbol_lookup: &'a ProjectSymbolLookup,
+) -> Option<&'a PathBuf> {
+    if let Some(resolution) = exact_symbol_resolution(symbol_lookup, path) {
+        return Some(&resolution.owner_file);
     }
-    if global_enum_map
-        .get(symbol)
-        .is_some_and(|owner_ns| owner_ns == namespace)
-    {
-        return global_enum_file_map.get(symbol);
-    }
-    if global_interface_map
-        .get(symbol)
-        .is_some_and(|owner_ns| owner_ns == namespace)
-    {
-        return global_interface_file_map.get(symbol);
-    }
-    if global_module_map
-        .get(symbol)
-        .is_some_and(|owner_ns| owner_ns == namespace)
-    {
-        return global_module_file_map.get(symbol);
+
+    if let Some((enum_path, _)) = path.rsplit_once('.') {
+        if let Some(resolution) = exact_symbol_resolution(symbol_lookup, enum_path) {
+            return Some(&resolution.owner_file);
+        }
     }
 
     None
@@ -2707,6 +2758,7 @@ struct RewriteFingerprintContext<'a> {
     global_module_file_map: &'a HashMap<String, PathBuf>,
     namespace_api_fingerprints: &'a HashMap<String, String>,
     file_api_fingerprints: &'a HashMap<PathBuf, String>,
+    symbol_lookup: Arc<ProjectSymbolLookup>,
 }
 
 struct DependencyResolutionContext<'a> {
@@ -2725,6 +2777,7 @@ struct DependencyResolutionContext<'a> {
     global_enum_file_map: &'a HashMap<String, PathBuf>,
     global_module_map: &'a HashMap<String, String>,
     global_module_file_map: &'a HashMap<String, PathBuf>,
+    symbol_lookup: Arc<ProjectSymbolLookup>,
 }
 
 fn import_lookup_key(import: &ImportDecl) -> String {
@@ -2738,145 +2791,54 @@ fn import_lookup_key(import: &ImportDecl) -> String {
 fn resolve_function_file_in_namespace_path(
     namespace_path: &str,
     member_parts: &[String],
-    global_function_map: &HashMap<String, String>,
-    global_function_file_map: &HashMap<String, PathBuf>,
+    symbol_lookup: &ProjectSymbolLookup,
 ) -> Option<PathBuf> {
-    if member_parts.is_empty() {
-        return None;
-    }
-
-    let function_name = member_parts.last().expect("checked non-empty");
-    let module_tail = if member_parts.len() > 1 {
-        Some(member_parts[..member_parts.len() - 1].join("__"))
-    } else {
-        None
-    };
-
-    let mut owner_namespaces: HashSet<&str> = HashSet::new();
-    owner_namespaces.extend(global_function_map.values().map(String::as_str));
-
-    for owner_ns in owner_namespaces {
-        let imported_module_prefix = if namespace_path == owner_ns {
-            String::new()
-        } else if let Some(suffix) = namespace_path.strip_prefix(owner_ns) {
-            if let Some(rest) = suffix.strip_prefix('.') {
-                rest.replace('.', "__")
-            } else {
-                continue;
-            }
-        } else {
-            continue;
-        };
-
-        let candidate = match (&*imported_module_prefix, module_tail.as_deref()) {
-            ("", None) => function_name.clone(),
-            ("", Some(tail)) => format!("{}__{}", tail, function_name),
-            (prefix, None) => format!("{}__{}", prefix, function_name),
-            (prefix, Some(tail)) => format!("{}__{}__{}", prefix, tail, function_name),
-        };
-
-        if global_function_map
-            .get(&candidate)
-            .is_some_and(|owner| owner == owner_ns)
+    if member_parts.len() == 1 {
+        if let Some(resolution) =
+            wildcard_symbol_resolution(symbol_lookup, namespace_path, &member_parts[0])
         {
-            if let Some(file) = global_function_file_map.get(&candidate) {
-                return Some(file.clone());
-            }
+            return Some(resolution.owner_file.clone());
         }
     }
 
-    None
+    let qualified_path = qualified_symbol_path_for_parts(namespace_path, member_parts)?;
+    exact_symbol_resolution(symbol_lookup, &qualified_path).map(|resolution| resolution.owner_file.clone())
 }
 
 fn resolve_function_symbol_in_namespace_path(
     namespace_path: &str,
     member_parts: &[String],
-    global_function_map: &HashMap<String, String>,
+    symbol_lookup: &ProjectSymbolLookup,
 ) -> Option<(String, String)> {
-    if member_parts.is_empty() {
-        return None;
-    }
-
-    let function_name = member_parts.last().expect("checked non-empty");
-    let module_tail = if member_parts.len() > 1 {
-        Some(member_parts[..member_parts.len() - 1].join("__"))
-    } else {
-        None
-    };
-
-    let mut owner_namespaces: HashSet<&str> = HashSet::new();
-    owner_namespaces.extend(global_function_map.values().map(String::as_str));
-
-    for owner_ns in owner_namespaces {
-        let imported_module_prefix = if namespace_path == owner_ns {
-            String::new()
-        } else if let Some(suffix) = namespace_path.strip_prefix(owner_ns) {
-            if let Some(rest) = suffix.strip_prefix('.') {
-                rest.replace('.', "__")
-            } else {
-                continue;
-            }
-        } else {
-            continue;
-        };
-
-        let candidate = match (&*imported_module_prefix, module_tail.as_deref()) {
-            ("", None) => function_name.clone(),
-            ("", Some(tail)) => format!("{}__{}", tail, function_name),
-            (prefix, None) => format!("{}__{}", prefix, function_name),
-            (prefix, Some(tail)) => format!("{}__{}__{}", prefix, tail, function_name),
-        };
-
-        if global_function_map
-            .get(&candidate)
-            .is_some_and(|owner| owner == owner_ns)
+    if member_parts.len() == 1 {
+        if let Some(resolution) =
+            wildcard_symbol_resolution(symbol_lookup, namespace_path, &member_parts[0])
         {
-            return Some((owner_ns.to_string(), candidate));
+            return Some((
+                resolution.owner_namespace.clone(),
+                resolution.symbol_name.clone(),
+            ));
         }
     }
 
-    None
+    let qualified_path = qualified_symbol_path_for_parts(namespace_path, member_parts)?;
+    exact_symbol_resolution(symbol_lookup, &qualified_path).map(|resolution| {
+        (
+            resolution.owner_namespace.clone(),
+            resolution.symbol_name.clone(),
+        )
+    })
 }
 
 fn resolve_symbol_in_namespace_path(
     namespace_path: &str,
     member_parts: &[String],
-    global_function_map: &HashMap<String, String>,
-    global_class_map: &HashMap<String, String>,
-    global_interface_map: &HashMap<String, String>,
-    global_enum_map: &HashMap<String, String>,
-    global_module_map: &HashMap<String, String>,
+    symbol_lookup: &ProjectSymbolLookup,
 ) -> Option<(String, String)> {
     if let Some(found) =
-        resolve_function_symbol_in_namespace_path(namespace_path, member_parts, global_function_map)
+        resolve_function_symbol_in_namespace_path(namespace_path, member_parts, symbol_lookup)
     {
         return Some(found);
-    }
-
-    if member_parts.is_empty() {
-        return None;
-    }
-
-    let candidate = member_parts.join("__");
-    if let Some(owner_ns) = global_class_map.get(&candidate) {
-        if owner_ns == namespace_path {
-            return Some((owner_ns.clone(), candidate));
-        }
-    }
-    if let Some(owner_ns) = global_interface_map.get(&candidate) {
-        if owner_ns == namespace_path {
-            return Some((owner_ns.clone(), candidate));
-        }
-    }
-    if let Some(owner_ns) = global_enum_map.get(&candidate) {
-        if owner_ns == namespace_path {
-            return Some((owner_ns.clone(), candidate));
-        }
-    }
-    if let Some(owner_ns) = global_module_map.get(&candidate) {
-        if owner_ns == namespace_path {
-            return Some((owner_ns.clone(), candidate));
-        }
     }
 
     None
@@ -2886,57 +2848,9 @@ fn resolve_symbol_in_namespace_path(
 fn resolve_owner_file_in_namespace_path(
     namespace_path: &str,
     member_parts: &[String],
-    global_function_map: &HashMap<String, String>,
-    global_function_file_map: &HashMap<String, PathBuf>,
-    global_class_map: &HashMap<String, String>,
-    global_class_file_map: &HashMap<String, PathBuf>,
-    global_interface_map: &HashMap<String, String>,
-    global_interface_file_map: &HashMap<String, PathBuf>,
-    global_enum_map: &HashMap<String, String>,
-    global_enum_file_map: &HashMap<String, PathBuf>,
-    global_module_map: &HashMap<String, String>,
-    global_module_file_map: &HashMap<String, PathBuf>,
+    symbol_lookup: &ProjectSymbolLookup,
 ) -> Option<PathBuf> {
-    if let Some(file) = resolve_function_file_in_namespace_path(
-        namespace_path,
-        member_parts,
-        global_function_map,
-        global_function_file_map,
-    ) {
-        return Some(file);
-    }
-
-    if member_parts.is_empty() {
-        return None;
-    }
-
-    let candidate = member_parts.join("__");
-    if global_class_map
-        .get(&candidate)
-        .is_some_and(|owner_ns| owner_ns == namespace_path)
-    {
-        return global_class_file_map.get(&candidate).cloned();
-    }
-    if global_interface_map
-        .get(&candidate)
-        .is_some_and(|owner_ns| owner_ns == namespace_path)
-    {
-        return global_interface_file_map.get(&candidate).cloned();
-    }
-    if global_enum_map
-        .get(&candidate)
-        .is_some_and(|owner_ns| owner_ns == namespace_path)
-    {
-        return global_enum_file_map.get(&candidate).cloned();
-    }
-    if global_module_map
-        .get(&candidate)
-        .is_some_and(|owner_ns| owner_ns == namespace_path)
-    {
-        return global_module_file_map.get(&candidate).cloned();
-    }
-
-    None
+    resolve_function_file_in_namespace_path(namespace_path, member_parts, symbol_lookup)
 }
 
 fn resolve_symbol_owner_files_in_namespace(
@@ -2958,16 +2872,7 @@ fn resolve_symbol_owner_files_in_namespace(
         if let Some(file) = resolve_owner_file_in_namespace_path(
             namespace,
             std::slice::from_ref(symbol),
-            ctx.global_function_map,
-            ctx.global_function_file_map,
-            ctx.global_class_map,
-            ctx.global_class_file_map,
-            ctx.global_interface_map,
-            ctx.global_interface_file_map,
-            ctx.global_enum_map,
-            ctx.global_enum_file_map,
-            ctx.global_module_map,
-            ctx.global_module_file_map,
+            ctx.symbol_lookup.as_ref(),
         ) {
             deps.insert(file);
         }
@@ -2986,16 +2891,7 @@ fn resolve_symbol_owner_files_in_namespace(
         if let Some(file) = resolve_owner_file_in_namespace_path(
             namespace,
             path,
-            ctx.global_function_map,
-            ctx.global_function_file_map,
-            ctx.global_class_map,
-            ctx.global_class_file_map,
-            ctx.global_interface_map,
-            ctx.global_interface_file_map,
-            ctx.global_enum_map,
-            ctx.global_enum_file_map,
-            ctx.global_module_map,
-            ctx.global_module_file_map,
+            ctx.symbol_lookup.as_ref(),
         ) {
             deps.insert(file);
         }
@@ -3080,16 +2976,7 @@ fn resolve_import_dependency_files(
     let exact_started_at = Instant::now();
     if let Some(owner_file) = import_path_owner_file(
         &import.path,
-        ctx.global_function_map,
-        ctx.global_function_file_map,
-        ctx.global_class_map,
-        ctx.global_class_file_map,
-        ctx.global_interface_map,
-        ctx.global_interface_file_map,
-        ctx.global_enum_map,
-        ctx.global_enum_file_map,
-        ctx.global_module_map,
-        ctx.global_module_file_map,
+        ctx.symbol_lookup.as_ref(),
     ) {
         if let Some(timings) = timings {
             timings.import_exact_count.fetch_add(1, Ordering::Relaxed);
@@ -3130,16 +3017,7 @@ fn resolve_import_dependency_files(
                 if let Some(file) = resolve_owner_file_in_namespace_path(
                     &import.path,
                     rest,
-                    ctx.global_function_map,
-                    ctx.global_function_file_map,
-                    ctx.global_class_map,
-                    ctx.global_class_file_map,
-                    ctx.global_interface_map,
-                    ctx.global_interface_file_map,
-                    ctx.global_enum_map,
-                    ctx.global_enum_file_map,
-                    ctx.global_module_map,
-                    ctx.global_module_file_map,
+                    ctx.symbol_lookup.as_ref(),
                 ) {
                     deps.insert(file);
                 }
@@ -3954,7 +3832,7 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
     let empty_namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let empty_namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let empty_namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let dependency_ctx = DependencyResolutionContext {
+        let dependency_ctx = DependencyResolutionContext {
         namespace_files_map: &empty_namespace_files_map,
         namespace_function_files: &empty_namespace_function_files,
         namespace_class_files: &empty_namespace_class_files,
@@ -3970,6 +3848,7 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
         global_enum_file_map: ctx.global_enum_file_map,
         global_module_map: ctx.global_module_map,
         global_module_file_map: ctx.global_module_file_map,
+        symbol_lookup: Arc::clone(&ctx.symbol_lookup),
     };
 
     for import in &unit.imports {
@@ -4036,16 +3915,7 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
                     if let Some(owner_file) = resolve_owner_file_in_namespace_path(
                         &import.path,
                         rest,
-                        ctx.global_function_map,
-                        ctx.global_function_file_map,
-                        ctx.global_class_map,
-                        ctx.global_class_file_map,
-                        ctx.global_interface_map,
-                        ctx.global_interface_file_map,
-                        ctx.global_enum_map,
-                        ctx.global_enum_file_map,
-                        ctx.global_module_map,
-                        ctx.global_module_file_map,
+                        ctx.symbol_lookup.as_ref(),
                     ) {
                         matched_owner_files.insert(owner_file);
                     }
@@ -4091,16 +3961,7 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
         let exact_import_started_at = Instant::now();
         if let Some(owner_file) = import_path_owner_file(
             &import.path,
-            ctx.global_function_map,
-            ctx.global_function_file_map,
-            ctx.global_class_map,
-            ctx.global_class_file_map,
-            ctx.global_interface_map,
-            ctx.global_interface_file_map,
-            ctx.global_enum_map,
-            ctx.global_enum_file_map,
-            ctx.global_module_map,
-            ctx.global_module_file_map,
+            ctx.symbol_lookup.as_ref(),
         ) {
             hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
             if let Some(timings) = timings {
@@ -5670,6 +5531,19 @@ fn build_project(
         files.dedup();
     }
 
+    let project_symbol_lookup = build_project_symbol_lookup(
+        &global_function_map,
+        &global_function_file_map,
+        &global_class_map,
+        &global_class_file_map,
+        &global_interface_map,
+        &global_interface_file_map,
+        &global_enum_map,
+        &global_enum_file_map,
+        &global_module_map,
+        &global_module_file_map,
+    );
+
     let dependency_resolution_ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
         namespace_function_files: &namespace_function_files,
@@ -5686,6 +5560,7 @@ fn build_project(
         global_enum_file_map: &global_enum_file_map,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
+        symbol_lookup: Arc::new(project_symbol_lookup.clone()),
     };
     let dependency_graph_timing_totals = Arc::new(DependencyGraphTimingTotals::default());
     let (file_dependency_graph, dependency_graph_cache_hits) =
@@ -6063,6 +5938,7 @@ fn build_project(
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
         file_api_fingerprints: &file_api_fingerprints,
+        symbol_lookup: Arc::new(project_symbol_lookup.clone()),
     };
 
     // Phase 2: Check imports for each file
@@ -6946,6 +6822,7 @@ fn build_project(
                             &file_dependency_graph,
                             &codegen_reference_metadata,
                             &entry_namespace,
+                            &project_symbol_lookup,
                             &global_function_map,
                             &global_function_file_map,
                             &global_class_map,
@@ -7160,6 +7037,10 @@ fn build_project(
         build_timings.record_duration_ns(
             "object codegen/write object to vec",
             object_write_timings.memory_buffer_to_vec_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object direct file emit",
+            object_write_timings.direct_write_to_file_ns,
         );
         build_timings.record_duration_ns(
             "object codegen/write object fs write",
@@ -8955,11 +8836,12 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
 mod tests {
     use super::{
         api_program_fingerprint, build_file_dependency_graph_incremental, build_project,
-        build_reverse_dependency_graph, check_command, check_file, codegen_program_for_unit,
-        compile_file, compile_source, component_fingerprint, compute_link_fingerprint,
-        compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
-        dedupe_link_inputs, escape_response_file_arg, find_test_files, fix_target, format_targets,
-        lex_file, lint_target, load_cached_fingerprint, load_link_manifest_cache,
+        build_project_symbol_lookup, build_reverse_dependency_graph, check_command, check_file,
+        codegen_program_for_unit, compile_file, compile_source, component_fingerprint,
+        compute_link_fingerprint, compute_namespace_api_fingerprints,
+        compute_rewrite_context_fingerprint_for_unit, dedupe_link_inputs,
+        escape_response_file_arg, find_test_files, fix_target, format_targets, lex_file,
+        lint_target, load_cached_fingerprint, load_link_manifest_cache,
         load_semantic_cached_fingerprint, new_project, parse_file, parse_project_unit,
         precompute_all_transitive_dependencies, read_cache_blob, reusable_component_fingerprints,
         run_project, run_tests, semantic_program_fingerprint, should_skip_final_link,
@@ -8982,7 +8864,7 @@ mod tests {
     use std::os::unix::ffi::OsStringExt;
     use std::path::Path;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::{Arc, Mutex, OnceLock};
     use std::thread;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -9051,6 +8933,18 @@ mod tests {
         let namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
         let global_interface_map: HashMap<String, String> = HashMap::new();
         let global_interface_file_map: HashMap<String, PathBuf> = HashMap::new();
+        let symbol_lookup = Arc::new(build_project_symbol_lookup(
+            &global_function_map,
+            &global_function_file_map,
+            &global_class_map,
+            &global_class_file_map,
+            &global_interface_map,
+            &global_interface_file_map,
+            &global_enum_map,
+            &global_enum_file_map,
+            &global_module_map,
+            &global_module_file_map,
+        ));
         let rewrite_ctx = RewriteFingerprintContext {
             namespace_functions: &namespace_functions,
             namespace_function_files: &namespace_function_files,
@@ -9071,6 +8965,7 @@ mod tests {
             global_module_file_map: &global_module_file_map,
             namespace_api_fingerprints: &namespace_api_fingerprints,
             file_api_fingerprints: &file_api_fingerprints,
+            symbol_lookup: Arc::clone(&symbol_lookup),
         };
         let target_unit = parsed_files
             .iter()
@@ -14522,6 +14417,18 @@ function main(): Integer {
             }
         }
 
+        let symbol_lookup = Arc::new(build_project_symbol_lookup(
+            &global_function_map,
+            &global_function_file_map,
+            &global_class_map,
+            &global_class_file_map,
+            empty_global_interface_map(),
+            empty_global_interface_file_map(),
+            &global_enum_map,
+            &global_enum_file_map,
+            &global_module_map,
+            &global_module_file_map,
+        ));
         let ctx = DependencyResolutionContext {
             namespace_files_map: &namespace_files_map,
             namespace_function_files: &namespace_function_files,
@@ -14538,6 +14445,7 @@ function main(): Integer {
             global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
             global_module_file_map: &global_module_file_map,
+            symbol_lookup: Arc::clone(&symbol_lookup),
         };
 
         let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -35687,6 +35595,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map_before,
             namespace_api_fingerprints: &namespace_api_fingerprints_before,
             file_api_fingerprints: &file_api_fingerprints_before,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map_before,
+                &global_function_file_map_before,
+                &global_class_map_before,
+                &global_class_file_map_before,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map_before,
+                &global_enum_file_map_before,
+                &global_module_map_before,
+                &global_module_file_map_before,
+            )),
         };
         let main_before = parsed_before
             .iter()
@@ -35772,6 +35692,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map,
             namespace_api_fingerprints: &namespace_api_fingerprints,
             file_api_fingerprints: &file_api_fingerprints,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map,
+                &global_function_file_map,
+                &global_class_map,
+                &global_class_file_map,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map,
+                &global_enum_file_map,
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
         let main_unit = parsed_files
             .iter()
@@ -35878,6 +35810,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map_before,
             namespace_api_fingerprints: &namespace_api_fingerprints_before,
             file_api_fingerprints: &file_api_fingerprints_before,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map_before,
+                &global_function_file_map_before,
+                &global_class_map_before,
+                &global_class_file_map_before,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map_before,
+                &global_enum_file_map_before,
+                &global_module_map_before,
+                &global_module_file_map_before,
+            )),
         };
         let main_before = parsed_before
             .iter()
@@ -35963,6 +35907,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map,
             namespace_api_fingerprints: &namespace_api_fingerprints,
             file_api_fingerprints: &file_api_fingerprints,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map,
+                &global_function_file_map,
+                &global_class_map,
+                &global_class_file_map,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map,
+                &global_enum_file_map,
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
         let main_unit = parsed_files
             .iter()
@@ -36069,6 +36025,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map_before,
             namespace_api_fingerprints: &namespace_api_fingerprints_before,
             file_api_fingerprints: &file_api_fingerprints_before,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map_before,
+                &global_function_file_map_before,
+                &global_class_map_before,
+                &global_class_file_map_before,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map_before,
+                &global_enum_file_map_before,
+                &global_module_map_before,
+                &global_module_file_map_before,
+            )),
         };
         let main_before = parsed_before
             .iter()
@@ -36152,6 +36120,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map_after,
             namespace_api_fingerprints: &namespace_api_fingerprints_after,
             file_api_fingerprints: &file_api_fingerprints_after,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map_after,
+                &global_function_file_map_after,
+                &global_class_map_after,
+                &global_class_file_map_after,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map_after,
+                &global_enum_file_map_after,
+                &global_module_map_after,
+                &global_module_file_map_after,
+            )),
         };
         let main_after = parsed_after
             .iter()
@@ -36373,6 +36353,18 @@ function main(): Integer {
                 global_module_file_map: &global_module_file_map_before,
                 namespace_api_fingerprints: &namespace_api_fingerprints_before,
                 file_api_fingerprints: &file_api_fingerprints_before,
+                symbol_lookup: Arc::new(build_project_symbol_lookup(
+                    &global_function_map_before,
+                    &global_function_file_map_before,
+                    &global_class_map_before,
+                    &global_class_file_map_before,
+                    empty_global_interface_map(),
+                    empty_global_interface_file_map(),
+                    &global_enum_map_before,
+                    &global_enum_file_map_before,
+                    &global_module_map_before,
+                    &global_module_file_map_before,
+                )),
             };
             let main_before = parsed_before
                 .iter()
@@ -36456,6 +36448,18 @@ function main(): Integer {
                 global_module_file_map: &global_module_file_map_after,
                 namespace_api_fingerprints: &namespace_api_fingerprints_after,
                 file_api_fingerprints: &file_api_fingerprints_after,
+                symbol_lookup: Arc::new(build_project_symbol_lookup(
+                    &global_function_map_after,
+                    &global_function_file_map_after,
+                    &global_class_map_after,
+                    &global_class_file_map_after,
+                    empty_global_interface_map(),
+                    empty_global_interface_file_map(),
+                    &global_enum_map_after,
+                    &global_enum_file_map_after,
+                    &global_module_map_after,
+                    &global_module_file_map_after,
+                )),
             };
             let main_after = parsed_after
                 .iter()
@@ -36561,6 +36565,18 @@ function main(): Integer {
                 global_module_file_map: &global_module_file_map_before,
                 namespace_api_fingerprints: &namespace_api_fingerprints_before,
                 file_api_fingerprints: &file_api_fingerprints_before,
+                symbol_lookup: Arc::new(build_project_symbol_lookup(
+                    &global_function_map_before,
+                    &global_function_file_map_before,
+                    &global_class_map_before,
+                    &global_class_file_map_before,
+                    empty_global_interface_map(),
+                    empty_global_interface_file_map(),
+                    &global_enum_map_before,
+                    &global_enum_file_map_before,
+                    &global_module_map_before,
+                    &global_module_file_map_before,
+                )),
             };
             let main_before = parsed_before
                 .iter()
@@ -36644,6 +36660,18 @@ function main(): Integer {
                 global_module_file_map: &global_module_file_map_after,
                 namespace_api_fingerprints: &namespace_api_fingerprints_after,
                 file_api_fingerprints: &file_api_fingerprints_after,
+                symbol_lookup: Arc::new(build_project_symbol_lookup(
+                    &global_function_map_after,
+                    &global_function_file_map_after,
+                    &global_class_map_after,
+                    &global_class_file_map_after,
+                    empty_global_interface_map(),
+                    empty_global_interface_file_map(),
+                    &global_enum_map_after,
+                    &global_enum_file_map_after,
+                    &global_module_map_after,
+                    &global_module_file_map_after,
+                )),
             };
             let main_after = parsed_after
                 .iter()
@@ -36760,6 +36788,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map,
             namespace_api_fingerprints: &namespace_api_fingerprints,
             file_api_fingerprints: &file_api_fingerprints,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map,
+                &global_function_file_map,
+                &global_class_map,
+                &global_class_file_map,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map,
+                &global_enum_file_map,
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
 
         let fp_a = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_a);
@@ -36789,6 +36829,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map,
             namespace_api_fingerprints: &namespace_api_fingerprints_b,
             file_api_fingerprints: &file_api_fingerprints_b,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map,
+                &global_function_file_map,
+                &global_class_map,
+                &global_class_file_map,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map,
+                &global_enum_file_map,
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
         let fp_b = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_b);
 
@@ -36850,6 +36902,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map,
             namespace_api_fingerprints: &namespace_api_fingerprints_a,
             file_api_fingerprints: &HashMap::new(),
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map,
+                &global_function_file_map,
+                &global_class_map,
+                &global_class_file_map,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map,
+                &global_enum_file_map,
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
         let fp_a = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_a);
         let namespace_api_fingerprints_b =
@@ -36874,6 +36938,18 @@ function main(): Integer {
             global_module_file_map: &global_module_file_map,
             namespace_api_fingerprints: &namespace_api_fingerprints_b,
             file_api_fingerprints: &HashMap::new(),
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map,
+                &global_function_file_map,
+                &global_class_map,
+                &global_class_file_map,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map,
+                &global_enum_file_map,
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
         let fp_b = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_b);
 
@@ -36936,6 +37012,18 @@ function main(): Integer {
             global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
             global_module_file_map: &global_module_file_map,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map,
+                &global_function_file_map,
+                &global_class_map,
+                &global_class_file_map,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map,
+                &global_enum_file_map,
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
         let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
 
@@ -36990,6 +37078,18 @@ function main(): Integer {
             global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
             global_module_file_map: &global_module_file_map,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map,
+                &global_function_file_map,
+                &global_class_map,
+                &global_class_file_map,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map,
+                &global_enum_file_map,
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
 
         let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -37053,6 +37153,24 @@ function main(): Integer {
             global_enum_file_map: &HashMap::new(),
             global_module_map: &HashMap::new(),
             global_module_file_map: &HashMap::new(),
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &HashMap::from([
+                    ("foo".to_string(), "lib".to_string()),
+                    ("bar".to_string(), "lib".to_string()),
+                ]),
+                &HashMap::from([
+                    ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
+                    ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+                ]),
+                &HashMap::new(),
+                &HashMap::new(),
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+            )),
         };
 
         let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -37110,6 +37228,24 @@ function main(): Integer {
             global_enum_file_map: &HashMap::new(),
             global_module_map: &HashMap::new(),
             global_module_file_map: &HashMap::new(),
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &HashMap::from([
+                    ("other".to_string(), "lib".to_string()),
+                    ("bar".to_string(), "lib".to_string()),
+                ]),
+                &HashMap::from([
+                    ("other".to_string(), PathBuf::from("src/lib_foo.apex")),
+                    ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+                ]),
+                &HashMap::new(),
+                &HashMap::new(),
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+            )),
         };
 
         let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -37163,6 +37299,18 @@ function main(): Integer {
             global_enum_file_map: &HashMap::new(),
             global_module_map: &global_module_map,
             global_module_file_map: &global_module_file_map,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
 
         let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -37222,6 +37370,18 @@ function main(): Integer {
             global_enum_file_map: &global_enum_file_map,
             global_module_map: &global_module_map,
             global_module_file_map: &global_module_file_map,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map,
+                &global_function_file_map,
+                &global_class_map,
+                &global_class_file_map,
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &global_enum_map,
+                &global_enum_file_map,
+                &global_module_map,
+                &global_module_file_map,
+            )),
         };
 
         let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -37878,6 +38038,21 @@ function main(): Integer {
             global_enum_file_map: &HashMap::new(),
             global_module_map: &HashMap::new(),
             global_module_file_map: &HashMap::new(),
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &HashMap::from([("foo".to_string(), "lib".to_string())]),
+                &HashMap::from([(
+                    "foo".to_string(),
+                    PathBuf::from("src/lib_foo.apex"),
+                )]),
+                &HashMap::new(),
+                &HashMap::new(),
+                empty_global_interface_map(),
+                empty_global_interface_file_map(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashMap::new(),
+            )),
         };
 
         let (_, reused) =

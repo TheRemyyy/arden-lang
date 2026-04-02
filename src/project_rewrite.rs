@@ -258,6 +258,89 @@ fn direct_wildcard_member_name(
     result
 }
 
+fn resolve_exact_imported_symbol_from_namespaces(
+    namespace_path: &str,
+    symbol_name: &str,
+    namespace_symbols: &HashMap<String, HashSet<String>>,
+) -> Option<(String, String)> {
+    let started_at = Instant::now();
+    REWRITE_TIMING_TOTALS
+        .exact_import_resolve_calls
+        .fetch_add(1, Ordering::Relaxed);
+
+    let mut matches = Vec::new();
+    let mut current = Some(namespace_path);
+    while let Some(owner_ns) = current {
+        if let Some(symbols) = namespace_symbols.get(owner_ns) {
+            let candidate = if owner_ns == namespace_path {
+                symbol_name.to_string()
+            } else if let Some(module_path) = namespace_path
+                .strip_prefix(owner_ns)
+                .and_then(|rest| rest.strip_prefix('.'))
+            {
+                format!("{}__{}", module_path.replace('.', "__"), symbol_name)
+            } else {
+                current = owner_ns.rsplit_once('.').map(|(parent, _)| parent);
+                continue;
+            };
+            if symbols.contains(&candidate) {
+                matches.push((owner_ns.to_string(), candidate));
+            }
+        }
+        current = owner_ns.rsplit_once('.').map(|(parent, _)| parent);
+    }
+
+    matches.sort_unstable();
+    matches.dedup();
+    let result = (matches.len() == 1).then(|| matches.swap_remove(0));
+    REWRITE_TIMING_TOTALS
+        .exact_import_resolve_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    result
+}
+
+fn extend_wildcard_import_map(
+    import_path: &str,
+    namespace_symbols: &HashMap<String, HashSet<String>>,
+    imported: &mut ImportedMap,
+) {
+    let started_at = Instant::now();
+    let mut current = Some(import_path);
+    while let Some(owner_ns) = current {
+        let Some(symbols) = namespace_symbols.get(owner_ns) else {
+            current = owner_ns.rsplit_once('.').map(|(parent, _)| parent);
+            continue;
+        };
+        let module_prefix = if owner_ns == import_path {
+            None
+        } else {
+            import_path
+                .strip_prefix(owner_ns)
+                .and_then(|rest| rest.strip_prefix('.'))
+                .map(|rest| format!("{}__", rest.replace('.', "__")))
+        };
+        for symbol_name in symbols {
+            REWRITE_TIMING_TOTALS
+                .wildcard_match_calls
+                .fetch_add(1, Ordering::Relaxed);
+            let imported_name = match &module_prefix {
+                None => (!symbol_name.contains("__")).then(|| symbol_name.clone()),
+                Some(prefix) => symbol_name
+                    .strip_prefix(prefix)
+                    .filter(|remainder| !remainder.is_empty() && !remainder.contains("__"))
+                    .map(str::to_string),
+            };
+            if let Some(imported_name) = imported_name {
+                imported.insert(imported_name, (owner_ns.to_string(), symbol_name.clone()));
+            }
+        }
+        current = owner_ns.rsplit_once('.').map(|(parent, _)| parent);
+    }
+    REWRITE_TIMING_TOTALS
+        .wildcard_match_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+}
+
 fn format_type_string(ty: &ast::Type) -> String {
     match ty {
         ast::Type::Integer => "Integer".to_string(),
@@ -388,26 +471,26 @@ pub fn rewrite_program_for_project(
     imports: &[ImportDecl],
 ) -> Program {
     let import_map_started_at = Instant::now();
+    let empty_functions = HashSet::new();
+    let empty_classes = HashSet::new();
+    let empty_interfaces = HashSet::new();
+    let empty_enums = HashSet::new();
+    let empty_modules = HashSet::new();
     let local_functions = namespace_functions
         .get(current_namespace)
-        .cloned()
-        .unwrap_or_default();
+        .unwrap_or(&empty_functions);
     let local_classes = namespace_classes
         .get(current_namespace)
-        .cloned()
-        .unwrap_or_default();
+        .unwrap_or(&empty_classes);
     let local_interfaces = namespace_interfaces
         .get(current_namespace)
-        .cloned()
-        .unwrap_or_default();
+        .unwrap_or(&empty_interfaces);
     let local_enums = namespace_enums
         .get(current_namespace)
-        .cloned()
-        .unwrap_or_default();
+        .unwrap_or(&empty_enums);
     let local_modules = namespace_modules
         .get(current_namespace)
-        .cloned()
-        .unwrap_or_default();
+        .unwrap_or(&empty_modules);
 
     let mut imported_map: ImportedMap = HashMap::new();
     let mut imported_classes: ImportedMap = HashMap::new();
@@ -422,40 +505,68 @@ pub fn rewrite_program_for_project(
             .unwrap_or_else(|| import.path.rsplit('.').next().unwrap_or("").to_string());
         if import.path.ends_with(".*") {
             let import_path = import.path.trim_end_matches(".*");
-            for (symbol_name, owner_ns) in global_function_map {
-                if let Some(imported_name) =
-                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
-                {
-                    imported_map.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+            let imported_map_before = imported_map.len();
+            extend_wildcard_import_map(import_path, namespace_functions, &mut imported_map);
+            if imported_map.len() == imported_map_before {
+                for (symbol_name, owner_ns) in global_function_map {
+                    if let Some(imported_name) =
+                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_map
+                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
                 }
             }
-            for (symbol_name, owner_ns) in global_class_map {
-                if let Some(imported_name) =
-                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
-                {
-                    imported_classes.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+            let imported_classes_before = imported_classes.len();
+            extend_wildcard_import_map(import_path, namespace_classes, &mut imported_classes);
+            if imported_classes.len() == imported_classes_before {
+                for (symbol_name, owner_ns) in global_class_map {
+                    if let Some(imported_name) =
+                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_classes
+                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
                 }
             }
-            for (symbol_name, owner_ns) in global_interface_map {
-                if let Some(imported_name) =
-                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
-                {
-                    imported_interfaces
-                        .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+            let imported_interfaces_before = imported_interfaces.len();
+            extend_wildcard_import_map(
+                import_path,
+                namespace_interfaces,
+                &mut imported_interfaces,
+            );
+            if imported_interfaces.len() == imported_interfaces_before {
+                for (symbol_name, owner_ns) in global_interface_map {
+                    if let Some(imported_name) =
+                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_interfaces
+                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
                 }
             }
-            for (symbol_name, owner_ns) in global_enum_map {
-                if let Some(imported_name) =
-                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
-                {
-                    imported_enums.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+            let imported_enums_before = imported_enums.len();
+            extend_wildcard_import_map(import_path, namespace_enums, &mut imported_enums);
+            if imported_enums.len() == imported_enums_before {
+                for (symbol_name, owner_ns) in global_enum_map {
+                    if let Some(imported_name) =
+                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_enums
+                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
                 }
             }
-            for (symbol_name, owner_ns) in global_module_map {
-                if let Some(imported_name) =
-                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
-                {
-                    imported_modules.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+            let imported_modules_before = imported_modules.len();
+            extend_wildcard_import_map(import_path, namespace_modules, &mut imported_modules);
+            if imported_modules.len() == imported_modules_before {
+                for (symbol_name, owner_ns) in global_module_map {
+                    if let Some(imported_name) =
+                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_modules
+                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
                 }
             }
         } else if import.path.contains('.') {
@@ -463,40 +574,48 @@ pub fn rewrite_program_for_project(
             if let Some(source_name) = parts.pop() {
                 let ns = parts.join(".");
                 if let Some((owner_ns, function_name)) =
-                    resolve_exact_imported_symbol_path(&ns, source_name, global_function_map)
+                    resolve_exact_imported_symbol_from_namespaces(
+                        &ns,
+                        source_name,
+                        namespace_functions,
+                    )
+                    .or_else(|| {
+                        resolve_exact_imported_symbol_path(&ns, source_name, global_function_map)
+                    })
                 {
                     imported_map.insert(import_key.clone(), (owner_ns, function_name));
                 }
-                if global_class_map
-                    .get(source_name)
-                    .is_some_and(|owner_ns| owner_ns == &ns)
-                {
-                    imported_classes
-                        .insert(import_key.clone(), (ns.clone(), source_name.to_string()));
-                } else if let Some((owner_ns, class_name)) =
+                if let Some((owner_ns, class_name)) = resolve_exact_imported_symbol_from_namespaces(
+                    &ns,
+                    source_name,
+                    namespace_classes,
+                )
+                .or_else(|| {
                     resolve_exact_imported_symbol_path(&ns, source_name, global_class_map)
+                })
                 {
                     imported_classes.insert(import_key.clone(), (owner_ns, class_name));
                 }
-                if global_interface_map
-                    .get(source_name)
-                    .is_some_and(|owner_ns| owner_ns == &ns)
-                {
-                    imported_interfaces
-                        .insert(import_key.clone(), (ns.clone(), source_name.to_string()));
-                } else if let Some((owner_ns, interface_name)) =
-                    resolve_exact_imported_symbol_path(&ns, source_name, global_interface_map)
+                if let Some((owner_ns, interface_name)) =
+                    resolve_exact_imported_symbol_from_namespaces(
+                        &ns,
+                        source_name,
+                        namespace_interfaces,
+                    )
+                    .or_else(|| {
+                        resolve_exact_imported_symbol_path(&ns, source_name, global_interface_map)
+                    })
                 {
                     imported_interfaces.insert(import_key.clone(), (owner_ns, interface_name));
                 }
-                if global_enum_map
-                    .get(source_name)
-                    .is_some_and(|owner_ns| owner_ns == &ns)
-                {
-                    imported_enums
-                        .insert(import_key.clone(), (ns.clone(), source_name.to_string()));
-                } else if let Some((owner_ns, enum_name)) =
+                if let Some((owner_ns, enum_name)) = resolve_exact_imported_symbol_from_namespaces(
+                    &ns,
+                    source_name,
+                    namespace_enums,
+                )
+                .or_else(|| {
                     resolve_exact_imported_symbol_path(&ns, source_name, global_enum_map)
+                })
                 {
                     imported_enums.insert(import_key.clone(), (owner_ns, enum_name));
                 }
@@ -511,24 +630,24 @@ pub fn rewrite_program_for_project(
             // Namespace import without explicit symbol (e.g. `import math_utils as mu`)
             // should allow `mu.someFunction()` rewrite resolution.
             imported_modules.insert(import_key.clone(), (import.path.clone(), String::new()));
-            for (symbol_name, owner_ns) in global_class_map {
-                if owner_ns == &import.path {
+            if let Some(symbols) = namespace_classes.get(&import.path) {
+                for symbol_name in symbols {
                     imported_classes.insert(
                         alias_qualified_symbol_name(&import_key, symbol_name),
                         (import.path.clone(), symbol_name.clone()),
                     );
                 }
             }
-            for (symbol_name, owner_ns) in global_interface_map {
-                if owner_ns == &import.path {
+            if let Some(symbols) = namespace_interfaces.get(&import.path) {
+                for symbol_name in symbols {
                     imported_interfaces.insert(
                         alias_qualified_symbol_name(&import_key, symbol_name),
                         (import.path.clone(), symbol_name.clone()),
                     );
                 }
             }
-            for (symbol_name, owner_ns) in global_enum_map {
-                if owner_ns == &import.path {
+            if let Some(symbols) = namespace_enums.get(&import.path) {
+                for symbol_name in symbols {
                     imported_enums.insert(
                         alias_qualified_symbol_name(&import_key, symbol_name),
                         (import.path.clone(), symbol_name.clone()),

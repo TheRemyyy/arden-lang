@@ -34,6 +34,7 @@ pub struct ObjectWriteTimingSnapshot {
     pub target_machine_setup_ns: u64,
     pub write_to_memory_buffer_ns: u64,
     pub memory_buffer_to_vec_ns: u64,
+    pub direct_write_to_file_ns: u64,
     pub filesystem_write_ns: u64,
 }
 
@@ -42,6 +43,7 @@ struct ObjectWriteTimingTotals {
     target_machine_setup_ns: AtomicU64,
     write_to_memory_buffer_ns: AtomicU64,
     memory_buffer_to_vec_ns: AtomicU64,
+    direct_write_to_file_ns: AtomicU64,
     filesystem_write_ns: AtomicU64,
 }
 
@@ -50,6 +52,7 @@ static OBJECT_WRITE_TIMING_TOTALS: ObjectWriteTimingTotals = ObjectWriteTimingTo
     target_machine_setup_ns: AtomicU64::new(0),
     write_to_memory_buffer_ns: AtomicU64::new(0),
     memory_buffer_to_vec_ns: AtomicU64::new(0),
+    direct_write_to_file_ns: AtomicU64::new(0),
     filesystem_write_ns: AtomicU64::new(0),
 };
 
@@ -71,6 +74,9 @@ pub fn reset_object_write_timings() {
         .memory_buffer_to_vec_ns
         .store(0, Ordering::Relaxed);
     OBJECT_WRITE_TIMING_TOTALS
+        .direct_write_to_file_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
         .filesystem_write_ns
         .store(0, Ordering::Relaxed);
 }
@@ -88,6 +94,9 @@ pub fn snapshot_object_write_timings() -> ObjectWriteTimingSnapshot {
             .load(Ordering::Relaxed),
         memory_buffer_to_vec_ns: OBJECT_WRITE_TIMING_TOTALS
             .memory_buffer_to_vec_ns
+            .load(Ordering::Relaxed),
+        direct_write_to_file_ns: OBJECT_WRITE_TIMING_TOTALS
+            .direct_write_to_file_ns
             .load(Ordering::Relaxed),
         filesystem_write_ns: OBJECT_WRITE_TIMING_TOTALS
             .filesystem_write_ns
@@ -2726,9 +2735,25 @@ impl<'ctx> Codegen<'ctx> {
         target_triple: Option<&str>,
         output_kind: &OutputKind,
     ) -> std::result::Result<(), String> {
-        let object = self.emit_object_bytes(opt_level, target_triple, output_kind)?;
         let write_started_at = Instant::now();
-        let result = std::fs::write(path, object).map_err(|e| e.to_string());
+        let result =
+            Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
+                let setup_started_at = Instant::now();
+                self.module.set_triple(triple);
+                self.module
+                    .set_data_layout(&machine.get_target_data().get_data_layout());
+                OBJECT_WRITE_TIMING_TOTALS
+                    .target_machine_setup_ns
+                    .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
+                let direct_write_started_at = Instant::now();
+                let result = machine
+                    .write_to_file(&self.module, FileType::Object, path)
+                    .map_err(|e| e.to_string());
+                OBJECT_WRITE_TIMING_TOTALS
+                    .direct_write_to_file_ns
+                    .fetch_add(elapsed_nanos_u64(direct_write_started_at), Ordering::Relaxed);
+                result
+            });
         OBJECT_WRITE_TIMING_TOTALS
             .filesystem_write_ns
             .fetch_add(elapsed_nanos_u64(write_started_at), Ordering::Relaxed);
