@@ -22125,6 +22125,369 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_no_check_reports_undefined_variable_for_unknown_method_receiver() {
+        let temp_root = make_temp_project_root("no-check-unknown-method-receiver-primary-error");
+        let source_path = temp_root.join("no_check_unknown_method_receiver_primary_error.apex");
+        let output_path = temp_root.join("no_check_unknown_method_receiver_primary_error");
+        let source = r#"
+            function main(): Integer {
+                return nope.missing();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("unknown method receiver should fail in codegen without checks");
+        assert!(err.contains("Undefined variable: nope"), "{err}");
+        assert!(!err.contains("Unknown variable: nope"), "{err}");
+        assert!(
+            !err.contains("Cannot determine object type for method call"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_reports_undefined_variable_for_unknown_field_root() {
+        let temp_root = make_temp_project_root("no-check-unknown-field-root-primary-error");
+        let source_path = temp_root.join("no_check_unknown_field_root_primary_error.apex");
+        let output_path = temp_root.join("no_check_unknown_field_root_primary_error");
+        let source = r#"
+            function main(): Integer {
+                return nope.value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("unknown field root should fail in codegen without checks");
+        assert!(err.contains("Undefined variable: nope"), "{err}");
+        assert!(!err.contains("Unknown variable: nope"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_reports_undefined_function_for_unknown_direct_call() {
+        let temp_root = make_temp_project_root("no-check-unknown-direct-call-primary-error");
+        let source_path = temp_root.join("no_check_unknown_direct_call_primary_error.apex");
+        let output_path = temp_root.join("no_check_unknown_direct_call_primary_error");
+        let source = r#"
+            function main(): Integer {
+                return missing();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("unknown direct call should fail in codegen without checks");
+        assert!(err.contains("Undefined function: missing"), "{err}");
+        assert!(!err.contains("Unknown function: missing"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_reports_undefined_variable_for_unknown_function_value() {
+        let temp_root = make_temp_project_root("no-check-unknown-function-value-primary-error");
+        let source_path = temp_root.join("no_check_unknown_function_value_primary_error.apex");
+        let output_path = temp_root.join("no_check_unknown_function_value_primary_error");
+        let source = r#"
+            function main(): None {
+                callback: (Integer) -> Integer = missing;
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("unknown function value should fail in codegen without checks");
+        assert!(err.contains("Undefined variable: missing"), "{err}");
+        assert!(!err.contains("Unknown variable: missing"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_literal_call_with_non_function_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-literal-call-non-function-type");
+        let source_path = temp_root.join("no_check_literal_call_non_function_type.apex");
+        let output_path = temp_root.join("no_check_literal_call_non_function_type");
+        let source = r#"
+            function main(): Integer {
+                return 1(2);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("literal call should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot call non-function type Integer"),
+            "{err}"
+        );
+        assert!(!err.contains("Invalid callee"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_local_non_function_call_with_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-local-call-non-function-type");
+        let source_path = temp_root.join("no_check_local_call_non_function_type.apex");
+        let output_path = temp_root.join("no_check_local_call_non_function_type");
+        let source = r#"
+            function main(): Integer {
+                s: String = "hi";
+                return s(2);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("local non-function call should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot call non-function type String"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined function: s"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_field_non_function_call_with_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-field-call-non-function-type");
+        let source_path = temp_root.join("no_check_field_call_non_function_type.apex");
+        let output_path = temp_root.join("no_check_field_call_non_function_type");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) {
+                    this.value = value;
+                }
+            }
+
+            function main(): Integer {
+                b: Box = Box(1);
+                return b.value();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("field non-function call should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot call non-function type Integer"),
+            "{err}"
+        );
+        assert!(
+            !err.contains("Unknown method 'value' for class 'Box'"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_integer_indexing_with_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-integer-index-type");
+        let source_path = temp_root.join("no_check_integer_index_type.apex");
+        let output_path = temp_root.join("no_check_integer_index_type");
+        let source = r#"
+            function main(): Integer {
+                value: Integer = 7;
+                return value[0];
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("integer indexing should fail in codegen without checks");
+        assert!(err.contains("Cannot index type Integer"), "{err}");
+        assert!(!err.contains("expected PointerValue"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_class_indexing_with_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-class-index-type");
+        let source_path = temp_root.join("no_check_class_index_type.apex");
+        let output_path = temp_root.join("no_check_class_index_type");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) {
+                    this.value = value;
+                }
+            }
+
+            function main(): Integer {
+                b: Box = Box(1);
+                return b[0];
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("class indexing should fail in codegen without checks");
+        assert!(err.contains("Cannot index type Box"), "{err}");
+        assert!(!err.contains("expected PointerValue"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_integer_index_assignment_with_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-integer-index-assign-type");
+        let source_path = temp_root.join("no_check_integer_index_assign_type.apex");
+        let output_path = temp_root.join("no_check_integer_index_assign_type");
+        let source = r#"
+            function main(): None {
+                mut value: Integer = 7;
+                value[0] = 1;
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("integer index assignment should fail in codegen without checks");
+        assert!(err.contains("Cannot index type Integer"), "{err}");
+        assert!(!err.contains("expected PointerValue"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_class_index_assignment_with_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-class-index-assign-type");
+        let source_path = temp_root.join("no_check_class_index_assign_type.apex");
+        let output_path = temp_root.join("no_check_class_index_assign_type");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) {
+                    this.value = value;
+                }
+            }
+
+            function main(): None {
+                mut b: Box = Box(1);
+                b[0] = 2;
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("class index assignment should fail in codegen without checks");
+        assert!(err.contains("Cannot index type Box"), "{err}");
+        assert!(!err.contains("expected PointerValue"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_integer_deref_with_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-integer-deref-type");
+        let source_path = temp_root.join("no_check_integer_deref_type.apex");
+        let output_path = temp_root.join("no_check_integer_deref_type");
+        let source = r#"
+            function main(): Integer {
+                value: Integer = 7;
+                return *value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("integer deref should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot dereference non-pointer type Integer"),
+            "{err}"
+        );
+        assert!(!err.contains("expected PointerValue"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_literal_deref_with_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-literal-deref-type");
+        let source_path = temp_root.join("no_check_literal_deref_type.apex");
+        let output_path = temp_root.join("no_check_literal_deref_type");
+        let source = r#"
+            function main(): Integer {
+                return *1;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("literal deref should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot dereference non-pointer type Integer"),
+            "{err}"
+        );
+        assert!(!err.contains("expected PointerValue"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_integer_deref_assignment_with_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-integer-deref-assign-type");
+        let source_path = temp_root.join("no_check_integer_deref_assign_type.apex");
+        let output_path = temp_root.join("no_check_integer_deref_assign_type");
+        let source = r#"
+            function main(): None {
+                mut value: Integer = 7;
+                *value = 1;
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("integer deref assignment should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot dereference non-pointer type Integer"),
+            "{err}"
+        );
+        assert!(!err.contains("expected PointerValue"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_try_on_non_option_result_type() {
+        let temp_root = make_temp_project_root("no-check-invalid-try-non-result-type");
+        let source_path = temp_root.join("no_check_invalid_try_non_result_type.apex");
+        let output_path = temp_root.join("no_check_invalid_try_non_result_type");
+        let source = r#"
+            function main(): None {
+                value: Integer = 7;
+                out: Integer = value?;
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("? on Integer should fail in codegen without checks");
+        assert!(
+            err.contains("'?' operator can only be used on Option or Result, got Integer"),
+            "{err}"
+        );
+        assert!(!err.contains("expected the StructValue variant"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_preserves_box_constructor_payload_in_codegen() {
         let temp_root = make_temp_project_root("no-check-box-payload-runtime");
         let source_path = temp_root.join("no_check_box_payload_runtime.apex");
@@ -23645,6 +24008,140 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_await_on_string_literal_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-await-string-literal");
+        let source_path = temp_root.join("no_check_invalid_await_string_literal.apex");
+        let output_path = temp_root.join("no_check_invalid_await_string_literal");
+        let source = r#"
+            function main(): String {
+                return await "hi";
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("await on String literal should fail in codegen");
+        assert!(
+            err.contains("'await' can only be used on Task types, got String"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_await_on_string_local_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-await-string-local");
+        let source_path = temp_root.join("no_check_invalid_await_string_local.apex");
+        let output_path = temp_root.join("no_check_invalid_await_string_local");
+        let source = r#"
+            function main(): String {
+                value: String = "hi";
+                return await value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("await on String local should fail in codegen");
+        assert!(
+            err.contains("'await' can only be used on Task types, got String"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_await_on_box_in_codegen() {
+        let temp_root = make_temp_project_root("no-check-invalid-await-box");
+        let source_path = temp_root.join("no_check_invalid_await_box.apex");
+        let output_path = temp_root.join("no_check_invalid_await_box");
+        let source = r#"
+            function main(): Integer {
+                value: Box<Integer> = Box<Integer>(7);
+                return await value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("await on Box<Integer> should fail in codegen");
+        assert!(
+            err.contains("'await' can only be used on Task types, got Box<Integer>"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_println_on_unsupported_display_type_with_type_name() {
+        let temp_root = make_temp_project_root("no-check-invalid-println-unsupported-display");
+        let source_path = temp_root.join("no_check_invalid_println_unsupported_display.apex");
+        let output_path = temp_root.join("no_check_invalid_println_unsupported_display");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): None {
+                b: Box = Box(7);
+                println(b);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("println(Box) should fail in codegen");
+        assert!(
+            err.contains(
+                "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got Box"
+            ),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_interpolation_on_unsupported_display_type_with_type_name() {
+        let temp_root =
+            make_temp_project_root("no-check-invalid-interpolation-unsupported-display");
+        let source_path = temp_root.join("no_check_invalid_interpolation_unsupported_display.apex");
+        let output_path = temp_root.join("no_check_invalid_interpolation_unsupported_display");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function render(): String {
+                b: Box = Box(7);
+                return "box={b}";
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("string interpolation on Box should fail in codegen");
+        assert!(
+            err.contains(
+                "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got Box"
+            ),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_negative_list_index_constant_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-list-index-negative-constant");
         let source_path = temp_root.join("no_check_invalid_list_index_negative_constant.apex");
@@ -23912,6 +24409,442 @@ function main(): Integer {
         let err = compile_source(source, &source_path, &output_path, false, false, None, None)
             .expect_err("Integer field assignment should fail in codegen");
         assert!(err.contains("Cannot access field on type Integer"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_unknown_class_field_access_with_class_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-unknown-class-field-access");
+        let source_path = temp_root.join("no_check_unknown_class_field_access.apex");
+        let output_path = temp_root.join("no_check_unknown_class_field_access");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                b: Box = Box(7);
+                return b.missing;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("missing Box field access should fail in codegen");
+        assert!(
+            err.contains("Unknown field 'missing' on class 'Box'"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_unknown_class_field_assignment_with_class_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-unknown-class-field-assignment");
+        let source_path = temp_root.join("no_check_unknown_class_field_assignment.apex");
+        let output_path = temp_root.join("no_check_unknown_class_field_assignment");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): None {
+                mut b: Box = Box(7);
+                b.missing = 1;
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("missing Box field assignment should fail in codegen");
+        assert!(
+            err.contains("Unknown field 'missing' on class 'Box'"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_reports_unknown_class_method_with_class_diagnostic() {
+        let temp_root = make_temp_project_root("unknown-class-method-diagnostic");
+        let source_path = temp_root.join("unknown_class_method_diagnostic.apex");
+        let output_path = temp_root.join("unknown_class_method_diagnostic");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                b: Box = Box(7);
+                return b.missing();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("missing Box method should fail");
+        assert!(
+            err.contains("Unknown method 'missing' for class 'Box'"),
+            "{err}"
+        );
+        assert!(!err.contains("Unknown class: Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_generic_missing_class_root_without_internal_codegen_error() {
+        let temp_root = make_temp_project_root("no-check-generic-missing-class-root");
+        let source_path = temp_root.join("no_check_generic_missing_class_root.apex");
+        let output_path = temp_root.join("no_check_generic_missing_class_root");
+        let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): None {
+                b: Box<Integer> = Box<Integer>.missing(1);
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic missing class root should fail in codegen");
+        assert!(err.contains("Undefined variable: Box"), "{err}");
+        assert!(
+            !err.contains(
+                "Explicit generic function value should be specialized before code generation"
+            ),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_generic_missing_function_call_without_internal_codegen_error(
+    ) {
+        let temp_root = make_temp_project_root("no-check-generic-missing-function-call");
+        let source_path = temp_root.join("no_check_generic_missing_function_call.apex");
+        let output_path = temp_root.join("no_check_generic_missing_function_call");
+        let source = r#"
+            function main(): Integer {
+                return missing<Integer>(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic missing function call should fail in codegen");
+        assert!(err.contains("Undefined function: missing"), "{err}");
+        assert!(
+            !err.contains("Explicit generic call code generation is not supported yet"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_generic_missing_method_call_without_internal_codegen_error()
+    {
+        let temp_root = make_temp_project_root("no-check-generic-missing-method-call");
+        let source_path = temp_root.join("no_check_generic_missing_method_call.apex");
+        let output_path = temp_root.join("no_check_generic_missing_method_call");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                return Box(1).missing<Integer>(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic missing method call should fail in codegen");
+        assert!(
+            err.contains("Unknown method 'missing' for class 'Box'"),
+            "{err}"
+        );
+        assert!(
+            !err.contains("Explicit generic call code generation is not supported yet"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_enum_variant_call_type_args_cleanly() {
+        let temp_root = make_temp_project_root("no-check-enum-variant-call-type-args");
+        let source_path = temp_root.join("no_check_enum_variant_call_type_args.apex");
+        let output_path = temp_root.join("no_check_enum_variant_call_type_args");
+        let source = r#"
+            enum Boxed { Wrap(Integer) }
+
+            function main(): Integer {
+                return Boxed.Wrap<Integer>(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("enum variant call type args should fail in codegen");
+        assert!(
+            err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
+            "{err}"
+        );
+        assert!(
+            !err.contains("Explicit generic call code generation is not supported yet"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_imported_enum_variant_call_type_args_cleanly() {
+        let temp_root = make_temp_project_root("no-check-imported-enum-variant-call-type-args");
+        let source_path = temp_root.join("no_check_imported_enum_variant_call_type_args.apex");
+        let output_path = temp_root.join("no_check_imported_enum_variant_call_type_args");
+        let source = r#"
+            enum Boxed { Wrap(Integer) }
+            import Boxed.Wrap as WrapCtor;
+
+            function main(): Integer {
+                return WrapCtor<Integer>(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("imported enum variant call type args should fail in codegen");
+        assert!(
+            err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
+            "{err}"
+        );
+        assert!(!err.contains("Unknown type: WrapCtor<Integer>"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_imported_enum_variant_alias_constructor_runtime() {
+        let temp_root = make_temp_project_root("no-check-imported-enum-variant-alias-runtime");
+        let source_path = temp_root.join("no_check_imported_enum_variant_alias_runtime.apex");
+        let output_path = temp_root.join("no_check_imported_enum_variant_alias_runtime");
+        let source = r#"
+            enum Boxed { Wrap(Integer) }
+            import Boxed.Wrap as WrapCtor;
+
+            function main(): Integer {
+                value: Boxed = WrapCtor(7);
+                return match (value) { Boxed.Wrap(v) => { if (v == 7) { 0 } else { 1 } } };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("unchecked imported enum variant alias constructor should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled unchecked imported enum variant alias constructor binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_option_static_call_type_args_cleanly() {
+        let temp_root = make_temp_project_root("no-check-option-static-call-type-args");
+        let source_path = temp_root.join("no_check_option_static_call_type_args.apex");
+        let output_path = temp_root.join("no_check_option_static_call_type_args");
+        let source = r#"
+            function main(): Option<Integer> {
+                return Option.some<Integer>(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("Option.some explicit type args should fail in codegen");
+        assert!(
+            err.contains("Option static methods do not accept explicit type arguments"),
+            "{err}"
+        );
+        assert!(
+            !err.contains("Explicit generic call code generation is not supported yet"),
+            "{err}"
+        );
+        assert!(!err.contains("Clang failed"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_result_static_call_type_args_cleanly() {
+        let temp_root = make_temp_project_root("no-check-result-static-call-type-args");
+        let source_path = temp_root.join("no_check_result_static_call_type_args.apex");
+        let output_path = temp_root.join("no_check_result_static_call_type_args");
+        let source = r#"
+            function main(): Result<Integer, String> {
+                return Result.ok<Integer>(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("Result.ok explicit type args should fail in codegen");
+        assert!(
+            err.contains("Result static methods do not accept explicit type arguments"),
+            "{err}"
+        );
+        assert!(
+            !err.contains("Explicit generic call code generation is not supported yet"),
+            "{err}"
+        );
+        assert!(!err.contains("Clang failed"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_explicit_type_args_on_non_function_field_call_cleanly() {
+        let temp_root = make_temp_project_root("no-check-non-function-field-generic-call");
+        let source_path = temp_root.join("no_check_non_function_field_generic_call.apex");
+        let output_path = temp_root.join("no_check_non_function_field_generic_call");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                return Box(1).value<Integer>();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic call on non-function field should fail in codegen");
+        assert!(
+            err.contains("Unknown method 'value' for class 'Box'"),
+            "{err}"
+        );
+        assert!(
+            !err.contains("Cannot call non-function type Integer"),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_explicit_type_args_on_non_function_field_value_cleanly() {
+        let temp_root = make_temp_project_root("no-check-non-function-field-generic-value");
+        let source_path = temp_root.join("no_check_non_function_field_generic_value.apex");
+        let output_path = temp_root.join("no_check_non_function_field_generic_value");
+        let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                f: Integer = Box(1).value<Integer>;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic function value on non-function field should fail in codegen");
+        assert!(
+            err.contains("Unknown field 'value' on class 'Box'"),
+            "{err}"
+        );
+        assert!(
+            !err.contains(
+                "Explicit generic function value should be specialized before code generation"
+            ),
+            "{err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_namespaced_non_function_field_call_with_demangled_class_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-namespaced-non-function-field-call");
+        let source_path = temp_root.join("no_check_namespaced_non_function_field_call.apex");
+        let output_path = temp_root.join("no_check_namespaced_non_function_field_call");
+        let source = r#"
+            module U {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                return U.Box(1).value<Integer>();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic call on namespaced non-function field should fail in codegen");
+        assert!(
+            err.contains("Unknown method 'value' for class 'U.Box'"),
+            "{err}"
+        );
+        assert!(!err.contains("U__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_namespaced_non_function_field_value_with_demangled_class_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-namespaced-non-function-field-value");
+        let source_path = temp_root.join("no_check_namespaced_non_function_field_value.apex");
+        let output_path = temp_root.join("no_check_namespaced_non_function_field_value");
+        let source = r#"
+            module U {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                f: Integer = U.Box(1).value<Integer>;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic value on namespaced non-function field should fail in codegen");
+        assert!(
+            err.contains("Unknown field 'value' on class 'U.Box'"),
+            "{err}"
+        );
+        assert!(!err.contains("U__Box"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -26151,6 +27084,31 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_rejects_imported_enum_variant_call_type_args_cleanly() {
+        let temp_root = make_temp_project_root("imported-enum-variant-call-type-args");
+        let source_path = temp_root.join("imported_enum_variant_call_type_args.apex");
+        let output_path = temp_root.join("imported_enum_variant_call_type_args");
+        let source = r#"
+            enum Boxed { Wrap(Integer) }
+            import Boxed.Wrap as WrapCtor;
+            function main(): Integer {
+                return WrapCtor<Integer>(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("imported enum variant call type args should fail");
+        assert!(
+            err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
+            "unexpected error: {err}"
+        );
+        assert!(!err.contains("Unknown type: WrapCtor<Integer>"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_rejects_nested_imported_enum_variant_function_value_type_args_cleanly() {
         let temp_root =
             make_temp_project_root("nested-imported-enum-variant-function-value-type-args");
@@ -26177,6 +27135,35 @@ function main(): Integer {
             err.contains("Enum variant 'U.V.E.Wrap' does not accept type arguments"),
             "unexpected error: {err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_nested_imported_enum_variant_call_type_args_cleanly() {
+        let temp_root = make_temp_project_root("nested-imported-enum-variant-call-type-args");
+        let source_path = temp_root.join("nested_imported_enum_variant_call_type_args.apex");
+        let output_path = temp_root.join("nested_imported_enum_variant_call_type_args");
+        let source = r#"
+            module U {
+                module V {
+                    enum E { Wrap(Integer) }
+                }
+            }
+            import U.V.E.Wrap as WrapCtor;
+            function main(): Integer {
+                return WrapCtor<Integer>(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("nested imported enum variant call type args should fail");
+        assert!(
+            err.contains("Enum variant 'U.V.E.Wrap' does not accept type arguments"),
+            "unexpected error: {err}"
+        );
+        assert!(!err.contains("Unknown type: WrapCtor<Integer>"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -34288,11 +35275,11 @@ function main(): Integer {
             let err = build_project(false, false, true, false, false)
                 .expect_err("build should fail after wildcard-imported symbol removal");
             assert!(
-                err.contains("Undefined variable: add")
-                    || err.contains("Unknown function: add")
+                err.contains("Wildcard import 'lib.*' no longer provides 'add'")
                     || err.contains("Import check failed"),
                 "{err}"
             );
+            assert!(!err.contains("Undefined variable: add"), "{err}");
         });
 
         let _ = fs::remove_dir_all(temp_root);
@@ -34433,11 +35420,12 @@ function main(): Integer {
             let err = build_project(false, false, true, false, false)
                 .expect_err("build should fail after nested exact-import alias symbol removal");
             assert!(
-                err.contains("Undefined variable: ident")
-                    || err.contains("Unknown function: app__U__id")
+                err.contains("Imported alias 'ident' no longer resolves")
                     || err.contains("Import check failed"),
                 "{err}"
             );
+            assert!(!err.contains("Undefined variable: ident"), "{err}");
+            assert!(!err.contains("app__U__id"), "{err}");
         });
 
         let _ = fs::remove_dir_all(temp_root);
@@ -34481,7 +35469,12 @@ function main(): Integer {
         with_current_dir(&temp_root, || {
             let err = build_project(false, false, true, false, false)
                 .expect_err("build should fail after stale nested exact-import alias function-value symbol removal");
-            assert!(err.contains("Undefined variable: ident"), "{err}");
+            assert!(
+                err.contains("Imported alias 'ident' no longer resolves"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: ident"), "{err}");
             assert!(!err.contains("app__U__id"), "{err}");
         });
 
@@ -34679,6 +35672,54 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_function_value() {
+        let temp_root =
+            make_temp_project_root("project-build-stale-root-namespace-alias-function-value");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer { f: (Integer) -> Integer = root.U.id; return f(1); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial root namespace alias function value build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("rewrite helper without root namespace alias function value symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after stale root namespace alias function value removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'U.id'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: root"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_rechecks_exact_import_alias_dependents_after_symbol_removal() {
         let temp_root = make_temp_project_root("project-build-exact-import-alias-symbol-removal");
         write_test_project_config(
@@ -34714,11 +35755,12 @@ function main(): Integer {
             let err = build_project(false, false, true, false, false)
                 .expect_err("build should fail after exact-import alias symbol removal");
             assert!(
-                err.contains("Undefined variable: inc")
-                    || err.contains("Unknown function: lib__add")
+                err.contains("Imported alias 'inc' no longer resolves")
                     || err.contains("Import check failed"),
                 "{err}"
             );
+            assert!(!err.contains("Undefined variable: inc"), "{err}");
+            assert!(!err.contains("lib__add"), "{err}");
         });
 
         let _ = fs::remove_dir_all(temp_root);

@@ -8,6 +8,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed `--no-check` undefined symbol diagnostics in codegen:
+  - unknown variables in method receivers, field roots, and function-value bindings now report the same user-facing `Undefined variable: ...` error as checked builds instead of leaking backend-only `Unknown variable: ...` messages
+  - unknown direct calls now report `Undefined function: ...` instead of the internal backend wording `Unknown function: ...`
+- Fixed `--no-check` non-function call diagnostics in codegen:
+  - invalid calls such as `1(2)`, `s(2)` where `s: String`, and `b.value()` where `value` is an `Integer` field now report `Cannot call non-function type ...` just like checked builds
+  - backend call lowering no longer falls through to generic `Invalid callee`, `Undefined function: s`, or misleading `Unknown method 'value'` errors for non-function callees
+- Fixed unchecked indexing on non-indexable values in codegen:
+  - invalid `--no-check` expressions such as `value[0]` where `value: Integer` and `b[0]` where `b: Box` now fail with `Cannot index type ...`
+  - invalid unchecked index assignments such as `value[0] = 1` and `b[0] = 2` now also fail with `Cannot index type ...` instead of panicking or compiling through raw pointer arithmetic
+  - backend index lowering no longer falls through to raw pointer indexing and panic with internal LLVM-value errors like `expected PointerValue`
+- Fixed unchecked dereference validation in codegen:
+  - invalid `--no-check` expressions such as `*value`, `*1`, and `*value = 1` where the operand is an `Integer` now fail with `Cannot dereference non-pointer type Integer`
+  - backend deref lowering no longer panics on raw LLVM value casts like `expected PointerValue` when the operand is not actually a pointer/reference
+- Fixed unchecked `?` operator validation in codegen:
+  - invalid `--no-check` expressions such as `value?` where `value: Integer` now fail with `'? operator can only be used on Option or Result, got Integer'`
+  - backend try lowering no longer panics on raw struct extraction errors like `expected the StructValue variant` for non-`Option`/`Result` operands
+- Fixed unchecked `await` operand validation in codegen:
+  - invalid `--no-check` expressions such as `await "hi"`, `await value` where `value: String`, and `await value` where `value: Box<Integer>` now fail with `'await' can only be used on Task types, got ...`
+  - backend await lowering no longer treats arbitrary pointer-backed values like `String` and `Box<T>` as valid tasks just because their LLVM representation is a pointer
+- Fixed unsupported display-format diagnostics in unchecked codegen:
+  - invalid `--no-check` uses such as `println(b)` and `"box={b}"` where `b` is a user class now include the offending Apex type in the error, for example `..., got Box`
+  - display lowering no longer drops the source operand type when rejecting unsupported interpolation and print formatting
+- Fixed unchecked unknown-field diagnostics for user classes:
+  - invalid `--no-check` field reads and assignments such as `b.missing` and `b.missing = 1` now report `Unknown field 'missing' on class 'Box'` like checked builds
+  - backend class field lookup no longer falls back to the generic internal wording `Unknown field: missing`
+- Fixed class-type canonicalization for method lookup diagnostics:
+  - checked builds with invalid user-class calls such as `b.missing()` now report `Unknown method 'missing' for class 'Box'` instead of the bogus fallback `Unknown class: Box`
+  - codegen class lookup now canonicalizes inferred named/generic class types before method and field dispatch, avoiding false misses in the internal class registry
+- Fixed explicit-generic callee error propagation in unchecked codegen:
+  - invalid `--no-check` calls such as `Box<Integer>.missing(1)` now preserve the real user-facing callee-resolution error `Undefined variable: Box` instead of leaking the internal backend fallback `Explicit generic function value should be specialized before code generation`
+  - explicit generic function-value lowering now propagates underlying callee resolution failures before falling back to its internal unspecialized-generic guard
+- Fixed explicit-generic call error propagation in unchecked codegen:
+  - invalid `--no-check` calls such as `missing<Integer>(1)` and `Box(1).missing<Integer>(1)` now preserve the real user-facing callee-resolution errors (`Undefined function: missing`, `Unknown method 'missing' for class 'Box'`) instead of leaking the internal backend fallback `Explicit generic call code generation is not supported yet`
+  - explicit generic call lowering now propagates underlying callee resolution failures before falling back to its internal unsupported-generic-call guard
+- Fixed unchecked explicit-type-argument validation for enum variants and builtin static constructors:
+  - invalid `--no-check` calls such as `Boxed.Wrap<Integer>(1)`, `Option.some<Integer>(1)`, and `Result.ok<Integer>(1)` now fail with the same Apex diagnostics as checked builds instead of leaking the internal fallback `Explicit generic call code generation is not supported yet` or reaching Clang with broken IR
+  - explicit generic call lowering now rejects enum variant calls and `Option`/`Result` static constructor calls with explicit type arguments before backend IR emission
+- Fixed imported enum-variant alias constructor handling for checked and unchecked builds:
+  - invalid alias calls such as `import Boxed.Wrap as WrapCtor; WrapCtor<Integer>(1)` now report `Enum variant 'Boxed.Wrap' does not accept type arguments` instead of falling through to bogus type-constructor errors like `Unknown type: WrapCtor<Integer>`
+  - unchecked single-file builds now also compile and run payload variant aliases such as `WrapCtor(7)` directly through `construct` lowering instead of treating the alias as a missing class constructor
+- Fixed unchecked explicit-type-argument diagnostics on non-function class fields:
+  - invalid `--no-check` forms such as `Box(1).value<Integer>()` and `Box(1).value<Integer>` now match checked builds with `Unknown method 'value' for class 'Box'` and `Unknown field 'value' on class 'Box'` respectively
+  - explicit generic call/function-value lowering no longer falls through to misleading non-function-call or internal unspecialized-generic backend errors when the target is just a plain field
+- Fixed demangling for unchecked explicit-generic field diagnostics on namespaced classes:
+  - invalid `--no-check` forms such as `U.Box(1).value<Integer>()` and `U.Box(1).value<Integer>` now report `U.Box` in diagnostics instead of leaking the internal mangled class name `U__Box`
+  - explicit generic field-access diagnostics now format class names through the same user-facing demangling path as checked builds
 - Fixed explicit generic function values through import aliases in single-file and project builds:
   - single-file bindings such as `import id as ident; f: (Integer) -> Integer = ident<Integer>` now specialize and compile instead of passing `check` and later failing in codegen with `Explicit generic function value should be specialized before code generation`
   - project builds now rewrite generic function-value alias roots before typechecking, so exact-import aliases like `import app.U.id as ident` and root namespace aliases like `import app as root; root.U.id<Integer>` no longer fail with `Undefined variable: ident` / `Undefined variable: root`
@@ -26,11 +72,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - local variables and other lexical bindings now correctly shadow exact-import aliases during import checking, so valid local calls like `inc(1)` no longer fail just because a stale `import lib.add as inc` still exists in scope
   - stale exact-import aliases used in explicit generic function values such as `ident<Integer>` now fail during import checking with the same user-facing alias diagnostic instead of leaking to later `Undefined variable: ident` errors
   - bare same-file exact-import aliases such as `import id as ident` are now recognized as symbol aliases during import checking, so valid explicit generic function values like `ident<Integer>` no longer fail with the bogus namespace-alias error `Unknown namespace alias usage 'ident'`
+  - stale exact-import aliases used as plain function values such as `f = ident` now also fail during import checking with the same user-facing alias diagnostic instead of leaking to later `Undefined variable: ident` errors
 - Fixed stale namespace-alias member call diagnostics:
   - project builds such as `import lib as l; l.add(1)` and `import app as root; root.U.id(1)` now fail during import checking with an alias-member diagnostic after API changes, instead of falling through to misleading later errors like `Undefined variable: l` or `Undefined variable: root`
   - deep namespace-alias call paths are now resolved directly in import checking, so missing members on aliased namespaces get reported before semantic fallback loses the original access path
   - local variables, parameters, loop bindings, lambda params, and match bindings now correctly shadow namespace aliases during import checking, so valid calls like `u.get()` no longer get misreported as stale alias-member access just because `import app as u` exists in scope
   - stale namespace alias generic function values such as `root.U.id<Integer>` now also fail in import checking with the same user-facing alias-member diagnostic instead of leaking into later errors like `Undefined variable: root` and `Cannot access field on type unknown`
+  - stale namespace alias plain function values such as `f = root.U.id` now also fail in import checking with the same user-facing alias-member diagnostic instead of leaking into later `Undefined variable: root` errors
 - Fixed import-check diagnostic propagation:
   - project and single-file build/check flows now return the full rendered import-check diagnostics in their error strings instead of collapsing everything to bare `Import check failed`
   - callers and regression tests can now assert on the real import failure reason without scraping terminal stderr side effects

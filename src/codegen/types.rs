@@ -820,7 +820,7 @@ impl<'ctx> Codegen<'ctx> {
             let var = self
                 .variables
                 .get(set_name)
-                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", set_name)))?;
+                .ok_or_else(|| Self::undefined_variable_error(set_name))?;
             (var.ptr, var.ty.clone())
         };
         self.compile_set_method_on_value(set_ptr.into(), &set_ty, method, args)
@@ -1291,7 +1291,7 @@ impl<'ctx> Codegen<'ctx> {
             let var = self
                 .variables
                 .get(option_name)
-                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", option_name)))?;
+                .ok_or_else(|| Self::undefined_variable_error(option_name))?;
             (var.ptr, var.ty.clone())
         };
         self.compile_option_method_on_value(ptr.into(), &ty, method, args)
@@ -1476,7 +1476,7 @@ impl<'ctx> Codegen<'ctx> {
             let var = self
                 .variables
                 .get(result_name)
-                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", result_name)))?;
+                .ok_or_else(|| Self::undefined_variable_error(result_name))?;
             (var.ptr, var.ty.clone())
         };
         self.compile_result_method_on_value(ptr.into(), &ty, method, args)
@@ -2985,7 +2985,7 @@ impl<'ctx> Codegen<'ctx> {
             let var = self
                 .variables
                 .get(list_name)
-                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", list_name)))?;
+                .ok_or_else(|| Self::undefined_variable_error(list_name))?;
             (var.ptr, var.ty.clone())
         };
         self.compile_list_method_ptr(list_ptr, &list_ty, method, args)
@@ -3962,7 +3962,7 @@ impl<'ctx> Codegen<'ctx> {
             let var = self
                 .variables
                 .get(map_name)
-                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", map_name)))?;
+                .ok_or_else(|| Self::undefined_variable_error(map_name))?;
             (var.ptr.into(), var.ty.clone())
         };
         self.compile_map_method_on_value(map_ptr, &map_ty, method, args)
@@ -4894,7 +4894,7 @@ impl<'ctx> Codegen<'ctx> {
             let var = self
                 .variables
                 .get(range_name)
-                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", range_name)))?;
+                .ok_or_else(|| Self::undefined_variable_error(range_name))?;
             let ptr_type = self.context.ptr_type(AddressSpace::default());
             let range_ptr = self
                 .builder

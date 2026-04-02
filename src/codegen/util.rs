@@ -886,13 +886,23 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_deref(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
-        // Compile the expression to get a pointer value
-        let ptr_val = self.compile_expr(expr)?.into_pointer_value();
-
-        let pointee_ty = match self.infer_expr_type(expr, &[]) {
-            Type::Ref(inner) | Type::MutRef(inner) | Type::Ptr(inner) => self.llvm_type(&inner),
-            _ => self.context.i64_type().into(),
+        let expr_ty = self.infer_expr_type(expr, &[]);
+        let pointee_ty = match &expr_ty {
+            Type::Ref(inner)
+            | Type::MutRef(inner)
+            | Type::Ptr(inner)
+            | Type::Box(inner)
+            | Type::Rc(inner)
+            | Type::Arc(inner) => self.llvm_type(inner),
+            _ => {
+                let _ = self.compile_expr(expr)?;
+                return Err(CodegenError::new(format!(
+                    "Cannot dereference non-pointer type {}",
+                    Self::format_type_string(&expr_ty)
+                )));
+            }
         };
+        let ptr_val = self.compile_expr(expr)?.into_pointer_value();
         let val = self
             .builder
             .build_load(pointee_ty, ptr_val, "deref")
@@ -1576,7 +1586,7 @@ impl<'ctx> Codegen<'ctx> {
                 .variables
                 .get(name)
                 .map(|v| v.ptr)
-                .ok_or_else(|| CodegenError::new(format!("Unknown variable: {}", name))),
+                .ok_or_else(|| Self::undefined_variable_error(name)),
             Expr::Field { object, field } => {
                 let object_ty = self.infer_object_type(&object.node);
                 if let Some(object_ty) = object_ty.as_ref() {
@@ -1603,10 +1613,14 @@ impl<'ctx> Codegen<'ctx> {
                     .get(&class_name)
                     .ok_or_else(|| CodegenError::new(format!("Unknown class: {}", class_name)))?;
 
-                let field_idx = *class_info
-                    .field_indices
-                    .get(field)
-                    .ok_or_else(|| CodegenError::new(format!("Unknown field: {}", field)))?;
+                let field_idx = *class_info.field_indices.get(field).ok_or_else(|| {
+                    Self::unknown_field_error(
+                        field,
+                        object_ty
+                            .as_ref()
+                            .expect("class-like type already validated"),
+                    )
+                })?;
 
                 let i32_type = self.context.i32_type();
                 let zero = i32_type.const_int(0, false);
@@ -1633,6 +1647,18 @@ impl<'ctx> Codegen<'ctx> {
                 let deref_object_ty = object_ty
                     .clone()
                     .map(|ty| self.deref_codegen_type(&ty).clone());
+                let supports_index_assignment = matches!(deref_object_ty, Some(Type::List(_)));
+
+                if !supports_index_assignment {
+                    let diagnostic_ty = deref_object_ty.clone().unwrap_or_else(|| {
+                        self.deref_codegen_type(&self.infer_expr_type(&object.node, &[]))
+                            .clone()
+                    });
+                    return Err(CodegenError::new(format!(
+                        "Cannot index type {}",
+                        Self::format_type_string(&diagnostic_ty)
+                    )));
+                }
 
                 // Prefer typed list element pointer for List<T> index assignment.
                 if let Some(Type::List(inner)) = deref_object_ty {
@@ -1765,16 +1791,28 @@ impl<'ctx> Codegen<'ctx> {
                     };
                     return Ok(elem_ptr);
                 }
-
-                let obj_ptr = self.compile_expr(&object.node)?.into_pointer_value();
-                let elem_ptr = unsafe {
-                    self.builder
-                        .build_gep(self.context.i64_type(), obj_ptr, &[idx_val], "idx_elem_ptr")
-                        .unwrap()
-                };
-                Ok(elem_ptr)
+                Err(CodegenError::new(
+                    "internal error: unsupported index assignment target",
+                ))
             }
-            Expr::Deref(inner) => Ok(self.compile_expr(&inner.node)?.into_pointer_value()),
+            Expr::Deref(inner) => {
+                let inner_ty = self.infer_expr_type(&inner.node, &[]);
+                match inner_ty {
+                    Type::Ref(_)
+                    | Type::MutRef(_)
+                    | Type::Ptr(_)
+                    | Type::Box(_)
+                    | Type::Rc(_)
+                    | Type::Arc(_) => Ok(self.compile_expr(&inner.node)?.into_pointer_value()),
+                    _ => {
+                        let _ = self.compile_expr(&inner.node)?;
+                        Err(CodegenError::new(format!(
+                            "Cannot dereference non-pointer type {}",
+                            Self::format_type_string(&inner_ty)
+                        )))
+                    }
+                }
+            }
             _ => Err(CodegenError::new("Invalid lvalue")),
         }
     }
@@ -1783,7 +1821,7 @@ impl<'ctx> Codegen<'ctx> {
         match expr {
             Expr::Ident(name) => {
                 let Some(var) = self.variables.get(name) else {
-                    return Err(CodegenError::new(format!("Unknown variable: {}", name)));
+                    return Err(Self::undefined_variable_error(name));
                 };
                 match &var.ty {
                     Type::MutRef(_) => Ok(()),
@@ -2147,8 +2185,12 @@ impl<'ctx> Codegen<'ctx> {
     pub fn type_to_class_name(&self, ty: &Type) -> Option<String> {
         let normalized = self.normalize_codegen_type(ty);
         match &normalized {
-            Type::Named(name) => Some(name.clone()),
-            Type::Generic(name, _) => Some(name.clone()),
+            Type::Named(name) => self
+                .canonical_codegen_type_name(name)
+                .or_else(|| Some(name.clone())),
+            Type::Generic(name, _) => self
+                .canonical_codegen_type_name(name)
+                .or_else(|| Some(name.clone())),
             Type::Ref(inner)
             | Type::MutRef(inner)
             | Type::Box(inner)

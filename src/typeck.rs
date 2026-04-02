@@ -648,6 +648,14 @@ impl TypeChecker {
         (matches.len() == 1).then(|| (matches[0].clone(), variant_name.to_string()))
     }
 
+    fn parse_construct_nominal_type_source(ty: &str) -> Option<(String, Vec<Type>)> {
+        match parse_type_source(ty).ok()? {
+            Type::Named(name) => Some((name, Vec::new())),
+            Type::Generic(name, args) => Some((name, args)),
+            _ => None,
+        }
+    }
+
     fn resolve_enum_name(&self, name: &str) -> Option<String> {
         if self.enums.contains_key(name) {
             return Some(name.to_string());
@@ -5795,6 +5803,26 @@ impl TypeChecker {
             }
 
             Expr::Construct { ty, args } => {
+                if let Some((base_name, explicit_type_args)) =
+                    Self::parse_construct_nominal_type_source(ty)
+                {
+                    if let Some((enum_name, variant_name)) =
+                        self.resolve_import_alias_variant(&base_name)
+                    {
+                        if !explicit_type_args.is_empty() {
+                            self.error(
+                                format!(
+                                    "Enum variant '{}.{}' does not accept type arguments",
+                                    Self::format_diagnostic_class_name(&enum_name),
+                                    variant_name
+                                ),
+                                span.clone(),
+                            );
+                            return ResolvedType::Unknown;
+                        }
+                    }
+                }
+
                 let scoped_ty = self.resolve_type_source_string(ty);
 
                 if let Some((enum_name, variant_name)) = self.resolve_import_alias_variant(ty) {
@@ -8299,13 +8327,18 @@ impl TypeChecker {
                     }
                     inst_return_type
                 } else {
-                    self.error(
-                        format!(
-                            "Unknown class: {}",
-                            Self::format_diagnostic_class_name(name)
-                        ),
-                        span,
-                    );
+                    let diagnostic_class = Self::format_diagnostic_class_name(name);
+                    if self.classes.contains_key(&base_name) {
+                        self.error(
+                            format!(
+                                "Unknown method '{}' for class '{}'",
+                                method, diagnostic_class
+                            ),
+                            span,
+                        );
+                    } else {
+                        self.error(format!("Unknown class: {}", diagnostic_class), span);
+                    }
                     ResolvedType::Unknown
                 }
             }

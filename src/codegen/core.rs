@@ -120,11 +120,61 @@ impl<'ctx> Codegen<'ctx> {
         name.replace("__", ".")
     }
 
+    pub(crate) fn undefined_variable_error(name: &str) -> CodegenError {
+        CodegenError::new(format!("Undefined variable: {}", name))
+    }
+
+    pub(crate) fn undefined_function_error(name: &str) -> CodegenError {
+        CodegenError::new(format!("Undefined function: {}", name))
+    }
+
+    fn non_function_call_error(ty: &Type) -> CodegenError {
+        CodegenError::new(format!(
+            "Cannot call non-function type {}",
+            Self::format_type_string(ty)
+        ))
+    }
+
+    pub(crate) fn unknown_field_error(field: &str, ty: &Type) -> CodegenError {
+        CodegenError::new(format!(
+            "Unknown field '{}' on class '{}'",
+            field,
+            Self::format_diagnostic_name(&Self::format_type_string(ty))
+        ))
+    }
+
+    fn explicit_generic_field_access_error(
+        &self,
+        callee: &Expr,
+        treat_as_method: bool,
+    ) -> Option<CodegenError> {
+        let Expr::Field { object, field } = callee else {
+            return None;
+        };
+        let object_ty = self.infer_object_type(&object.node);
+        let display_ty = self.deref_codegen_type(&object_ty.clone()?).clone();
+        let class_name = self.type_to_class_name(&display_ty)?;
+        let class_info = self.classes.get(&class_name)?;
+        if !class_info.field_types.contains_key(field) {
+            return None;
+        }
+
+        Some(if treat_as_method {
+            CodegenError::new(format!(
+                "Unknown method '{}' for class '{}'",
+                field,
+                Self::format_diagnostic_name(&Self::format_type_string(&display_ty))
+            ))
+        } else {
+            Self::unknown_field_error(field, &display_ty)
+        })
+    }
+
     fn has_known_codegen_type(&self, name: &str) -> bool {
         self.classes.contains_key(name) || self.enums.contains_key(name)
     }
 
-    fn canonical_codegen_type_name(&self, name: &str) -> Option<String> {
+    pub(crate) fn canonical_codegen_type_name(&self, name: &str) -> Option<String> {
         if self.has_known_codegen_type(name) {
             return Some(name.to_string());
         }
@@ -3084,6 +3134,23 @@ impl<'ctx> Codegen<'ctx> {
                     .collect::<Result<Vec<_>>>()?;
 
                 if !type_args.is_empty() {
+                    if let Expr::Field { object, field } = &callee.node {
+                        if let Expr::Ident(owner_name) = &object.node {
+                            match (owner_name.as_str(), field.as_str()) {
+                                ("Option", "some" | "none") => {
+                                    return Err(CodegenError::new(
+                                        "Option static methods do not accept explicit type arguments",
+                                    ));
+                                }
+                                ("Result", "ok" | "error") => {
+                                    return Err(CodegenError::new(
+                                        "Result static methods do not accept explicit type arguments",
+                                    ));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                     if let Expr::Field { field, .. } = &callee.node {
                         if let Some(candidates) = method_templates.get(field) {
                             let eligible_templates: Vec<_> = candidates
@@ -6043,6 +6110,14 @@ impl<'ctx> Codegen<'ctx> {
         matches.sort_unstable();
         matches.dedup();
         (matches.len() == 1).then(|| (matches[0].clone(), variant_name.to_string()))
+    }
+
+    fn parse_construct_nominal_type_source(ty: &str) -> Option<(String, Vec<Type>)> {
+        match parse_type_source(ty).ok()? {
+            Type::Named(name) => Some((name, Vec::new())),
+            Type::Generic(name, args) => Some((name, args)),
+            _ => None,
+        }
     }
 
     pub(crate) fn resolve_contextual_function_value_name(&self, expr: &Expr) -> Option<String> {
@@ -9559,11 +9634,6 @@ impl<'ctx> Codegen<'ctx> {
 
     // === Expressions ===
 
-    fn infer_await_inner_type(&self, expr: &Expr) -> Type {
-        let inferred = self.infer_expr_type(expr, &[]);
-        self.task_inner_type(&inferred).unwrap_or(Type::Integer)
-    }
-
     fn match_compound_assign_target<'a>(
         target: &'a Expr,
         value: &'a Expr,
@@ -10040,7 +10110,7 @@ impl<'ctx> Codegen<'ctx> {
                             Err(CodegenError::new(format!("Unknown enum '{}'", enum_name)))
                         }
                     } else {
-                        Err(CodegenError::new(format!("Unknown variable: {}", name)))
+                        Err(Self::undefined_variable_error(name))
                     }
                 }
             }
@@ -10055,6 +10125,10 @@ impl<'ctx> Codegen<'ctx> {
                 type_args,
             } => {
                 if !type_args.is_empty() {
+                    if let Some(err) = self.explicit_generic_field_access_error(&callee.node, true)
+                    {
+                        return Err(err);
+                    }
                     if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
                         let full_path = path_parts.join(".");
                         if self
@@ -10073,6 +10147,58 @@ impl<'ctx> Codegen<'ctx> {
                             return self.compile_construct(&ty_source, args);
                         }
                     }
+                    if let Some((enum_name, variant_info)) =
+                        self.resolve_enum_variant_function_value(&callee.node)
+                    {
+                        let variant_name = self
+                            .enums
+                            .get(&enum_name)
+                            .and_then(|enum_info| {
+                                enum_info.variants.iter().find_map(|(name, info)| {
+                                    (info.tag == variant_info.tag
+                                        && info.fields == variant_info.fields)
+                                        .then(|| name.clone())
+                                })
+                            })
+                            .unwrap_or_else(|| "<unknown>".to_string());
+                        return Err(CodegenError::new(format!(
+                            "Enum variant '{}.{}' does not accept type arguments",
+                            Self::format_diagnostic_name(&enum_name),
+                            variant_name
+                        )));
+                    }
+                    if let Expr::Field { object, field } = &callee.node {
+                        if let Expr::Ident(owner_name) = &object.node {
+                            let owner = self.resolve_module_alias(owner_name);
+                            match (owner.as_str(), field.as_str()) {
+                                ("Option", "some" | "none") => {
+                                    return Err(CodegenError::new(
+                                        "Option static methods do not accept explicit type arguments",
+                                    ));
+                                }
+                                ("Result", "ok" | "error") => {
+                                    return Err(CodegenError::new(
+                                        "Result static methods do not accept explicit type arguments",
+                                    ));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    if let Some(canonical_name) =
+                        self.resolve_contextual_function_value_name(&callee.node)
+                    {
+                        match canonical_name.as_str() {
+                            _ if Self::is_supported_builtin_function_name(&canonical_name) => {
+                                return Err(CodegenError::new(format!(
+                                    "Built-in function '{}' does not accept type arguments",
+                                    canonical_name.replace("__", ".")
+                                )));
+                            }
+                            _ => {}
+                        }
+                    }
+                    let _ = self.compile_call(&callee.node, args)?;
                     return Err(CodegenError::new(
                         "Explicit generic call code generation is not supported yet".to_string(),
                     ));
@@ -10110,6 +10236,10 @@ impl<'ctx> Codegen<'ctx> {
                         )));
                     }
                 }
+                if let Some(err) = self.explicit_generic_field_access_error(&callee.node, false) {
+                    return Err(err);
+                }
+                self.compile_expr(&callee.node)?;
                 Err(CodegenError::new(
                     "Explicit generic function value should be specialized before code generation"
                         .to_string(),
@@ -10157,10 +10287,17 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             Expr::Await(inner) => {
+                let task_ty = self.infer_expr_type(&inner.node, &[]);
+                let Type::Task(inner_ty) = task_ty else {
+                    return Err(CodegenError::new(format!(
+                        "'await' can only be used on Task types, got {}",
+                        Self::format_type_string(&task_ty)
+                    )));
+                };
+
                 let task = self.compile_expr(&inner.node)?;
-                let inner_ty = self.infer_await_inner_type(&inner.node);
                 if !task.is_pointer_value() {
-                    return Err(CodegenError::new("await expects Task<T> value"));
+                    return Err(CodegenError::new("await expects lowered Task<T> value"));
                 }
                 self.await_task(task.into_pointer_value(), &inner_ty)
             }
@@ -10263,11 +10400,21 @@ impl<'ctx> Codegen<'ctx> {
         {
             return Ok(closure);
         }
-        if let Expr::Call { callee, args, .. } = expr {
+        if let Expr::Call {
+            callee,
+            args,
+            type_args,
+        } = expr
+        {
             if let Expr::Field { object, field } = &callee.node {
                 if let Expr::Ident(type_name) = &object.node {
                     match (type_name.as_str(), field.as_str(), expected_ty) {
                         ("Option", "some", Type::Option(inner_ty)) => {
+                            if !type_args.is_empty() {
+                                return Err(CodegenError::new(
+                                    "Option static methods do not accept explicit type arguments",
+                                ));
+                            }
                             if args.len() != 1 {
                                 return Err(CodegenError::new(
                                     "Option.some() requires exactly 1 argument",
@@ -10278,6 +10425,11 @@ impl<'ctx> Codegen<'ctx> {
                             return self.create_option_some_typed(value, inner_ty);
                         }
                         ("Option", "none", Type::Option(inner_ty)) => {
+                            if !type_args.is_empty() {
+                                return Err(CodegenError::new(
+                                    "Option static methods do not accept explicit type arguments",
+                                ));
+                            }
                             if !args.is_empty() {
                                 return Err(CodegenError::new(format!(
                                     "Option.none() expects 0 argument(s), got {}",
@@ -10287,6 +10439,11 @@ impl<'ctx> Codegen<'ctx> {
                             return self.create_option_none_typed(inner_ty);
                         }
                         ("Result", "ok", Type::Result(ok_ty, err_ty)) => {
+                            if !type_args.is_empty() {
+                                return Err(CodegenError::new(
+                                    "Result static methods do not accept explicit type arguments",
+                                ));
+                            }
                             if args.len() != 1 {
                                 return Err(CodegenError::new(
                                     "Result.ok() requires exactly 1 argument",
@@ -10297,6 +10454,11 @@ impl<'ctx> Codegen<'ctx> {
                             return self.create_result_ok_typed(value, ok_ty, err_ty);
                         }
                         ("Result", "error", Type::Result(ok_ty, err_ty)) => {
+                            if !type_args.is_empty() {
+                                return Err(CodegenError::new(
+                                    "Result static methods do not accept explicit type arguments",
+                                ));
+                            }
                             if args.len() != 1 {
                                 return Err(CodegenError::new(
                                     "Result.error() requires exactly 1 argument",
@@ -12021,9 +12183,10 @@ impl<'ctx> Codegen<'ctx> {
                     .unwrap();
                 Ok(buffer)
             }
-            _ => Err(CodegenError::new(
-                "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting",
-            )),
+            _ => Err(CodegenError::new(format!(
+                "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
+                Self::format_type_string(&display_ty)
+            ))),
         }
     }
 
@@ -12876,66 +13039,74 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Some(field_ty)
             });
-            if let Some(Type::Function(param_types, ret_type)) = field_ty {
-                let compiled_callee = self.compile_expr(callee)?;
-                let (ptr, env_ptr) = if compiled_callee.is_struct_value() {
-                    let closure_val = compiled_callee.into_struct_value();
-                    let ptr = self
+            if let Some(field_ty) = field_ty {
+                if let Type::Function(param_types, ret_type) = field_ty {
+                    let compiled_callee = self.compile_expr(callee)?;
+                    let (ptr, env_ptr) = if compiled_callee.is_struct_value() {
+                        let closure_val = compiled_callee.into_struct_value();
+                        let ptr = self
+                            .builder
+                            .build_extract_value(closure_val, 0, "fn_ptr")
+                            .unwrap()
+                            .into_pointer_value();
+                        let env_ptr = self
+                            .builder
+                            .build_extract_value(closure_val, 1, "env_ptr")
+                            .unwrap();
+                        (ptr, env_ptr)
+                    } else if compiled_callee.is_pointer_value() {
+                        (
+                            compiled_callee.into_pointer_value(),
+                            self.context
+                                .ptr_type(AddressSpace::default())
+                                .const_null()
+                                .into(),
+                        )
+                    } else {
+                        return Err(CodegenError::new(format!(
+                            "Function-valued field '{}': expected closure or function pointer, got {:?}",
+                            field, compiled_callee
+                        )));
+                    };
+
+                    let llvm_ret = self.llvm_type(&ret_type);
+                    let mut llvm_params: Vec<BasicMetadataTypeEnum> =
+                        vec![self.context.ptr_type(AddressSpace::default()).into()];
+                    for p in &param_types {
+                        llvm_params.push(self.llvm_type(p).into());
+                    }
+
+                    let fn_type = match llvm_ret {
+                        BasicTypeEnum::IntType(i) => i.fn_type(&llvm_params, false),
+                        BasicTypeEnum::FloatType(f) => f.fn_type(&llvm_params, false),
+                        BasicTypeEnum::PointerType(p) => p.fn_type(&llvm_params, false),
+                        BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
+                        _ => self.context.i8_type().fn_type(&llvm_params, false),
+                    };
+
+                    let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
+                    for (arg, param_ty) in args.iter().zip(param_types.iter()) {
+                        compiled_args
+                            .push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+                    }
+
+                    let args_meta: Vec<BasicMetadataValueEnum> =
+                        compiled_args.iter().map(|a| (*a).into()).collect();
+                    let call = self
                         .builder
-                        .build_extract_value(closure_val, 0, "fn_ptr")
-                        .unwrap()
-                        .into_pointer_value();
-                    let env_ptr = self
-                        .builder
-                        .build_extract_value(closure_val, 1, "env_ptr")
+                        .build_indirect_call(fn_type, ptr, &args_meta, "call")
                         .unwrap();
-                    (ptr, env_ptr)
-                } else if compiled_callee.is_pointer_value() {
-                    (
-                        compiled_callee.into_pointer_value(),
-                        self.context
-                            .ptr_type(AddressSpace::default())
-                            .const_null()
-                            .into(),
-                    )
-                } else {
-                    return Err(CodegenError::new(format!(
-                        "Function-valued field '{}': expected closure or function pointer, got {:?}",
-                        field, compiled_callee
-                    )));
-                };
 
-                let llvm_ret = self.llvm_type(&ret_type);
-                let mut llvm_params: Vec<BasicMetadataTypeEnum> =
-                    vec![self.context.ptr_type(AddressSpace::default()).into()];
-                for p in &param_types {
-                    llvm_params.push(self.llvm_type(p).into());
+                    return Ok(match call.try_as_basic_value() {
+                        ValueKind::Basic(val) => val,
+                        ValueKind::Instruction(_) => {
+                            self.context.i8_type().const_int(0, false).into()
+                        }
+                    });
                 }
 
-                let fn_type = match llvm_ret {
-                    BasicTypeEnum::IntType(i) => i.fn_type(&llvm_params, false),
-                    BasicTypeEnum::FloatType(f) => f.fn_type(&llvm_params, false),
-                    BasicTypeEnum::PointerType(p) => p.fn_type(&llvm_params, false),
-                    BasicTypeEnum::StructType(s) => s.fn_type(&llvm_params, false),
-                    _ => self.context.i8_type().fn_type(&llvm_params, false),
-                };
-
-                let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
-                for (arg, param_ty) in args.iter().zip(param_types.iter()) {
-                    compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
-                }
-
-                let args_meta: Vec<BasicMetadataValueEnum> =
-                    compiled_args.iter().map(|a| (*a).into()).collect();
-                let call = self
-                    .builder
-                    .build_indirect_call(fn_type, ptr, &args_meta, "call")
-                    .unwrap();
-
-                return Ok(match call.try_as_basic_value() {
-                    ValueKind::Basic(val) => val,
-                    ValueKind::Instruction(_) => self.context.i8_type().const_int(0, false).into(),
-                });
+                let _ = self.compile_expr(callee)?;
+                return Err(Self::non_function_call_error(&field_ty));
             }
 
             // Check for File static methods
@@ -13008,6 +13179,9 @@ impl<'ctx> Codegen<'ctx> {
                     ValueKind::Instruction(_) => self.context.i8_type().const_int(0, false).into(),
                 });
             }
+
+            let _ = self.compile_expr(callee)?;
+            return Err(Self::non_function_call_error(&callee_ty));
         }
 
         // Regular function call
@@ -13085,6 +13259,8 @@ impl<'ctx> Codegen<'ctx> {
                         };
                         return Ok(result);
                     }
+
+                    return Err(Self::non_function_call_error(&var.ty));
                 }
 
                 let looked_up_name = if resolved_ident.is_empty() {
@@ -13099,10 +13275,7 @@ impl<'ctx> Codegen<'ctx> {
                 } else if let Some(f) = self.module.get_function(looked_up_name) {
                     f
                 } else {
-                    return Err(CodegenError::new(format!(
-                        "Unknown function: {}",
-                        looked_up_name
-                    )));
+                    return Err(Self::undefined_function_error(looked_up_name));
                 }
             }
             _ => return Err(CodegenError::new("Invalid callee")),
@@ -14108,7 +14281,10 @@ impl<'ctx> Codegen<'ctx> {
                     &apex_func_ty,
                 );
             }
-            return Err(CodegenError::new(format!("Unknown field: {}", field)));
+            return Err(Self::unknown_field_error(
+                field,
+                obj_ty.as_ref().expect("class-like type already validated"),
+            ));
         };
 
         let i32_type = self.context.i32_type();
@@ -14316,10 +14492,12 @@ impl<'ctx> Codegen<'ctx> {
             .get(&class_name)
             .ok_or_else(|| CodegenError::new(format!("Unknown class: {}", class_name)))?;
 
-        let field_idx = *class_info
-            .field_indices
-            .get(field)
-            .ok_or_else(|| CodegenError::new(format!("Unknown field: {}", field)))?;
+        let field_idx = *class_info.field_indices.get(field).ok_or_else(|| {
+            Self::unknown_field_error(
+                field,
+                obj_ty.as_ref().expect("class-like type already validated"),
+            )
+        })?;
 
         let i32_type = self.context.i32_type();
         let zero = i32_type.const_int(0, false);
@@ -15302,6 +15480,21 @@ impl<'ctx> Codegen<'ctx> {
         let deref_object_ty = object_ty
             .clone()
             .map(|ty| self.deref_codegen_type(&ty).clone());
+        let supports_indexing = matches!(
+            deref_object_ty,
+            Some(Type::Map(_, _)) | Some(Type::String) | Some(Type::List(_))
+        );
+
+        if !supports_indexing {
+            let diagnostic_ty = deref_object_ty.clone().unwrap_or_else(|| {
+                self.deref_codegen_type(&self.infer_expr_type(object, &[]))
+                    .clone()
+            });
+            return Err(CodegenError::new(format!(
+                "Cannot index type {}",
+                Self::format_type_string(&diagnostic_ty)
+            )));
+        }
 
         if let Some(Type::Map(_, _)) = &deref_object_ty {
             let index_arg = [Spanned::new(index.clone(), 0..0)];
@@ -15610,6 +15803,48 @@ impl<'ctx> Codegen<'ctx> {
             .as_ref()
             .map(|parsed| self.normalize_codegen_type(parsed))
             .unwrap_or_else(|| Type::Named(ty.to_string()));
+
+        if let Some((base_name, explicit_type_args)) = Self::parse_construct_nominal_type_source(ty)
+        {
+            if let Some((enum_name, variant_name)) = self.resolve_import_alias_variant(&base_name) {
+                if !explicit_type_args.is_empty() {
+                    return Err(CodegenError::new(format!(
+                        "Enum variant '{}.{}' does not accept type arguments",
+                        Self::format_diagnostic_name(&enum_name),
+                        variant_name
+                    )));
+                }
+
+                let Some(variant_info) = self
+                    .enums
+                    .get(&enum_name)
+                    .and_then(|enum_info| enum_info.variants.get(&variant_name))
+                    .cloned()
+                else {
+                    return Err(CodegenError::new(format!(
+                        "Unknown variant '{}' for enum '{}'",
+                        variant_name,
+                        Self::format_diagnostic_name(&enum_name)
+                    )));
+                };
+
+                if args.len() != variant_info.fields.len() {
+                    return Err(CodegenError::new(format!(
+                        "Enum variant '{}.{}' expects {} argument(s), got {}",
+                        Self::format_diagnostic_name(&enum_name),
+                        variant_name,
+                        variant_info.fields.len(),
+                        args.len()
+                    )));
+                }
+
+                let mut values = Vec::with_capacity(args.len());
+                for (arg, expected_ty) in args.iter().zip(variant_info.fields.iter()) {
+                    values.push(self.compile_expr_with_expected_type(&arg.node, expected_ty)?);
+                }
+                return self.build_enum_value(&enum_name, &variant_info, &values);
+            }
+        }
 
         match &normalized_ty {
             Type::List(_) => {
@@ -15926,6 +16161,14 @@ impl<'ctx> Codegen<'ctx> {
             .ok_or_else(|| CodegenError::new("? operator used outside function"))?;
 
         // Compile the inner expression (should be Option<T> or Result<T, E>)
+        let inner_ty = self.infer_expr_type(inner, &[]);
+        if !matches!(inner_ty, Type::Option(_) | Type::Result(_, _)) {
+            let _ = self.compile_expr(inner)?;
+            return Err(CodegenError::new(format!(
+                "'?' operator can only be used on Option or Result, got {}",
+                Self::format_type_string(&inner_ty)
+            )));
+        }
         let value = self.compile_expr(inner)?;
         let struct_val = value.into_struct_value();
 

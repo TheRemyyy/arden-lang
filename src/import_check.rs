@@ -886,7 +886,19 @@ impl<'a> ImportChecker<'a> {
                 self.check_expr(&expr.node);
             }
             Expr::Field { object, .. } => {
-                self.check_expr(&object.node);
+                if let Some(path_parts) = flatten_field_chain(expr) {
+                    if self.check_alias_member_call(&path_parts, 0..0).is_some() {
+                        return;
+                    }
+                }
+                if !matches!(
+                    &object.node,
+                    Expr::Ident(name)
+                        if self.namespace_aliases.contains_key(name)
+                            || self.invalid_namespace_aliases.contains(name)
+                ) {
+                    self.check_expr(&object.node);
+                }
             }
             Expr::Index { object, index } => {
                 self.check_expr(&object.node);
@@ -1047,6 +1059,19 @@ impl<'a> ImportChecker<'a> {
                 for part in parts {
                     if let crate::ast::StringPart::Expr(expr) = part {
                         self.check_expr(&expr.node);
+                    }
+                }
+            }
+            Expr::Ident(name) => {
+                if self.is_local_value(name) {
+                    return;
+                }
+                if let Some(path) = self.namespace_aliases.get(name) {
+                    if path.contains('.') {
+                        let imported_symbol = path.rsplit('.').next().unwrap_or(path.as_str());
+                        if looks_like_function_symbol(imported_symbol) {
+                            self.check_function_call(name, 0..0);
+                        }
                     }
                 }
             }
