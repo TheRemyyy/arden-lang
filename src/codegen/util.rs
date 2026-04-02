@@ -19,12 +19,81 @@ use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
+use std::time::Instant;
 
 use crate::codegen::core::{Codegen, CodegenError, Result, Variable};
 
 static LLVM_NATIVE_TARGET_INIT: OnceLock<std::result::Result<(), String>> = OnceLock::new();
 static LLVM_ALL_TARGETS_INIT: OnceLock<()> = OnceLock::new();
+
+#[derive(Debug, Clone, Default)]
+pub struct ObjectWriteTimingSnapshot {
+    pub emit_object_bytes_ns: u64,
+    pub target_machine_setup_ns: u64,
+    pub write_to_memory_buffer_ns: u64,
+    pub memory_buffer_to_vec_ns: u64,
+    pub filesystem_write_ns: u64,
+}
+
+struct ObjectWriteTimingTotals {
+    emit_object_bytes_ns: AtomicU64,
+    target_machine_setup_ns: AtomicU64,
+    write_to_memory_buffer_ns: AtomicU64,
+    memory_buffer_to_vec_ns: AtomicU64,
+    filesystem_write_ns: AtomicU64,
+}
+
+static OBJECT_WRITE_TIMING_TOTALS: ObjectWriteTimingTotals = ObjectWriteTimingTotals {
+    emit_object_bytes_ns: AtomicU64::new(0),
+    target_machine_setup_ns: AtomicU64::new(0),
+    write_to_memory_buffer_ns: AtomicU64::new(0),
+    memory_buffer_to_vec_ns: AtomicU64::new(0),
+    filesystem_write_ns: AtomicU64::new(0),
+};
+
+fn elapsed_nanos_u64(started_at: Instant) -> u64 {
+    started_at.elapsed().as_nanos() as u64
+}
+
+pub fn reset_object_write_timings() {
+    OBJECT_WRITE_TIMING_TOTALS
+        .emit_object_bytes_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .target_machine_setup_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .write_to_memory_buffer_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .memory_buffer_to_vec_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .filesystem_write_ns
+        .store(0, Ordering::Relaxed);
+}
+
+pub fn snapshot_object_write_timings() -> ObjectWriteTimingSnapshot {
+    ObjectWriteTimingSnapshot {
+        emit_object_bytes_ns: OBJECT_WRITE_TIMING_TOTALS
+            .emit_object_bytes_ns
+            .load(Ordering::Relaxed),
+        target_machine_setup_ns: OBJECT_WRITE_TIMING_TOTALS
+            .target_machine_setup_ns
+            .load(Ordering::Relaxed),
+        write_to_memory_buffer_ns: OBJECT_WRITE_TIMING_TOTALS
+            .write_to_memory_buffer_ns
+            .load(Ordering::Relaxed),
+        memory_buffer_to_vec_ns: OBJECT_WRITE_TIMING_TOTALS
+            .memory_buffer_to_vec_ns
+            .load(Ordering::Relaxed),
+        filesystem_write_ns: OBJECT_WRITE_TIMING_TOTALS
+            .filesystem_write_ns
+            .load(Ordering::Relaxed),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct TargetMachineCacheKey {
@@ -2620,15 +2689,34 @@ impl<'ctx> Codegen<'ctx> {
         target_triple: Option<&str>,
         output_kind: &OutputKind,
     ) -> std::result::Result<Vec<u8>, String> {
-        Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
+        let started_at = Instant::now();
+        let result = Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
+            let setup_started_at = Instant::now();
             self.module.set_triple(triple);
             self.module
                 .set_data_layout(&machine.get_target_data().get_data_layout());
+            OBJECT_WRITE_TIMING_TOTALS
+                .target_machine_setup_ns
+                .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
+            let emit_started_at = Instant::now();
             let buffer = machine
                 .write_to_memory_buffer(&self.module, FileType::Object)
                 .map_err(|e| e.to_string())?;
-            Ok(buffer.as_slice().to_vec())
+            OBJECT_WRITE_TIMING_TOTALS
+                .write_to_memory_buffer_ns
+                .fetch_add(elapsed_nanos_u64(emit_started_at), Ordering::Relaxed);
+            let to_vec_started_at = Instant::now();
+            let object = buffer.as_slice().to_vec();
+            OBJECT_WRITE_TIMING_TOTALS
+                .memory_buffer_to_vec_ns
+                .fetch_add(elapsed_nanos_u64(to_vec_started_at), Ordering::Relaxed);
+            Ok(object)
         })
+        ;
+        OBJECT_WRITE_TIMING_TOTALS
+            .emit_object_bytes_ns
+            .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+        result
     }
 
     pub fn write_object_with_config(
@@ -2639,7 +2727,12 @@ impl<'ctx> Codegen<'ctx> {
         output_kind: &OutputKind,
     ) -> std::result::Result<(), String> {
         let object = self.emit_object_bytes(opt_level, target_triple, output_kind)?;
-        std::fs::write(path, object).map_err(|e| e.to_string())
+        let write_started_at = Instant::now();
+        let result = std::fs::write(path, object).map_err(|e| e.to_string());
+        OBJECT_WRITE_TIMING_TOTALS
+            .filesystem_write_ns
+            .fetch_add(elapsed_nanos_u64(write_started_at), Ordering::Relaxed);
+        result
     }
 
     pub fn identify_captures(&self, expr: &Expr, params: &[Parameter]) -> Vec<(String, Type)> {

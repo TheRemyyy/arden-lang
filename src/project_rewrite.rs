@@ -1,10 +1,162 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::time::Instant;
 
 use crate::ast::{self, Decl, Expr, ImportDecl, Program, Stmt};
 use crate::parser::parse_type_source;
 use crate::stdlib::stdlib_registry;
 
 type ImportedMap = HashMap<String, (String, String)>;
+
+#[derive(Debug, Clone, Default)]
+pub struct RewriteTimingSnapshot {
+    pub import_map_build_ns: u64,
+    pub wildcard_match_ns: u64,
+    pub wildcard_match_calls: usize,
+    pub exact_import_resolve_ns: u64,
+    pub exact_import_resolve_calls: usize,
+    pub block_rewrite_ns: u64,
+    pub block_rewrite_calls: usize,
+    pub stmt_rewrite_ns: u64,
+    pub stmt_rewrite_calls: usize,
+    pub expr_rewrite_ns: u64,
+    pub expr_rewrite_calls: usize,
+    pub type_rewrite_ns: u64,
+    pub type_rewrite_calls: usize,
+    pub pattern_rewrite_ns: u64,
+    pub pattern_rewrite_calls: usize,
+}
+
+#[derive(Default)]
+struct RewriteTimingTotals {
+    import_map_build_ns: AtomicU64,
+    wildcard_match_ns: AtomicU64,
+    wildcard_match_calls: AtomicUsize,
+    exact_import_resolve_ns: AtomicU64,
+    exact_import_resolve_calls: AtomicUsize,
+    block_rewrite_ns: AtomicU64,
+    block_rewrite_calls: AtomicUsize,
+    stmt_rewrite_ns: AtomicU64,
+    stmt_rewrite_calls: AtomicUsize,
+    expr_rewrite_ns: AtomicU64,
+    expr_rewrite_calls: AtomicUsize,
+    type_rewrite_ns: AtomicU64,
+    type_rewrite_calls: AtomicUsize,
+    pattern_rewrite_ns: AtomicU64,
+    pattern_rewrite_calls: AtomicUsize,
+}
+
+static REWRITE_TIMING_TOTALS: RewriteTimingTotals = RewriteTimingTotals {
+    import_map_build_ns: AtomicU64::new(0),
+    wildcard_match_ns: AtomicU64::new(0),
+    wildcard_match_calls: AtomicUsize::new(0),
+    exact_import_resolve_ns: AtomicU64::new(0),
+    exact_import_resolve_calls: AtomicUsize::new(0),
+    block_rewrite_ns: AtomicU64::new(0),
+    block_rewrite_calls: AtomicUsize::new(0),
+    stmt_rewrite_ns: AtomicU64::new(0),
+    stmt_rewrite_calls: AtomicUsize::new(0),
+    expr_rewrite_ns: AtomicU64::new(0),
+    expr_rewrite_calls: AtomicUsize::new(0),
+    type_rewrite_ns: AtomicU64::new(0),
+    type_rewrite_calls: AtomicUsize::new(0),
+    pattern_rewrite_ns: AtomicU64::new(0),
+    pattern_rewrite_calls: AtomicUsize::new(0),
+};
+
+fn elapsed_nanos_u64(started_at: Instant) -> u64 {
+    started_at.elapsed().as_nanos() as u64
+}
+
+pub fn reset_rewrite_timings() {
+    REWRITE_TIMING_TOTALS
+        .import_map_build_ns
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .wildcard_match_ns
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .wildcard_match_calls
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .exact_import_resolve_ns
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .exact_import_resolve_calls
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .block_rewrite_ns
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .block_rewrite_calls
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .stmt_rewrite_ns
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .stmt_rewrite_calls
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .expr_rewrite_ns
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .expr_rewrite_calls
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .type_rewrite_ns
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .type_rewrite_calls
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .pattern_rewrite_ns
+        .store(0, Ordering::Relaxed);
+    REWRITE_TIMING_TOTALS
+        .pattern_rewrite_calls
+        .store(0, Ordering::Relaxed);
+}
+
+pub fn snapshot_rewrite_timings() -> RewriteTimingSnapshot {
+    RewriteTimingSnapshot {
+        import_map_build_ns: REWRITE_TIMING_TOTALS
+            .import_map_build_ns
+            .load(Ordering::Relaxed),
+        wildcard_match_ns: REWRITE_TIMING_TOTALS
+            .wildcard_match_ns
+            .load(Ordering::Relaxed),
+        wildcard_match_calls: REWRITE_TIMING_TOTALS
+            .wildcard_match_calls
+            .load(Ordering::Relaxed),
+        exact_import_resolve_ns: REWRITE_TIMING_TOTALS
+            .exact_import_resolve_ns
+            .load(Ordering::Relaxed),
+        exact_import_resolve_calls: REWRITE_TIMING_TOTALS
+            .exact_import_resolve_calls
+            .load(Ordering::Relaxed),
+        block_rewrite_ns: REWRITE_TIMING_TOTALS.block_rewrite_ns.load(Ordering::Relaxed),
+        block_rewrite_calls: REWRITE_TIMING_TOTALS
+            .block_rewrite_calls
+            .load(Ordering::Relaxed),
+        stmt_rewrite_ns: REWRITE_TIMING_TOTALS.stmt_rewrite_ns.load(Ordering::Relaxed),
+        stmt_rewrite_calls: REWRITE_TIMING_TOTALS
+            .stmt_rewrite_calls
+            .load(Ordering::Relaxed),
+        expr_rewrite_ns: REWRITE_TIMING_TOTALS.expr_rewrite_ns.load(Ordering::Relaxed),
+        expr_rewrite_calls: REWRITE_TIMING_TOTALS
+            .expr_rewrite_calls
+            .load(Ordering::Relaxed),
+        type_rewrite_ns: REWRITE_TIMING_TOTALS.type_rewrite_ns.load(Ordering::Relaxed),
+        type_rewrite_calls: REWRITE_TIMING_TOTALS
+            .type_rewrite_calls
+            .load(Ordering::Relaxed),
+        pattern_rewrite_ns: REWRITE_TIMING_TOTALS
+            .pattern_rewrite_ns
+            .load(Ordering::Relaxed),
+        pattern_rewrite_calls: REWRITE_TIMING_TOTALS
+            .pattern_rewrite_calls
+            .load(Ordering::Relaxed),
+    }
+}
 
 struct RewriteTypeContext<'a> {
     current_namespace: &'a str,
@@ -30,11 +182,19 @@ fn resolve_exact_imported_symbol_path(
     symbol_name: &str,
     global_symbol_map: &HashMap<String, String>,
 ) -> Option<(String, String)> {
+    let started_at = Instant::now();
+    REWRITE_TIMING_TOTALS
+        .exact_import_resolve_calls
+        .fetch_add(1, Ordering::Relaxed);
     if global_symbol_map
         .get(symbol_name)
         .is_some_and(|owner_ns| owner_ns == namespace_path)
     {
-        return Some((namespace_path.to_string(), symbol_name.to_string()));
+        let result = Some((namespace_path.to_string(), symbol_name.to_string()));
+        REWRITE_TIMING_TOTALS
+            .exact_import_resolve_ns
+            .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+        return result;
     }
 
     let full_path = format!("{}.{}", namespace_path, symbol_name);
@@ -47,7 +207,11 @@ fn resolve_exact_imported_symbol_path(
         .collect::<Vec<_>>();
     matches.sort_unstable();
     matches.dedup();
-    (matches.len() == 1).then(|| matches.swap_remove(0))
+    let result = (matches.len() == 1).then(|| matches.swap_remove(0));
+    REWRITE_TIMING_TOTALS
+        .exact_import_resolve_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    result
 }
 
 fn resolve_exact_imported_variant_alias(
@@ -72,17 +236,26 @@ fn direct_wildcard_member_name(
     owner_ns: &str,
     symbol_name: &str,
 ) -> Option<String> {
-    if owner_ns == import_path {
-        return (!symbol_name.contains("__")).then(|| symbol_name.to_string());
-    }
-
-    let module_path = import_path.strip_prefix(owner_ns)?.strip_prefix('.')?;
-    if module_path.is_empty() {
-        return None;
-    }
-    let module_prefix = module_path.replace('.', "__");
-    let remainder = symbol_name.strip_prefix(&format!("{}__", module_prefix))?;
-    (!remainder.is_empty() && !remainder.contains("__")).then(|| remainder.to_string())
+    let started_at = Instant::now();
+    REWRITE_TIMING_TOTALS
+        .wildcard_match_calls
+        .fetch_add(1, Ordering::Relaxed);
+    let result = if owner_ns == import_path {
+        (!symbol_name.contains("__")).then(|| symbol_name.to_string())
+    } else {
+        let module_path = import_path.strip_prefix(owner_ns)?.strip_prefix('.')?;
+        if module_path.is_empty() {
+            None
+        } else {
+            let module_prefix = module_path.replace('.', "__");
+            let remainder = symbol_name.strip_prefix(&format!("{}__", module_prefix))?;
+            (!remainder.is_empty() && !remainder.contains("__")).then(|| remainder.to_string())
+        }
+    };
+    REWRITE_TIMING_TOTALS
+        .wildcard_match_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    result
 }
 
 fn format_type_string(ty: &ast::Type) -> String {
@@ -214,6 +387,7 @@ pub fn rewrite_program_for_project(
     global_module_map: &HashMap<String, String>,
     imports: &[ImportDecl],
 ) -> Program {
+    let import_map_started_at = Instant::now();
     let local_functions = namespace_functions
         .get(current_namespace)
         .cloned()
@@ -363,6 +537,9 @@ pub fn rewrite_program_for_project(
             }
         }
     }
+    REWRITE_TIMING_TOTALS
+        .import_map_build_ns
+        .fetch_add(elapsed_nanos_u64(import_map_started_at), Ordering::Relaxed);
 
     Program {
         package: None,
@@ -1468,6 +1645,10 @@ fn mangle_project_symbol(namespace: &str, entry_namespace: &str, name: &str) -> 
 }
 
 fn rewrite_type_for_project_with_ctx(ty: &ast::Type, ctx: &RewriteTypeContext<'_>) -> ast::Type {
+    let started_at = Instant::now();
+    REWRITE_TIMING_TOTALS
+        .type_rewrite_calls
+        .fetch_add(1, Ordering::Relaxed);
     fn rewrite_named_type_name_for_project(name: &str, ctx: &RewriteTypeContext<'_>) -> String {
         if ctx.local_classes.contains(name) {
             return mangle_project_symbol(ctx.current_namespace, ctx.entry_namespace, name);
@@ -1583,7 +1764,7 @@ fn rewrite_type_for_project_with_ctx(ty: &ast::Type, ctx: &RewriteTypeContext<'_
         name.to_string()
     }
 
-    match ty {
+    let rewritten = match ty {
         ast::Type::Named(name) => ast::Type::Named(rewrite_named_type_name_for_project(name, ctx)),
         ast::Type::Generic(name, args) => ast::Type::Generic(
             rewrite_named_type_name_for_project(name, ctx),
@@ -1706,7 +1887,11 @@ fn rewrite_type_for_project_with_ctx(ty: &ast::Type, ctx: &RewriteTypeContext<'_
             }
         }
         _ => ty.clone(),
-    }
+    };
+    REWRITE_TIMING_TOTALS
+        .type_rewrite_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    rewritten
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2159,7 +2344,11 @@ fn rewrite_pattern_for_project(
     imported_modules: &ImportedMap,
     global_enum_map: &HashMap<String, String>,
 ) -> ast::Pattern {
-    match pattern {
+    let started_at = Instant::now();
+    REWRITE_TIMING_TOTALS
+        .pattern_rewrite_calls
+        .fetch_add(1, Ordering::Relaxed);
+    let rewritten = match pattern {
         ast::Pattern::Variant(name, bindings) => {
             if !name.contains('.') {
                 if let Some((import_ns, symbol_name)) = imported_modules.get(name) {
@@ -2227,7 +2416,11 @@ fn rewrite_pattern_for_project(
             ast::Pattern::Variant(name.clone(), bindings.clone())
         }
         _ => pattern.clone(),
-    }
+    };
+    REWRITE_TIMING_TOTALS
+        .pattern_rewrite_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    rewritten
 }
 
 fn collect_local_enum_names(
@@ -3955,7 +4148,11 @@ fn rewrite_block_calls_for_project(
     global_module_map: &HashMap<String, String>,
     scopes: &mut Vec<HashSet<String>>,
 ) -> ast::Block {
-    block
+    let started_at = Instant::now();
+    REWRITE_TIMING_TOTALS
+        .block_rewrite_calls
+        .fetch_add(1, Ordering::Relaxed);
+    let rewritten = block
         .iter()
         .map(|stmt| {
             ast::Spanned::new(
@@ -3982,7 +4179,11 @@ fn rewrite_block_calls_for_project(
                 stmt.span.clone(),
             )
         })
-        .collect()
+        .collect();
+    REWRITE_TIMING_TOTALS
+        .block_rewrite_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    rewritten
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4006,7 +4207,11 @@ fn rewrite_stmt_calls_for_project(
     global_module_map: &HashMap<String, String>,
     scopes: &mut Vec<HashSet<String>>,
 ) -> Stmt {
-    match stmt {
+    let started_at = Instant::now();
+    REWRITE_TIMING_TOTALS
+        .stmt_rewrite_calls
+        .fetch_add(1, Ordering::Relaxed);
+    let rewritten = match stmt {
         Stmt::Let {
             name,
             ty,
@@ -4428,7 +4633,11 @@ fn rewrite_stmt_calls_for_project(
                 .collect(),
         },
         _ => stmt.clone(),
-    }
+    };
+    REWRITE_TIMING_TOTALS
+        .stmt_rewrite_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    rewritten
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4452,7 +4661,11 @@ fn rewrite_expr_calls_for_project(
     global_module_map: &HashMap<String, String>,
     scopes: &mut Vec<HashSet<String>>,
 ) -> Expr {
-    match expr {
+    let started_at = Instant::now();
+    REWRITE_TIMING_TOTALS
+        .expr_rewrite_calls
+        .fetch_add(1, Ordering::Relaxed);
+    let rewritten = match expr {
         Expr::Call {
             callee,
             args,
@@ -6829,7 +7042,11 @@ fn rewrite_expr_calls_for_project(
             }
         }
         _ => expr.clone(),
-    }
+    };
+    REWRITE_TIMING_TOTALS
+        .expr_rewrite_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    rewritten
 }
 
 #[cfg(test)]
