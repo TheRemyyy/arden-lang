@@ -26,6 +26,36 @@ impl ImportError {
             );
         }
 
+        if self.defined_in == "<unresolved import alias>" {
+            return format!(
+                "Imported alias '{}' no longer resolves in '{}'\n  \
+                 Hint: Update or remove the stale import for '{}'",
+                self.function_name, self.used_in, self.function_name
+            );
+        }
+
+        if self.defined_in == "<unresolved namespace alias member>" {
+            let (alias, member) = self
+                .function_name
+                .split_once('.')
+                .unwrap_or((self.function_name.as_str(), ""));
+            return format!(
+                "Imported namespace alias '{}' has no member '{}' in '{}'\n  \
+                 Hint: Update the import target or the member access",
+                alias, member, self.used_in
+            );
+        }
+
+        if self.defined_in == "<unresolved wildcard import>" {
+            return format!(
+                "Wildcard import '{}.*' no longer provides '{}' in '{}'\n  \
+                 Hint: Update the wildcard import target or the referenced symbol",
+                self.suggestion.as_deref().unwrap_or(""),
+                self.function_name,
+                self.used_in
+            );
+        }
+
         let import_hint = if self.function_name.contains("__") {
             format!("import {}.*;", self.defined_in)
         } else {
@@ -98,10 +128,48 @@ fn did_you_mean(name: &str, candidates: &[String]) -> Option<String> {
     best_match.map(|(s, _)| s)
 }
 
+fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
+    match expr {
+        Expr::Ident(name) => Some(vec![name.clone()]),
+        Expr::Field { object, field } => {
+            let mut parts = flatten_field_chain(&object.node)?;
+            parts.push(field.clone());
+            Some(parts)
+        }
+        _ => None,
+    }
+}
+
+fn looks_like_function_symbol(name: &str) -> bool {
+    name.chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_lowercase() || ch == '_')
+}
+
+fn direct_wildcard_member_name(
+    import_path: &str,
+    owner_ns: &str,
+    symbol_name: &str,
+) -> Option<String> {
+    if owner_ns == import_path {
+        return (!symbol_name.contains("__")).then(|| symbol_name.to_string());
+    }
+
+    let module_path = import_path.strip_prefix(owner_ns)?.strip_prefix('.')?;
+    if module_path.is_empty() {
+        return None;
+    }
+    let module_prefix = module_path.replace('.', "__");
+    let remainder = symbol_name.strip_prefix(&format!("{}__", module_prefix))?;
+    (!remainder.is_empty() && !remainder.contains("__")).then(|| remainder.to_string())
+}
+
 /// Tracks which functions are defined in which files/namespaces
 pub struct ImportChecker<'a> {
     /// function_name -> namespace (e.g., "factorial" -> "utils.math")
     function_namespaces: Arc<HashMap<String, String>>,
+    /// Known user namespace/module paths for module-aware import reasoning.
+    known_namespace_paths: Arc<HashSet<String>>,
     /// Current file namespace
     current_namespace: String,
     /// Imported functions in current file (just the name, e.g., "factorial")
@@ -119,6 +187,8 @@ pub struct ImportChecker<'a> {
     available_functions: Vec<String>,
     /// Functions declared in currently checked program/file.
     local_functions: HashSet<String>,
+    /// Lexical scopes for local value bindings that can shadow import aliases.
+    local_scopes: Vec<HashSet<String>>,
     /// Collected errors
     errors: Vec<ImportError>,
 }
@@ -186,7 +256,15 @@ impl<'a> ImportChecker<'a> {
                     } else {
                         format!("{}.{}", current_namespace, path)
                     };
-                    if known_namespaces.contains(&current_qualified_path) {
+                    let is_current_namespace_symbol_alias = function_namespaces
+                        .get(&path)
+                        .is_some_and(|ns| ns == &current_namespace)
+                        || stdlib
+                            .get_namespace(&path)
+                            .is_some_and(|ns| ns == &current_namespace);
+                    if known_namespaces.contains(&current_qualified_path)
+                        || is_current_namespace_symbol_alias
+                    {
                         namespace_aliases.insert(alias_name, current_qualified_path);
                     } else {
                         invalid_namespace_aliases.insert(alias_name);
@@ -202,8 +280,8 @@ impl<'a> ImportChecker<'a> {
 
                 // Add all functions from this namespace (user-defined)
                 for (func, func_ns) in function_namespaces.iter() {
-                    if func_ns == ns {
-                        imported_functions.insert(func.clone());
+                    if let Some(imported_name) = direct_wildcard_member_name(ns, func_ns, func) {
+                        imported_functions.insert(imported_name);
                     }
                 }
 
@@ -228,6 +306,7 @@ impl<'a> ImportChecker<'a> {
 
         Self {
             function_namespaces,
+            known_namespace_paths,
             current_namespace,
             imported_functions,
             wildcard_imports,
@@ -236,8 +315,56 @@ impl<'a> ImportChecker<'a> {
             stdlib,
             available_functions,
             local_functions: HashSet::new(),
+            local_scopes: Vec::new(),
             errors: Vec::new(),
         }
+    }
+
+    fn enter_scope(&mut self) {
+        self.local_scopes.push(HashSet::new());
+    }
+
+    fn exit_scope(&mut self) {
+        let _ = self.local_scopes.pop();
+    }
+
+    fn bind_local(&mut self, name: &str) {
+        if let Some(scope) = self.local_scopes.last_mut() {
+            scope.insert(name.to_string());
+        }
+    }
+
+    fn bind_parameter_locals(&mut self, params: &[Parameter]) {
+        for param in params {
+            self.bind_local(&param.name);
+        }
+    }
+
+    fn bind_pattern_locals(&mut self, pattern: &Pattern) {
+        match pattern {
+            Pattern::Ident(name) => self.bind_local(name),
+            Pattern::Variant(_, bindings) => {
+                for binding in bindings {
+                    self.bind_local(binding);
+                }
+            }
+            Pattern::Wildcard | Pattern::Literal(_) => {}
+        }
+    }
+
+    fn is_local_value(&self, name: &str) -> bool {
+        self.local_scopes
+            .iter()
+            .rev()
+            .any(|scope| scope.contains(name))
+    }
+
+    fn check_block_in_scope(&mut self, block: &[Spanned<Stmt>]) {
+        self.enter_scope();
+        for stmt in block {
+            self.check_stmt(&stmt.node);
+        }
+        self.exit_scope();
     }
 
     fn collect_local_functions(&mut self, program: &Program) {
@@ -446,40 +573,106 @@ impl<'a> ImportChecker<'a> {
         namespace_path: &str,
         field: &str,
     ) -> Option<String> {
-        if let Some(found) = self.resolve_user_call_in_namespace(namespace_path, field) {
-            return Some(found);
+        let mut namespace_candidates = vec![namespace_path.to_string()];
+        if !self.current_namespace.is_empty()
+            && namespace_path != self.current_namespace
+            && !namespace_path.starts_with(&format!("{}.", self.current_namespace))
+        {
+            namespace_candidates.push(format!("{}.{}", self.current_namespace, namespace_path));
         }
 
-        let namespaces: HashSet<&str> = self
-            .function_namespaces
-            .values()
-            .map(String::as_str)
-            .collect();
-        for ns in namespaces {
-            let Some(suffix) = namespace_path.strip_prefix(ns) else {
-                continue;
-            };
-            let Some(module_path) = suffix.strip_prefix('.') else {
-                continue;
-            };
-            if module_path.is_empty() {
-                continue;
+        for namespace_candidate in namespace_candidates {
+            if let Some(found) = self.resolve_user_call_in_namespace(&namespace_candidate, field) {
+                return Some(found);
             }
-            let module_prefix = module_path.replace('.', "__");
-            let candidate = format!("{}__{}", module_prefix, field);
-            if self
+
+            let namespaces: HashSet<&str> = self
                 .function_namespaces
-                .get(&candidate)
-                .is_some_and(|owner| owner == ns)
-            {
-                return Some(candidate);
+                .values()
+                .map(String::as_str)
+                .collect();
+            for ns in namespaces {
+                let Some(suffix) = namespace_candidate.strip_prefix(ns) else {
+                    continue;
+                };
+                let Some(module_path) = suffix.strip_prefix('.') else {
+                    continue;
+                };
+                if module_path.is_empty() {
+                    continue;
+                }
+                let module_prefix = module_path.replace('.', "__");
+                let candidate = format!("{}__{}", module_prefix, field);
+                if self
+                    .function_namespaces
+                    .get(&candidate)
+                    .is_some_and(|owner| owner == ns)
+                {
+                    return Some(candidate);
+                }
             }
         }
         None
     }
 
+    fn check_alias_member_call(&mut self, path_parts: &[String], span: Span) -> Option<()> {
+        if path_parts.len() < 2 {
+            return None;
+        }
+        let alias = path_parts.first()?;
+        if self.is_local_value(alias) {
+            return None;
+        }
+        let member = path_parts.last()?;
+        let alias_path = self.namespace_aliases.get(alias)?;
+        let namespace_path = if path_parts.len() == 2 {
+            alias_path.clone()
+        } else {
+            format!(
+                "{}.{}",
+                alias_path,
+                path_parts[1..path_parts.len() - 1].join(".")
+            )
+        };
+
+        if self
+            .resolve_stdlib_call_in_namespace(&namespace_path, member)
+            .is_some()
+            || self
+                .resolve_user_call_in_namespace_path(&namespace_path, member)
+                .is_some()
+        {
+            return Some(());
+        }
+
+        if alias_path.contains('.') && path_parts.len() == 2 {
+            return Some(());
+        }
+
+        let looks_like_function_member = member
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_lowercase() || ch == '_');
+        if !looks_like_function_member {
+            return None;
+        }
+
+        self.errors.push(ImportError {
+            function_name: format!("{}.{}", alias, path_parts[1..].join(".")),
+            defined_in: "<unresolved namespace alias member>".to_string(),
+            used_in: self.current_namespace.clone(),
+            span,
+            suggestion: None,
+        });
+        Some(())
+    }
+
     /// Check if a function call is valid (imported or local)
     pub fn check_function_call(&mut self, name: &str, span: Span) {
+        if self.is_local_value(name) {
+            return;
+        }
+
         if self.invalid_namespace_aliases.contains(name) {
             self.errors.push(ImportError {
                 function_name: name.to_string(),
@@ -488,6 +681,10 @@ impl<'a> ImportChecker<'a> {
                 span,
                 suggestion: None,
             });
+            return;
+        }
+
+        if self.imported_functions.contains(name) {
             return;
         }
 
@@ -508,6 +705,15 @@ impl<'a> ImportChecker<'a> {
                     {
                         return;
                     }
+
+                    self.errors.push(ImportError {
+                        function_name: name.to_string(),
+                        defined_in: "<unresolved import alias>".to_string(),
+                        used_in: self.current_namespace.clone(),
+                        span,
+                        suggestion: None,
+                    });
+                    return;
                 }
             }
         }
@@ -556,10 +762,28 @@ impl<'a> ImportChecker<'a> {
                     function_name: name.to_string(),
                     defined_in: ns.clone(),
                     used_in: self.current_namespace.clone(),
-                    span,
+                    span: span.clone(),
                     suggestion,
                 });
             }
+            return;
+        }
+        if self.wildcard_imports.len() == 1
+            && self.wildcard_imports.first().is_some_and(|wildcard| {
+                Self::path_resolves_to_user_module(
+                    &self.function_namespaces,
+                    &self.known_namespace_paths,
+                    wildcard,
+                )
+            })
+        {
+            self.errors.push(ImportError {
+                function_name: name.to_string(),
+                defined_in: "<unresolved wildcard import>".to_string(),
+                used_in: self.current_namespace.clone(),
+                span,
+                suggestion: self.wildcard_imports.first().cloned(),
+            });
         }
         // If not in function_namespaces or stdlib, it might be a builtin (like println) - OK
     }
@@ -568,6 +792,22 @@ impl<'a> ImportChecker<'a> {
     fn check_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Call { callee, args, .. } => {
+                if let Some(path_parts) = flatten_field_chain(&callee.node) {
+                    if self
+                        .check_alias_member_call(&path_parts, callee.span.clone())
+                        .is_some()
+                    {
+                        for arg in args {
+                            self.check_expr(&arg.node);
+                        }
+                        if let Expr::Call { type_args, .. } = expr {
+                            for ty in type_args {
+                                self.check_type(ty, 0..0);
+                            }
+                        }
+                        return;
+                    }
+                }
                 match &callee.node {
                     // Direct function call
                     Expr::Ident(name) => self.check_function_call(name, callee.span.clone()),
@@ -654,27 +894,31 @@ impl<'a> ImportChecker<'a> {
             }
 
             Expr::Block(block) => {
-                for stmt in block {
-                    self.check_stmt(&stmt.node);
-                }
+                self.check_block_in_scope(block);
             }
 
             Expr::Match { expr, arms } => {
                 self.check_expr(&expr.node);
                 for arm in arms {
+                    self.enter_scope();
                     self.check_pattern(&arm.pattern, 0..0);
+                    self.bind_pattern_locals(&arm.pattern);
                     for stmt in &arm.body {
                         self.check_stmt(&stmt.node);
                     }
+                    self.exit_scope();
                 }
             }
-            Expr::Lambda { body, .. } => {
+            Expr::Lambda { body, params } => {
                 if let Expr::Lambda { params, .. } = expr {
                     for param in params {
                         self.check_type(&param.ty, 0..0);
                     }
                 }
+                self.enter_scope();
+                self.bind_parameter_locals(params);
                 self.check_expr(&body.node);
+                self.exit_scope();
             }
             Expr::Construct { args, .. } => {
                 if let Expr::Construct { ty, .. } = expr {
@@ -688,19 +932,89 @@ impl<'a> ImportChecker<'a> {
                     self.check_expr(&arg.node);
                 }
             }
+            Expr::GenericFunctionValue { callee, type_args } => {
+                if let Some(path_parts) = flatten_field_chain(&callee.node) {
+                    if self
+                        .check_alias_member_call(&path_parts, callee.span.clone())
+                        .is_some()
+                    {
+                        for ty in type_args {
+                            self.check_type(ty, 0..0);
+                        }
+                        return;
+                    }
+                }
+
+                match &callee.node {
+                    Expr::Ident(name) => {
+                        if let Some(path) = self.namespace_aliases.get(name) {
+                            let imported_symbol = path.rsplit('.').next().unwrap_or(path.as_str());
+                            if looks_like_function_symbol(imported_symbol) {
+                                self.check_function_call(name, callee.span.clone());
+                            }
+                        } else {
+                            self.check_function_call(name, callee.span.clone());
+                        }
+                    }
+                    Expr::Field { object, field } => {
+                        if let Expr::Ident(module_or_type) = &object.node {
+                            let mut handled_alias_value = false;
+                            if let Some(ns) = self.namespace_aliases.get(module_or_type) {
+                                if self.resolve_stdlib_call_in_namespace(ns, field).is_some()
+                                    || self
+                                        .resolve_user_call_in_namespace_path(ns, field)
+                                        .is_some()
+                                {
+                                    handled_alias_value = true;
+                                }
+                            } else if self.invalid_namespace_aliases.contains(module_or_type) {
+                                self.errors.push(ImportError {
+                                    function_name: format!("{}.{}", module_or_type, field),
+                                    defined_in: "<unknown namespace alias>".to_string(),
+                                    used_in: self.current_namespace.clone(),
+                                    span: callee.span.clone(),
+                                    suggestion: None,
+                                });
+                                handled_alias_value = true;
+                            }
+
+                            if !handled_alias_value {
+                                let mangled = format!("{}__{}", module_or_type, field);
+                                if self.local_functions.contains(&mangled)
+                                    || self.function_namespaces.contains_key(&mangled)
+                                    || self.stdlib.get_namespace(&mangled).is_some()
+                                {
+                                    self.check_function_call(&mangled, callee.span.clone());
+                                } else if let Some(ns) = self.stdlib.get_namespace(field) {
+                                    if Self::namespace_matches_module_hint(ns, module_or_type) {
+                                        self.check_function_call(field, callee.span.clone());
+                                    } else {
+                                        self.check_expr(&callee.node);
+                                    }
+                                } else {
+                                    self.check_expr(&callee.node);
+                                }
+                            }
+                        } else {
+                            self.check_expr(&callee.node);
+                        }
+                    }
+                    _ => self.check_expr(&callee.node),
+                }
+
+                for ty in type_args {
+                    self.check_type(ty, 0..0);
+                }
+            }
             Expr::IfExpr {
                 condition,
                 then_branch,
                 else_branch,
             } => {
                 self.check_expr(&condition.node);
-                for stmt in then_branch {
-                    self.check_stmt(&stmt.node);
-                }
+                self.check_block_in_scope(then_branch);
                 if let Some(else_stmts) = else_branch {
-                    for stmt in else_stmts {
-                        self.check_stmt(&stmt.node);
-                    }
+                    self.check_block_in_scope(else_stmts);
                 }
             }
             Expr::Require { condition, message } => {
@@ -710,9 +1024,7 @@ impl<'a> ImportChecker<'a> {
                 }
             }
             Expr::AsyncBlock(body) => {
-                for stmt in body {
-                    self.check_stmt(&stmt.node);
-                }
+                self.check_block_in_scope(body);
             }
             Expr::Try(inner)
             | Expr::Borrow(inner)
@@ -757,6 +1069,9 @@ impl<'a> ImportChecker<'a> {
                     self.check_type(ty, 0..0);
                 }
                 self.check_expr(&value.node);
+                if let Stmt::Let { name, .. } = stmt {
+                    self.bind_local(name);
+                }
             }
             Stmt::Return(Some(expr)) => {
                 self.check_expr(&expr.node);
@@ -767,20 +1082,14 @@ impl<'a> ImportChecker<'a> {
                 else_block,
             } => {
                 self.check_expr(&condition.node);
-                for stmt in then_block {
-                    self.check_stmt(&stmt.node);
-                }
+                self.check_block_in_scope(then_block);
                 if let Some(else_stmts) = else_block {
-                    for stmt in else_stmts {
-                        self.check_stmt(&stmt.node);
-                    }
+                    self.check_block_in_scope(else_stmts);
                 }
             }
             Stmt::While { condition, body } => {
                 self.check_expr(&condition.node);
-                for stmt in body {
-                    self.check_stmt(&stmt.node);
-                }
+                self.check_block_in_scope(body);
             }
             Stmt::For { iterable, body, .. } => {
                 if let Stmt::For {
@@ -791,17 +1100,25 @@ impl<'a> ImportChecker<'a> {
                     self.check_type(var_type, 0..0);
                 }
                 self.check_expr(&iterable.node);
+                self.enter_scope();
+                if let Stmt::For { var, .. } = stmt {
+                    self.bind_local(var);
+                }
                 for stmt in body {
                     self.check_stmt(&stmt.node);
                 }
+                self.exit_scope();
             }
             Stmt::Match { expr, arms } => {
                 self.check_expr(&expr.node);
                 for arm in arms {
+                    self.enter_scope();
                     self.check_pattern(&arm.pattern, 0..0);
+                    self.bind_pattern_locals(&arm.pattern);
                     for stmt in &arm.body {
                         self.check_stmt(&stmt.node);
                     }
+                    self.exit_scope();
                 }
             }
             _ => {} // Break, Continue, Return(None), etc.
@@ -818,9 +1135,12 @@ impl<'a> ImportChecker<'a> {
                         checker.check_type(&param.ty, 0..0);
                     }
                     checker.check_type(&func.return_type, 0..0);
+                    checker.enter_scope();
+                    checker.bind_parameter_locals(&func.params);
                     for stmt in &func.body {
                         checker.check_stmt(&stmt.node);
                     }
+                    checker.exit_scope();
                 }
                 Decl::Class(class) => {
                     checker.check_generic_param_bounds(&class.generic_params);
@@ -837,14 +1157,15 @@ impl<'a> ImportChecker<'a> {
                         for param in &ctor.params {
                             checker.check_type(&param.ty, 0..0);
                         }
+                        checker.enter_scope();
+                        checker.bind_parameter_locals(&ctor.params);
                         for stmt in &ctor.body {
                             checker.check_stmt(&stmt.node);
                         }
+                        checker.exit_scope();
                     }
                     if let Some(dtor) = &class.destructor {
-                        for stmt in &dtor.body {
-                            checker.check_stmt(&stmt.node);
-                        }
+                        checker.check_block_in_scope(&dtor.body);
                     }
                     for method in &class.methods {
                         checker.check_generic_param_bounds(&method.generic_params);
@@ -852,9 +1173,12 @@ impl<'a> ImportChecker<'a> {
                             checker.check_type(&param.ty, 0..0);
                         }
                         checker.check_type(&method.return_type, 0..0);
+                        checker.enter_scope();
+                        checker.bind_parameter_locals(&method.params);
                         for stmt in &method.body {
                             checker.check_stmt(&stmt.node);
                         }
+                        checker.exit_scope();
                     }
                 }
                 Decl::Module(module) => {
@@ -873,9 +1197,12 @@ impl<'a> ImportChecker<'a> {
                         }
                         checker.check_type(&method.return_type, 0..0);
                         if let Some(default_impl) = &method.default_impl {
+                            checker.enter_scope();
+                            checker.bind_parameter_locals(&method.params);
                             for stmt in default_impl {
                                 checker.check_stmt(&stmt.node);
                             }
+                            checker.exit_scope();
                         }
                     }
                 }

@@ -884,7 +884,8 @@ fn expr_has_codegen_specialization_demand(expr: &Expr) -> bool {
                 || type_args.iter().any(type_has_codegen_specialization_demand)
         }
         Expr::GenericFunctionValue { callee, type_args } => {
-            expr_has_codegen_specialization_demand(&callee.node)
+            !type_args.is_empty()
+                || expr_has_codegen_specialization_demand(&callee.node)
                 || type_args.iter().any(type_has_codegen_specialization_demand)
         }
         Expr::Construct { ty, args } => {
@@ -1403,6 +1404,10 @@ fn codegen_program_for_unit(
         .filter(|unit| unit.has_specialization_demand)
         .map(|unit| unit.file.clone())
         .collect::<HashSet<_>>();
+    let active_file_has_specialization_demand = rewritten_file_indices
+        .get(active_file)
+        .and_then(|index| rewritten_files.get(*index))
+        .is_some_and(|unit| unit.has_specialization_demand);
     let mut relevant_files = _dependency_closure
         .map(|closure| closure.iter().cloned().collect::<Vec<_>>())
         .unwrap_or_else(|| {
@@ -1429,6 +1434,10 @@ fn codegen_program_for_unit(
         };
         let unit = &rewritten_files[index];
         let source_program = if file == active_file {
+            unit.program.clone()
+        } else if active_file_has_specialization_demand {
+            // Explicit generic specialization in the active unit may depend on full generic
+            // template bodies from dependency files; projections are not sufficient here.
             unit.program.clone()
         } else if specialization_demand_files.contains(&file) {
             unit.specialization_projection.clone()
@@ -1793,6 +1802,39 @@ fn declaration_symbols_for_unit(
         };
 
         for import in &metadata.imports {
+            if import.path.ends_with(".*") {
+                let namespace = import.path.trim_end_matches(".*");
+                for symbol in &metadata.referenced_symbols {
+                    if let Some((owner_ns, candidate)) = resolve_symbol_in_namespace_path(
+                        namespace,
+                        std::slice::from_ref(symbol),
+                        global_function_map,
+                        global_class_map,
+                        global_interface_map,
+                        global_enum_map,
+                        global_module_map,
+                    ) {
+                        let owner_file = global_function_file_map
+                            .get(&candidate)
+                            .or_else(|| global_class_file_map.get(&candidate))
+                            .or_else(|| global_interface_file_map.get(&candidate))
+                            .or_else(|| global_enum_file_map.get(&candidate))
+                            .or_else(|| global_module_file_map.get(&candidate));
+                        if let Some(owner_file) = owner_file {
+                            if closure_files.contains(owner_file) {
+                                declaration_symbols.insert(mangle_project_symbol_for_codegen(
+                                    &owner_ns,
+                                    entry_namespace,
+                                    &candidate,
+                                ));
+                                stack.push(owner_file.to_path_buf());
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+
             extend_declaration_symbols_for_exact_import(
                 import,
                 entry_namespace,
@@ -2315,6 +2357,16 @@ fn compute_namespace_api_fingerprints(
             .entry(unit.namespace.clone())
             .or_default()
             .push((&unit.file, unit.api_fingerprint.as_str()));
+        for module_name in &unit.module_names {
+            grouped
+                .entry(format!(
+                    "{}.{}",
+                    unit.namespace,
+                    module_name.replace("__", ".")
+                ))
+                .or_default()
+                .push((&unit.file, unit.api_fingerprint.as_str()));
+        }
     }
 
     let mut result = HashMap::new();
@@ -2721,50 +2773,21 @@ fn resolve_symbol_owner_files_in_namespace(
     let mut deps = HashSet::new();
 
     for symbol in referenced_symbols {
-        if ctx
-            .global_function_map
-            .get(symbol)
-            .is_some_and(|owner_ns| owner_ns == namespace)
-        {
-            if let Some(file) = ctx.global_function_file_map.get(symbol) {
-                deps.insert(file.clone());
-            }
-        }
-        if ctx
-            .global_class_map
-            .get(symbol)
-            .is_some_and(|owner_ns| owner_ns == namespace)
-        {
-            if let Some(file) = ctx.global_class_file_map.get(symbol) {
-                deps.insert(file.clone());
-            }
-        }
-        if ctx
-            .global_interface_map
-            .get(symbol)
-            .is_some_and(|owner_ns| owner_ns == namespace)
-        {
-            if let Some(file) = ctx.global_interface_file_map.get(symbol) {
-                deps.insert(file.clone());
-            }
-        }
-        if ctx
-            .global_enum_map
-            .get(symbol)
-            .is_some_and(|owner_ns| owner_ns == namespace)
-        {
-            if let Some(file) = ctx.global_enum_file_map.get(symbol) {
-                deps.insert(file.clone());
-            }
-        }
-        if ctx
-            .global_module_map
-            .get(symbol)
-            .is_some_and(|owner_ns| owner_ns == namespace)
-        {
-            if let Some(file) = ctx.global_module_file_map.get(symbol) {
-                deps.insert(file.clone());
-            }
+        if let Some(file) = resolve_owner_file_in_namespace_path(
+            namespace,
+            std::slice::from_ref(symbol),
+            ctx.global_function_map,
+            ctx.global_function_file_map,
+            ctx.global_class_map,
+            ctx.global_class_file_map,
+            ctx.global_interface_map,
+            ctx.global_interface_file_map,
+            ctx.global_enum_map,
+            ctx.global_enum_file_map,
+            ctx.global_module_map,
+            ctx.global_module_file_map,
+        ) {
+            deps.insert(file);
         }
     }
 
@@ -2871,7 +2894,13 @@ fn resolve_import_dependency_files(
             }
         }
         if deps.is_empty() {
-            return namespace_dependency_files(&import.path, ctx);
+            let exact_import_namespace_fallback = namespace_dependency_files(&import.path, ctx);
+            if !exact_import_namespace_fallback.is_empty() {
+                return exact_import_namespace_fallback;
+            }
+            if let Some((namespace, _)) = import.path.rsplit_once('.') {
+                return namespace_dependency_files(namespace, ctx);
+            }
         }
         return deps;
     }
@@ -5159,6 +5188,16 @@ fn build_project(
             .entry(unit.namespace.clone())
             .or_default()
             .push(unit.file.clone());
+        for module_name in &unit.module_names {
+            namespace_files_map
+                .entry(format!(
+                    "{}.{}",
+                    unit.namespace,
+                    module_name.replace("__", ".")
+                ))
+                .or_default()
+                .push(unit.file.clone());
+        }
         let function_entry = namespace_function_files
             .entry(unit.namespace.clone())
             .or_default();
@@ -5186,6 +5225,7 @@ fn build_project(
     }
     for files in namespace_files_map.values_mut() {
         files.sort();
+        files.dedup();
     }
 
     let dependency_resolution_ctx = DependencyResolutionContext {
@@ -5515,7 +5555,7 @@ fn build_project(
         for result in import_results {
             if let Err(rendered) = result {
                 eprint!("{rendered}");
-                return Err("Import check failed".to_string());
+                return Err(format!("Import check failed\n{rendered}"));
             }
         }
         let import_check_cache_hits =
@@ -5916,6 +5956,21 @@ fn build_project(
         })?;
         build_timings.record_counts("full codegen", &[("files", rewritten_files.len())]);
     } else {
+        if rewritten_files
+            .iter()
+            .any(|unit| unit.has_specialization_demand)
+        {
+            let combined_program = combined_program_for_files(&rewritten_files);
+            build_timings.measure("full codegen", || {
+                compile_program_ast(&combined_program, &entry_path, &output_path, false, &link)
+            })?;
+            build_timings.record_counts("full codegen", &[("files", rewritten_files.len())]);
+            save_cached_fingerprint(&project_root, &fingerprint)?;
+            println!("Built {} -> {}", config.name.cyan(), output_path.display());
+            build_timings.print();
+            return Ok(());
+        }
+
         let object_build_fingerprint = compute_object_build_fingerprint(&link);
         let previous_link_manifest = load_link_manifest_cache(&project_root)?;
         let rewritten_file_indices: HashMap<PathBuf, usize> = rewritten_files
@@ -6026,13 +6081,17 @@ fn build_project(
                             &global_module_map,
                             &global_module_file_map,
                         );
-                        let codegen_program = codegen_program_for_unit(
-                            &rewritten_files,
-                            &rewritten_file_indices,
-                            &unit.file,
-                            Some(&declaration_closure.files),
-                            Some(&declaration_closure.symbols),
-                        );
+                        let codegen_program = if unit.has_specialization_demand {
+                            combined_program_for_files(&rewritten_files)
+                        } else {
+                            codegen_program_for_unit(
+                                &rewritten_files,
+                                &rewritten_file_indices,
+                                &unit.file,
+                                Some(&declaration_closure.files),
+                                Some(&declaration_closure.symbols),
+                            )
+                        };
                         let mut codegen_active_symbols = unit.active_symbols.clone();
                         codegen_active_symbols.extend(closure_body_symbols_for_unit(
                             &unit.file,
@@ -6401,11 +6460,12 @@ fn compile_source(
             stdlib_registry(),
         );
         if let Err(errors) = import_checker.check_program(&program) {
-            eprintln!("{} Import errors:", "error".red().bold());
+            let mut rendered = format!("{} Import errors:\n", "error".red().bold());
             for err in errors {
-                eprintln!("  → {}", err.format());
+                rendered.push_str(&format!("  → {}\n", err.format()));
             }
-            return Err("Import check failed".to_string());
+            eprint!("{rendered}");
+            return Err(format!("Import check failed\n{rendered}"));
         }
 
         let mut type_checker = TypeChecker::new(source.to_string());
@@ -6905,11 +6965,12 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
         stdlib_registry(),
     );
     if let Err(errors) = import_checker.check_program(&program) {
-        eprintln!("{} Import errors:", "error".red().bold());
+        let mut rendered = format!("{} Import errors:\n", "error".red().bold());
         for err in errors {
-            eprintln!("  → {}", err.format());
+            rendered.push_str(&format!("  → {}\n", err.format()));
         }
-        return Err("Import check failed".to_string());
+        eprint!("{rendered}");
+        return Err(format!("Import check failed\n{rendered}"));
     }
 
     let mut type_checker = TypeChecker::new(source.clone());
@@ -8040,6 +8101,16 @@ mod tests {
                 .entry(unit.namespace.clone())
                 .or_insert_with(Vec::new)
                 .push(unit.file.clone());
+            for module_name in &unit.module_names {
+                namespace_files_map
+                    .entry(format!(
+                        "{}.{}",
+                        unit.namespace,
+                        module_name.replace("__", ".")
+                    ))
+                    .or_insert_with(Vec::new)
+                    .push(unit.file.clone());
+            }
             for name in &unit.function_names {
                 namespace_function_files
                     .entry(unit.namespace.clone())
@@ -8072,6 +8143,7 @@ mod tests {
 
         for files in namespace_files_map.values_mut() {
             files.sort();
+            files.dedup();
         }
 
         (
@@ -13470,6 +13542,149 @@ function main(): Integer {
             build_project(false, false, true, false, false)
                 .expect("project build should support nested namespace alias function values");
         });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_exact_import_alias_explicit_generic_function_values() {
+        let temp_root = make_temp_project_root("generic-fn-value-exact-import-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.U.id as ident;\nfunction main(): Integer { f: (Integer) -> Integer = ident<Integer>; return if (f(7) == 7) { 0 } else { 1 }; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support exact-import alias explicit generic function values",
+            );
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled exact-import alias explicit generic function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_root_namespace_alias_explicit_generic_function_values() {
+        let temp_root = make_temp_project_root("generic-fn-value-root-alias-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer { f: (Integer) -> Integer = root.U.id<Integer>; return if (f(7) == 7) { 0 } else { 1 }; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support root namespace alias explicit generic function values",
+            );
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled root namespace alias explicit generic function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_module_wildcard_import_calls() {
+        let temp_root = make_temp_project_root("module-wildcard-import-call-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.U.*;\nfunction main(): Integer { return id(7); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support module wildcard import calls");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled module wildcard import call binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_supports_module_wildcard_import_explicit_generic_function_values() {
+        let temp_root = make_temp_project_root("module-wildcard-import-generic-fn-value-project");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/util.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("util.apex"),
+            "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
+        )
+        .expect("write util");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.U.*;\nfunction main(): Integer { f: (Integer) -> Integer = id<Integer>; return if (f(7) == 7) { 0 } else { 1 }; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should support module wildcard import explicit generic function values",
+            );
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled module wildcard import explicit generic function value binary");
+        assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -25864,6 +26079,134 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_rejects_enum_variant_function_value_type_args_cleanly() {
+        let temp_root = make_temp_project_root("enum-variant-function-value-type-args");
+        let source_path = temp_root.join("enum_variant_function_value_type_args.apex");
+        let output_path = temp_root.join("enum_variant_function_value_type_args");
+        let source = r#"
+            enum Boxed { Wrap(Integer) }
+            function main(): Integer {
+                wrap: (Integer) -> Boxed = Boxed.Wrap<Integer>;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("enum variant function value type args should fail");
+        assert!(
+            err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_builtin_constructor_function_value_type_args_cleanly() {
+        let temp_root = make_temp_project_root("builtin-constructor-function-value-type-args");
+        let source_path = temp_root.join("builtin_constructor_function_value_type_args.apex");
+        let output_path = temp_root.join("builtin_constructor_function_value_type_args");
+        let source = r#"
+            function main(): Integer {
+                wrap: (Integer) -> Option<Integer> = Option.some<Integer>;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("builtin constructor function value type args should fail");
+        assert!(
+            err.contains("Built-in function 'Option.some' does not accept type arguments"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_imported_enum_variant_function_value_type_args_cleanly() {
+        let temp_root = make_temp_project_root("imported-enum-variant-function-value-type-args");
+        let source_path = temp_root.join("imported_enum_variant_function_value_type_args.apex");
+        let output_path = temp_root.join("imported_enum_variant_function_value_type_args");
+        let source = r#"
+            enum Boxed { Wrap(Integer) }
+            import Boxed.Wrap as WrapCtor;
+            function main(): Integer {
+                wrap: (Integer) -> Boxed = WrapCtor<Integer>;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("imported enum variant function value type args should fail");
+        assert!(
+            err.contains("Enum variant 'Boxed.Wrap' does not accept type arguments"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_nested_imported_enum_variant_function_value_type_args_cleanly() {
+        let temp_root =
+            make_temp_project_root("nested-imported-enum-variant-function-value-type-args");
+        let source_path =
+            temp_root.join("nested_imported_enum_variant_function_value_type_args.apex");
+        let output_path = temp_root.join("nested_imported_enum_variant_function_value_type_args");
+        let source = r#"
+            module U {
+                module V {
+                    enum E { Wrap(Integer) }
+                }
+            }
+            import U.V.E.Wrap as WrapCtor;
+            function main(): Integer {
+                wrap: (Integer) -> U.V.E = WrapCtor<Integer>;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect_err("nested imported enum variant function value type args should fail");
+        assert!(
+            err.contains("Enum variant 'U.V.E.Wrap' does not accept type arguments"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_rejects_builtin_constructor_function_value_type_args_nocheck() {
+        let temp_root =
+            make_temp_project_root("builtin-constructor-function-value-type-args-nocheck");
+        let source_path =
+            temp_root.join("builtin_constructor_function_value_type_args_nocheck.apex");
+        let output_path = temp_root.join("builtin_constructor_function_value_type_args_nocheck");
+        let source = r#"
+            function main(): Integer {
+                wrap: (Integer) -> Result<Integer, String> = Result.ok<Integer>;
+                return 0;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("builtin constructor function value type args should fail in codegen");
+        assert!(
+            err.contains("Built-in function 'Result.ok' does not accept type arguments"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_constructor_builtin_function_value_runtime() {
         let temp_root = make_temp_project_root("constructor-builtin-function-value-runtime");
         let source_path = temp_root.join("constructor_builtin_function_value_runtime.apex");
@@ -26323,6 +26666,36 @@ function main(): Integer {
         let status = std::process::Command::new(&output_path)
             .status()
             .expect("run compiled explicit generic function value binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_imported_alias_explicit_generic_function_value_runtime() {
+        let temp_root = make_temp_project_root("imported-alias-explicit-generic-fn-value-runtime");
+        let source_path = temp_root.join("imported_alias_explicit_generic_fn_value_runtime.apex");
+        let output_path = temp_root.join("imported_alias_explicit_generic_fn_value_runtime");
+        let source = r#"
+            function id<T>(x: T): T {
+                return x;
+            }
+
+            import id as ident;
+
+            function main(): Integer {
+                f: (Integer) -> Integer = ident<Integer>;
+                return if (f(7) == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("imported alias explicit generic function value should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled imported alias explicit generic function value binary");
         assert_eq!(status.code(), Some(0));
 
         let _ = fs::remove_dir_all(temp_root);
@@ -33769,6 +34142,117 @@ function main(): Integer {
     }
 
     #[test]
+    fn dependency_graph_keeps_nested_module_wildcard_namespace_dependencies_when_symbol_disappears()
+    {
+        let mut app = make_unit("src/main.apex", "app", &["app.U.*"]);
+        app.referenced_symbols = vec!["id".to_string()];
+        let mut helper = make_unit("src/helper.apex", "app", &[]);
+        helper.module_names = vec!["U".to_string()];
+        let parsed_files = vec![app.clone(), helper];
+        let namespace_files_map = HashMap::from([
+            (
+                "app".to_string(),
+                vec![
+                    PathBuf::from("src/helper.apex"),
+                    PathBuf::from("src/main.apex"),
+                ],
+            ),
+            ("app.U".to_string(), vec![PathBuf::from("src/helper.apex")]),
+        ]);
+        let namespace_module_files = HashMap::from([(
+            "app".to_string(),
+            HashMap::from([("U".to_string(), PathBuf::from("src/helper.apex"))]),
+        )]);
+        let global_module_map = HashMap::from([("U".to_string(), "app".to_string())]);
+        let global_module_file_map =
+            HashMap::from([("U".to_string(), PathBuf::from("src/helper.apex"))]);
+        let ctx = DependencyResolutionContext {
+            namespace_files_map: &namespace_files_map,
+            namespace_function_files: &HashMap::new(),
+            namespace_class_files: &HashMap::new(),
+            namespace_interface_files: empty_namespace_interface_files(),
+            namespace_module_files: &namespace_module_files,
+            global_function_map: &HashMap::new(),
+            global_function_file_map: &HashMap::new(),
+            global_class_map: &HashMap::new(),
+            global_class_file_map: &HashMap::new(),
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
+            global_enum_map: &HashMap::new(),
+            global_enum_file_map: &HashMap::new(),
+            global_module_map: &global_module_map,
+            global_module_file_map: &global_module_file_map,
+        };
+
+        let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None);
+        assert_eq!(
+            graph.get(&app.file).cloned().unwrap_or_default(),
+            HashSet::from([PathBuf::from("src/helper.apex")])
+        );
+    }
+
+    #[test]
+    fn parsed_dependency_graph_tracks_nested_module_wildcard_import_owner_files() {
+        let temp_root = make_temp_project_root("nested-module-wildcard-dependency-graph");
+        let main_file = temp_root.join("src/main.apex");
+        let helper_file = temp_root.join("src/helper.apex");
+        fs::write(
+            &main_file,
+            "package app;\nimport app.U.*;\nfunction main(): Integer { return id(1); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            &helper_file,
+            "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("write helper");
+
+        let parsed_files = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper"),
+        ];
+        let (
+            namespace_files_map,
+            namespace_function_files,
+            namespace_class_files,
+            namespace_module_files,
+            global_function_map,
+            global_function_file_map,
+            global_class_map,
+            global_class_file_map,
+            global_enum_map,
+            global_enum_file_map,
+            global_module_map,
+            global_module_file_map,
+        ) = collect_project_symbol_maps(&parsed_files);
+        let ctx = DependencyResolutionContext {
+            namespace_files_map: &namespace_files_map,
+            namespace_function_files: &namespace_function_files,
+            namespace_class_files: &namespace_class_files,
+            namespace_interface_files: empty_namespace_interface_files(),
+            namespace_module_files: &namespace_module_files,
+            global_function_map: &global_function_map,
+            global_function_file_map: &global_function_file_map,
+            global_class_map: &global_class_map,
+            global_class_file_map: &global_class_file_map,
+            global_interface_map: empty_global_interface_map(),
+            global_interface_file_map: empty_global_interface_file_map(),
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
+            global_module_map: &global_module_map,
+            global_module_file_map: &global_module_file_map,
+        };
+
+        let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None);
+        assert_eq!(
+            graph.get(&main_file).cloned().unwrap_or_default(),
+            HashSet::from([helper_file.clone()])
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_rechecks_wildcard_import_dependents_after_symbol_removal() {
         let temp_root = make_temp_project_root("project-build-wildcard-symbol-removal");
         write_test_project_config(
@@ -33815,6 +34299,196 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_rechecks_nested_module_wildcard_import_dependents_after_symbol_removal() {
+        let temp_root =
+            make_temp_project_root("project-build-nested-module-wildcard-symbol-removal");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app.U.*;\nfunction main(): Integer { return id(1); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial nested module wildcard project build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("rewrite helper without nested-module imported symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after nested-module wildcard-imported symbol removal",
+            );
+            assert!(
+                err.contains("Wildcard import 'app.U.*' no longer provides 'id'")
+                    || err.contains("Import check failed"),
+                "{err}"
+            );
+            assert!(!err.contains("Undefined variable: id"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_user_facing_error_for_stale_nested_module_wildcard_generic_function_value(
+    ) {
+        let temp_root =
+            make_temp_project_root("project-build-nested-module-wildcard-generic-fn-value");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app.U.*;\nfunction main(): Integer { f: (Integer) -> Integer = id<Integer>; return f(1); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function id<T>(x: T): T { return x; } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "initial nested module wildcard generic function value build should succeed",
+            );
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function plus<T>(x: T): T { return x; } }\n",
+        )
+        .expect("rewrite helper without nested-module wildcard generic symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after nested-module wildcard generic symbol removal",
+            );
+            assert!(
+                err.contains("Wildcard import 'app.U.*' no longer provides 'id'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: id"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_rechecks_nested_exact_import_alias_dependents_after_symbol_removal() {
+        let temp_root =
+            make_temp_project_root("project-build-nested-exact-import-alias-symbol-removal");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app.U.id as ident;\nfunction main(): Integer { return ident(1); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial nested exact-import alias project build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("rewrite helper without nested exact-import alias symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail after nested exact-import alias symbol removal");
+            assert!(
+                err.contains("Undefined variable: ident")
+                    || err.contains("Unknown function: app__U__id")
+                    || err.contains("Import check failed"),
+                "{err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_user_facing_error_for_stale_nested_exact_import_alias_function_value()
+    {
+        let temp_root =
+            make_temp_project_root("project-build-stale-nested-exact-import-alias-function-value");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app.U.id as ident;\nfunction main(): Integer {\n    f: (Integer) -> Integer = ident;\n    return f(1);\n}\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "initial stale nested exact-import alias function-value build should succeed",
+            );
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("rewrite helper without nested exact-import alias function-value symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail after stale nested exact-import alias function-value symbol removal");
+            assert!(err.contains("Undefined variable: ident"), "{err}");
+            assert!(!err.contains("app__U__id"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_rechecks_namespace_alias_dependents_after_symbol_removal() {
         let temp_root = make_temp_project_root("project-build-namespace-alias-symbol-removal");
         write_test_project_config(
@@ -33850,12 +34524,155 @@ function main(): Integer {
             let err = build_project(false, false, true, false, false)
                 .expect_err("build should fail after namespace-alias symbol removal");
             assert!(
-                err.contains("Undefined variable: l")
-                    || err.contains("Unknown variable: l")
-                    || err.contains("Unknown method")
+                err.contains("Imported namespace alias 'l' has no member 'add'")
                     || err.contains("Import check failed"),
                 "{err}"
             );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_call() {
+        let temp_root = make_temp_project_root("project-build-stale-root-namespace-alias-call");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer { return root.U.id(1); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial stale root namespace alias call build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
+        )
+        .expect("rewrite helper without stale root namespace alias call symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after stale root namespace alias call symbol removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'U.id'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: root"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_user_facing_error_for_stale_exact_import_alias_generic_function_value()
+    {
+        let temp_root =
+            make_temp_project_root("project-build-stale-exact-import-alias-generic-fn-value");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app.U.id as ident;\nfunction main(): Integer { f: (Integer) -> Integer = ident<Integer>; return f(7); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial exact-import alias generic function value build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function other<T>(value: T): T { return value; } }\n",
+        )
+        .expect("rewrite helper without exact-import alias generic symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after stale exact-import alias generic function value removal",
+            );
+            assert!(
+                err.contains("Imported alias 'ident' no longer resolves"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: ident"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_generic_function_value(
+    ) {
+        let temp_root =
+            make_temp_project_root("project-build-stale-root-namespace-alias-generic-fn-value");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer { f: (Integer) -> Integer = root.U.id<Integer>; return f(7); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial root namespace alias generic function value build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule U { function other<T>(value: T): T { return value; } }\n",
+        )
+        .expect("rewrite helper without root namespace alias generic symbol");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after stale root namespace alias generic function value removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'U.id'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: root"), "{err}");
         });
 
         let _ = fs::remove_dir_all(temp_root);
@@ -33903,6 +34720,67 @@ function main(): Integer {
                 "{err}"
             );
         });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_keeps_shadowed_exact_import_alias_calls_local_after_symbol_removal() {
+        let temp_root = make_temp_project_root("project-build-shadowed-exact-import-alias-call");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            r#"
+package app;
+import lib.add as inc;
+
+function main(): Integer {
+    inc: (Integer) -> Integer = (x: Integer) => x + 10;
+    return inc(1);
+}
+"#,
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial exact-import alias shadowing build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
+        )
+        .expect("rewrite helper without shadowed exact-import alias symbol");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "shadowed exact-import alias local call should stay valid after symbol removal",
+            );
+        });
+
+        let output_path = temp_root.join("smoke");
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled shadowed exact-import alias binary");
+        assert_eq!(
+            output.status.code(),
+            Some(11),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }

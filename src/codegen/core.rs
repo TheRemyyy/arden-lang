@@ -116,6 +116,10 @@ pub struct Codegen<'ctx> {
 }
 
 impl<'ctx> Codegen<'ctx> {
+    fn format_diagnostic_name(name: &str) -> String {
+        name.replace("__", ".")
+    }
+
     fn has_known_codegen_type(&self, name: &str) -> bool {
         self.classes.contains_key(name) || self.enums.contains_key(name)
     }
@@ -951,35 +955,92 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn resolve_function_template_key(
-        function_templates: &HashMap<String, GenericTemplate>,
+    fn collect_function_template_key_candidates(
         callee: &Expr,
-    ) -> Option<String> {
-        let direct_key = Self::template_key_for_callee(callee)?;
-        if function_templates.contains_key(&direct_key) {
-            return Some(direct_key);
+        import_aliases: &HashMap<String, String>,
+    ) -> Vec<String> {
+        let mut candidates = Vec::new();
+        let mut push_candidate = |candidate: String| {
+            if !candidate.is_empty() && !candidates.contains(&candidate) {
+                candidates.push(candidate);
+            }
+        };
+
+        if let Some(direct_key) = Self::template_key_for_callee(callee) {
+            push_candidate(direct_key);
         }
 
-        let leaf_name = match callee {
-            Expr::Ident(name) => name.clone(),
-            _ => direct_key.rsplit("__").next()?.to_string(),
-        };
-        let suffix = format!("__{}", leaf_name);
-        let mut matches = function_templates
-            .keys()
-            .filter(|candidate| *candidate == &leaf_name || candidate.ends_with(&suffix))
-            .cloned()
+        match callee {
+            Expr::Ident(name) => {
+                if let Some(path) = import_aliases.get(name) {
+                    if !path.ends_with(".*") {
+                        push_candidate(path.replace('.', "__"));
+                        if let Some(symbol) = path.rsplit('.').next() {
+                            push_candidate(symbol.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {
+                if let Some(path_parts) = Self::flatten_field_chain(callee) {
+                    if path_parts.len() >= 2 {
+                        if let Some(path) = import_aliases.get(&path_parts[0]) {
+                            if !path.ends_with(".*") {
+                                push_candidate(
+                                    format!("{}.{}", path, path_parts[1..].join("."))
+                                        .replace('.', "__"),
+                                );
+                                if let Some(leaf) = path_parts.last() {
+                                    push_candidate(leaf.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        candidates
+    }
+
+    fn resolve_function_template_key(
+        function_templates: &HashMap<String, GenericTemplate>,
+        import_aliases: &HashMap<String, String>,
+        callee: &Expr,
+    ) -> Option<String> {
+        let candidates = Self::collect_function_template_key_candidates(callee, import_aliases);
+        for candidate in &candidates {
+            if function_templates.contains_key(candidate) {
+                return Some(candidate.clone());
+            }
+        }
+
+        let mut matches = candidates
+            .iter()
+            .flat_map(|candidate| {
+                let leaf_name = candidate.rsplit("__").next().unwrap_or(candidate);
+                let suffix = format!("__{}", leaf_name);
+                function_templates
+                    .keys()
+                    .filter(move |template_key| {
+                        *template_key == leaf_name || template_key.ends_with(&suffix)
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
             .collect::<Vec<_>>();
         matches.sort_unstable();
         matches.dedup();
         (matches.len() == 1).then(|| matches[0].clone())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn rewrite_stmt_generic_calls(
         stmt: &Stmt,
         function_templates: &HashMap<String, GenericTemplate>,
         method_templates: &HashMap<String, Vec<GenericTemplate>>,
         class_templates: &HashMap<String, GenericClassTemplate>,
+        import_aliases: &HashMap<String, String>,
         emitted: &mut HashSet<String>,
         generated_functions: &mut Vec<Spanned<Decl>>,
         generated_methods: &mut HashMap<String, Vec<FunctionDecl>>,
@@ -999,6 +1060,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -1014,6 +1076,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -1026,6 +1089,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -1039,6 +1103,7 @@ impl<'ctx> Codegen<'ctx> {
                     function_templates,
                     method_templates,
                     class_templates,
+                    import_aliases,
                     emitted,
                     generated_functions,
                     generated_methods,
@@ -1054,6 +1119,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -1074,6 +1140,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -1089,6 +1156,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -1108,6 +1176,7 @@ impl<'ctx> Codegen<'ctx> {
                                         function_templates,
                                         method_templates,
                                         class_templates,
+                                        import_aliases,
                                         emitted,
                                         generated_functions,
                                         generated_methods,
@@ -1126,6 +1195,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -1141,6 +1211,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -1164,6 +1235,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -1179,6 +1251,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -1195,6 +1268,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -1216,6 +1290,7 @@ impl<'ctx> Codegen<'ctx> {
                                             function_templates,
                                             method_templates,
                                             class_templates,
+                                            import_aliases,
                                             emitted,
                                             generated_functions,
                                             generated_methods,
@@ -2959,11 +3034,13 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn rewrite_expr_generic_calls(
         expr: &Expr,
         function_templates: &HashMap<String, GenericTemplate>,
         method_templates: &HashMap<String, Vec<GenericTemplate>>,
         class_templates: &HashMap<String, GenericClassTemplate>,
+        import_aliases: &HashMap<String, String>,
         emitted: &mut HashSet<String>,
         generated_functions: &mut Vec<Spanned<Decl>>,
         generated_methods: &mut HashMap<String, Vec<FunctionDecl>>,
@@ -2980,6 +3057,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -2995,6 +3073,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -3123,6 +3202,7 @@ impl<'ctx> Codegen<'ctx> {
                                                     function_templates,
                                                     method_templates,
                                                     class_templates,
+                                                    import_aliases,
                                                     emitted,
                                                     generated_functions,
                                                     generated_methods,
@@ -3189,9 +3269,11 @@ impl<'ctx> Codegen<'ctx> {
                         }
                     }
 
-                    if let Some(template_key) =
-                        Self::resolve_function_template_key(function_templates, &callee.node)
-                    {
+                    if let Some(template_key) = Self::resolve_function_template_key(
+                        function_templates,
+                        import_aliases,
+                        &callee.node,
+                    ) {
                         if let Some(template) = function_templates.get(&template_key) {
                             if template.func.generic_params.len() != type_args.len() {
                                 return Ok(Expr::Call {
@@ -3273,6 +3355,7 @@ impl<'ctx> Codegen<'ctx> {
                                                 function_templates,
                                                 method_templates,
                                                 class_templates,
+                                                import_aliases,
                                                 emitted,
                                                 generated_functions,
                                                 generated_methods,
@@ -3325,6 +3408,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3332,9 +3416,11 @@ impl<'ctx> Codegen<'ctx> {
                     callee.span.clone(),
                 );
 
-                if let Some(template_key) =
-                    Self::resolve_function_template_key(function_templates, &callee.node)
-                {
+                if let Some(template_key) = Self::resolve_function_template_key(
+                    function_templates,
+                    import_aliases,
+                    &callee.node,
+                ) {
                     if let Some(template) = function_templates.get(&template_key) {
                         if template.func.generic_params.len() != type_args.len() {
                             Expr::GenericFunctionValue {
@@ -3415,6 +3501,7 @@ impl<'ctx> Codegen<'ctx> {
                                                 function_templates,
                                                 method_templates,
                                                 class_templates,
+                                                import_aliases,
                                                 emitted,
                                                 generated_functions,
                                                 generated_methods,
@@ -3453,6 +3540,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3465,6 +3553,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3480,6 +3569,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3494,6 +3584,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3509,6 +3600,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3521,6 +3613,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3536,6 +3629,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3550,6 +3644,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3571,6 +3666,7 @@ impl<'ctx> Codegen<'ctx> {
                                             function_templates,
                                             method_templates,
                                             class_templates,
+                                            import_aliases,
                                             emitted,
                                             generated_functions,
                                             generated_methods,
@@ -3594,6 +3690,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -3609,6 +3706,7 @@ impl<'ctx> Codegen<'ctx> {
                     function_templates,
                     method_templates,
                     class_templates,
+                    import_aliases,
                     emitted,
                     generated_functions,
                     generated_methods,
@@ -3621,6 +3719,7 @@ impl<'ctx> Codegen<'ctx> {
                     function_templates,
                     method_templates,
                     class_templates,
+                    import_aliases,
                     emitted,
                     generated_functions,
                     generated_methods,
@@ -3633,6 +3732,7 @@ impl<'ctx> Codegen<'ctx> {
                     function_templates,
                     method_templates,
                     class_templates,
+                    import_aliases,
                     emitted,
                     generated_functions,
                     generated_methods,
@@ -3645,6 +3745,7 @@ impl<'ctx> Codegen<'ctx> {
                     function_templates,
                     method_templates,
                     class_templates,
+                    import_aliases,
                     emitted,
                     generated_functions,
                     generated_methods,
@@ -3657,6 +3758,7 @@ impl<'ctx> Codegen<'ctx> {
                     function_templates,
                     method_templates,
                     class_templates,
+                    import_aliases,
                     emitted,
                     generated_functions,
                     generated_methods,
@@ -3673,6 +3775,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -3689,6 +3792,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3704,6 +3808,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -3727,6 +3832,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -3744,6 +3850,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -3765,6 +3872,7 @@ impl<'ctx> Codegen<'ctx> {
                         function_templates,
                         method_templates,
                         class_templates,
+                        import_aliases,
                         emitted,
                         generated_functions,
                         generated_methods,
@@ -3780,6 +3888,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -3799,6 +3908,7 @@ impl<'ctx> Codegen<'ctx> {
                                         function_templates,
                                         method_templates,
                                         class_templates,
+                                        import_aliases,
                                         emitted,
                                         generated_functions,
                                         generated_methods,
@@ -3820,6 +3930,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -4903,11 +5014,13 @@ impl<'ctx> Codegen<'ctx> {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn rewrite_decl_generic_calls(
         decl: &Spanned<Decl>,
         function_templates: &HashMap<String, GenericTemplate>,
         method_templates: &HashMap<String, Vec<GenericTemplate>>,
         class_templates: &HashMap<String, GenericClassTemplate>,
+        import_aliases: &HashMap<String, String>,
         emitted: &mut HashSet<String>,
         generated_functions: &mut Vec<Spanned<Decl>>,
         generated_methods: &mut HashMap<String, Vec<FunctionDecl>>,
@@ -4925,6 +5038,7 @@ impl<'ctx> Codegen<'ctx> {
                                 function_templates,
                                 method_templates,
                                 class_templates,
+                                import_aliases,
                                 emitted,
                                 generated_functions,
                                 generated_methods,
@@ -4946,6 +5060,7 @@ impl<'ctx> Codegen<'ctx> {
                             function_templates,
                             method_templates,
                             class_templates,
+                            import_aliases,
                             emitted,
                             generated_functions,
                             generated_methods,
@@ -4967,6 +5082,7 @@ impl<'ctx> Codegen<'ctx> {
                                     function_templates,
                                     method_templates,
                                     class_templates,
+                                    import_aliases,
                                     emitted,
                                     generated_functions,
                                     generated_methods,
@@ -4987,6 +5103,7 @@ impl<'ctx> Codegen<'ctx> {
                                     function_templates,
                                     method_templates,
                                     class_templates,
+                                    import_aliases,
                                     emitted,
                                     generated_functions,
                                     generated_methods,
@@ -5011,6 +5128,7 @@ impl<'ctx> Codegen<'ctx> {
                                         function_templates,
                                         method_templates,
                                         class_templates,
+                                        import_aliases,
                                         emitted,
                                         generated_functions,
                                         generated_methods,
@@ -5266,6 +5384,17 @@ impl<'ctx> Codegen<'ctx> {
         let mut function_templates: HashMap<String, GenericTemplate> = HashMap::new();
         let mut method_templates: HashMap<String, Vec<GenericTemplate>> = HashMap::new();
         let mut class_templates: HashMap<String, GenericClassTemplate> = HashMap::new();
+        let import_aliases = program
+            .declarations
+            .iter()
+            .filter_map(|decl| match &decl.node {
+                Decl::Import(import) => import
+                    .alias
+                    .as_ref()
+                    .map(|alias| (alias.clone(), import.path.clone())),
+                _ => None,
+            })
+            .collect::<HashMap<_, _>>();
         for decl in &program.declarations {
             Self::collect_generic_templates_from_decl(
                 decl,
@@ -5295,6 +5424,7 @@ impl<'ctx> Codegen<'ctx> {
                     &function_templates,
                     &method_templates,
                     &class_templates,
+                    &import_aliases,
                     &mut emitted_specs,
                     &mut generated_functions,
                     &mut generated_methods,
@@ -5591,10 +5721,16 @@ impl<'ctx> Codegen<'ctx> {
         let generated_spec_symbols_by_owner = collect_generated_spec_symbols(program);
         let specialized_active_symbols = active_symbols.map(|symbols| {
             let mut combined = symbols.clone();
-            for owner in symbols {
+            let owner_symbols = symbols
+                .iter()
+                .chain(declaration_symbols.into_iter().flat_map(|set| set.iter()));
+            for owner in owner_symbols {
                 if let Some(generated_symbols) = generated_spec_symbols_by_owner.get(owner) {
                     combined.extend(generated_symbols.iter().cloned());
                 }
+            }
+            for generated_symbols in generated_spec_symbols_by_owner.values() {
+                combined.extend(generated_symbols.iter().cloned());
             }
             combined
         });
@@ -5698,13 +5834,15 @@ impl<'ctx> Codegen<'ctx> {
             for inner in &module.declarations {
                 match &inner.node {
                     Decl::Function(func) => {
-                        if active_symbols.contains(&format!("{}__{}", prefix, func.name)) {
+                        let prefixed = format!("{}__{}", prefix, func.name);
+                        if active_symbols.contains(&prefixed) || prefixed.contains("__spec__") {
                             return true;
                         }
                     }
                     Decl::Class(class) => {
                         let class_name = format!("{}__{}", prefix, class.name);
                         if active_symbols.contains(&class_name)
+                            || class_name.contains("__spec__")
                             || class_has_active_method_symbol(&class_name, active_symbols)
                         {
                             return true;
@@ -5794,9 +5932,12 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         match decl {
-            Decl::Function(func) => active_symbols.contains(&func.name),
+            Decl::Function(func) => {
+                active_symbols.contains(&func.name) || func.name.contains("__spec__")
+            }
             Decl::Class(class) => {
                 active_symbols.contains(&class.name)
+                    || class.name.contains("__spec__")
                     || class_has_active_method_symbol(&class.name, active_symbols)
             }
             Decl::Module(module) => module_has_active_symbol(module, &module.name, active_symbols),
@@ -6498,7 +6639,7 @@ impl<'ctx> Codegen<'ctx> {
             match &decl.node {
                 Decl::Function(func) => {
                     let prefixed = format!("{}__{}", prefix, func.name);
-                    if active_symbols.contains(&prefixed) {
+                    if active_symbols.contains(&prefixed) || prefixed.contains("__spec__") {
                         let mut prefixed_func = func.clone();
                         prefixed_func.name = prefixed;
                         self.compile_function(&prefixed_func)?;
@@ -6507,6 +6648,7 @@ impl<'ctx> Codegen<'ctx> {
                 Decl::Class(class) => {
                     let prefixed = format!("{}__{}", prefix, class.name);
                     if active_symbols.contains(&prefixed)
+                        || prefixed.contains("__spec__")
                         || class_has_active_method_symbol(&prefixed, active_symbols)
                     {
                         let mut prefixed_class = class.clone();
@@ -6827,7 +6969,7 @@ impl<'ctx> Codegen<'ctx> {
         let name = format!("{}__new", class.name);
         let func = self.module.add_function(&name, fn_type, None);
         if name.contains("__spec__") {
-            func.set_linkage(Linkage::LinkOnceODR);
+            func.set_linkage(Linkage::Internal);
         }
         self.functions.insert(
             name,
@@ -6868,7 +7010,7 @@ impl<'ctx> Codegen<'ctx> {
         let name = format!("{}__{}", class.name, method.name);
         let func = self.module.add_function(&name, fn_type, None);
         if name.contains("__spec__") {
-            func.set_linkage(Linkage::LinkOnceODR);
+            func.set_linkage(Linkage::Internal);
         }
         self.functions.insert(
             name,
@@ -7184,7 +7326,7 @@ impl<'ctx> Codegen<'ctx> {
 
         let function = self.module.add_function(&func.name, fn_type, None);
         if func.name.contains("__spec__") {
-            function.set_linkage(Linkage::LinkOnceODR);
+            function.set_linkage(Linkage::Internal);
         }
 
         // Add optimization attributes
@@ -9938,10 +10080,41 @@ impl<'ctx> Codegen<'ctx> {
                 self.compile_call(&callee.node, args)
             }
 
-            Expr::GenericFunctionValue { .. } => Err(CodegenError::new(
-                "Explicit generic function value should be specialized before code generation"
-                    .to_string(),
-            )),
+            Expr::GenericFunctionValue { callee, .. } => {
+                if let Some((enum_name, variant_info)) =
+                    self.resolve_enum_variant_function_value(&callee.node)
+                {
+                    let variant_name = self
+                        .enums
+                        .get(&enum_name)
+                        .and_then(|enum_info| {
+                            enum_info.variants.iter().find_map(|(name, info)| {
+                                (info.tag == variant_info.tag && info.fields == variant_info.fields)
+                                    .then(|| name.clone())
+                            })
+                        })
+                        .unwrap_or_else(|| "<unknown>".to_string());
+                    return Err(CodegenError::new(format!(
+                        "Enum variant '{}.{}' does not accept type arguments",
+                        Self::format_diagnostic_name(&enum_name),
+                        variant_name
+                    )));
+                }
+                if let Some(canonical_name) =
+                    self.resolve_contextual_function_value_name(&callee.node)
+                {
+                    if Self::is_supported_builtin_function_name(&canonical_name) {
+                        return Err(CodegenError::new(format!(
+                            "Built-in function '{}' does not accept type arguments",
+                            canonical_name.replace("__", ".")
+                        )));
+                    }
+                }
+                Err(CodegenError::new(
+                    "Explicit generic function value should be specialized before code generation"
+                        .to_string(),
+                ))
+            }
 
             Expr::Field { object, field } => self.compile_field(&object.node, field),
 

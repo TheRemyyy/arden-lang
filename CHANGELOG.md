@@ -8,6 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed explicit generic function values through import aliases in single-file and project builds:
+  - single-file bindings such as `import id as ident; f: (Integer) -> Integer = ident<Integer>` now specialize and compile instead of passing `check` and later failing in codegen with `Explicit generic function value should be specialized before code generation`
+  - project builds now rewrite generic function-value alias roots before typechecking, so exact-import aliases like `import app.U.id as ident` and root namespace aliases like `import app as root; root.U.id<Integer>` no longer fail with `Undefined variable: ident` / `Undefined variable: root`
+- Fixed project wildcard imports for nested module members during rewrite:
+  - imports such as `import app.U.*;` now correctly expose direct module members like `id`, so project builds no longer fail with `Undefined variable: id` for plain calls like `id(7)`
+  - explicit generic function values imported through module wildcards such as `f: (Integer) -> Integer = id<Integer>` now also rewrite and compile correctly instead of failing during semantic checking
+- Fixed incremental invalidation for nested module wildcard imports:
+  - project builds now track `import app.U.*;` dependents through nested module namespace ownership, so removing or renaming `U.id` invalidates downstream files instead of incorrectly reusing caches and failing later in codegen with `Unknown function: id`
+  - rewrite and import-check cache fingerprints now include nested module namespace paths like `app.U`, so module-level API changes no longer slip through cache reuse just because the containing file still belongs to package `app`
+  - stale single wildcard imports such as `import app.U.*; id(1)` and `id<Integer>` now fail during import checking with a user-facing wildcard diagnostic instead of leaking to later `Undefined variable: id` errors
+- Fixed incremental invalidation for nested exact-import aliases:
+  - project builds now preserve dependency edges for alias imports such as `import app.U.id as ident`, so removing `U.id` rechecks dependents instead of incorrectly treating `app.U.id` as an empty namespace and failing later in codegen with `Unknown function: app__U__id`
+  - exact-import alias fallback now tracks the imported owner namespace when the imported symbol disappears, which also improves downstream invalidation for top-level alias imports that previously relied on late codegen failures
+  - stale exact-import aliases now fail during import checking with a user-facing alias diagnostic instead of leaking mangled names like `app__U__id` into later semantic errors
+  - stale exact-import aliases used in function-value position now stay user-facing as `ident` instead of being prematurely rewritten to internal mangled names like `app__U__id`
+  - local variables and other lexical bindings now correctly shadow exact-import aliases during import checking, so valid local calls like `inc(1)` no longer fail just because a stale `import lib.add as inc` still exists in scope
+  - stale exact-import aliases used in explicit generic function values such as `ident<Integer>` now fail during import checking with the same user-facing alias diagnostic instead of leaking to later `Undefined variable: ident` errors
+  - bare same-file exact-import aliases such as `import id as ident` are now recognized as symbol aliases during import checking, so valid explicit generic function values like `ident<Integer>` no longer fail with the bogus namespace-alias error `Unknown namespace alias usage 'ident'`
+- Fixed stale namespace-alias member call diagnostics:
+  - project builds such as `import lib as l; l.add(1)` and `import app as root; root.U.id(1)` now fail during import checking with an alias-member diagnostic after API changes, instead of falling through to misleading later errors like `Undefined variable: l` or `Undefined variable: root`
+  - deep namespace-alias call paths are now resolved directly in import checking, so missing members on aliased namespaces get reported before semantic fallback loses the original access path
+  - local variables, parameters, loop bindings, lambda params, and match bindings now correctly shadow namespace aliases during import checking, so valid calls like `u.get()` no longer get misreported as stale alias-member access just because `import app as u` exists in scope
+  - stale namespace alias generic function values such as `root.U.id<Integer>` now also fail in import checking with the same user-facing alias-member diagnostic instead of leaking into later errors like `Undefined variable: root` and `Cannot access field on type unknown`
+- Fixed import-check diagnostic propagation:
+  - project and single-file build/check flows now return the full rendered import-check diagnostics in their error strings instead of collapsing everything to bare `Import check failed`
+  - callers and regression tests can now assert on the real import failure reason without scraping terminal stderr side effects
 - Fixed direct `Option`/`Result` static constructor function values in contextual typing and codegen:
   - direct bindings such as `wrap: (Integer) -> Option<Integer> = Option.some`, `empty: () -> Option<Integer> = Option.none`, `okf: (Integer) -> Result<Integer, String> = Result.ok`, and `errf: (String) -> Result<Integer, String> = Result.error` now typecheck and compile correctly instead of failing with `Undefined variable: Option` / `Undefined variable: Result`
   - contextual function-value resolution now treats generic `Option`/`Result` static constructors as first-class function values and lowers them through typed wrapper closures, preserving proper signature mismatch diagnostics for invalid bindings
@@ -15,6 +41,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - bindings such as `wrap: (Integer) -> Boxed = Boxed.Wrap` and `pick: () -> Mode = Mode.A` now compile as first-class constructor closures instead of failing with enum-arity errors or being treated as plain enum values
   - expected-function contextual typing now lifts enum payload and unit variants into constructor closures while preserving explicit `Type mismatch` diagnostics for invalid signatures
   - exact-import aliases for enum variants such as `import app.E.Wrap as WrapCtor` and `import app.Mode.A as Pick` now also work in function-value position instead of failing in project builds with `Undefined variable: app__E__Wrap` / `app__Mode__A`
+- Fixed explicit generic-value diagnostics for non-generic enum variants and static constructors:
+  - invalid expressions such as `Boxed.Wrap<Integer>`, `WrapCtor<Integer>`, `Option.some<Integer>`, and `Result.ok<Integer>` now fail with a single clear diagnostic that the enum variant or built-in function does not accept type arguments
+  - both checked analysis and `--no-check` codegen now avoid falling through to misleading `Undefined variable` / `Cannot access field on type unknown` errors for these invalid first-class function-value forms
+  - nested/imported enum variant diagnostics now show user-facing dotted paths like `U.V.E.Wrap` instead of internal mangled names like `U__V__E.Wrap`
 - Fixed unchecked builtin method arity validation in backend codegen:
   - invalid `--no-check` calls such as `xs.length(1)`, `values.get(1, 2)`, `values.contains(1, 2)`, `Option.some(1).unwrap(1)`, `Result.ok(1).unwrap(1)`, and `range(0, 3).next(1)` now fail with explicit Apex diagnostics instead of compiling or falling through to broken IR/runtime paths
   - unchecked lowering for `List`, `Map`, `Set`, `Option`, `Result`, and `Range` methods now enforces the same method arity guards before backend dispatch

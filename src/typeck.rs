@@ -5379,6 +5379,38 @@ impl TypeChecker {
 
             Expr::GenericFunctionValue { callee, type_args } => match &callee.node {
                 Expr::Ident(name) => {
+                    if let Some((enum_name, variant_name)) = self.resolve_import_alias_variant(name)
+                    {
+                        self.error(
+                            format!(
+                                "Enum variant '{}.{}' does not accept type arguments",
+                                Self::format_diagnostic_class_name(&enum_name),
+                                variant_name
+                            ),
+                            span,
+                        );
+                        return ResolvedType::Unknown;
+                    }
+                    if let Some(canonical_name) = self.resolve_import_alias_symbol(name) {
+                        if let Some(ty) = Self::builtin_function_value_type(&canonical_name) {
+                            let builtin_label = match canonical_name.as_str() {
+                                "Option__some" => "Option.some",
+                                "Option__none" => "Option.none",
+                                "Result__ok" => "Result.ok",
+                                "Result__error" => "Result.error",
+                                _ => canonical_name.as_str(),
+                            };
+                            let _ = ty;
+                            self.error(
+                                format!(
+                                    "Built-in function '{}' does not accept type arguments",
+                                    builtin_label
+                                ),
+                                span,
+                            );
+                            return ResolvedType::Unknown;
+                        }
+                    }
                     if let Some(canonical_name) = self
                         .resolve_import_alias_symbol(name)
                         .filter(|canonical_name| self.functions.contains_key(canonical_name))
@@ -5402,6 +5434,35 @@ impl TypeChecker {
                     }
                 }
                 Expr::Field { object, field } => {
+                    if let Some((enum_name, field_types)) =
+                        self.resolve_enum_variant_function_value(&callee.node)
+                    {
+                        let _ = field_types;
+                        self.error(
+                            format!(
+                                "Enum variant '{}.{}' does not accept type arguments",
+                                Self::format_diagnostic_class_name(&enum_name),
+                                field
+                            ),
+                            span,
+                        );
+                        return ResolvedType::Unknown;
+                    }
+                    if let Some(canonical_name) =
+                        self.resolve_contextual_function_value_name(&callee.node)
+                    {
+                        if Self::builtin_function_value_type(&canonical_name).is_some() {
+                            let builtin_label = canonical_name.replace("__", ".");
+                            self.error(
+                                format!(
+                                    "Built-in function '{}' does not accept type arguments",
+                                    builtin_label
+                                ),
+                                span,
+                            );
+                            return ResolvedType::Unknown;
+                        }
+                    }
                     if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
                         if path_parts.len() >= 2 {
                             if let Some(candidate) = self.resolve_import_alias_module_candidate(
@@ -5418,7 +5479,6 @@ impl TypeChecker {
                                     );
                                 }
                             }
-
                             let mangled = path_parts.join("__");
                             if let Some(sig) = self.functions.get(&mangled).cloned() {
                                 return self.instantiate_function_value_type(

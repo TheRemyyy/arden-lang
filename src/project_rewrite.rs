@@ -67,6 +67,24 @@ fn resolve_exact_imported_variant_alias(
         .map(|(owner_ns, enum_name)| (owner_ns, enum_name, symbol_name.to_string()))
 }
 
+fn direct_wildcard_member_name(
+    import_path: &str,
+    owner_ns: &str,
+    symbol_name: &str,
+) -> Option<String> {
+    if owner_ns == import_path {
+        return (!symbol_name.contains("__")).then(|| symbol_name.to_string());
+    }
+
+    let module_path = import_path.strip_prefix(owner_ns)?.strip_prefix('.')?;
+    if module_path.is_empty() {
+        return None;
+    }
+    let module_prefix = module_path.replace('.', "__");
+    let remainder = symbol_name.strip_prefix(&format!("{}__", module_prefix))?;
+    (!remainder.is_empty() && !remainder.contains("__")).then(|| remainder.to_string())
+}
+
 fn format_type_string(ty: &ast::Type) -> String {
     match ty {
         ast::Type::Integer => "Integer".to_string(),
@@ -229,30 +247,41 @@ pub fn rewrite_program_for_project(
             .cloned()
             .unwrap_or_else(|| import.path.rsplit('.').next().unwrap_or("").to_string());
         if import.path.ends_with(".*") {
-            let ns = import.path.trim_end_matches(".*");
-            if let Some(funcs) = namespace_functions.get(ns) {
-                for name in funcs {
-                    imported_map.insert(name.clone(), (ns.to_string(), name.clone()));
+            let import_path = import.path.trim_end_matches(".*");
+            for (symbol_name, owner_ns) in global_function_map {
+                if let Some(imported_name) =
+                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                {
+                    imported_map.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
                 }
             }
-            if let Some(classes) = namespace_classes.get(ns) {
-                for name in classes {
-                    imported_classes.insert(name.clone(), (ns.to_string(), name.clone()));
+            for (symbol_name, owner_ns) in global_class_map {
+                if let Some(imported_name) =
+                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                {
+                    imported_classes.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
                 }
             }
-            if let Some(interfaces) = namespace_interfaces.get(ns) {
-                for name in interfaces {
-                    imported_interfaces.insert(name.clone(), (ns.to_string(), name.clone()));
+            for (symbol_name, owner_ns) in global_interface_map {
+                if let Some(imported_name) =
+                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                {
+                    imported_interfaces
+                        .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
                 }
             }
-            if let Some(enums) = namespace_enums.get(ns) {
-                for name in enums {
-                    imported_enums.insert(name.clone(), (ns.to_string(), name.clone()));
+            for (symbol_name, owner_ns) in global_enum_map {
+                if let Some(imported_name) =
+                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                {
+                    imported_enums.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
                 }
             }
-            if let Some(modules) = namespace_modules.get(ns) {
-                for name in modules {
-                    imported_modules.insert(name.clone(), (ns.to_string(), name.clone()));
+            for (symbol_name, owner_ns) in global_module_map {
+                if let Some(imported_name) =
+                    direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                {
+                    imported_modules.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
                 }
             }
         } else if import.path.contains('.') {
@@ -263,8 +292,6 @@ pub fn rewrite_program_for_project(
                     resolve_exact_imported_symbol_path(&ns, source_name, global_function_map)
                 {
                     imported_map.insert(import_key.clone(), (owner_ns, function_name));
-                } else {
-                    imported_map.insert(import_key.clone(), (ns.clone(), source_name.to_string()));
                 }
                 if global_class_map
                     .get(source_name)
@@ -6217,6 +6244,51 @@ fn rewrite_expr_calls_for_project(
                     .collect(),
             }
         }
+        Expr::GenericFunctionValue { callee, type_args } => Expr::GenericFunctionValue {
+            callee: Box::new(ast::Spanned::new(
+                rewrite_expr_calls_for_project(
+                    &callee.node,
+                    current_namespace,
+                    entry_namespace,
+                    local_functions,
+                    imported_map,
+                    global_function_map,
+                    local_classes,
+                    imported_classes,
+                    global_class_map,
+                    local_interfaces,
+                    imported_interfaces,
+                    global_interface_map,
+                    imported_enums,
+                    global_enum_map,
+                    local_modules,
+                    imported_modules,
+                    global_module_map,
+                    scopes,
+                ),
+                callee.span.clone(),
+            )),
+            type_args: type_args
+                .iter()
+                .map(|ty| {
+                    rewrite_type_for_project_with_interfaces(
+                        ty,
+                        current_namespace,
+                        local_classes,
+                        imported_classes,
+                        global_class_map,
+                        local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
+                        &collect_local_enum_names(global_enum_map, current_namespace),
+                        imported_enums,
+                        global_enum_map,
+                        imported_modules,
+                        entry_namespace,
+                    )
+                })
+                .collect(),
+        },
         Expr::Lambda { params, body } => {
             push_scope(scopes);
             if let Some(scope) = scopes.last_mut() {
