@@ -5554,6 +5554,24 @@ impl<'ctx> Codegen<'ctx> {
             .any(|decl| Self::decl_has_explicit_generic_calls(&decl.node))
     }
 
+    fn decl_has_generic_classes(decl: &Decl) -> bool {
+        match decl {
+            Decl::Class(class) => !class.generic_params.is_empty(),
+            Decl::Module(module) => module
+                .declarations
+                .iter()
+                .any(|decl| Self::decl_has_generic_classes(&decl.node)),
+            Decl::Function(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => false,
+        }
+    }
+
+    fn program_has_generic_classes(program: &Program) -> bool {
+        program
+            .declarations
+            .iter()
+            .any(|decl| Self::decl_has_generic_classes(&decl.node))
+    }
+
     fn collect_specialized_class_names_from_decl(decl: &Spanned<Decl>, out: &mut HashSet<String>) {
         match &decl.node {
             Decl::Class(class) => {
@@ -5904,17 +5922,26 @@ impl<'ctx> Codegen<'ctx> {
             symbols_by_owner
         }
 
-        let class_specialized_program = Self::specialize_generic_classes(program)?;
+        let has_generic_classes = Self::program_has_generic_classes(program);
+        let class_specialized_program;
         let explicit_specialized_program;
         let final_specialized_program;
-        let program = if Self::program_has_explicit_generic_calls(&class_specialized_program) {
-            explicit_specialized_program =
-                Self::specialize_explicit_generic_calls(&class_specialized_program)?;
-            final_specialized_program =
-                Self::specialize_generic_classes(&explicit_specialized_program)?;
-            &final_specialized_program
+        let program = if has_generic_classes {
+            class_specialized_program = Self::specialize_generic_classes(program)?;
+            if Self::program_has_explicit_generic_calls(&class_specialized_program) {
+                explicit_specialized_program =
+                    Self::specialize_explicit_generic_calls(&class_specialized_program)?;
+                final_specialized_program =
+                    Self::specialize_generic_classes(&explicit_specialized_program)?;
+                &final_specialized_program
+            } else {
+                &class_specialized_program
+            }
+        } else if Self::program_has_explicit_generic_calls(program) {
+            explicit_specialized_program = Self::specialize_explicit_generic_calls(program)?;
+            &explicit_specialized_program
         } else {
-            &class_specialized_program
+            program
         };
         let generated_spec_symbols_by_owner = collect_generated_spec_symbols(program);
         let specialized_active_symbols = active_symbols.map(|symbols| {
