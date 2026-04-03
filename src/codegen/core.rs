@@ -6247,7 +6247,10 @@ impl<'ctx> Codegen<'ctx> {
         let has_generic_classes = Self::program_has_generic_classes(program);
         CODEGEN_PHASE_TIMING_TOTALS
             .program_has_generic_classes_ns
-            .fetch_add(elapsed_nanos_u64(generic_class_check_started_at), Ordering::Relaxed);
+            .fetch_add(
+                elapsed_nanos_u64(generic_class_check_started_at),
+                Ordering::Relaxed,
+            );
         let class_specialized_program;
         let explicit_specialized_program;
         let final_specialized_program;
@@ -6318,14 +6321,15 @@ impl<'ctx> Codegen<'ctx> {
         CODEGEN_PHASE_TIMING_TOTALS
             .total_decls_count
             .fetch_add(program.declarations.len(), Ordering::Relaxed);
-        CODEGEN_PHASE_TIMING_TOTALS.active_symbols_count.fetch_add(
-            active_symbols.map_or(0, HashSet::len),
-            Ordering::Relaxed,
-        );
-        CODEGEN_PHASE_TIMING_TOTALS.declaration_symbols_count.fetch_add(
-            declaration_symbols.map_or(0, HashSet::len),
-            Ordering::Relaxed,
-        );
+        CODEGEN_PHASE_TIMING_TOTALS
+            .active_symbols_count
+            .fetch_add(active_symbols.map_or(0, HashSet::len), Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .declaration_symbols_count
+            .fetch_add(
+                declaration_symbols.map_or(0, HashSet::len),
+                Ordering::Relaxed,
+            );
         let collect_generated_spec_symbols_started_at = Instant::now();
         let generated_spec_symbols_by_owner = collect_generated_spec_symbols(program);
         CODEGEN_PHASE_TIMING_TOTALS
@@ -6407,9 +6411,10 @@ impl<'ctx> Codegen<'ctx> {
                 declared_enum_count += 1;
             }
         }
-        CODEGEN_PHASE_TIMING_TOTALS
-            .enum_declare_pass_ns
-            .fetch_add(elapsed_nanos_u64(enum_declare_pass_started_at), Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS.enum_declare_pass_ns.fetch_add(
+            elapsed_nanos_u64(enum_declare_pass_started_at),
+            Ordering::Relaxed,
+        );
         CODEGEN_PHASE_TIMING_TOTALS
             .enum_declare_decl_filter_ns
             .fetch_add(enum_declare_decl_filter_ns, Ordering::Relaxed);

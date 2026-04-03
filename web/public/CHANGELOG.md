@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed object shard cache reuse across reordered file batches:
+  - object shard cache keys and metadata matching now normalize shard members by file path, so the same shard compiled in a different file order still reuses the cached object instead of triggering a needless rebuild
+  - added regressions covering both shard-key generation and cache-hit lookup for reordered but otherwise identical shard members
 - Fixed class constructor function values for checked and unchecked builds:
   - generic constructors such as `Box<Integer>` now work as first-class function values in both semantic and codegen paths, so bindings like `ctor: (Integer) -> Box<Integer> = Box<Integer>` compile and run instead of failing with `Undefined variable: Box`
   - exact-import class aliases such as `import Box as B; ctor = B<Integer>` now also compile and run instead of failing with `Undefined variable: B`

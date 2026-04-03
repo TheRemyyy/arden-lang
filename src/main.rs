@@ -25,8 +25,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::ErrorKind;
 use std::hash::{Hash, Hasher};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -404,9 +404,7 @@ fn write_cache_blob_with_timing<T: Serialize>(
     totals
         .save_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
-    totals
-        .bytes_written
-        .fetch_add(byte_len, Ordering::Relaxed);
+    totals.bytes_written.fetch_add(byte_len, Ordering::Relaxed);
     totals.save_count.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }
@@ -717,8 +715,7 @@ struct SymbolLookupResolution {
 
 type SharedSymbolLookupResolution = Arc<SymbolLookupResolution>;
 type ExactSymbolLookup = HashMap<String, Option<SharedSymbolLookupResolution>>;
-type WildcardMemberLookup =
-    HashMap<String, HashMap<String, Option<SharedSymbolLookupResolution>>>;
+type WildcardMemberLookup = HashMap<String, HashMap<String, Option<SharedSymbolLookupResolution>>>;
 
 #[derive(Debug, Clone)]
 struct ProjectSymbolLookup {
@@ -1590,6 +1587,7 @@ fn program_has_codegen_specialization_demand(program: &Program) -> bool {
         .any(|decl| decl_has_codegen_specialization_demand(&decl.node))
 }
 
+#[cfg(test)]
 fn codegen_program_for_unit(
     rewritten_files: &[RewrittenProjectUnit],
     rewritten_file_indices: &HashMap<PathBuf, usize>,
@@ -1899,11 +1897,9 @@ fn extend_declaration_symbols_for_exact_import(
         return;
     };
 
-    if let Some((owner_ns, symbol_name, owner_file)) = resolve_exact_imported_symbol_owner(
-        namespace,
-        symbol,
-        symbol_lookup,
-    ) {
+    if let Some((owner_ns, symbol_name, owner_file)) =
+        resolve_exact_imported_symbol_owner(namespace, symbol, symbol_lookup)
+    {
         if closure_files.contains(owner_file) {
             declaration_symbols.insert(mangle_project_symbol_for_codegen(
                 &owner_ns,
@@ -1916,11 +1912,9 @@ fn extend_declaration_symbols_for_exact_import(
     }
 
     if let Some((enum_namespace, enum_name)) = namespace.rsplit_once('.') {
-        if let Some((owner_ns, resolved_enum_name, owner_file)) = resolve_exact_imported_symbol_file(
-            enum_namespace,
-            enum_name,
-            symbol_lookup,
-        ) {
+        if let Some((owner_ns, resolved_enum_name, owner_file)) =
+            resolve_exact_imported_symbol_file(enum_namespace, enum_name, symbol_lookup)
+        {
             if closure_files.contains(owner_file) {
                 declaration_symbols.insert(mangle_project_symbol_for_codegen(
                     &owner_ns,
@@ -2007,9 +2001,10 @@ fn declaration_symbols_for_unit(
         transitive_dependencies_from_precomputed(precomputed_dependency_closures, root_file);
     closure_files.insert(root_file.to_path_buf());
     if let Some(timings) = timings {
-        timings
-            .closure_seed_ns
-            .fetch_add(elapsed_nanos_u64(closure_seed_started_at), Ordering::Relaxed);
+        timings.closure_seed_ns.fetch_add(
+            elapsed_nanos_u64(closure_seed_started_at),
+            Ordering::Relaxed,
+        );
     }
 
     let mut declaration_symbols = root_active_symbols.clone();
@@ -2027,22 +2022,26 @@ fn declaration_symbols_for_unit(
         let metadata_lookup_started_at = Instant::now();
         let Some(metadata) = reference_metadata.get(&file) else {
             if let Some(timings) = timings {
-                timings
-                    .metadata_lookup_ns
-                    .fetch_add(elapsed_nanos_u64(metadata_lookup_started_at), Ordering::Relaxed);
+                timings.metadata_lookup_ns.fetch_add(
+                    elapsed_nanos_u64(metadata_lookup_started_at),
+                    Ordering::Relaxed,
+                );
             }
             continue;
         };
         if let Some(timings) = timings {
-            timings
-                .metadata_lookup_ns
-                .fetch_add(elapsed_nanos_u64(metadata_lookup_started_at), Ordering::Relaxed);
+            timings.metadata_lookup_ns.fetch_add(
+                elapsed_nanos_u64(metadata_lookup_started_at),
+                Ordering::Relaxed,
+            );
         }
 
         for import in &metadata.imports {
             if import.path.ends_with(".*") {
                 if let Some(timings) = timings {
-                    timings.wildcard_import_count.fetch_add(1, Ordering::Relaxed);
+                    timings
+                        .wildcard_import_count
+                        .fetch_add(1, Ordering::Relaxed);
                 }
                 let wildcard_started_at = Instant::now();
                 let namespace = import.path.trim_end_matches(".*");
@@ -2119,11 +2118,9 @@ fn declaration_symbols_for_unit(
                         timings.qualified_ref_count.fetch_add(1, Ordering::Relaxed);
                     }
                     let rest = &path[1..];
-                    if let Some((owner_ns, candidate)) = resolve_symbol_in_namespace_path(
-                        &import.path,
-                        rest,
-                        symbol_lookup,
-                    ) {
+                    if let Some((owner_ns, candidate)) =
+                        resolve_symbol_in_namespace_path(&import.path, rest, symbol_lookup)
+                    {
                         let owner_file = global_function_file_map
                             .get(&candidate)
                             .or_else(|| global_class_file_map.get(&candidate))
@@ -2279,9 +2276,9 @@ fn load_parsed_file_cache_entry(
     let path = parsed_file_cache_path(project_root, file);
     let entry: ParsedFileCacheEntry =
         match read_cache_blob_with_timing(&path, "parse cache", &PARSE_CACHE_TIMING_TOTALS)? {
-        Some(entry) => entry,
-        None => return Ok(None),
-    };
+            Some(entry) => entry,
+            None => return Ok(None),
+        };
 
     if entry.schema != PARSE_CACHE_SCHEMA || entry.compiler_version != env!("CARGO_PKG_VERSION") {
         return Ok(None);
@@ -2851,8 +2848,7 @@ fn insert_symbol_lookup_entry(
         Arc::clone(&resolution),
     );
 
-    let (import_namespace, member_name) =
-        wildcard_member_import_path(owner_namespace, symbol_name);
+    let (import_namespace, member_name) = wildcard_member_import_path(owner_namespace, symbol_name);
     insert_lookup_resolution(
         wildcard_lookup.entry(import_namespace).or_default(),
         member_name,
@@ -2860,6 +2856,7 @@ fn insert_symbol_lookup_entry(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn register_global_symbol(
     symbol_name: &str,
     owner_namespace: &str,
@@ -2897,6 +2894,8 @@ fn register_global_symbol(
     }
 }
 
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 fn build_project_symbol_lookup(
     global_function_map: &HashMap<String, String>,
     global_function_file_map: &HashMap<String, PathBuf>,
@@ -2983,10 +2982,7 @@ fn exact_symbol_resolution<'a>(
     lookup: &'a ProjectSymbolLookup,
     qualified_path: &str,
 ) -> Option<&'a SymbolLookupResolution> {
-    lookup
-        .exact
-        .get(qualified_path)
-        .and_then(Option::as_deref)
+    lookup.exact.get(qualified_path).and_then(Option::as_deref)
 }
 
 fn wildcard_symbol_resolution<'a>(
@@ -3019,6 +3015,7 @@ fn import_path_owner_file<'a>(
     None
 }
 
+#[allow(dead_code)]
 struct RewriteFingerprintContext<'a> {
     namespace_functions: &'a HashMap<String, HashSet<String>>,
     namespace_function_files: &'a HashMap<String, HashMap<String, PathBuf>>,
@@ -3042,6 +3039,7 @@ struct RewriteFingerprintContext<'a> {
     symbol_lookup: Arc<ProjectSymbolLookup>,
 }
 
+#[allow(dead_code)]
 struct DependencyResolutionContext<'a> {
     namespace_files_map: &'a HashMap<String, Vec<PathBuf>>,
     namespace_function_files: &'a HashMap<String, HashMap<String, PathBuf>>,
@@ -3083,7 +3081,8 @@ fn resolve_function_file_in_namespace_path(
     }
 
     let qualified_path = qualified_symbol_path_for_parts(namespace_path, member_parts)?;
-    exact_symbol_resolution(symbol_lookup, &qualified_path).map(|resolution| resolution.owner_file.clone())
+    exact_symbol_resolution(symbol_lookup, &qualified_path)
+        .map(|resolution| resolution.owner_file.clone())
 }
 
 fn resolve_function_symbol_in_namespace_path(
@@ -3169,11 +3168,9 @@ fn resolve_symbol_owner_files_in_namespace(
             timings.qualified_ref_count.fetch_add(1, Ordering::Relaxed);
         }
         let lookup_started_at = Instant::now();
-        if let Some(file) = resolve_owner_file_in_namespace_path(
-            namespace,
-            path,
-            ctx.symbol_lookup.as_ref(),
-        ) {
+        if let Some(file) =
+            resolve_owner_file_in_namespace_path(namespace, path, ctx.symbol_lookup.as_ref())
+        {
             deps.insert(file);
         }
         if let Some(timings) = timings {
@@ -3219,7 +3216,9 @@ fn resolve_import_dependency_files(
 
     if import.path.ends_with(".*") {
         if let Some(timings) = timings {
-            timings.import_wildcard_count.fetch_add(1, Ordering::Relaxed);
+            timings
+                .import_wildcard_count
+                .fetch_add(1, Ordering::Relaxed);
         }
         let started_at = Instant::now();
         let namespace = import.path.trim_end_matches(".*");
@@ -3255,10 +3254,7 @@ fn resolve_import_dependency_files(
     }
 
     let exact_started_at = Instant::now();
-    if let Some(owner_file) = import_path_owner_file(
-        &import.path,
-        ctx.symbol_lookup.as_ref(),
-    ) {
+    if let Some(owner_file) = import_path_owner_file(&import.path, ctx.symbol_lookup.as_ref()) {
         if let Some(timings) = timings {
             timings.import_exact_count.fetch_add(1, Ordering::Relaxed);
             timings
@@ -3641,24 +3637,6 @@ fn transitive_dependents(
         }
         if let Some(next) = reverse_graph.get(&file) {
             stack.extend(next.iter().cloned());
-        }
-    }
-    out
-}
-
-fn transitive_dependencies(
-    forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
-    root: &Path,
-) -> HashSet<PathBuf> {
-    let mut out = HashSet::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(file) = stack.pop() {
-        if let Some(next) = forward_graph.get(&file) {
-            for dep in next {
-                if out.insert(dep.clone()) {
-                    stack.push(dep.clone());
-                }
-            }
         }
     }
     out
@@ -4207,7 +4185,7 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
     let empty_namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let empty_namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let empty_namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-        let dependency_ctx = DependencyResolutionContext {
+    let dependency_ctx = DependencyResolutionContext {
         namespace_files_map: &empty_namespace_files_map,
         namespace_function_files: &empty_namespace_function_files,
         namespace_class_files: &empty_namespace_class_files,
@@ -4255,10 +4233,9 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
                     relevant_namespaces.insert(prefix);
                 }
                 if let Some(timings) = timings {
-                    timings.relevant_namespace_prefixes_ns.fetch_add(
-                        elapsed_nanos_u64(prefixes_started_at),
-                        Ordering::Relaxed,
-                    );
+                    timings
+                        .relevant_namespace_prefixes_ns
+                        .fetch_add(elapsed_nanos_u64(prefixes_started_at), Ordering::Relaxed);
                 }
             } else {
                 let mut owner_files = owner_files.into_iter().collect::<Vec<_>>();
@@ -4309,10 +4286,9 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
                     relevant_namespaces.insert(prefix);
                 }
                 if let Some(timings) = timings {
-                    timings.relevant_namespace_prefixes_ns.fetch_add(
-                        elapsed_nanos_u64(prefixes_started_at),
-                        Ordering::Relaxed,
-                    );
+                    timings
+                        .relevant_namespace_prefixes_ns
+                        .fetch_add(elapsed_nanos_u64(prefixes_started_at), Ordering::Relaxed);
                 }
             } else {
                 let mut matched_owner_files = matched_owner_files.into_iter().collect::<Vec<_>>();
@@ -4334,15 +4310,13 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
             timings.exact_import_count.fetch_add(1, Ordering::Relaxed);
         }
         let exact_import_started_at = Instant::now();
-        if let Some(owner_file) = import_path_owner_file(
-            &import.path,
-            ctx.symbol_lookup.as_ref(),
-        ) {
+        if let Some(owner_file) = import_path_owner_file(&import.path, ctx.symbol_lookup.as_ref()) {
             hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
             if let Some(timings) = timings {
-                timings
-                    .exact_imports_ns
-                    .fetch_add(elapsed_nanos_u64(exact_import_started_at), Ordering::Relaxed);
+                timings.exact_imports_ns.fetch_add(
+                    elapsed_nanos_u64(exact_import_started_at),
+                    Ordering::Relaxed,
+                );
             }
             continue;
         }
@@ -4368,16 +4342,16 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
                 relevant_namespaces.insert(prefix);
             }
             if let Some(timings) = timings {
-                timings.relevant_namespace_prefixes_ns.fetch_add(
-                    elapsed_nanos_u64(prefixes_started_at),
-                    Ordering::Relaxed,
-                );
+                timings
+                    .relevant_namespace_prefixes_ns
+                    .fetch_add(elapsed_nanos_u64(prefixes_started_at), Ordering::Relaxed);
             }
         }
         if let Some(timings) = timings {
-            timings
-                .exact_imports_ns
-                .fetch_add(elapsed_nanos_u64(exact_import_started_at), Ordering::Relaxed);
+            timings.exact_imports_ns.fetch_add(
+                elapsed_nanos_u64(exact_import_started_at),
+                Ordering::Relaxed,
+            );
         }
     }
 
@@ -4394,9 +4368,10 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
         &mut hasher,
     );
     if let Some(timings) = timings {
-        timings
-            .namespace_hashing_ns
-            .fetch_add(elapsed_nanos_u64(namespace_hashing_started_at), Ordering::Relaxed);
+        timings.namespace_hashing_ns.fetch_add(
+            elapsed_nanos_u64(namespace_hashing_started_at),
+            Ordering::Relaxed,
+        );
     }
     format!("{:016x}", hasher.finish())
 }
@@ -4534,6 +4509,7 @@ fn load_rewritten_file_cache_if_semantic_matches(
     Ok(Some(entry))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn save_rewritten_file_cache(
     project_root: &Path,
     file: &Path,
@@ -4624,11 +4600,29 @@ fn object_cache_paths(project_root: &Path, file: &Path) -> ObjectCachePaths {
 }
 
 fn object_shard_cache_key(files: &[PathBuf]) -> String {
+    let mut normalized_files = files.to_vec();
+    normalized_files.sort();
     let mut hasher = stable_hasher();
-    for file in files {
+    for file in &normalized_files {
         file.hash(&mut hasher);
     }
     format!("{:016x}", hasher.finish())
+}
+
+fn normalized_object_shard_members(
+    members: &[ObjectShardMemberFingerprint],
+) -> Vec<ObjectShardMemberFingerprint> {
+    let mut normalized = members.to_vec();
+    normalized.sort_by(|left, right| {
+        left.file
+            .cmp(&right.file)
+            .then_with(|| left.semantic_fingerprint.cmp(&right.semantic_fingerprint))
+            .then_with(|| {
+                left.rewrite_context_fingerprint
+                    .cmp(&right.rewrite_context_fingerprint)
+            })
+    });
+    normalized
 }
 
 fn object_shard_cache_paths(project_root: &Path, files: &[PathBuf]) -> ObjectShardCachePaths {
@@ -4813,14 +4807,16 @@ fn load_object_shard_cache_hit(
         "object shard cache meta",
         &OBJECT_CACHE_META_TIMING_TOTALS,
     )? {
-            Some(meta) => meta,
-            None => return Ok(None),
-        };
+        Some(meta) => meta,
+        None => return Ok(None),
+    };
+
+    let normalized_members = normalized_object_shard_members(members);
 
     if meta.schema != OBJECT_SHARD_CACHE_SCHEMA
         || meta.compiler_version != env!("CARGO_PKG_VERSION")
         || meta.object_build_fingerprint != object_build_fingerprint
-        || meta.members != members
+        || normalized_object_shard_members(&meta.members) != normalized_members
     {
         return Ok(None);
     }
@@ -4848,7 +4844,7 @@ fn save_object_shard_cache_meta(
         schema: OBJECT_SHARD_CACHE_SCHEMA.to_string(),
         compiler_version: env!("CARGO_PKG_VERSION").to_string(),
         object_build_fingerprint: object_build_fingerprint.to_string(),
-        members: members.to_vec(),
+        members: normalized_object_shard_members(members),
     };
     write_cache_blob_with_timing(
         &cache_paths.meta_path,
@@ -5834,7 +5830,9 @@ fn build_project(
     let config_path = project_root.join("apex.toml");
     let config = ProjectConfig::load(&config_path)?;
 
-    build_timings.measure("project config validation", || config.validate(&project_root))?;
+    build_timings.measure("project config validation", || {
+        config.validate(&project_root)
+    })?;
     validate_opt_level(Some(&config.opt_level))?;
     let files = build_timings.measure_step("source file discovery", || {
         let mut files = config.get_source_files(&project_root);
@@ -5916,7 +5914,10 @@ fn build_project(
         .map(|unit| unit.interface_names.len())
         .sum();
     let total_enum_names: usize = parsed_units.iter().map(|unit| unit.enum_names.len()).sum();
-    let total_module_names: usize = parsed_units.iter().map(|unit| unit.module_names.len()).sum();
+    let total_module_names: usize = parsed_units
+        .iter()
+        .map(|unit| unit.module_names.len())
+        .sum();
     let needs_project_symbol_lookup = parsed_units.iter().any(|unit| {
         unit.imports
             .iter()
@@ -6123,14 +6124,13 @@ fn build_project(
             ),
             (
                 "bytes_written",
-                PARSE_CACHE_TIMING_TOTALS.bytes_written.load(Ordering::Relaxed) as usize,
+                PARSE_CACHE_TIMING_TOTALS
+                    .bytes_written
+                    .load(Ordering::Relaxed) as usize,
             ),
         ],
     );
-    build_timings.record_duration_ns(
-        "parse index/namespace sets",
-        parse_index_namespace_sets_ns,
-    );
+    build_timings.record_duration_ns("parse index/namespace sets", parse_index_namespace_sets_ns);
     build_timings.record_duration_ns(
         "parse index/register functions",
         parse_index_function_register_ns,
@@ -6143,18 +6143,12 @@ fn build_project(
         "parse index/register interfaces",
         parse_index_interface_register_ns,
     );
-    build_timings.record_duration_ns(
-        "parse index/register enums",
-        parse_index_enum_register_ns,
-    );
+    build_timings.record_duration_ns("parse index/register enums", parse_index_enum_register_ns);
     build_timings.record_duration_ns(
         "parse index/register modules",
         parse_index_module_register_ns,
     );
-    build_timings.record_duration_ns(
-        "parse index/push units",
-        parse_index_parsed_file_push_ns,
-    );
+    build_timings.record_duration_ns("parse index/push units", parse_index_parsed_file_push_ns);
     build_timings.record_counts(
         "parse index/details",
         &[
@@ -6169,8 +6163,9 @@ fn build_project(
             ),
         ],
     );
-    let previous_dependency_graph =
-        build_timings.measure("dependency cache load", || load_dependency_graph_cache(&project_root))?;
+    let previous_dependency_graph = build_timings.measure("dependency cache load", || {
+        load_dependency_graph_cache(&project_root)
+    })?;
     let mut namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
     namespace_files_map.reserve(parsed_files.len() + total_module_names);
     let namespace_function_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
@@ -6341,11 +6336,15 @@ fn build_project(
         &[
             (
                 "reused_files",
-                dependency_graph_timing_totals.files_reused.load(Ordering::Relaxed),
+                dependency_graph_timing_totals
+                    .files_reused
+                    .load(Ordering::Relaxed),
             ),
             (
                 "rebuilt_files",
-                dependency_graph_timing_totals.files_rebuilt.load(Ordering::Relaxed),
+                dependency_graph_timing_totals
+                    .files_rebuilt
+                    .load(Ordering::Relaxed),
             ),
             (
                 "direct_symbol_refs",
@@ -6787,19 +6786,27 @@ fn build_project(
         );
         build_timings.record_duration_ns(
             "import check/cache lookup",
-            import_check_timing_totals.cache_lookup_ns.load(Ordering::Relaxed),
+            import_check_timing_totals
+                .cache_lookup_ns
+                .load(Ordering::Relaxed),
         );
         build_timings.record_duration_ns(
             "import check/checker init",
-            import_check_timing_totals.checker_init_ns.load(Ordering::Relaxed),
+            import_check_timing_totals
+                .checker_init_ns
+                .load(Ordering::Relaxed),
         );
         build_timings.record_duration_ns(
             "import check/checker run",
-            import_check_timing_totals.checker_run_ns.load(Ordering::Relaxed),
+            import_check_timing_totals
+                .checker_run_ns
+                .load(Ordering::Relaxed),
         );
         build_timings.record_duration_ns(
             "import check/cache save",
-            import_check_timing_totals.cache_save_ns.load(Ordering::Relaxed),
+            import_check_timing_totals
+                .cache_save_ns
+                .load(Ordering::Relaxed),
         );
     }
 
@@ -6815,11 +6822,13 @@ fn build_project(
                     .map(|unit| {
                         if safe_rewrite_cache_files.contains(&unit.file) {
                             let cache_lookup_started_at = Instant::now();
-                            if let Some(cached_entry) = load_rewritten_file_cache_if_semantic_matches(
-                                &project_root,
-                                &unit.file,
-                                &unit.semantic_fingerprint,
-                            )? {
+                            if let Some(cached_entry) =
+                                load_rewritten_file_cache_if_semantic_matches(
+                                    &project_root,
+                                    &unit.file,
+                                    &unit.semantic_fingerprint,
+                                )?
+                            {
                                 rewrite_timing_totals.cache_lookup_ns.fetch_add(
                                     elapsed_nanos_u64(cache_lookup_started_at),
                                     Ordering::Relaxed,
@@ -6858,7 +6867,10 @@ fn build_project(
                             );
                         rewrite_timing_totals
                             .rewrite_context_fingerprint_ns
-                            .fetch_add(elapsed_nanos_u64(fingerprint_started_at), Ordering::Relaxed);
+                            .fetch_add(
+                                elapsed_nanos_u64(fingerprint_started_at),
+                                Ordering::Relaxed,
+                            );
                         let cache_lookup_started_at = Instant::now();
                         if let Some(cached) = load_rewritten_file_cache(
                             &project_root,
@@ -6934,12 +6946,10 @@ fn build_project(
                         let specialization_demand_started_at = Instant::now();
                         let has_specialization_demand =
                             program_has_codegen_specialization_demand(&rewritten);
-                        rewrite_timing_totals
-                            .specialization_demand_ns
-                            .fetch_add(
-                                elapsed_nanos_u64(specialization_demand_started_at),
-                                Ordering::Relaxed,
-                            );
+                        rewrite_timing_totals.specialization_demand_ns.fetch_add(
+                            elapsed_nanos_u64(specialization_demand_started_at),
+                            Ordering::Relaxed,
+                        );
                         save_rewritten_file_cache(
                             &project_root,
                             &unit.file,
@@ -6951,10 +6961,9 @@ fn build_project(
                             &active_symbols,
                             has_specialization_demand,
                         )?;
-                        rewrite_timing_totals.cache_save_ns.fetch_add(
-                            elapsed_nanos_u64(cache_save_started_at),
-                            Ordering::Relaxed,
-                        );
+                        rewrite_timing_totals
+                            .cache_save_ns
+                            .fetch_add(elapsed_nanos_u64(cache_save_started_at), Ordering::Relaxed);
                         Ok(RewrittenProjectUnit {
                             file: unit.file.clone(),
                             active_symbols,
@@ -7013,19 +7022,27 @@ fn build_project(
         &[
             (
                 "loads",
-                REWRITE_CACHE_TIMING_TOTALS.load_count.load(Ordering::Relaxed),
+                REWRITE_CACHE_TIMING_TOTALS
+                    .load_count
+                    .load(Ordering::Relaxed),
             ),
             (
                 "saves",
-                REWRITE_CACHE_TIMING_TOTALS.save_count.load(Ordering::Relaxed),
+                REWRITE_CACHE_TIMING_TOTALS
+                    .save_count
+                    .load(Ordering::Relaxed),
             ),
             (
                 "bytes_read",
-                REWRITE_CACHE_TIMING_TOTALS.bytes_read.load(Ordering::Relaxed) as usize,
+                REWRITE_CACHE_TIMING_TOTALS
+                    .bytes_read
+                    .load(Ordering::Relaxed) as usize,
             ),
             (
                 "bytes_written",
-                REWRITE_CACHE_TIMING_TOTALS.bytes_written.load(Ordering::Relaxed) as usize,
+                REWRITE_CACHE_TIMING_TOTALS
+                    .bytes_written
+                    .load(Ordering::Relaxed) as usize,
             ),
         ],
     );
@@ -7037,11 +7054,15 @@ fn build_project(
     );
     build_timings.record_duration_ns(
         "rewrite/cache lookup",
-        rewrite_timing_totals.cache_lookup_ns.load(Ordering::Relaxed),
+        rewrite_timing_totals
+            .cache_lookup_ns
+            .load(Ordering::Relaxed),
     );
     build_timings.record_duration_ns(
         "rewrite/rewrite program",
-        rewrite_timing_totals.rewrite_program_ns.load(Ordering::Relaxed),
+        rewrite_timing_totals
+            .rewrite_program_ns
+            .load(Ordering::Relaxed),
     );
     build_timings.record_duration_ns(
         "rewrite/cache save",
@@ -7049,11 +7070,15 @@ fn build_project(
     );
     build_timings.record_duration_ns(
         "rewrite/active symbols",
-        rewrite_timing_totals.active_symbols_ns.load(Ordering::Relaxed),
+        rewrite_timing_totals
+            .active_symbols_ns
+            .load(Ordering::Relaxed),
     );
     build_timings.record_duration_ns(
         "rewrite/api projection",
-        rewrite_timing_totals.api_projection_ns.load(Ordering::Relaxed),
+        rewrite_timing_totals
+            .api_projection_ns
+            .load(Ordering::Relaxed),
     );
     build_timings.record_duration_ns(
         "rewrite/specialization projection",
@@ -7174,7 +7199,10 @@ fn build_project(
     build_timings.record_counts(
         "rewrite program/details",
         &[
-            ("wildcard_calls", project_rewrite_timings.wildcard_match_calls),
+            (
+                "wildcard_calls",
+                project_rewrite_timings.wildcard_match_calls,
+            ),
             (
                 "exact_import_resolves",
                 project_rewrite_timings.exact_import_resolve_calls,
@@ -7183,7 +7211,10 @@ fn build_project(
             ("stmt_calls", project_rewrite_timings.stmt_rewrite_calls),
             ("expr_calls", project_rewrite_timings.expr_rewrite_calls),
             ("type_calls", project_rewrite_timings.type_rewrite_calls),
-            ("pattern_calls", project_rewrite_timings.pattern_rewrite_calls),
+            (
+                "pattern_calls",
+                project_rewrite_timings.pattern_rewrite_calls,
+            ),
         ],
     );
 
@@ -7465,8 +7496,9 @@ fn build_project(
         }
 
         let object_build_fingerprint = compute_object_build_fingerprint(&link);
-        let previous_link_manifest = build_timings
-            .measure("link manifest load", || load_link_manifest_cache(&project_root))?;
+        let previous_link_manifest = build_timings.measure("link manifest load", || {
+            load_link_manifest_cache(&project_root)
+        })?;
         let (
             rewritten_file_indices,
             object_cache_paths_by_file,
@@ -7488,20 +7520,21 @@ fn build_project(
                     )
                 })
                 .collect();
-            let codegen_reference_metadata: HashMap<PathBuf, CodegenReferenceMetadata> = parsed_files
-                .iter()
-                .map(|unit| {
-                    (
-                        unit.file.clone(),
-                        CodegenReferenceMetadata {
-                            imports: unit.imports.clone(),
-                            referenced_symbols: unit.referenced_symbols.clone(),
-                            qualified_symbol_refs: unit.qualified_symbol_refs.clone(),
-                            api_referenced_symbols: unit.api_referenced_symbols.clone(),
-                        },
-                    )
-                })
-                .collect();
+            let codegen_reference_metadata: HashMap<PathBuf, CodegenReferenceMetadata> =
+                parsed_files
+                    .iter()
+                    .map(|unit| {
+                        (
+                            unit.file.clone(),
+                            CodegenReferenceMetadata {
+                                imports: unit.imports.clone(),
+                                referenced_symbols: unit.referenced_symbols.clone(),
+                                qualified_symbol_refs: unit.qualified_symbol_refs.clone(),
+                                api_referenced_symbols: unit.api_referenced_symbols.clone(),
+                            },
+                        )
+                    })
+                    .collect();
             let precomputed_dependency_closures =
                 precompute_all_transitive_dependencies(&file_dependency_graph);
             let file_namespaces: HashMap<PathBuf, String> = parsed_files
@@ -7586,7 +7619,8 @@ fn build_project(
                 })
                 .collect::<Vec<_>>()
         };
-        let cache_probe_results: Vec<Result<(Vec<usize>, Option<PathBuf>), String>> =
+        type ObjectCacheProbeResult = Result<(Vec<usize>, Option<PathBuf>), String>;
+        let cache_probe_results: Vec<ObjectCacheProbeResult> =
             build_timings.measure("object cache probe", || {
                 Ok::<_, String>(
                     object_shards
@@ -7635,7 +7669,10 @@ fn build_project(
             &[
                 ("candidates", object_candidate_count),
                 ("reused", object_cache_hits),
-                ("missed", object_candidate_count.saturating_sub(object_cache_hits)),
+                (
+                    "missed",
+                    object_candidate_count.saturating_sub(object_cache_hits),
+                ),
                 ("shard_size", object_shard_size),
                 ("shard_threshold", object_shard_threshold),
                 ("shards", object_shards.len()),
@@ -7644,7 +7681,9 @@ fn build_project(
         );
         build_timings.record_duration_ns(
             "object cache meta/load",
-            OBJECT_CACHE_META_TIMING_TOTALS.load_ns.load(Ordering::Relaxed),
+            OBJECT_CACHE_META_TIMING_TOTALS
+                .load_ns
+                .load(Ordering::Relaxed),
         );
         build_timings.record_counts(
             "object cache meta/read",
@@ -7720,9 +7759,11 @@ fn build_project(
                                 Ordering::Relaxed,
                             );
                         let codegen_program_started_at = Instant::now();
-                        let codegen_program = if shard.member_indices.iter().any(|index| {
-                            rewritten_files[*index].has_specialization_demand
-                        }) {
+                        let codegen_program = if shard
+                            .member_indices
+                            .iter()
+                            .any(|index| rewritten_files[*index].has_specialization_demand)
+                        {
                             combined_program_for_files(&rewritten_files)
                         } else {
                             codegen_program_for_units(
@@ -7766,10 +7807,9 @@ fn build_project(
                             &batch_declaration_symbols,
                             Some(object_emit_timing_totals.as_ref()),
                         )?;
-                        object_codegen_timing_totals.llvm_emit_ns.fetch_add(
-                            elapsed_nanos_u64(llvm_emit_started_at),
-                            Ordering::Relaxed,
-                        );
+                        object_codegen_timing_totals
+                            .llvm_emit_ns
+                            .fetch_add(elapsed_nanos_u64(llvm_emit_started_at), Ordering::Relaxed);
                         let cache_save_started_at = Instant::now();
                         if let Some(cache_paths) = &shard.cache_paths {
                             save_object_shard_cache_meta(
@@ -7789,10 +7829,9 @@ fn build_project(
                                 &object_build_fingerprint,
                             )?;
                         }
-                        object_codegen_timing_totals.cache_save_ns.fetch_add(
-                            elapsed_nanos_u64(cache_save_started_at),
-                            Ordering::Relaxed,
-                        );
+                        object_codegen_timing_totals
+                            .cache_save_ns
+                            .fetch_add(elapsed_nanos_u64(cache_save_started_at), Ordering::Relaxed);
                         Ok::<Vec<(usize, PathBuf)>, String>(
                             shard
                                 .member_indices
@@ -7809,7 +7848,10 @@ fn build_project(
             &[
                 ("candidates", object_candidate_count),
                 ("reused", object_cache_hits),
-                ("rebuilt", object_candidate_count.saturating_sub(object_cache_hits)),
+                (
+                    "rebuilt",
+                    object_candidate_count.saturating_sub(object_cache_hits),
+                ),
                 ("shard_size", object_shard_size),
                 ("shard_threshold", object_shard_threshold),
                 ("rebuilt_shards", cache_misses.len()),
@@ -7835,15 +7877,21 @@ fn build_project(
         );
         build_timings.record_duration_ns(
             "object codegen/llvm emit",
-            object_codegen_timing_totals.llvm_emit_ns.load(Ordering::Relaxed),
+            object_codegen_timing_totals
+                .llvm_emit_ns
+                .load(Ordering::Relaxed),
         );
         build_timings.record_duration_ns(
             "object codegen/cache save",
-            object_codegen_timing_totals.cache_save_ns.load(Ordering::Relaxed),
+            object_codegen_timing_totals
+                .cache_save_ns
+                .load(Ordering::Relaxed),
         );
         build_timings.record_duration_ns(
             "object cache meta/save",
-            OBJECT_CACHE_META_TIMING_TOTALS.save_ns.load(Ordering::Relaxed),
+            OBJECT_CACHE_META_TIMING_TOTALS
+                .save_ns
+                .load(Ordering::Relaxed),
         );
         build_timings.record_counts(
             "object cache meta/write",
@@ -7870,7 +7918,9 @@ fn build_project(
         );
         build_timings.record_duration_ns(
             "object codegen/emit codegen new",
-            object_emit_timing_totals.codegen_new_ns.load(Ordering::Relaxed),
+            object_emit_timing_totals
+                .codegen_new_ns
+                .load(Ordering::Relaxed),
         );
         build_timings.record_duration_ns(
             "object codegen/emit compile filtered",
@@ -8013,18 +8063,30 @@ fn build_project(
                     codegen_phase_timings.generated_spec_owners_count,
                 ),
                 ("declared_enums", codegen_phase_timings.declared_enum_count),
-                ("declared_classes", codegen_phase_timings.declared_class_count),
+                (
+                    "declared_classes",
+                    codegen_phase_timings.declared_class_count,
+                ),
                 (
                     "declared_functions",
                     codegen_phase_timings.declared_function_count,
                 ),
-                ("declared_modules", codegen_phase_timings.declared_module_count),
+                (
+                    "declared_modules",
+                    codegen_phase_timings.declared_module_count,
+                ),
                 (
                     "compiled_functions",
                     codegen_phase_timings.compiled_function_count,
                 ),
-                ("compiled_classes", codegen_phase_timings.compiled_class_count),
-                ("compiled_modules", codegen_phase_timings.compiled_module_count),
+                (
+                    "compiled_classes",
+                    codegen_phase_timings.compiled_class_count,
+                ),
+                (
+                    "compiled_modules",
+                    codegen_phase_timings.compiled_module_count,
+                ),
             ],
         );
         build_timings.record_duration_ns(
@@ -8101,8 +8163,7 @@ fn build_project(
         let object_write_timings = crate::codegen::util::snapshot_object_write_timings();
         build_timings.record_duration_ns(
             "object codegen/write object total",
-            object_write_timings.emit_object_bytes_ns
-                + object_write_timings.filesystem_write_ns,
+            object_write_timings.emit_object_bytes_ns + object_write_timings.filesystem_write_ns,
         );
         build_timings.record_duration_ns(
             "object codegen/write object with TM",
@@ -8167,7 +8228,10 @@ fn build_project(
         build_timings.record_counts(
             "object codegen/write object counts",
             &[
-                ("tm_cache_hits", object_write_timings.target_machine_cache_hit_count),
+                (
+                    "tm_cache_hits",
+                    object_write_timings.target_machine_cache_hit_count,
+                ),
                 (
                     "tm_cache_misses",
                     object_write_timings.target_machine_cache_miss_count,
@@ -8193,14 +8257,13 @@ fn build_project(
         let link_inputs = build_timings.measure_step("link input assembly", || {
             dedupe_link_inputs(object_paths.into_iter().flatten().collect())
         });
-        let current_link_manifest = build_timings.measure_step("link manifest prep", || {
-            LinkManifestCache {
+        let current_link_manifest =
+            build_timings.measure_step("link manifest prep", || LinkManifestCache {
                 schema: LINK_MANIFEST_CACHE_SCHEMA.to_string(),
                 compiler_version: env!("CARGO_PKG_VERSION").to_string(),
                 link_fingerprint: compute_link_fingerprint(&output_path, &link_inputs, &link),
                 link_inputs: link_inputs.clone(),
-            }
-        });
+            });
 
         if should_skip_final_link(
             previous_link_manifest.as_ref(),
@@ -8341,9 +8404,10 @@ fn compile_program_ast_to_object_filtered(
             )
         })?;
         if let Some(timings) = timings {
-            timings
-                .object_dir_setup_ns
-                .fetch_add(elapsed_nanos_u64(object_dir_setup_started_at), Ordering::Relaxed);
+            timings.object_dir_setup_ns.fetch_add(
+                elapsed_nanos_u64(object_dir_setup_started_at),
+                Ordering::Relaxed,
+            );
         }
     }
     let write_started_at = Instant::now();
@@ -10004,17 +10068,18 @@ mod tests {
         build_project_symbol_lookup, build_reverse_dependency_graph, check_command, check_file,
         codegen_program_for_unit, compile_file, compile_source, component_fingerprint,
         compute_link_fingerprint, compute_namespace_api_fingerprints,
-        compute_rewrite_context_fingerprint_for_unit, dedupe_link_inputs,
-        escape_response_file_arg, find_test_files, fix_target, format_targets, lex_file,
-        lint_target, load_cached_fingerprint, load_link_manifest_cache,
-        load_semantic_cached_fingerprint, new_project, parse_file, parse_project_unit,
+        compute_rewrite_context_fingerprint_for_unit, dedupe_link_inputs, escape_response_file_arg,
+        find_test_files, fix_target, format_targets, lex_file, lint_target,
+        load_cached_fingerprint, load_link_manifest_cache, load_object_shard_cache_hit,
+        load_semantic_cached_fingerprint, new_project, object_shard_cache_key,
+        object_shard_cache_paths, parse_file, parse_project_unit,
         precompute_all_transitive_dependencies, read_cache_blob, reusable_component_fingerprints,
-        run_project, run_tests, semantic_program_fingerprint, should_skip_final_link,
-        show_project_info, transitive_dependents, transitive_dependencies_from_precomputed,
-        typecheck_summary_cache_from_state, typecheck_summary_cache_matches,
+        run_project, run_tests, save_object_shard_cache_meta, semantic_program_fingerprint,
+        should_skip_final_link, show_project_info, transitive_dependencies_from_precomputed,
+        transitive_dependents, typecheck_summary_cache_from_state, typecheck_summary_cache_matches,
         DependencyGraphCache, DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig,
-        LinkManifestCache, OutputKind,
-        ParsedFileCacheEntry, ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
+        LinkManifestCache, ObjectShardMemberFingerprint, OutputKind, ParsedFileCacheEntry,
+        ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
         DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
     };
     use crate::ast::{
@@ -39206,10 +39271,7 @@ function main(): Integer {
             global_module_file_map: &HashMap::new(),
             symbol_lookup: Arc::new(build_project_symbol_lookup(
                 &HashMap::from([("foo".to_string(), "lib".to_string())]),
-                &HashMap::from([(
-                    "foo".to_string(),
-                    PathBuf::from("src/lib_foo.apex"),
-                )]),
+                &HashMap::from([("foo".to_string(), PathBuf::from("src/lib_foo.apex"))]),
                 &HashMap::new(),
                 &HashMap::new(),
                 empty_global_interface_map(),
@@ -39349,6 +39411,65 @@ function main(): Integer {
         assert!(should_skip_final_link(Some(&current), &current, &temp, 0));
 
         let _ = fs::remove_file(temp);
+    }
+
+    #[test]
+    fn object_shard_cache_key_ignores_member_order() {
+        let a = vec![PathBuf::from("src/a.apex"), PathBuf::from("src/b.apex")];
+        let b = vec![PathBuf::from("src/b.apex"), PathBuf::from("src/a.apex")];
+
+        assert_eq!(object_shard_cache_key(&a), object_shard_cache_key(&b));
+    }
+
+    #[test]
+    fn object_shard_cache_hit_ignores_member_order() {
+        let temp_root = make_temp_project_root("object-shard-cache-member-order");
+        let files_ab = vec![PathBuf::from("src/a.apex"), PathBuf::from("src/b.apex")];
+        let files_ba = vec![PathBuf::from("src/b.apex"), PathBuf::from("src/a.apex")];
+        let cache_paths = object_shard_cache_paths(&temp_root, &files_ab);
+        let fingerprint = "obj-fp";
+        let members_ab = vec![
+            ObjectShardMemberFingerprint {
+                file: PathBuf::from("src/a.apex"),
+                semantic_fingerprint: "sem-a".to_string(),
+                rewrite_context_fingerprint: "rw-a".to_string(),
+            },
+            ObjectShardMemberFingerprint {
+                file: PathBuf::from("src/b.apex"),
+                semantic_fingerprint: "sem-b".to_string(),
+                rewrite_context_fingerprint: "rw-b".to_string(),
+            },
+        ];
+        let members_ba = vec![
+            ObjectShardMemberFingerprint {
+                file: PathBuf::from("src/b.apex"),
+                semantic_fingerprint: "sem-b".to_string(),
+                rewrite_context_fingerprint: "rw-b".to_string(),
+            },
+            ObjectShardMemberFingerprint {
+                file: PathBuf::from("src/a.apex"),
+                semantic_fingerprint: "sem-a".to_string(),
+                rewrite_context_fingerprint: "rw-a".to_string(),
+            },
+        ];
+
+        fs::create_dir_all(
+            cache_paths
+                .object_path
+                .parent()
+                .expect("object shard cache path should have parent"),
+        )
+        .expect("create object shard cache directory");
+        fs::write(&cache_paths.object_path, b"obj").expect("write cached object shard");
+        save_object_shard_cache_meta(&cache_paths, &members_ab, fingerprint)
+            .expect("save object shard meta");
+
+        let reordered_cache_paths = object_shard_cache_paths(&temp_root, &files_ba);
+        let hit = load_object_shard_cache_hit(&reordered_cache_paths, &members_ba, fingerprint)
+            .expect("load object shard cache hit");
+        assert_eq!(hit, Some(reordered_cache_paths.object_path.clone()));
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]

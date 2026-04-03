@@ -316,7 +316,8 @@ impl ProjectConfig {
         validate_project_path(&canonical_root, project_root, &self.entry, "Entry point")?;
         validate_output_path(&canonical_root, project_root, &self.output)?;
 
-        let output_path = normalize_project_relative_path(&canonical_root, Path::new(&self.output))?;
+        let output_path =
+            normalize_project_relative_path(&canonical_root, Path::new(&self.output))?;
         let config_path = normalize_project_relative_path(&canonical_root, Path::new("apex.toml"))?;
         if output_path == config_path {
             return Err(format!(

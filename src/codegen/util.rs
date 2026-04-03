@@ -2734,22 +2734,27 @@ impl<'ctx> Codegen<'ctx> {
         Self::ensure_object_emission_targets_initialized(target_triple)?;
         OBJECT_WRITE_TIMING_TOTALS
             .ensure_targets_initialized_ns
-            .fetch_add(elapsed_nanos_u64(ensure_targets_started_at), Ordering::Relaxed);
+            .fetch_add(
+                elapsed_nanos_u64(ensure_targets_started_at),
+                Ordering::Relaxed,
+            );
 
         let target_triple_started_at = Instant::now();
         let triple = target_triple
             .map(TargetTriple::create)
             .unwrap_or_else(TargetMachine::get_default_triple);
-        OBJECT_WRITE_TIMING_TOTALS
-            .target_triple_ns
-            .fetch_add(elapsed_nanos_u64(target_triple_started_at), Ordering::Relaxed);
+        OBJECT_WRITE_TIMING_TOTALS.target_triple_ns.fetch_add(
+            elapsed_nanos_u64(target_triple_started_at),
+            Ordering::Relaxed,
+        );
         let triple_string = triple.as_str().to_string_lossy().into_owned();
         let host_cpu_query_started_at = Instant::now();
         let host_cpu_name = TargetMachine::get_host_cpu_name();
         let host_cpu_features = TargetMachine::get_host_cpu_features();
-        OBJECT_WRITE_TIMING_TOTALS
-            .host_cpu_query_ns
-            .fetch_add(elapsed_nanos_u64(host_cpu_query_started_at), Ordering::Relaxed);
+        OBJECT_WRITE_TIMING_TOTALS.host_cpu_query_ns.fetch_add(
+            elapsed_nanos_u64(host_cpu_query_started_at),
+            Ordering::Relaxed,
+        );
         let cpu = if target_triple.is_some() {
             "generic".to_string()
         } else {
@@ -2773,9 +2778,10 @@ impl<'ctx> Codegen<'ctx> {
             OptimizationLevel::Default => "2",
             OptimizationLevel::Aggressive => "3",
         };
-        OBJECT_WRITE_TIMING_TOTALS
-            .opt_level_resolve_ns
-            .fetch_add(elapsed_nanos_u64(opt_level_resolve_started_at), Ordering::Relaxed);
+        OBJECT_WRITE_TIMING_TOTALS.opt_level_resolve_ns.fetch_add(
+            elapsed_nanos_u64(opt_level_resolve_started_at),
+            Ordering::Relaxed,
+        );
         let reloc_mode = match output_kind {
             OutputKind::Shared => "pic",
             OutputKind::Bin | OutputKind::Static => "default",
@@ -2826,12 +2832,10 @@ impl<'ctx> Codegen<'ctx> {
                 .ok_or_else(|| "target machine cache missing inserted machine".to_string())?;
             f(machine, &triple)
         });
-        OBJECT_WRITE_TIMING_TOTALS
-            .with_target_machine_ns
-            .fetch_add(
-                elapsed_nanos_u64(with_target_machine_started_at),
-                Ordering::Relaxed,
-            );
+        OBJECT_WRITE_TIMING_TOTALS.with_target_machine_ns.fetch_add(
+            elapsed_nanos_u64(with_target_machine_started_at),
+            Ordering::Relaxed,
+        );
         result
     }
 
@@ -2843,9 +2847,10 @@ impl<'ctx> Codegen<'ctx> {
     ) -> std::result::Result<TargetMachine, String> {
         let target_from_triple_started_at = Instant::now();
         let target = Target::from_triple(triple).map_err(|e| e.to_string())?;
-        OBJECT_WRITE_TIMING_TOTALS
-            .target_from_triple_ns
-            .fetch_add(elapsed_nanos_u64(target_from_triple_started_at), Ordering::Relaxed);
+        OBJECT_WRITE_TIMING_TOTALS.target_from_triple_ns.fetch_add(
+            elapsed_nanos_u64(target_from_triple_started_at),
+            Ordering::Relaxed,
+        );
         let target_machine_create_started_at = Instant::now();
         let machine = target
             .create_target_machine(
@@ -2879,37 +2884,40 @@ impl<'ctx> Codegen<'ctx> {
         OBJECT_WRITE_TIMING_TOTALS
             .emit_object_call_count
             .fetch_add(1, Ordering::Relaxed);
-        let result = Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
-            let setup_started_at = Instant::now();
-            let set_triple_started_at = Instant::now();
-            self.module.set_triple(triple);
-            OBJECT_WRITE_TIMING_TOTALS
-                .module_set_triple_ns
-                .fetch_add(elapsed_nanos_u64(set_triple_started_at), Ordering::Relaxed);
-            let set_data_layout_started_at = Instant::now();
-            self.module
-                .set_data_layout(&machine.get_target_data().get_data_layout());
-            OBJECT_WRITE_TIMING_TOTALS
-                .module_set_data_layout_ns
-                .fetch_add(elapsed_nanos_u64(set_data_layout_started_at), Ordering::Relaxed);
-            OBJECT_WRITE_TIMING_TOTALS
-                .target_machine_setup_ns
-                .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
-            let emit_started_at = Instant::now();
-            let buffer = machine
-                .write_to_memory_buffer(&self.module, FileType::Object)
-                .map_err(|e| e.to_string())?;
-            OBJECT_WRITE_TIMING_TOTALS
-                .write_to_memory_buffer_ns
-                .fetch_add(elapsed_nanos_u64(emit_started_at), Ordering::Relaxed);
-            let to_vec_started_at = Instant::now();
-            let object = buffer.as_slice().to_vec();
-            OBJECT_WRITE_TIMING_TOTALS
-                .memory_buffer_to_vec_ns
-                .fetch_add(elapsed_nanos_u64(to_vec_started_at), Ordering::Relaxed);
-            Ok(object)
-        })
-        ;
+        let result =
+            Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
+                let setup_started_at = Instant::now();
+                let set_triple_started_at = Instant::now();
+                self.module.set_triple(triple);
+                OBJECT_WRITE_TIMING_TOTALS
+                    .module_set_triple_ns
+                    .fetch_add(elapsed_nanos_u64(set_triple_started_at), Ordering::Relaxed);
+                let set_data_layout_started_at = Instant::now();
+                self.module
+                    .set_data_layout(&machine.get_target_data().get_data_layout());
+                OBJECT_WRITE_TIMING_TOTALS
+                    .module_set_data_layout_ns
+                    .fetch_add(
+                        elapsed_nanos_u64(set_data_layout_started_at),
+                        Ordering::Relaxed,
+                    );
+                OBJECT_WRITE_TIMING_TOTALS
+                    .target_machine_setup_ns
+                    .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
+                let emit_started_at = Instant::now();
+                let buffer = machine
+                    .write_to_memory_buffer(&self.module, FileType::Object)
+                    .map_err(|e| e.to_string())?;
+                OBJECT_WRITE_TIMING_TOTALS
+                    .write_to_memory_buffer_ns
+                    .fetch_add(elapsed_nanos_u64(emit_started_at), Ordering::Relaxed);
+                let to_vec_started_at = Instant::now();
+                let object = buffer.as_slice().to_vec();
+                OBJECT_WRITE_TIMING_TOTALS
+                    .memory_buffer_to_vec_ns
+                    .fetch_add(elapsed_nanos_u64(to_vec_started_at), Ordering::Relaxed);
+                Ok(object)
+            });
         OBJECT_WRITE_TIMING_TOTALS
             .emit_object_bytes_ns
             .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
@@ -2940,7 +2948,10 @@ impl<'ctx> Codegen<'ctx> {
                     .set_data_layout(&machine.get_target_data().get_data_layout());
                 OBJECT_WRITE_TIMING_TOTALS
                     .module_set_data_layout_ns
-                    .fetch_add(elapsed_nanos_u64(set_data_layout_started_at), Ordering::Relaxed);
+                    .fetch_add(
+                        elapsed_nanos_u64(set_data_layout_started_at),
+                        Ordering::Relaxed,
+                    );
                 OBJECT_WRITE_TIMING_TOTALS
                     .target_machine_setup_ns
                     .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
@@ -2950,7 +2961,10 @@ impl<'ctx> Codegen<'ctx> {
                     .map_err(|e| e.to_string());
                 OBJECT_WRITE_TIMING_TOTALS
                     .direct_write_to_file_ns
-                    .fetch_add(elapsed_nanos_u64(direct_write_started_at), Ordering::Relaxed);
+                    .fetch_add(
+                        elapsed_nanos_u64(direct_write_started_at),
+                        Ordering::Relaxed,
+                    );
                 result
             });
         OBJECT_WRITE_TIMING_TOTALS

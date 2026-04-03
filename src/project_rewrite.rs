@@ -133,19 +133,27 @@ pub fn snapshot_rewrite_timings() -> RewriteTimingSnapshot {
         exact_import_resolve_calls: REWRITE_TIMING_TOTALS
             .exact_import_resolve_calls
             .load(Ordering::Relaxed),
-        block_rewrite_ns: REWRITE_TIMING_TOTALS.block_rewrite_ns.load(Ordering::Relaxed),
+        block_rewrite_ns: REWRITE_TIMING_TOTALS
+            .block_rewrite_ns
+            .load(Ordering::Relaxed),
         block_rewrite_calls: REWRITE_TIMING_TOTALS
             .block_rewrite_calls
             .load(Ordering::Relaxed),
-        stmt_rewrite_ns: REWRITE_TIMING_TOTALS.stmt_rewrite_ns.load(Ordering::Relaxed),
+        stmt_rewrite_ns: REWRITE_TIMING_TOTALS
+            .stmt_rewrite_ns
+            .load(Ordering::Relaxed),
         stmt_rewrite_calls: REWRITE_TIMING_TOTALS
             .stmt_rewrite_calls
             .load(Ordering::Relaxed),
-        expr_rewrite_ns: REWRITE_TIMING_TOTALS.expr_rewrite_ns.load(Ordering::Relaxed),
+        expr_rewrite_ns: REWRITE_TIMING_TOTALS
+            .expr_rewrite_ns
+            .load(Ordering::Relaxed),
         expr_rewrite_calls: REWRITE_TIMING_TOTALS
             .expr_rewrite_calls
             .load(Ordering::Relaxed),
-        type_rewrite_ns: REWRITE_TIMING_TOTALS.type_rewrite_ns.load(Ordering::Relaxed),
+        type_rewrite_ns: REWRITE_TIMING_TOTALS
+            .type_rewrite_ns
+            .load(Ordering::Relaxed),
         type_rewrite_calls: REWRITE_TIMING_TOTALS
             .type_rewrite_calls
             .load(Ordering::Relaxed),
@@ -454,6 +462,7 @@ fn rewrite_construct_type_name_for_project(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::needless_borrow)]
 pub fn rewrite_program_for_project(
     program: &Program,
     current_namespace: &str,
@@ -512,8 +521,7 @@ pub fn rewrite_program_for_project(
                     if let Some(imported_name) =
                         direct_wildcard_member_name(import_path, owner_ns, symbol_name)
                     {
-                        imported_map
-                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                        imported_map.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
                     }
                 }
             }
@@ -530,11 +538,7 @@ pub fn rewrite_program_for_project(
                 }
             }
             let imported_interfaces_before = imported_interfaces.len();
-            extend_wildcard_import_map(
-                import_path,
-                namespace_interfaces,
-                &mut imported_interfaces,
-            );
+            extend_wildcard_import_map(import_path, namespace_interfaces, &mut imported_interfaces);
             if imported_interfaces.len() == imported_interfaces_before {
                 for (symbol_name, owner_ns) in global_interface_map {
                     if let Some(imported_name) =
@@ -590,9 +594,7 @@ pub fn rewrite_program_for_project(
                     source_name,
                     namespace_classes,
                 )
-                .or_else(|| {
-                    resolve_exact_imported_symbol_path(&ns, source_name, global_class_map)
-                })
+                .or_else(|| resolve_exact_imported_symbol_path(&ns, source_name, global_class_map))
                 {
                     imported_classes.insert(import_key.clone(), (owner_ns, class_name));
                 }
@@ -608,14 +610,11 @@ pub fn rewrite_program_for_project(
                 {
                     imported_interfaces.insert(import_key.clone(), (owner_ns, interface_name));
                 }
-                if let Some((owner_ns, enum_name)) = resolve_exact_imported_symbol_from_namespaces(
-                    &ns,
-                    source_name,
-                    namespace_enums,
-                )
-                .or_else(|| {
-                    resolve_exact_imported_symbol_path(&ns, source_name, global_enum_map)
-                })
+                if let Some((owner_ns, enum_name)) =
+                    resolve_exact_imported_symbol_from_namespaces(&ns, source_name, namespace_enums)
+                        .or_else(|| {
+                            resolve_exact_imported_symbol_path(&ns, source_name, global_enum_map)
+                        })
                 {
                     imported_enums.insert(import_key.clone(), (owner_ns, enum_name));
                 }
