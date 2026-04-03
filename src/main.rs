@@ -25,6 +25,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::ErrorKind;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -290,20 +291,27 @@ fn stable_hasher() -> XxHash64 {
     XxHash64::with_seed(0)
 }
 
-fn read_cache_blob<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Option<T>, String> {
-    if !path.exists() {
-        return Ok(None);
-    }
+fn read_cache_blob_raw(path: &Path, label: &str) -> Result<Option<Vec<u8>>, String> {
+    let raw = match fs::read(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "{}: Failed to read {} '{}': {}",
+                "error".red().bold(),
+                label,
+                path.display(),
+                error
+            ));
+        }
+    };
+    Ok(Some(raw))
+}
 
-    let raw = fs::read(path).map_err(|e| {
-        format!(
-            "{}: Failed to read {} '{}': {}",
-            "error".red().bold(),
-            label,
-            path.display(),
-            e
-        )
-    })?;
+fn read_cache_blob<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Option<T>, String> {
+    let Some(raw) = read_cache_blob_raw(path, label)? else {
+        return Ok(None);
+    };
     let value = bincode::deserialize(&raw).map_err(|e| {
         format!(
             "{}: Failed to decode {} '{}': {}",
@@ -322,19 +330,28 @@ fn read_cache_blob_with_timing<T: DeserializeOwned>(
     totals: &CacheIoTimingTotals,
 ) -> Result<Option<T>, String> {
     let started_at = Instant::now();
-    let value = read_cache_blob(path, label)?;
-    let elapsed_ns = elapsed_nanos_u64(started_at);
-    totals.load_ns.fetch_add(elapsed_ns, Ordering::Relaxed);
-    if let Some(bytes) = path
-        .metadata()
-        .ok()
-        .filter(|_| value.is_some())
-        .map(|metadata| metadata.len())
-    {
-        totals.bytes_read.fetch_add(bytes, Ordering::Relaxed);
-        totals.load_count.fetch_add(1, Ordering::Relaxed);
-    }
-    Ok(value)
+    let Some(raw) = read_cache_blob_raw(path, label)? else {
+        totals
+            .load_ns
+            .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+        return Ok(None);
+    };
+    let byte_len = raw.len() as u64;
+    let value = bincode::deserialize(&raw).map_err(|e| {
+        format!(
+            "{}: Failed to decode {} '{}': {}",
+            "error".red().bold(),
+            label,
+            path.display(),
+            e
+        )
+    })?;
+    totals
+        .load_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    totals.bytes_read.fetch_add(byte_len, Ordering::Relaxed);
+    totals.load_count.fetch_add(1, Ordering::Relaxed);
+    Ok(Some(value))
 }
 
 fn write_cache_blob<T: Serialize>(path: &Path, label: &str, value: &T) -> Result<(), String> {
