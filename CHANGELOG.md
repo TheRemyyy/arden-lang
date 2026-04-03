@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed stale rewrite-fingerprint reuse for bare same-namespace enum references:
+  - rewrite-context fingerprinting now hashes the owner file API for same-namespace enum symbols, matching the existing behavior for functions, classes, interfaces, and modules
+  - this fixes incremental project builds where `main.apex` referenced a split-file enum in the same package without an import, and a breaking enum API change could previously reuse a stale safe rewrite fingerprint
+  - added a regression covering a bare `State.Ok(...)` same-namespace enum reference, and the fingerprint now changes when the enum API changes
 - Fixed split-file project builds when a dependency class or module is named `main` in the entry namespace:
   - object-shard body filtering now matches declaration symbols against their exact mangled owners instead of stripping the namespace prefix and accidentally treating `core__main` as the local entry function `main`
   - this fixes real multi-file project builds like `package core; function main() { return main.ping(); }` plus `module main { ... }` and `value: main = main(22)` plus `class main { ... }`, which previously failed at link time with duplicate symbols such as `core__main__ping`, `core__main__new`, and `core__main__get`

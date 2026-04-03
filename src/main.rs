@@ -4351,6 +4351,17 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
             }
         }
         if ctx
+            .global_enum_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
+        {
+            if let Some(owner_file) = ctx.global_enum_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+                }
+            }
+        }
+        if ctx
             .global_module_map
             .get(symbol)
             .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
@@ -38109,6 +38120,48 @@ function main(): Integer {
         let rewrite_fp_after = rewrite_fingerprint_for_test_unit(&parsed_after, &main_file, "app");
 
         assert_eq!(rewrite_fp_before, rewrite_fp_after);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_rewrite_fingerprint_changes_on_same_namespace_enum_api_change_without_import() {
+        let temp_root = make_temp_project_root("rewrite-fp-same-namespace-enum-api-change");
+        let src_dir = temp_root.join("src");
+        let main_file = src_dir.join("main.apex");
+        let enum_file = src_dir.join("enum.apex");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/enum.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            &main_file,
+            "package app;\nfunction main(): Integer { return match (State.Ok(1)) { Ok(value) => value, }; }\n",
+        )
+        .expect("write main");
+        fs::write(&enum_file, "package app;\nenum State { Ok(Integer) }\n")
+            .expect("write enum before");
+
+        let parsed_before = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main before"),
+            parse_project_unit(&temp_root, &enum_file).expect("parse enum before"),
+        ];
+        let rewrite_fp_before =
+            rewrite_fingerprint_for_test_unit(&parsed_before, &main_file, "app");
+
+        thread::sleep(Duration::from_millis(5));
+        fs::write(&enum_file, "package app;\nenum State { Ready(Integer) }\n")
+            .expect("write enum after");
+
+        let parsed_after = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main after"),
+            parse_project_unit(&temp_root, &enum_file).expect("parse enum after"),
+        ];
+        let rewrite_fp_after = rewrite_fingerprint_for_test_unit(&parsed_after, &main_file, "app");
+
+        assert_ne!(rewrite_fp_before, rewrite_fp_after);
 
         let _ = fs::remove_dir_all(temp_root);
     }
