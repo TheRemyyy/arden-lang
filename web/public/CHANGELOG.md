@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - object-shard body filtering now matches declaration symbols against their exact mangled owners instead of stripping the namespace prefix and accidentally treating `core__main` as the local entry function `main`
   - this fixes real multi-file project builds like `package core; function main() { return main.ping(); }` plus `module main { ... }` and `value: main = main(22)` plus `class main { ... }`, which previously failed at link time with duplicate symbols such as `core__main__ping`, `core__main__new`, and `core__main__get`
   - added runtime project regressions for split-file entry-namespace `module main` and `class main`, and both now build and exit with `22`
+- Fixed same-namespace split-file enum dependencies in project semantic check:
+  - direct dependency discovery now includes same-namespace bare enum references, just like it already did for functions, classes, interfaces, and modules
+  - this fixes real multi-file projects like `package core; enum main { Ok(Integer) }` plus `function main(): Integer { return match (main.Ok(22)) { ... }; }`, which previously split into separate semantic components and failed with `Cannot call method on type () -> Integer`
+  - added dependency-graph and runtime regressions for split-file entry-namespace `enum main`, and both now resolve the enum owner file correctly
 - Fixed exact module imports when the imported module is named `main`:
   - exact import aliases like `import M.main as Main;` now keep resolving `Main.ping()` as a module call instead of misclassifying the alias as an unrelated bare `main` function value
   - this fixes real checked single-file programs that previously failed with `Cannot call method on type () -> Integer` because exact-import alias resolution used a suffix-based function fallback on `M__main`

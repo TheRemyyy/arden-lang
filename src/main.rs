@@ -3602,6 +3602,17 @@ fn resolve_direct_dependencies_for_unit(
             }
         }
         if ctx
+            .global_enum_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
+        {
+            if let Some(owner_file) = ctx.global_enum_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    deps.insert(owner_file.clone());
+                }
+            }
+        }
+        if ctx
             .global_module_map
             .get(symbol)
             .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
@@ -15777,6 +15788,58 @@ class main {
     }
 
     #[test]
+    fn project_build_runs_split_file_enum_named_main_in_entry_namespace_runtime() {
+        let temp_root = make_temp_project_root("project-enum-main-entry-runtime");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/enum.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            r#"
+package core;
+function main(): Integer {
+    return match (main.Ok(22)) {
+        Ok(value) => value,
+    };
+}
+"#,
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("enum.apex"),
+            r#"
+package core;
+enum main {
+    Ok(Integer)
+}
+"#,
+        )
+        .expect("write enum");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support split-file enum named main");
+        });
+
+        let output = std::process::Command::new(temp_root.join("smoke"))
+            .output()
+            .expect("run compiled split-file enum named main binary");
+        assert_eq!(
+            output.status.code(),
+            Some(22),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_parse_cache_reuses_only_unchanged_files() {
         let temp_root = make_temp_project_root("parse-cache-selective");
         let src_dir = temp_root.join("src");
@@ -15933,6 +15996,132 @@ class main {
         );
         assert!(graph
             .get(&math_file)
+            .cloned()
+            .unwrap_or_default()
+            .is_empty());
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_multi_file_dependency_graph_tracks_same_namespace_enum_reference_owner_file() {
+        let temp_root = make_temp_project_root("enum-main-import-graph");
+        let src_dir = temp_root.join("src");
+        let main_file = src_dir.join("main.apex");
+        let enum_file = src_dir.join("enum.apex");
+
+        fs::write(
+            &main_file,
+            "package core;\nfunction main(): Integer { return match (main.Ok(22)) { Ok(value) => value, }; }\n",
+        )
+        .expect("write main file");
+        fs::write(&enum_file, "package core;\nenum main { Ok(Integer) }\n")
+            .expect("write enum file");
+
+        let parsed_files = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main"),
+            parse_project_unit(&temp_root, &enum_file).expect("parse enum"),
+        ];
+
+        let mut namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
+        let mut namespace_function_files: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+        let mut namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+        let mut global_function_map: HashMap<String, String> = HashMap::new();
+        let mut global_function_file_map: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_class_map: HashMap<String, String> = HashMap::new();
+        let mut global_class_file_map: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_interface_map: HashMap<String, String> = HashMap::new();
+        let mut global_interface_file_map: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_enum_map: HashMap<String, String> = HashMap::new();
+        let mut global_enum_file_map: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_module_map: HashMap<String, String> = HashMap::new();
+        let mut global_module_file_map: HashMap<String, PathBuf> = HashMap::new();
+
+        for unit in &parsed_files {
+            namespace_files_map
+                .entry(unit.namespace.clone())
+                .or_default()
+                .push(unit.file.clone());
+            for name in &unit.function_names {
+                namespace_function_files
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_function_map.insert(name.clone(), unit.namespace.clone());
+                global_function_file_map.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.class_names {
+                namespace_class_files
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_class_map.insert(name.clone(), unit.namespace.clone());
+                global_class_file_map.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.interface_names {
+                namespace_interface_files
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_interface_map.insert(name.clone(), unit.namespace.clone());
+                global_interface_file_map.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.enum_names {
+                global_enum_map.insert(name.clone(), unit.namespace.clone());
+                global_enum_file_map.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.module_names {
+                namespace_module_files
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_module_map.insert(name.clone(), unit.namespace.clone());
+                global_module_file_map.insert(name.clone(), unit.file.clone());
+            }
+        }
+
+        let symbol_lookup = Arc::new(build_project_symbol_lookup(
+            &global_function_map,
+            &global_function_file_map,
+            &global_class_map,
+            &global_class_file_map,
+            &global_interface_map,
+            &global_interface_file_map,
+            &global_enum_map,
+            &global_enum_file_map,
+            &global_module_map,
+            &global_module_file_map,
+        ));
+        let ctx = DependencyResolutionContext {
+            namespace_files_map: &namespace_files_map,
+            namespace_function_files: &namespace_function_files,
+            namespace_class_files: &namespace_class_files,
+            namespace_interface_files: &namespace_interface_files,
+            namespace_module_files: &namespace_module_files,
+            global_function_map: &global_function_map,
+            global_function_file_map: &global_function_file_map,
+            global_class_map: &global_class_map,
+            global_class_file_map: &global_class_file_map,
+            global_interface_map: &global_interface_map,
+            global_interface_file_map: &global_interface_file_map,
+            global_enum_map: &global_enum_map,
+            global_enum_file_map: &global_enum_file_map,
+            global_module_map: &global_module_map,
+            global_module_file_map: &global_module_file_map,
+            symbol_lookup,
+        };
+
+        let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
+        assert_eq!(
+            graph.get(&main_file).cloned().unwrap_or_default(),
+            HashSet::from([enum_file.clone()])
+        );
+        assert!(graph
+            .get(&enum_file)
             .cloned()
             .unwrap_or_default()
             .is_empty());
