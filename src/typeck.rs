@@ -596,11 +596,8 @@ impl TypeChecker {
             return Some(canonical);
         }
         let full_mangled = path.replace('.', "__");
-        if let Some(resolved) = self.resolve_function_value_name(&full_mangled) {
-            return Some(resolved.to_string());
-        }
-        if let Some(resolved) = self.resolve_function_value_name(symbol) {
-            return Some(resolved.to_string());
+        if self.functions.contains_key(&full_mangled) {
+            return Some(full_mangled);
         }
         if stdlib_registry()
             .get_namespace(symbol)

@@ -6776,7 +6776,6 @@ impl<'ctx> Codegen<'ctx> {
         if stdlib_registry()
             .get_namespace(symbol)
             .is_some_and(|owner| owner == &namespace)
-            || self.functions.contains_key(symbol)
         {
             return symbol.to_string();
         }
