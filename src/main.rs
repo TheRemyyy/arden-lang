@@ -1741,6 +1741,74 @@ fn mangle_project_symbol_for_codegen(namespace: &str, entry_namespace: &str, nam
     }
 }
 
+fn mangle_project_nominal_symbol_for_codegen(namespace: &str, name: &str) -> String {
+    format!("{}__{}", namespace.replace('.', "__"), name)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn insert_declaration_symbol_for_owner(
+    symbol: &str,
+    owner_ns: &str,
+    owner_file: &Path,
+    entry_namespace: &str,
+    declaration_symbols: &mut HashSet<String>,
+    global_function_map: &HashMap<String, String>,
+    global_function_file_map: &HashMap<String, PathBuf>,
+    global_class_map: &HashMap<String, String>,
+    global_class_file_map: &HashMap<String, PathBuf>,
+    global_interface_map: &HashMap<String, String>,
+    global_interface_file_map: &HashMap<String, PathBuf>,
+    global_enum_map: &HashMap<String, String>,
+    global_enum_file_map: &HashMap<String, PathBuf>,
+    global_module_map: &HashMap<String, String>,
+    global_module_file_map: &HashMap<String, PathBuf>,
+) {
+    let is_function_owner = global_function_map
+        .get(symbol)
+        .is_some_and(|ns| ns == owner_ns)
+        && global_function_file_map
+            .get(symbol)
+            .is_some_and(|path| path == owner_file);
+    if is_function_owner {
+        declaration_symbols.insert(mangle_project_symbol_for_codegen(
+            owner_ns,
+            entry_namespace,
+            symbol,
+        ));
+    }
+
+    let is_nominal_owner = [
+        global_class_map
+            .get(symbol)
+            .is_some_and(|ns| ns == owner_ns)
+            && global_class_file_map
+                .get(symbol)
+                .is_some_and(|path| path == owner_file),
+        global_interface_map
+            .get(symbol)
+            .is_some_and(|ns| ns == owner_ns)
+            && global_interface_file_map
+                .get(symbol)
+                .is_some_and(|path| path == owner_file),
+        global_enum_map.get(symbol).is_some_and(|ns| ns == owner_ns)
+            && global_enum_file_map
+                .get(symbol)
+                .is_some_and(|path| path == owner_file),
+        global_module_map
+            .get(symbol)
+            .is_some_and(|ns| ns == owner_ns)
+            && global_module_file_map
+                .get(symbol)
+                .is_some_and(|path| path == owner_file),
+    ]
+    .into_iter()
+    .any(|matched| matched);
+
+    if is_nominal_owner || !is_function_owner {
+        declaration_symbols.insert(mangle_project_nominal_symbol_for_codegen(owner_ns, symbol));
+    }
+}
+
 #[derive(Debug, Clone)]
 struct CodegenReferenceMetadata {
     imports: Vec<ImportDecl>,
@@ -1751,6 +1819,8 @@ struct CodegenReferenceMetadata {
 
 #[allow(clippy::too_many_arguments)]
 fn extend_declaration_symbols_for_reference(
+    current_file: &Path,
+    prefer_local_owner: bool,
     symbol: &str,
     entry_namespace: &str,
     declaration_symbols: &mut HashSet<String>,
@@ -1760,6 +1830,8 @@ fn extend_declaration_symbols_for_reference(
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_map: &HashMap<String, String>,
     global_class_file_map: &HashMap<String, PathBuf>,
+    global_interface_map: &HashMap<String, String>,
+    global_interface_file_map: &HashMap<String, PathBuf>,
     global_enum_map: &HashMap<String, String>,
     global_enum_file_map: &HashMap<String, PathBuf>,
     global_module_map: &HashMap<String, String>,
@@ -1767,14 +1839,69 @@ fn extend_declaration_symbols_for_reference(
 ) {
     let mut push_owner = |owner_ns: &str, owner_file: &Path| {
         if closure_files.contains(owner_file) {
-            declaration_symbols.insert(mangle_project_symbol_for_codegen(
-                owner_ns,
-                entry_namespace,
+            insert_declaration_symbol_for_owner(
                 symbol,
-            ));
+                owner_ns,
+                owner_file,
+                entry_namespace,
+                declaration_symbols,
+                global_function_map,
+                global_function_file_map,
+                global_class_map,
+                global_class_file_map,
+                global_interface_map,
+                global_interface_file_map,
+                global_enum_map,
+                global_enum_file_map,
+                global_module_map,
+                global_module_file_map,
+            );
             stack.push(owner_file.to_path_buf());
         }
     };
+
+    if prefer_local_owner
+        && global_function_file_map
+            .get(symbol)
+            .is_none_or(|owner_file| owner_file != current_file)
+    {
+        if let (Some(owner_ns), Some(owner_file)) = (
+            global_class_map.get(symbol),
+            global_class_file_map.get(symbol),
+        ) {
+            if owner_file == current_file {
+                push_owner(owner_ns, owner_file);
+                return;
+            }
+        }
+        if let (Some(owner_ns), Some(owner_file)) = (
+            global_interface_map.get(symbol),
+            global_interface_file_map.get(symbol),
+        ) {
+            if owner_file == current_file {
+                push_owner(owner_ns, owner_file);
+                return;
+            }
+        }
+        if let (Some(owner_ns), Some(owner_file)) = (
+            global_enum_map.get(symbol),
+            global_enum_file_map.get(symbol),
+        ) {
+            if owner_file == current_file {
+                push_owner(owner_ns, owner_file);
+                return;
+            }
+        }
+        if let (Some(owner_ns), Some(owner_file)) = (
+            global_module_map.get(symbol),
+            global_module_file_map.get(symbol),
+        ) {
+            if owner_file == current_file {
+                push_owner(owner_ns, owner_file);
+                return;
+            }
+        }
+    }
 
     if let Some((owner_symbol, _member)) = symbol.rsplit_once("__") {
         if let (Some(owner_ns), Some(owner_file)) = (
@@ -1818,6 +1945,12 @@ fn extend_declaration_symbols_for_reference(
     if let (Some(owner_ns), Some(owner_file)) = (
         global_enum_map.get(symbol),
         global_enum_file_map.get(symbol),
+    ) {
+        push_owner(owner_ns, owner_file);
+    }
+    if let (Some(owner_ns), Some(owner_file)) = (
+        global_interface_map.get(symbol),
+        global_interface_file_map.get(symbol),
     ) {
         push_owner(owner_ns, owner_file);
     }
@@ -1880,11 +2013,23 @@ fn extend_declaration_symbols_for_exact_import(
         resolve_exact_imported_symbol_owner(namespace, symbol, symbol_lookup)
     {
         if closure_files.contains(owner_file) {
-            declaration_symbols.insert(mangle_project_symbol_for_codegen(
-                &owner_ns,
-                entry_namespace,
+            insert_declaration_symbol_for_owner(
                 &symbol_name,
-            ));
+                &owner_ns,
+                owner_file,
+                entry_namespace,
+                declaration_symbols,
+                global_function_map,
+                global_function_file_map,
+                global_class_map,
+                global_class_file_map,
+                global_interface_map,
+                global_interface_file_map,
+                global_enum_map,
+                global_enum_file_map,
+                global_module_map,
+                global_module_file_map,
+            );
             stack.push(owner_file.clone());
         }
         return;
@@ -1895,9 +2040,8 @@ fn extend_declaration_symbols_for_exact_import(
             resolve_exact_imported_symbol_file(enum_namespace, enum_name, symbol_lookup)
         {
             if closure_files.contains(owner_file) {
-                declaration_symbols.insert(mangle_project_symbol_for_codegen(
+                declaration_symbols.insert(mangle_project_nominal_symbol_for_codegen(
                     &owner_ns,
-                    entry_namespace,
                     &resolved_enum_name,
                 ));
                 stack.push(owner_file.clone());
@@ -1908,11 +2052,23 @@ fn extend_declaration_symbols_for_exact_import(
 
     let mut push_owner = |owner_ns: &str, owner_file: &Path| {
         if owner_ns == namespace && closure_files.contains(owner_file) {
-            declaration_symbols.insert(mangle_project_symbol_for_codegen(
-                owner_ns,
-                entry_namespace,
+            insert_declaration_symbol_for_owner(
                 symbol,
-            ));
+                owner_ns,
+                owner_file,
+                entry_namespace,
+                declaration_symbols,
+                global_function_map,
+                global_function_file_map,
+                global_class_map,
+                global_class_file_map,
+                global_interface_map,
+                global_interface_file_map,
+                global_enum_map,
+                global_enum_file_map,
+                global_module_map,
+                global_module_file_map,
+            );
             stack.push(owner_file.to_path_buf());
         }
     };
@@ -2043,11 +2199,23 @@ fn declaration_symbols_for_unit(
                             .or_else(|| global_module_file_map.get(&candidate));
                         if let Some(owner_file) = owner_file {
                             if closure_files.contains(owner_file) {
-                                declaration_symbols.insert(mangle_project_symbol_for_codegen(
-                                    &owner_ns,
-                                    entry_namespace,
+                                insert_declaration_symbol_for_owner(
                                     &candidate,
-                                ));
+                                    &owner_ns,
+                                    owner_file,
+                                    entry_namespace,
+                                    &mut declaration_symbols,
+                                    global_function_map,
+                                    global_function_file_map,
+                                    global_class_map,
+                                    global_class_file_map,
+                                    global_interface_map,
+                                    global_interface_file_map,
+                                    global_enum_map,
+                                    global_enum_file_map,
+                                    global_module_map,
+                                    global_module_file_map,
+                                );
                                 stack.push(owner_file.to_path_buf());
                             }
                         }
@@ -2108,11 +2276,23 @@ fn declaration_symbols_for_unit(
                             .or_else(|| global_module_file_map.get(&candidate));
                         if let Some(owner_file) = owner_file {
                             if closure_files.contains(owner_file) {
-                                declaration_symbols.insert(mangle_project_symbol_for_codegen(
-                                    &owner_ns,
-                                    entry_namespace,
+                                insert_declaration_symbol_for_owner(
                                     &candidate,
-                                ));
+                                    &owner_ns,
+                                    owner_file,
+                                    entry_namespace,
+                                    &mut declaration_symbols,
+                                    global_function_map,
+                                    global_function_file_map,
+                                    global_class_map,
+                                    global_class_file_map,
+                                    global_interface_map,
+                                    global_interface_file_map,
+                                    global_enum_map,
+                                    global_enum_file_map,
+                                    global_module_map,
+                                    global_module_file_map,
+                                );
                                 stack.push(owner_file.to_path_buf());
                             }
                         }
@@ -2139,6 +2319,8 @@ fn declaration_symbols_for_unit(
                     .fetch_add(1, Ordering::Relaxed);
             }
             extend_declaration_symbols_for_reference(
+                &file,
+                file != root_file,
                 symbol,
                 entry_namespace,
                 &mut declaration_symbols,
@@ -2148,6 +2330,8 @@ fn declaration_symbols_for_unit(
                 global_function_file_map,
                 global_class_map,
                 global_class_file_map,
+                global_interface_map,
+                global_interface_file_map,
                 global_enum_map,
                 global_enum_file_map,
                 global_module_map,
@@ -2170,43 +2354,61 @@ fn declaration_symbols_for_unit(
 
 fn closure_body_symbols_for_unit(
     root_file: &Path,
-    root_namespace: &str,
     declaration_symbols: &HashSet<String>,
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_file_map: &HashMap<String, PathBuf>,
+    global_module_file_map: &HashMap<String, PathBuf>,
 ) -> HashSet<String> {
-    let namespace_prefix = format!("{}__", root_namespace.replace('.', "__"));
     declaration_symbols
         .iter()
         .filter(|symbol| {
-            let raw_symbol = symbol
-                .strip_prefix(&namespace_prefix)
-                .unwrap_or(symbol.as_str());
+            if symbol.as_str() == "main" {
+                return global_function_file_map
+                    .get("main")
+                    .is_some_and(|owner_file| owner_file == root_file);
+            }
 
             if global_function_file_map
-                .get(raw_symbol)
+                .get(symbol.as_str())
                 .is_some_and(|owner_file| owner_file == root_file)
             {
                 return true;
             }
 
             if global_class_file_map
-                .get(raw_symbol)
+                .get(symbol.as_str())
                 .is_some_and(|owner_file| owner_file == root_file)
             {
                 return true;
             }
 
-            if let Some(owner) = raw_symbol.strip_suffix("__new") {
+            if global_module_file_map
+                .get(symbol.as_str())
+                .is_some_and(|owner_file| owner_file == root_file)
+            {
+                return true;
+            }
+
+            if let Some(owner) = symbol.strip_suffix("__new") {
                 return global_class_file_map
                     .get(owner)
                     .is_some_and(|owner_file| owner_file == root_file);
             }
 
-            if let Some((owner, _)) = raw_symbol.rsplit_once("__") {
-                return global_class_file_map
+            if let Some((owner, _)) = symbol.rsplit_once("__") {
+                if global_class_file_map
                     .get(owner)
-                    .is_some_and(|owner_file| owner_file == root_file);
+                    .is_some_and(|owner_file| owner_file == root_file)
+                {
+                    return true;
+                }
+
+                if global_module_file_map
+                    .get(owner)
+                    .is_some_and(|owner_file| owner_file == root_file)
+                {
+                    return true;
+                }
             }
 
             false
@@ -3046,7 +3248,7 @@ fn import_lookup_key(import: &ImportDecl) -> String {
         .unwrap_or_else(|| import.path.rsplit('.').next().unwrap_or("").to_string())
 }
 
-fn resolve_function_file_in_namespace_path(
+fn resolve_symbol_file_in_namespace_path(
     namespace_path: &str,
     member_parts: &[String],
     symbol_lookup: &ProjectSymbolLookup,
@@ -3064,7 +3266,7 @@ fn resolve_function_file_in_namespace_path(
         .map(|resolution| resolution.owner_file.clone())
 }
 
-fn resolve_function_symbol_in_namespace_path(
+fn resolve_symbol_in_namespace_path(
     namespace_path: &str,
     member_parts: &[String],
     symbol_lookup: &ProjectSymbolLookup,
@@ -3089,27 +3291,13 @@ fn resolve_function_symbol_in_namespace_path(
     })
 }
 
-fn resolve_symbol_in_namespace_path(
-    namespace_path: &str,
-    member_parts: &[String],
-    symbol_lookup: &ProjectSymbolLookup,
-) -> Option<(String, String)> {
-    if let Some(found) =
-        resolve_function_symbol_in_namespace_path(namespace_path, member_parts, symbol_lookup)
-    {
-        return Some(found);
-    }
-
-    None
-}
-
 #[allow(clippy::too_many_arguments)]
 fn resolve_owner_file_in_namespace_path(
     namespace_path: &str,
     member_parts: &[String],
     symbol_lookup: &ProjectSymbolLookup,
 ) -> Option<PathBuf> {
-    resolve_function_file_in_namespace_path(namespace_path, member_parts, symbol_lookup)
+    resolve_symbol_file_in_namespace_path(namespace_path, member_parts, symbol_lookup)
 }
 
 fn resolve_symbol_owner_files_in_namespace(
@@ -7478,7 +7666,6 @@ fn build_project(
             object_cache_paths_by_file,
             codegen_reference_metadata,
             precomputed_dependency_closures,
-            file_namespaces,
         ) = build_timings.measure_step("object prep", || {
             let rewritten_file_indices: HashMap<PathBuf, usize> = rewritten_files
                 .iter()
@@ -7511,16 +7698,11 @@ fn build_project(
                     .collect();
             let precomputed_dependency_closures =
                 precompute_all_transitive_dependencies(&file_dependency_graph);
-            let file_namespaces: HashMap<PathBuf, String> = parsed_files
-                .iter()
-                .map(|unit| (unit.file.clone(), unit.namespace.clone()))
-                .collect();
             (
                 rewritten_file_indices,
                 object_cache_paths_by_file,
                 codegen_reference_metadata,
                 precomputed_dependency_closures,
-                file_namespaces,
             )
         });
         let mut object_paths: Vec<Option<PathBuf>> = vec![None; rewritten_files.len()];
@@ -7757,12 +7939,10 @@ fn build_project(
                             let unit = &rewritten_files[*index];
                             codegen_active_symbols.extend(closure_body_symbols_for_unit(
                                 &unit.file,
-                                file_namespaces
-                                    .get(&unit.file)
-                                    .expect("namespace should exist for rewritten unit"),
                                 &batch_declaration_symbols,
                                 &global_function_file_map,
                                 &global_class_file_map,
+                                &global_module_file_map,
                             ));
                         }
                         object_codegen_timing_totals
@@ -15495,6 +15675,99 @@ function main(): Integer {
         assert_eq!(
             output.status.code(),
             Some(12),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_runs_split_file_module_named_main_in_entry_namespace_runtime() {
+        let temp_root = make_temp_project_root("project-module-main-entry-runtime");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/module.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package core;\nfunction main(): Integer { return main.ping(); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("module.apex"),
+            "package core;\nmodule main { function ping(): Integer { return 22; } }\n",
+        )
+        .expect("write module");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support split-file module named main");
+        });
+
+        let output = std::process::Command::new(temp_root.join("smoke"))
+            .output()
+            .expect("run compiled split-file module named main binary");
+        assert_eq!(
+            output.status.code(),
+            Some(22),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_runs_split_file_class_named_main_in_entry_namespace_runtime() {
+        let temp_root = make_temp_project_root("project-class-main-entry-runtime");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/model.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            r#"
+package core;
+function main(): Integer {
+    value: main = main(22);
+    return value.get();
+}
+"#,
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("model.apex"),
+            r#"
+package core;
+class main {
+    value: Integer;
+    constructor(v: Integer) { this.value = v; }
+    function get(): Integer { return this.value; }
+}
+"#,
+        )
+        .expect("write model");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should support split-file class named main");
+        });
+
+        let output = std::process::Command::new(temp_root.join("smoke"))
+            .output()
+            .expect("run compiled split-file class named main binary");
+        assert_eq!(
+            output.status.code(),
+            Some(22),
             "stdout={} stderr={}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)

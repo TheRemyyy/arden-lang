@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed split-file project builds when a dependency class or module is named `main` in the entry namespace:
+  - object-shard body filtering now matches declaration symbols against their exact mangled owners instead of stripping the namespace prefix and accidentally treating `core__main` as the local entry function `main`
+  - this fixes real multi-file project builds like `package core; function main() { return main.ping(); }` plus `module main { ... }` and `value: main = main(22)` plus `class main { ... }`, which previously failed at link time with duplicate symbols such as `core__main__ping`, `core__main__new`, and `core__main__get`
+  - added runtime project regressions for split-file entry-namespace `module main` and `class main`, and both now build and exit with `22`
 - Fixed exact module imports when the imported module is named `main`:
   - exact import aliases like `import M.main as Main;` now keep resolving `Main.ping()` as a module call instead of misclassifying the alias as an unrelated bare `main` function value
   - this fixes real checked single-file programs that previously failed with `Cannot call method on type () -> Integer` because exact-import alias resolution used a suffix-based function fallback on `M__main`
