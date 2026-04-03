@@ -3763,37 +3763,47 @@ impl TypeChecker {
                 mutable,
             } => {
                 let declared_type = self.resolve_type(ty);
-                self.check_type_visibility(&declared_type, span.clone());
+                let declared_type_exists = self.resolved_type_exists(&declared_type);
+                if declared_type_exists {
+                    self.check_type_visibility(&declared_type, span.clone());
+                } else {
+                    self.validate_resolved_type_exists(&declared_type, span.clone());
+                }
+                let expected_type = if declared_type_exists {
+                    declared_type.clone()
+                } else {
+                    ResolvedType::Unknown
+                };
                 let value_type = self.check_expr_with_expected_type(
                     &value.node,
                     value.span.clone(),
-                    Some(&declared_type),
+                    Some(&expected_type),
                 );
 
                 // Check type compatibility. If the value is an if-expression that already
                 // produced a branch mismatch diagnostic, avoid cascading a second local
                 // assignment mismatch for the same root cause.
                 let suppress_assignment_mismatch = matches!(&value.node, Expr::IfExpr { .. })
-                    && !self.types_compatible(&declared_type, &value_type)
+                    && !self.types_compatible(&expected_type, &value_type)
                     && self.errors.iter().any(|error| {
                         error.message.contains("If expression branch type mismatch")
                             && error.span == value.span
                     });
 
-                if !self.types_compatible(&declared_type, &value_type)
+                if !self.types_compatible(&expected_type, &value_type)
                     && !suppress_assignment_mismatch
                 {
                     self.error(
                         format!(
                             "Type mismatch: cannot assign {} to variable of type {}",
                             Self::format_resolved_type_for_diagnostic(&value_type),
-                            Self::format_resolved_type_for_diagnostic(&declared_type)
+                            Self::format_resolved_type_for_diagnostic(&expected_type)
                         ),
                         value.span.clone(),
                     );
                 }
 
-                self.declare_variable(name, declared_type, *mutable, span);
+                self.declare_variable(name, expected_type, *mutable, span);
             }
 
             Stmt::Assign { target, value } => {
@@ -3929,7 +3939,9 @@ impl TypeChecker {
                 // Check declared type if provided
                 if let Some(declared) = var_type {
                     let declared_type = self.resolve_type(declared);
-                    if !self.types_compatible(&declared_type, &elem_type) {
+                    if !self.resolved_type_exists(&declared_type) {
+                        self.validate_resolved_type_exists(&declared_type, iterable.span.clone());
+                    } else if !self.types_compatible(&declared_type, &elem_type) {
                         self.error(
                             format!(
                                 "Loop variable type mismatch: declared {}, but iterating over {}",
@@ -3944,7 +3956,14 @@ impl TypeChecker {
                 self.enter_scope();
                 let loop_var_type = var_type
                     .as_ref()
-                    .map(|declared| self.resolve_type(declared))
+                    .map(|declared| {
+                        let declared_type = self.resolve_type(declared);
+                        if self.resolved_type_exists(&declared_type) {
+                            declared_type
+                        } else {
+                            ResolvedType::Unknown
+                        }
+                    })
                     .unwrap_or(elem_type);
                 self.declare_variable(var, loop_var_type, false, span);
                 self.check_block(body);
@@ -6824,6 +6843,43 @@ impl TypeChecker {
             | ResolvedType::None
             | ResolvedType::TypeVar(_)
             | ResolvedType::Unknown => {}
+        }
+    }
+
+    fn resolved_type_exists(&self, ty: &ResolvedType) -> bool {
+        match ty {
+            ResolvedType::Class(name) => {
+                let base_name = self.class_base_name(name);
+                self.classes.contains_key(base_name)
+                    || self.interfaces.contains_key(base_name)
+                    || self.enums.contains_key(base_name)
+            }
+            ResolvedType::Option(inner)
+            | ResolvedType::List(inner)
+            | ResolvedType::Set(inner)
+            | ResolvedType::Ref(inner)
+            | ResolvedType::MutRef(inner)
+            | ResolvedType::Box(inner)
+            | ResolvedType::Rc(inner)
+            | ResolvedType::Arc(inner)
+            | ResolvedType::Ptr(inner)
+            | ResolvedType::Task(inner)
+            | ResolvedType::Range(inner) => self.resolved_type_exists(inner),
+            ResolvedType::Result(ok, err) | ResolvedType::Map(ok, err) => {
+                self.resolved_type_exists(ok) && self.resolved_type_exists(err)
+            }
+            ResolvedType::Function(params, ret) => {
+                params.iter().all(|param| self.resolved_type_exists(param))
+                    && self.resolved_type_exists(ret)
+            }
+            ResolvedType::Integer
+            | ResolvedType::Float
+            | ResolvedType::Boolean
+            | ResolvedType::String
+            | ResolvedType::Char
+            | ResolvedType::None
+            | ResolvedType::TypeVar(_)
+            | ResolvedType::Unknown => true,
         }
     }
 

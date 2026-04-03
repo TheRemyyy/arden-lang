@@ -10087,6 +10087,12 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(value);
         }
 
+        let normalized_source = self.normalize_codegen_type(source_ty);
+        let normalized_target = self.normalize_codegen_type(target_ty);
+        if self.llvm_type(&normalized_source) == self.llvm_type(&normalized_target) {
+            return Ok(value);
+        }
+
         match (source_ty, target_ty) {
             (Type::Integer, Type::Float) if value.is_int_value() => Ok(self
                 .builder
@@ -11777,11 +11783,11 @@ impl<'ctx> Codegen<'ctx> {
         if expected_params
             .iter()
             .zip(actual_params.iter())
-            .any(|(expected, actual)| !Self::is_supported_function_adapter_param(expected, actual))
+            .any(|(expected, actual)| !self.is_supported_function_adapter_param(expected, actual))
         {
             return Ok(None);
         }
-        if !Self::is_supported_function_adapter_return(actual_ret.as_ref(), expected_ret.as_ref()) {
+        if !self.is_supported_function_adapter_return(actual_ret.as_ref(), expected_ret.as_ref()) {
             return Ok(None);
         }
 
@@ -11813,7 +11819,7 @@ impl<'ctx> Codegen<'ctx> {
         let entry = self.context.append_basic_block(adapter_fn, "entry");
         self.builder.position_at_end(entry);
 
-        let mut call_args: Vec<BasicMetadataValueEnum> = Vec::new();
+        let mut call_args: Vec<BasicMetadataValueEnum> = vec![ptr_type.const_null().into()];
         for (index, (expected_param_ty, actual_param_ty)) in
             expected_params.iter().zip(actual_params.iter()).enumerate()
         {
@@ -12201,11 +12207,11 @@ impl<'ctx> Codegen<'ctx> {
         if expected_params
             .iter()
             .zip(actual_params.iter())
-            .any(|(expected, actual)| !Self::is_supported_function_adapter_param(expected, actual))
+            .any(|(expected, actual)| !self.is_supported_function_adapter_param(expected, actual))
         {
             return Ok(None);
         }
-        if !Self::is_supported_function_adapter_return(actual_ret.as_ref(), expected_ret.as_ref()) {
+        if !self.is_supported_function_adapter_return(actual_ret.as_ref(), expected_ret.as_ref()) {
             return Ok(None);
         }
 
@@ -12372,12 +12378,18 @@ impl<'ctx> Codegen<'ctx> {
         Ok(Some(wrapper_closure.into()))
     }
 
-    fn is_supported_function_adapter_param(expected: &Type, actual: &Type) -> bool {
-        expected == actual || matches!((expected, actual), (Type::Integer, Type::Float))
+    fn is_supported_function_adapter_param(&self, expected: &Type, actual: &Type) -> bool {
+        expected == actual
+            || self.llvm_type(&self.normalize_codegen_type(expected))
+                == self.llvm_type(&self.normalize_codegen_type(actual))
+            || matches!((expected, actual), (Type::Integer, Type::Float))
     }
 
-    fn is_supported_function_adapter_return(actual: &Type, expected: &Type) -> bool {
-        actual == expected || matches!((actual, expected), (Type::Integer, Type::Float))
+    fn is_supported_function_adapter_return(&self, actual: &Type, expected: &Type) -> bool {
+        actual == expected
+            || self.llvm_type(&self.normalize_codegen_type(actual))
+                == self.llvm_type(&self.normalize_codegen_type(expected))
+            || matches!((actual, expected), (Type::Integer, Type::Float))
     }
 
     fn adapt_function_adapter_param(
@@ -12387,6 +12399,11 @@ impl<'ctx> Codegen<'ctx> {
         actual_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
         if expected_ty == actual_ty {
+            return Ok(value);
+        }
+        if self.llvm_type(&self.normalize_codegen_type(expected_ty))
+            == self.llvm_type(&self.normalize_codegen_type(actual_ty))
+        {
             return Ok(value);
         }
         match (expected_ty, actual_ty) {
@@ -12414,6 +12431,11 @@ impl<'ctx> Codegen<'ctx> {
         name: &str,
     ) -> Result<BasicValueEnum<'ctx>> {
         if actual_ty == expected_ty {
+            return Ok(value);
+        }
+        if self.llvm_type(&self.normalize_codegen_type(actual_ty))
+            == self.llvm_type(&self.normalize_codegen_type(expected_ty))
+        {
             return Ok(value);
         }
         match (actual_ty, expected_ty) {

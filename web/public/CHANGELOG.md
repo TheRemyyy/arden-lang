@@ -8,6 +8,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed named function value adapters that skipped the hidden function environment parameter:
+  - adapter wrappers for retyped named functions now forward the implicit `env_ptr` argument before user arguments, matching the normal Apex function ABI
+  - function value adaptation now also accepts source and target types that differ nominally but share the same LLVM representation, fixing interface/class retyping cases like `() -> Book` to `() -> Named` and `(Book) -> Integer` to `(Named) -> Integer`
+  - this fixes real runtime bugs where adapted named function values could segfault or fail with misleading fallback diagnostics instead of compiling and running correctly
+- Fixed for-loop binding conversions for same-representation nominal types:
+  - for-loop codegen now accepts element and loop variable types that lower to the same LLVM representation, not just exact AST matches and `Integer -> Float`
+  - this fixes runtime builds such as `for (value: Named in books())` where iterating class instances into an interface-typed loop variable previously failed in codegen with `unsupported for-loop binding conversion`
+- Fixed cascading diagnostics from stale for-loop element type annotations:
+  - explicit `for` loop variable annotations now validate that their declared type still exists before using it for compatibility checks or downstream bindings
+  - this fixes incremental rebuilds where a removed aliased interface type in `for (value: root.M.Api.Named in books())` previously produced noisy follow-on diagnostics after the real missing type
+- Fixed cascading diagnostics from stale nested namespace-aliased interface types:
+  - local `let` annotations now validate whether the declared nominal type still exists before using it as the expected type for later checking
+  - this fixes incremental rebuilds where a removed nested interface such as `root.M.Api.Named` previously produced follow-on noise like `Type mismatch: cannot assign ...` and `Unknown class: ...` instead of stopping at the real missing-interface error
+- Fixed duplicate import diagnostics for the same stale alias use:
+  - import checking now deduplicates identical unresolved-import reports across type and value traversals, so the same stale alias is only reported once per function context
+  - this fixes project rebuilds where a stale nested import alias such as `import app.M.E as Enum; value: Enum = Enum.B(2);` previously emitted the same `Imported alias 'Enum' no longer resolves` error twice
+- Fixed stale wildcard-imported nested enum type diagnostics in project rebuilds:
+  - import checking now validates simple type names satisfied only through a single user-module wildcard import, so `import app.M.*; value: E = E.B(2);` is rechecked when `E` disappears from that module
+  - this fixes incremental rebuilds where renaming or removing the nested enum previously bypassed import-check invalidation and fell through to a late `Undefined variable: E` error
+  - added import-check and project rebuild regressions, and stale wildcard-imported nested enum types now fail with `Wildcard import 'app.M.*' no longer provides 'E'`
+- Fixed stale exact-imported nested enum alias diagnostics in project rebuilds:
+  - import checking now revalidates exact-import aliases that point at nested enum types, so aliases like `import app.M.E as Enum;` no longer survive API-breaking rebuilds as stale type or constructor roots
+  - this fixes incremental rebuilds where renaming or removing the imported nested enum previously bypassed import-check cache invalidation and fell through to downstream errors like `Undefined variable: app__M__E`
+  - added import-check and project rebuild regressions, and stale exact-imported nested enum aliases now fail with `Imported alias 'Enum' no longer resolves`
+- Fixed stale exact-imported nested enum variant alias diagnostics in project rebuilds:
+  - import checking now revalidates exact-import aliases that point at enum variants, including nested paths like `import app.M.E.B as Variant;`
+  - this fixes incremental rebuilds where removing or renaming the imported variant previously bypassed import-check cache invalidation and fell through to downstream errors like `Undefined variable: app__M__E` or `Unknown variant 'app__M__E.B'`
+  - added import-check and project rebuild regressions, and stale exact-imported nested enum variant aliases now fail with `Imported alias 'Variant' no longer resolves`
+- Fixed stale nested namespace-alias enum variant diagnostics in project rebuilds:
+  - import checking now tracks enum variant paths under namespace aliases, so paths like `root.M.E.A(...)` and `root.M.E.A(...) => ...` are validated before semantic checking
+  - this fixes incremental project rebuilds where a nested enum variant was removed or renamed and the compiler previously fell through to confusing downstream errors like `Undefined variable: app__M__E` instead of a direct import error
+  - added import-check and project rebuild regressions, and stale nested enum alias accesses now fail with `Imported namespace alias 'root' has no member 'M.E.A'`
 - Fixed stale rewrite-fingerprint reuse for bare same-namespace enum references:
   - rewrite-context fingerprinting now hashes the owner file API for same-namespace enum symbols, matching the existing behavior for functions, classes, interfaces, and modules
   - this fixes incremental project builds where `main.apex` referenced a split-file enum in the same package without an import, and a breaking enum API change could previously reuse a stale safe rewrite fingerprint

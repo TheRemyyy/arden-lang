@@ -2880,6 +2880,42 @@ fn compute_namespace_api_fingerprints(
 
 fn collect_known_namespace_paths_for_units(parsed_files: &[ParsedProjectUnit]) -> HashSet<String> {
     let mut paths = HashSet::new();
+    fn collect_enum_variant_paths(
+        paths: &mut HashSet<String>,
+        declarations: &[Spanned<Decl>],
+        namespace: &str,
+        module_prefix: Option<&str>,
+    ) {
+        for decl in declarations {
+            match &decl.node {
+                Decl::Enum(en) => {
+                    let enum_path = if let Some(prefix) = module_prefix {
+                        format!("{}.{}", prefix, en.name)
+                    } else {
+                        format!("{}.{}", namespace, en.name)
+                    };
+                    for variant in &en.variants {
+                        paths.insert(format!("{}.{}", enum_path, variant.name));
+                    }
+                }
+                Decl::Module(module) => {
+                    let next_prefix = if let Some(prefix) = module_prefix {
+                        format!("{}.{}", prefix, module.name)
+                    } else {
+                        format!("{}.{}", namespace, module.name)
+                    };
+                    collect_enum_variant_paths(
+                        paths,
+                        &module.declarations,
+                        namespace,
+                        Some(&next_prefix),
+                    );
+                }
+                Decl::Function(_) | Decl::Class(_) | Decl::Interface(_) | Decl::Import(_) => {}
+            }
+        }
+    }
+
     for unit in parsed_files {
         paths.insert(unit.namespace.clone());
         for class_name in &unit.class_names {
@@ -2898,6 +2934,12 @@ fn collect_known_namespace_paths_for_units(parsed_files: &[ParsedProjectUnit]) -
             let module_path = module_name.replace("__", ".");
             paths.insert(format!("{}.{}", unit.namespace, module_path));
         }
+        collect_enum_variant_paths(
+            &mut paths,
+            &unit.program.declarations,
+            &unit.namespace,
+            None,
+        );
     }
     paths
 }
@@ -18313,6 +18355,111 @@ enum main {
     }
 
     #[test]
+    fn project_build_avoids_cascading_errors_for_stale_nested_namespace_aliased_interface_type() {
+        let temp_root =
+            make_temp_project_root("project-stale-nested-namespace-aliased-interface-type");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { value: root.M.Api.Named = Book(); return value.name(); }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial nested namespace aliased interface build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without nested namespace aliased interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail after nested namespace aliased interface removal");
+            assert!(
+                err.contains("Class 'app.Book' implements unknown interface 'root.M.Api.Named'"),
+                "{err}"
+            );
+            assert!(
+                !err.contains(
+                    "Type mismatch: cannot assign app.Book to variable of type root.M.Api.Named"
+                ),
+                "{err}"
+            );
+            assert!(!err.contains("Unknown class: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_avoids_cascading_errors_for_stale_for_loop_namespace_aliased_interface_type() {
+        let temp_root =
+            make_temp_project_root("project-stale-for-loop-namespace-aliased-interface-type");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction books(): List<Book> { values: List<Book> = List<Book>(); values.push(Book()); return values; }\nfunction main(): Integer { for (value: root.M.Api.Named in books()) { return value.name(); } return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial for-loop namespace aliased interface build should succeed");
+        });
+        let status = std::process::Command::new(temp_root.join("smoke"))
+            .status()
+            .expect("run compiled for-loop namespace aliased interface binary");
+        assert_eq!(status.code(), Some(1));
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without for-loop namespace aliased interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail after for-loop namespace aliased interface removal");
+            assert!(err.contains("Unknown type: root.M.Api.Named"), "{err}");
+            assert!(
+                !err.contains("Loop variable type mismatch: declared root.M.Api.Named, but iterating over List<app.Book>"),
+                "{err}"
+            );
+            assert!(!err.contains("Unknown class: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_reports_demangled_list_constructor_capacity_type_mismatch() {
         let temp_root = make_temp_project_root("project-demangled-list-constructor-capacity");
         let src_dir = temp_root.join("src");
@@ -31430,6 +31577,81 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_named_function_value_with_interface_return_runtime() {
+        let temp_root = make_temp_project_root("named-fn-interface-return-runtime");
+        let source_path = temp_root.join("named_fn_interface_return_runtime.apex");
+        let output_path = temp_root.join("named_fn_interface_return_runtime");
+        let source = r#"
+            interface Named {
+                function name(): Integer;
+            }
+
+            class Book implements Named {
+                constructor() {}
+                function name(): Integer { return 7; }
+            }
+
+            function build_book(): Book {
+                return Book();
+            }
+
+            function main(): Integer {
+                f: () -> Named = build_book;
+                return if (f().name() == 7) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("named function value with interface return should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled named function value interface return binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_named_function_value_with_interface_parameter_runtime() {
+        let temp_root = make_temp_project_root("named-fn-interface-param-runtime");
+        let source_path = temp_root.join("named_fn_interface_param_runtime.apex");
+        let output_path = temp_root.join("named_fn_interface_param_runtime");
+        let source = r#"
+            interface Named {
+                function name(): Integer;
+            }
+
+            class Book implements Named {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function name(): Integer { return this.value; }
+            }
+
+            function read_name(value: Named): Integer {
+                return value.name();
+            }
+
+            function main(): Integer {
+                f: (Book) -> Integer = read_name;
+                return if (f(Book(9)) == 9) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("named function value with interface parameter should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled named function value interface parameter binary");
+        assert_eq!(status.code(), Some(0));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_function_variable_retyped_to_integer_parameter_runtime() {
         let temp_root = make_temp_project_root("fn-var-retype-int-param-runtime");
         let source_path = temp_root.join("fn_var_retype_int_param_runtime.apex");
@@ -39693,6 +39915,55 @@ function main(): Integer {
     }
 
     #[test]
+    fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_nested_enum_variant()
+    {
+        let temp_root =
+            make_temp_project_root("project-build-stale-root-namespace-alias-nested-enum-variant");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer { return match (root.M.E.A(5)) { root.M.E.A(v) => v, root.M.E.B(v) => v, }; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { enum E { A(Integer), B(Integer) } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial root namespace alias nested enum build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { enum E { C(Integer), D(Integer) } }\n",
+        )
+        .expect("rewrite helper without nested enum alias variant");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after stale root namespace alias nested enum variant removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.E.A'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: app__M__E"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_reports_user_facing_error_for_stale_exact_import_alias_generic_function_value()
     {
         let temp_root =
@@ -39736,6 +40007,158 @@ function main(): Integer {
             );
             assert!(err.contains("Import check failed"), "{err}");
             assert!(!err.contains("Undefined variable: ident"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_variant_alias()
+    {
+        let temp_root =
+            make_temp_project_root("project-build-stale-exact-imported-nested-enum-variant-alias");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app.M.E.B as Variant;\nfunction main(): None { e: M.E = Variant(2); match (e) { Variant(v) => { require(v == 2); } M.E.A(v) => { require(false); } } return None; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial exact imported nested enum variant alias build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { enum E { C(Integer) D(Integer) } }\n",
+        )
+        .expect("rewrite helper without exact imported nested enum variant alias");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after stale exact imported nested enum variant alias removal",
+            );
+            assert!(
+                err.contains("Imported alias 'Variant' no longer resolves"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: app__M__E"), "{err}");
+            assert!(!err.contains("Unknown variant 'app__M__E.B'"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_alias_type() {
+        let temp_root =
+            make_temp_project_root("project-build-stale-exact-imported-nested-enum-alias-type");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app.M.E as Enum;\nfunction main(): Integer { value: Enum = Enum.B(2); return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { enum E { A(Integer), B(Integer) } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial exact imported nested enum alias type build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { enum F { A(Integer), B(Integer) } }\n",
+        )
+        .expect("rewrite helper without exact imported nested enum alias type");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after stale exact imported nested enum alias type removal",
+            );
+            assert!(
+                err.contains("Imported alias 'Enum' no longer resolves"),
+                "{err}"
+            );
+            assert_eq!(
+                err.matches("Imported alias 'Enum' no longer resolves")
+                    .count(),
+                1,
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: app__M__E"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_user_facing_error_for_stale_wildcard_imported_nested_enum_type() {
+        let temp_root =
+            make_temp_project_root("project-build-stale-wildcard-imported-nested-enum-type");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app.M.*;\nfunction main(): Integer { value: E = E.B(2); return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { enum E { A(Integer), B(Integer) } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial wildcard imported nested enum type build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { enum F { A(Integer), B(Integer) } }\n",
+        )
+        .expect("rewrite helper without wildcard imported nested enum type");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after stale wildcard imported nested enum type removal",
+            );
+            assert!(
+                err.contains("Wildcard import 'app.M.*' no longer provides 'E'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Undefined variable: E"), "{err}");
         });
 
         let _ = fs::remove_dir_all(temp_root);

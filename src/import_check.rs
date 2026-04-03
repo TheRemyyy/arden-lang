@@ -435,8 +435,40 @@ impl<'a> ImportChecker<'a> {
 
     fn check_type(&mut self, ty: &Type, span: Span) {
         match ty {
-            Type::Named(name) => self.check_qualified_name_alias_usage(name, span),
+            Type::Named(name) => {
+                if self.check_simple_wildcard_imported_type(name, span.clone()) {
+                    return;
+                }
+                if let Some(path) = self.namespace_aliases.get(name) {
+                    if path.contains('.') && !self.exact_import_alias_resolves(path) {
+                        self.errors.push(ImportError {
+                            function_name: name.clone(),
+                            defined_in: "<unresolved import alias>".to_string(),
+                            used_in: self.current_namespace.clone(),
+                            span,
+                            suggestion: None,
+                        });
+                        return;
+                    }
+                }
+                self.check_qualified_name_alias_usage(name, span)
+            }
             Type::Generic(name, args) => {
+                if self.check_simple_wildcard_imported_type(name, span.clone()) {
+                    return;
+                }
+                if let Some(path) = self.namespace_aliases.get(name) {
+                    if path.contains('.') && !self.exact_import_alias_resolves(path) {
+                        self.errors.push(ImportError {
+                            function_name: name.clone(),
+                            defined_in: "<unresolved import alias>".to_string(),
+                            used_in: self.current_namespace.clone(),
+                            span: span.clone(),
+                            suggestion: None,
+                        });
+                        return;
+                    }
+                }
                 self.check_qualified_name_alias_usage(name, span.clone());
                 for arg in args {
                     self.check_type(arg, span.clone());
@@ -474,6 +506,18 @@ impl<'a> ImportChecker<'a> {
 
     fn check_pattern(&mut self, pattern: &Pattern, span: Span) {
         if let Pattern::Variant(name, _) = pattern {
+            if let Some(path) = self.namespace_aliases.get(name) {
+                if path.contains('.') && !self.exact_import_alias_resolves(path) {
+                    self.errors.push(ImportError {
+                        function_name: name.clone(),
+                        defined_in: "<unresolved import alias>".to_string(),
+                        used_in: self.current_namespace.clone(),
+                        span: span.clone(),
+                        suggestion: None,
+                    });
+                    return;
+                }
+            }
             self.check_qualified_name_alias_usage(name, span);
         }
     }
@@ -645,6 +689,11 @@ impl<'a> ImportChecker<'a> {
                 path_parts[1..path_parts.len() - 1].join(".")
             )
         };
+        let full_path = format!("{}.{}", namespace_path, member);
+
+        if self.known_namespace_paths.contains(&full_path) {
+            return Some(());
+        }
 
         if self
             .resolve_stdlib_call_in_namespace(&namespace_path, member)
@@ -657,15 +706,17 @@ impl<'a> ImportChecker<'a> {
         }
 
         if alias_path.contains('.') && path_parts.len() == 2 {
+            if self.exact_import_alias_resolves(alias_path) {
+                return Some(());
+            }
+            self.errors.push(ImportError {
+                function_name: alias.clone(),
+                defined_in: "<unresolved import alias>".to_string(),
+                used_in: self.current_namespace.clone(),
+                span,
+                suggestion: None,
+            });
             return Some(());
-        }
-
-        let looks_like_function_member = member
-            .chars()
-            .next()
-            .is_some_and(|ch| ch.is_ascii_lowercase() || ch == '_');
-        if !looks_like_function_member {
-            return None;
         }
 
         self.errors.push(ImportError {
@@ -676,6 +727,77 @@ impl<'a> ImportChecker<'a> {
             suggestion: None,
         });
         Some(())
+    }
+
+    fn check_simple_wildcard_imported_type(&mut self, name: &str, span: Span) -> bool {
+        if name.contains('.')
+            || self.namespace_aliases.contains_key(name)
+            || self.invalid_namespace_aliases.contains(name)
+        {
+            return false;
+        }
+        if !name
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            return false;
+        }
+        let local_path = format!("{}.{}", self.current_namespace, name);
+        if self.known_namespace_paths.contains(&local_path) {
+            return false;
+        }
+        if self.wildcard_imports.len() != 1 {
+            return false;
+        }
+        let wildcard = self.wildcard_imports[0].clone();
+        if !Self::path_resolves_to_user_module(
+            &self.function_namespaces,
+            &self.known_namespace_paths,
+            &wildcard,
+        ) {
+            return false;
+        }
+        let imported_path = format!("{}.{}", wildcard, name);
+        if self.known_namespace_paths.contains(&imported_path) {
+            return false;
+        }
+
+        self.errors.push(ImportError {
+            function_name: name.to_string(),
+            defined_in: "<unresolved wildcard import>".to_string(),
+            used_in: self.current_namespace.clone(),
+            span,
+            suggestion: Some(wildcard),
+        });
+        true
+    }
+
+    fn exact_import_alias_resolves(&self, path: &str) -> bool {
+        if builtin_exact_import_alias_canonical(path).is_some() {
+            return true;
+        }
+        let mut path_candidates = vec![path.to_string()];
+        if !self.current_namespace.is_empty()
+            && path != self.current_namespace
+            && !path.starts_with(&format!("{}.", self.current_namespace))
+        {
+            path_candidates.push(format!("{}.{}", self.current_namespace, path));
+        }
+        if path_candidates
+            .iter()
+            .any(|candidate| self.known_namespace_paths.contains(candidate))
+        {
+            return true;
+        }
+        let Some((namespace, symbol)) = path.rsplit_once('.') else {
+            return false;
+        };
+        self.resolve_stdlib_call_in_namespace(namespace, symbol)
+            .is_some()
+            || self
+                .resolve_user_call_in_namespace_path(namespace, symbol)
+                .is_some()
     }
 
     /// Check if a function call is valid (imported or local)
@@ -700,6 +822,19 @@ impl<'a> ImportChecker<'a> {
         }
 
         if let Some(path) = self.namespace_aliases.get(name) {
+            if path.contains('.') {
+                if self.exact_import_alias_resolves(path) {
+                    return;
+                }
+                self.errors.push(ImportError {
+                    function_name: name.to_string(),
+                    defined_in: "<unresolved import alias>".to_string(),
+                    used_in: self.current_namespace.clone(),
+                    span,
+                    suggestion: None,
+                });
+                return;
+            }
             if !path.ends_with(".*") {
                 let mut parts = path.split('.').collect::<Vec<_>>();
                 if let Some(symbol) = parts.pop() {
@@ -1260,6 +1395,16 @@ impl<'a> ImportChecker<'a> {
             check_decl(self, &decl.node);
         }
 
+        let mut seen = HashSet::new();
+        self.errors.retain(|error| {
+            seen.insert((
+                error.function_name.clone(),
+                error.defined_in.clone(),
+                error.used_in.clone(),
+                error.suggestion.clone(),
+            ))
+        });
+
         if self.errors.is_empty() {
             Ok(())
         } else {
@@ -1326,12 +1471,20 @@ pub fn extract_known_namespace_paths(program: &Program, namespace: &str) -> Hash
                 out.insert(path);
             }
             Decl::Enum(en) => {
-                let path = if let Some(prefix) = module_prefix {
+                let path = if let Some(prefix) = module_prefix.as_ref() {
                     format!("{}.{}", prefix, en.name)
                 } else {
                     format!("{}.{}", namespace, en.name)
                 };
                 out.insert(path);
+                for variant in &en.variants {
+                    let variant_path = if let Some(prefix) = module_prefix.as_ref() {
+                        format!("{}.{}.{}", prefix, en.name, variant.name)
+                    } else {
+                        format!("{}.{}.{}", namespace, en.name, variant.name)
+                    };
+                    out.insert(variant_path);
+                }
             }
             Decl::Interface(interface) => {
                 let path = if let Some(prefix) = module_prefix {
@@ -1792,7 +1945,11 @@ function main(): None {
             .collect::<Vec<_>>();
         let mut checker = ImportChecker::new(
             Arc::new(HashMap::new()),
-            Arc::new(HashSet::from(["util".to_string()])),
+            Arc::new(HashSet::from([
+                "util".to_string(),
+                "util.E".to_string(),
+                "util.E.A".to_string(),
+            ])),
             "app".to_string(),
             imports,
             stdlib_registry(),
@@ -2138,6 +2295,96 @@ function main(): Integer {
 "#;
         let errors = check_import_errors(source);
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn invalid_namespace_alias_nested_enum_variant_reports_unresolved_member() {
+        let source = r#"
+package app;
+import app as root;
+module M { enum E { B(Integer) } }
+function main(): Integer {
+        return match (root.M.E.A(2)) {
+        root.M.E.A(v) => v,
+        root.M.E.B(v) => v + 1
+    };
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(
+            errors
+                .iter()
+                .all(|error| error.defined_in == "<unresolved namespace alias member>"),
+            "{errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.function_name == "root.M.E.A"),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn stale_exact_imported_nested_enum_variant_alias_reports_unresolved_import_alias() {
+        let source = r#"
+package app;
+module M { enum E { B(Integer) } }
+import app.M.E.A as First;
+function main(): Integer {
+    return match (M.E.B(2)) {
+        First(v) => v,
+        M.E.B(v) => v + 1
+    };
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].function_name, "First");
+        assert_eq!(errors[0].defined_in, "<unresolved import alias>");
+    }
+
+    #[test]
+    fn stale_exact_imported_nested_enum_alias_type_reports_unresolved_import_alias() {
+        let source = r#"
+package app;
+module M { enum F { A(Integer), B(Integer) } }
+import app.M.E as Enum;
+function main(): Integer {
+    value: Enum = Enum.B(2);
+        return 0;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(
+            errors.iter().all(|error| error.function_name == "Enum"),
+            "{errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .all(|error| error.defined_in == "<unresolved import alias>"),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn stale_wildcard_imported_nested_enum_type_reports_unresolved_wildcard_import() {
+        let source = r#"
+package app;
+module M { enum F { A(Integer), B(Integer) } }
+import app.M.*;
+function main(): Integer {
+    value: E = E.B(2);
+    return 0;
+}
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].function_name, "E");
+        assert_eq!(errors[0].defined_in, "<unresolved wildcard import>");
     }
 
     #[test]
