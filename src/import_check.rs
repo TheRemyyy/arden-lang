@@ -504,6 +504,66 @@ impl<'a> ImportChecker<'a> {
         }
     }
 
+    fn check_decl_type(&mut self, ty: &Type, span: Span) {
+        match ty {
+            Type::Named(name) => {
+                if let Some(path_parts) = parse_alias_member_path(name) {
+                    if self
+                        .check_alias_member_call(&path_parts, span.clone())
+                        .is_some()
+                    {
+                        return;
+                    }
+                }
+                self.check_type(ty, span);
+            }
+            Type::Generic(name, args) => {
+                if let Some(path_parts) = parse_alias_member_path(name) {
+                    if self
+                        .check_alias_member_call(&path_parts, span.clone())
+                        .is_some()
+                    {
+                        for arg in args {
+                            self.check_decl_type(arg, span.clone());
+                        }
+                        return;
+                    }
+                }
+                self.check_type(ty, span.clone());
+                for arg in args {
+                    self.check_decl_type(arg, span.clone());
+                }
+            }
+            Type::Function(params, ret) => {
+                for param in params {
+                    self.check_decl_type(param, span.clone());
+                }
+                self.check_decl_type(ret, span);
+            }
+            Type::Option(inner)
+            | Type::List(inner)
+            | Type::Set(inner)
+            | Type::Ref(inner)
+            | Type::MutRef(inner)
+            | Type::Box(inner)
+            | Type::Rc(inner)
+            | Type::Arc(inner)
+            | Type::Ptr(inner)
+            | Type::Task(inner)
+            | Type::Range(inner) => self.check_decl_type(inner, span),
+            Type::Result(ok, err) | Type::Map(ok, err) => {
+                self.check_decl_type(ok, span.clone());
+                self.check_decl_type(err, span);
+            }
+            Type::Integer
+            | Type::Float
+            | Type::Boolean
+            | Type::String
+            | Type::Char
+            | Type::None => self.check_type(ty, span),
+        }
+    }
+
     fn check_pattern(&mut self, pattern: &Pattern, span: Span) {
         if let Pattern::Variant(name, _) = pattern {
             if let Some(path) = self.namespace_aliases.get(name) {
@@ -525,7 +585,11 @@ impl<'a> ImportChecker<'a> {
     fn check_generic_param_bounds(&mut self, generic_params: &[GenericParam]) {
         for param in generic_params {
             for bound in &param.bounds {
-                self.check_qualified_name_alias_usage(bound, 0..0);
+                if let Ok(parsed_ty) = crate::parser::parse_type_source(bound) {
+                    self.check_decl_type(&parsed_ty, 0..0);
+                } else {
+                    self.check_qualified_name_alias_usage(bound, 0..0);
+                }
             }
         }
     }
@@ -1302,10 +1366,17 @@ impl<'a> ImportChecker<'a> {
             match decl {
                 Decl::Function(func) => {
                     checker.check_generic_param_bounds(&func.generic_params);
+                    let check_signature_type = |checker: &mut ImportChecker<'_>, ty: &Type| {
+                        if func.is_extern || func.extern_abi.is_some() {
+                            checker.check_decl_type(ty, 0..0);
+                        } else {
+                            checker.check_type(ty, 0..0);
+                        }
+                    };
                     for param in &func.params {
-                        checker.check_type(&param.ty, 0..0);
+                        check_signature_type(checker, &param.ty);
                     }
-                    checker.check_type(&func.return_type, 0..0);
+                    check_signature_type(checker, &func.return_type);
                     checker.enter_scope();
                     checker.bind_parameter_locals(&func.params);
                     for stmt in &func.body {
@@ -1316,17 +1387,25 @@ impl<'a> ImportChecker<'a> {
                 Decl::Class(class) => {
                     checker.check_generic_param_bounds(&class.generic_params);
                     if let Some(parent) = &class.extends {
-                        checker.check_qualified_name_alias_usage(parent, 0..0);
+                        if let Ok(parsed_ty) = crate::parser::parse_type_source(parent) {
+                            checker.check_decl_type(&parsed_ty, 0..0);
+                        } else {
+                            checker.check_qualified_name_alias_usage(parent, 0..0);
+                        }
                     }
                     for implemented in &class.implements {
-                        checker.check_qualified_name_alias_usage(implemented, 0..0);
+                        if let Ok(parsed_ty) = crate::parser::parse_type_source(implemented) {
+                            checker.check_decl_type(&parsed_ty, 0..0);
+                        } else {
+                            checker.check_qualified_name_alias_usage(implemented, 0..0);
+                        }
                     }
                     for field in &class.fields {
-                        checker.check_type(&field.ty, 0..0);
+                        checker.check_decl_type(&field.ty, 0..0);
                     }
                     if let Some(ctor) = &class.constructor {
                         for param in &ctor.params {
-                            checker.check_type(&param.ty, 0..0);
+                            checker.check_decl_type(&param.ty, 0..0);
                         }
                         checker.enter_scope();
                         checker.bind_parameter_locals(&ctor.params);
@@ -1341,9 +1420,9 @@ impl<'a> ImportChecker<'a> {
                     for method in &class.methods {
                         checker.check_generic_param_bounds(&method.generic_params);
                         for param in &method.params {
-                            checker.check_type(&param.ty, 0..0);
+                            checker.check_decl_type(&param.ty, 0..0);
                         }
-                        checker.check_type(&method.return_type, 0..0);
+                        checker.check_decl_type(&method.return_type, 0..0);
                         checker.enter_scope();
                         checker.bind_parameter_locals(&method.params);
                         for stmt in &method.body {
@@ -1360,13 +1439,17 @@ impl<'a> ImportChecker<'a> {
                 Decl::Interface(interface) => {
                     checker.check_generic_param_bounds(&interface.generic_params);
                     for extended in &interface.extends {
-                        checker.check_qualified_name_alias_usage(extended, 0..0);
+                        if let Ok(parsed_ty) = crate::parser::parse_type_source(extended) {
+                            checker.check_decl_type(&parsed_ty, 0..0);
+                        } else {
+                            checker.check_qualified_name_alias_usage(extended, 0..0);
+                        }
                     }
                     for method in &interface.methods {
                         for param in &method.params {
-                            checker.check_type(&param.ty, 0..0);
+                            checker.check_decl_type(&param.ty, 0..0);
                         }
-                        checker.check_type(&method.return_type, 0..0);
+                        checker.check_decl_type(&method.return_type, 0..0);
                         if let Some(default_impl) = &method.default_impl {
                             checker.enter_scope();
                             checker.bind_parameter_locals(&method.params);
@@ -1381,7 +1464,7 @@ impl<'a> ImportChecker<'a> {
                     checker.check_generic_param_bounds(&en.generic_params);
                     for variant in &en.variants {
                         for field in &variant.fields {
-                            checker.check_type(&field.ty, 0..0);
+                            checker.check_decl_type(&field.ty, 0..0);
                         }
                     }
                 }
@@ -1411,6 +1494,24 @@ impl<'a> ImportChecker<'a> {
             Err(self.errors.clone())
         }
     }
+}
+
+fn parse_alias_member_path(name: &str) -> Option<Vec<String>> {
+    let mut parts = name
+        .split('.')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    if parts.len() < 2 {
+        return None;
+    }
+    if let Some(last) = parts.last_mut() {
+        if let Some((base, _)) = last.split_once('<') {
+            *last = base.to_string();
+        }
+    }
+    Some(parts)
 }
 
 /// Extract all function definitions from a program with their namespace
@@ -1703,6 +1804,24 @@ interface Printable extends alias.Named {
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].function_name, "alias.Named");
         assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+    }
+
+    #[test]
+    fn stale_exact_imported_interface_alias_in_implements_reports_unresolved_import_alias() {
+        let source = r#"
+package app;
+module M { interface Labelled { function name(): Integer; } }
+import app.M.Named as Named;
+class Book implements Named {
+    constructor() {}
+    function name(): Integer { return 1; }
+}
+function main(): Integer { return 0; }
+"#;
+        let errors = check_import_errors(source);
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].function_name, "Named");
+        assert_eq!(errors[0].defined_in, "<unresolved import alias>");
     }
 
     #[test]

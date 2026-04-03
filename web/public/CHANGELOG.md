@@ -8,6 +8,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed stale namespace-alias declaration type diagnostics in project rebuilds:
+  - import checking now validates full dotted namespace-alias type paths inside declaration clauses such as `implements`, `extends`, and generic bounds instead of checking only the alias root
+  - namespace-alias imports now also contribute their namespace API fingerprint directly to rewrite-context invalidation, keeping project import-check cache reuse conservative for whole-namespace aliases
+  - this fixes rebuilds where paths like `root.M.Api.Named` previously survived import-check reuse and fell through to late semantic errors such as `implements unknown interface`
+- Fixed stale namespace-aliased class field types in project rebuilds:
+  - class field declarations now validate dotted namespace-alias type paths through the declaration import-check path instead of deferring them to later semantic type resolution
+  - this fixes incremental rebuilds where removing `root.M.Api.Named` from a helper module previously fell through to a late `Unknown type: root.M.Api.Named` error instead of stopping at the stale import root cause
+- Fixed stale namespace-aliased enum payload types in project rebuilds:
+  - enum variant field declarations now validate dotted namespace-alias type paths through the declaration import-check path instead of deferring them to later semantic type resolution
+  - this fixes incremental rebuilds where removing `root.M.Api.Named` from a helper module previously fell through to a late `Unknown type: root.M.Api.Named` error for enum payloads instead of stopping at the stale import root cause
+- Fixed stale namespace-aliased member signatures in project rebuilds:
+  - constructor parameters, class method parameters and returns, and interface method signatures now validate dotted namespace-alias type paths through the declaration import-check path
+  - this fixes incremental rebuilds where removing `root.M.Api.Named` from a helper module previously fell through to late `Unknown type: root.M.Api.Named` errors inside class or interface member signatures instead of stopping at the stale import root cause
+- Fixed stale namespace-aliased extern signatures in project rebuilds:
+  - extern function parameter and return types now validate dotted namespace-alias type paths through the declaration import-check path before FFI-safety validation runs
+  - this fixes invalid builds that reference missing paths like `root.M.Api.Named` in `extern(c)` signatures, which previously produced cascading `Unknown type` and non-FFI-safe extern diagnostics instead of stopping at the import root cause
+- Fixed stale exact-imported interface aliases inside declaration clauses:
+  - import checking now parses and validates `extends`, `implements`, and generic bound type references through the same alias-resolution path as normal type annotations
+  - this fixes stale rebuilds where declaration-only aliases such as `import app.M.Api.Named as Named; class Book implements Named { ... }` previously bypassed import-check revalidation and fell through to later semantic errors
 - Fixed named function value adapters that skipped the hidden function environment parameter:
   - adapter wrappers for retyped named functions now forward the implicit `env_ptr` argument before user arguments, matching the normal Apex function ABI
   - function value adaptation now also accepts source and target types that differ nominally but share the same LLVM representation, fixing interface/class retyping cases like `() -> Book` to `() -> Named` and `(Book) -> Integer` to `(Named) -> Integer`

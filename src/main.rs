@@ -3303,9 +3303,26 @@ fn resolve_symbol_file_in_namespace_path(
         }
     }
 
-    let qualified_path = qualified_symbol_path_for_parts(namespace_path, member_parts)?;
-    exact_symbol_resolution(symbol_lookup, &qualified_path)
-        .map(|resolution| resolution.owner_file.clone())
+    for prefix_len in (1..=member_parts.len()).rev() {
+        let prefix = &member_parts[..prefix_len];
+        let dotted_path = qualified_symbol_path_for_parts(namespace_path, prefix)?;
+        if let Some(resolution) = exact_symbol_resolution(symbol_lookup, &dotted_path) {
+            return Some(resolution.owner_file.clone());
+        }
+        if prefix_len > 1 {
+            let mangled_prefix = prefix.join("__");
+            let mangled_path = if namespace_path.is_empty() {
+                mangled_prefix
+            } else {
+                format!("{}.{}", namespace_path, mangled_prefix)
+            };
+            if let Some(resolution) = exact_symbol_resolution(symbol_lookup, &mangled_path) {
+                return Some(resolution.owner_file.clone());
+            }
+        }
+    }
+
+    None
 }
 
 fn resolve_symbol_in_namespace_path(
@@ -3324,13 +3341,32 @@ fn resolve_symbol_in_namespace_path(
         }
     }
 
-    let qualified_path = qualified_symbol_path_for_parts(namespace_path, member_parts)?;
-    exact_symbol_resolution(symbol_lookup, &qualified_path).map(|resolution| {
-        (
-            resolution.owner_namespace.clone(),
-            resolution.symbol_name.clone(),
-        )
-    })
+    for prefix_len in (1..=member_parts.len()).rev() {
+        let prefix = &member_parts[..prefix_len];
+        let dotted_path = qualified_symbol_path_for_parts(namespace_path, prefix)?;
+        if let Some(resolution) = exact_symbol_resolution(symbol_lookup, &dotted_path) {
+            return Some((
+                resolution.owner_namespace.clone(),
+                resolution.symbol_name.clone(),
+            ));
+        }
+        if prefix_len > 1 {
+            let mangled_prefix = prefix.join("__");
+            let mangled_path = if namespace_path.is_empty() {
+                mangled_prefix
+            } else {
+                format!("{}.{}", namespace_path, mangled_prefix)
+            };
+            if let Some(resolution) = exact_symbol_resolution(symbol_lookup, &mangled_path) {
+                return Some((
+                    resolution.owner_namespace.clone(),
+                    resolution.symbol_name.clone(),
+                ));
+            }
+        }
+    }
+
+    None
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4499,6 +4535,12 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
                     .fetch_add(1, Ordering::Relaxed);
             }
             let namespace_alias_started_at = Instant::now();
+            if let Some(namespace_api_fingerprint) =
+                ctx.namespace_api_fingerprints.get(&import.path)
+            {
+                import.path.hash(&mut hasher);
+                namespace_api_fingerprint.hash(&mut hasher);
+            }
             let import_key = import_lookup_key(import);
             let mut matched_owner_files = HashSet::new();
             for path in &unit.qualified_symbol_refs {
@@ -10703,6 +10745,34 @@ function add(x: Integer): Integer {
         let b = r#"
 function add(x: Float): Float {
     return x + 1.0;
+}
+"#;
+
+        let pa = parse_program(a);
+        let pb = parse_program(b);
+        assert_ne!(api_program_fingerprint(&pa), api_program_fingerprint(&pb));
+    }
+
+    #[test]
+    fn api_program_fingerprint_changes_with_nested_interface_rename() {
+        let a = r#"
+package app;
+module M {
+    module Api {
+        interface Named {
+            function name(): Integer;
+        }
+    }
+}
+"#;
+        let b = r#"
+package app;
+module M {
+    module Api {
+        interface Labelled {
+            function name(): Integer;
+        }
+    }
 }
 "#;
 
@@ -18355,6 +18425,50 @@ enum main {
     }
 
     #[test]
+    fn project_build_reports_import_error_for_invalid_nested_namespace_aliased_extern_signature() {
+        let temp_root =
+            make_temp_project_root("project-invalid-nested-namespace-aliased-extern-signature");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nextern(c) function host(value: root.M.Api.Named): root.M.Api.Named;\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail for invalid namespace aliased extern signature");
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Unknown type: root.M.Api.Named"), "{err}");
+            assert!(
+                !err.contains("Extern function 'app__host' has non-FFI-safe parameter"),
+                "{err}"
+            );
+            assert!(
+                !err.contains("Extern function 'app__host' has non-FFI-safe return type"),
+                "{err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_avoids_cascading_errors_for_stale_nested_namespace_aliased_interface_type() {
         let temp_root =
             make_temp_project_root("project-stale-nested-namespace-aliased-interface-type");
@@ -18392,9 +18506,10 @@ enum main {
             let err = build_project(false, false, true, false, false)
                 .expect_err("build should fail after nested namespace aliased interface removal");
             assert!(
-                err.contains("Class 'app.Book' implements unknown interface 'root.M.Api.Named'"),
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
                 "{err}"
             );
+            assert!(err.contains("Import check failed"), "{err}");
             assert!(
                 !err.contains(
                     "Type mismatch: cannot assign app.Book to variable of type root.M.Api.Named"
@@ -18402,6 +18517,110 @@ enum main {
                 "{err}"
             );
             assert!(!err.contains("Unknown class: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_stale_exact_imported_interface_alias_in_implements() {
+        let temp_root =
+            make_temp_project_root("project-stale-exact-imported-interface-alias-implements");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app.M.Api.Named as Named;\nclass Book implements Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial exact imported interface implements build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without exact imported implemented interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail after exact imported implemented interface removal");
+            assert!(
+                err.contains("Imported alias 'Named' no longer resolves"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(
+                !err.contains("Class 'app.Book' implements unknown interface 'Named'"),
+                "{err}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interface_in_implements(
+    ) {
+        let temp_root =
+            make_temp_project_root("project-stale-nested-namespace-aliased-interface-implements");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial namespace aliased implements build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without namespace aliased implemented interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after namespace aliased implemented interface removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(
+                !err.contains("Class 'app.Book' implements unknown interface 'root.M.Api.Named'"),
+                "{err}"
+            );
         });
 
         let _ = fs::remove_dir_all(temp_root);
@@ -18448,12 +18667,323 @@ enum main {
         with_current_dir(&temp_root, || {
             let err = build_project(false, false, true, false, false)
                 .expect_err("build should fail after for-loop namespace aliased interface removal");
-            assert!(err.contains("Unknown type: root.M.Api.Named"), "{err}");
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
             assert!(
                 !err.contains("Loop variable type mismatch: declared root.M.Api.Named, but iterating over List<app.Book>"),
                 "{err}"
             );
             assert!(!err.contains("Unknown class: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interface_class_field()
+    {
+        let temp_root =
+            make_temp_project_root("project-stale-nested-namespace-aliased-interface-class-field");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nclass Book { value: root.M.Api.Named; constructor() {} }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial namespace aliased class field build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without namespace aliased class field interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after namespace aliased class field interface removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Unknown type: root.M.Api.Named"), "{err}");
+            assert!(!err.contains("Unknown class: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interface_enum_payload(
+    ) {
+        let temp_root =
+            make_temp_project_root("project-stale-nested-namespace-aliased-interface-enum-payload");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nenum Wrap { Named(root.M.Api.Named) }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial namespace aliased enum payload build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without namespace aliased enum payload interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after namespace aliased enum payload interface removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Unknown type: root.M.Api.Named"), "{err}");
+            assert!(!err.contains("Unknown class: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interface_method_signature(
+    ) {
+        let temp_root = make_temp_project_root(
+            "project-stale-nested-namespace-aliased-interface-method-signature",
+        );
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nclass Book { constructor() {} function take(value: root.M.Api.Named): Integer { return 0; } }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial namespace aliased method signature build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without namespace aliased method signature interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after namespace aliased method signature interface removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Unknown type: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interface_constructor_signature(
+    ) {
+        let temp_root = make_temp_project_root(
+            "project-stale-nested-namespace-aliased-interface-constructor-signature",
+        );
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nclass Book { constructor(value: root.M.Api.Named) {} }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial namespace aliased constructor signature build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without namespace aliased constructor signature interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after namespace aliased constructor signature interface removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Unknown type: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interface_interface_signature(
+    ) {
+        let temp_root = make_temp_project_root(
+            "project-stale-nested-namespace-aliased-interface-interface-signature",
+        );
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\ninterface NamedConsumer { function take(value: root.M.Api.Named): Integer; }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial namespace aliased interface signature build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without namespace aliased interface signature interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after namespace aliased interface signature interface removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Unknown type: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interface_interface_return_signature(
+    ) {
+        let temp_root = make_temp_project_root(
+            "project-stale-nested-namespace-aliased-interface-interface-return-signature",
+        );
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\ninterface NamedFactory { function make(): root.M.Api.Named; }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "initial namespace aliased interface return signature build should succeed",
+            );
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without namespace aliased interface return signature interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after namespace aliased interface return signature interface removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Unknown type: root.M.Api.Named"), "{err}");
         });
 
         let _ = fs::remove_dir_all(temp_root);
@@ -38071,6 +38601,312 @@ function main(): Integer {
             .expect("main");
         let rewrite_fp_after =
             compute_rewrite_context_fingerprint_for_unit(main_unit, "app", &rewrite_ctx);
+
+        assert_ne!(rewrite_fp_before, rewrite_fp_after);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_implements_api_change(
+    ) {
+        let temp_root = make_temp_project_root("rewrite-fp-nested-alias-interface-implements");
+        let src_dir = temp_root.join("src");
+        let main_file = src_dir.join("main.apex");
+        let helper_file = src_dir.join("helper.apex");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            &main_file,
+            "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            &helper_file,
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper before");
+
+        let parsed_before = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main before"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
+        ];
+
+        let mut namespace_function_files_before: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut namespace_class_files_before: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut namespace_interface_files_before: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut namespace_module_files_before: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut global_function_map_before: HashMap<String, String> = HashMap::new();
+        let mut global_function_file_map_before: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_class_map_before: HashMap<String, String> = HashMap::new();
+        let mut global_class_file_map_before: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_interface_map_before: HashMap<String, String> = HashMap::new();
+        let mut global_interface_file_map_before: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_enum_map_before: HashMap<String, String> = HashMap::new();
+        let mut global_enum_file_map_before: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_module_map_before: HashMap<String, String> = HashMap::new();
+        let mut global_module_file_map_before: HashMap<String, PathBuf> = HashMap::new();
+
+        for unit in &parsed_before {
+            for name in &unit.function_names {
+                namespace_function_files_before
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_function_map_before.insert(name.clone(), unit.namespace.clone());
+                global_function_file_map_before.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.class_names {
+                namespace_class_files_before
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_class_map_before.insert(name.clone(), unit.namespace.clone());
+                global_class_file_map_before.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.interface_names {
+                namespace_interface_files_before
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_interface_map_before.insert(name.clone(), unit.namespace.clone());
+                global_interface_file_map_before.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.enum_names {
+                global_enum_map_before.insert(name.clone(), unit.namespace.clone());
+                global_enum_file_map_before.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.module_names {
+                namespace_module_files_before
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_module_map_before.insert(name.clone(), unit.namespace.clone());
+                global_module_file_map_before.insert(name.clone(), unit.file.clone());
+            }
+        }
+
+        let namespace_functions_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.function_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_classes_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.class_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_modules_before = parsed_before.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.module_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_api_fingerprints_before = compute_namespace_api_fingerprints(&parsed_before);
+        let file_api_fingerprints_before = parsed_before
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+            .collect::<HashMap<_, _>>();
+        let rewrite_ctx_before = RewriteFingerprintContext {
+            namespace_functions: &namespace_functions_before,
+            namespace_function_files: &namespace_function_files_before,
+            global_function_map: &global_function_map_before,
+            global_function_file_map: &global_function_file_map_before,
+            namespace_classes: &namespace_classes_before,
+            namespace_class_files: &namespace_class_files_before,
+            namespace_interface_files: &namespace_interface_files_before,
+            global_class_map: &global_class_map_before,
+            global_class_file_map: &global_class_file_map_before,
+            global_interface_map: &global_interface_map_before,
+            global_interface_file_map: &global_interface_file_map_before,
+            global_enum_map: &global_enum_map_before,
+            global_enum_file_map: &global_enum_file_map_before,
+            namespace_modules: &namespace_modules_before,
+            namespace_module_files: &namespace_module_files_before,
+            global_module_map: &global_module_map_before,
+            global_module_file_map: &global_module_file_map_before,
+            namespace_api_fingerprints: &namespace_api_fingerprints_before,
+            file_api_fingerprints: &file_api_fingerprints_before,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map_before,
+                &global_function_file_map_before,
+                &global_class_map_before,
+                &global_class_file_map_before,
+                &global_interface_map_before,
+                &global_interface_file_map_before,
+                &global_enum_map_before,
+                &global_enum_file_map_before,
+                &global_module_map_before,
+                &global_module_file_map_before,
+            )),
+        };
+        let main_before = parsed_before
+            .iter()
+            .find(|u| u.file == main_file)
+            .expect("main before");
+        let rewrite_fp_before =
+            compute_rewrite_context_fingerprint_for_unit(main_before, "app", &rewrite_ctx_before);
+
+        thread::sleep(Duration::from_millis(5));
+        fs::write(
+            &helper_file,
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("write helper after");
+
+        let parsed_after = vec![
+            parse_project_unit(&temp_root, &main_file).expect("parse main after"),
+            parse_project_unit(&temp_root, &helper_file).expect("parse helper after"),
+        ];
+
+        let mut namespace_function_files_after: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut namespace_class_files_after: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut namespace_interface_files_after: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut namespace_module_files_after: HashMap<String, HashMap<String, PathBuf>> =
+            HashMap::new();
+        let mut global_function_map_after: HashMap<String, String> = HashMap::new();
+        let mut global_function_file_map_after: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_class_map_after: HashMap<String, String> = HashMap::new();
+        let mut global_class_file_map_after: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_interface_map_after: HashMap<String, String> = HashMap::new();
+        let mut global_interface_file_map_after: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_enum_map_after: HashMap<String, String> = HashMap::new();
+        let mut global_enum_file_map_after: HashMap<String, PathBuf> = HashMap::new();
+        let mut global_module_map_after: HashMap<String, String> = HashMap::new();
+        let mut global_module_file_map_after: HashMap<String, PathBuf> = HashMap::new();
+
+        for unit in &parsed_after {
+            for name in &unit.function_names {
+                namespace_function_files_after
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_function_map_after.insert(name.clone(), unit.namespace.clone());
+                global_function_file_map_after.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.class_names {
+                namespace_class_files_after
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_class_map_after.insert(name.clone(), unit.namespace.clone());
+                global_class_file_map_after.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.interface_names {
+                namespace_interface_files_after
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_interface_map_after.insert(name.clone(), unit.namespace.clone());
+                global_interface_file_map_after.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.enum_names {
+                global_enum_map_after.insert(name.clone(), unit.namespace.clone());
+                global_enum_file_map_after.insert(name.clone(), unit.file.clone());
+            }
+            for name in &unit.module_names {
+                namespace_module_files_after
+                    .entry(unit.namespace.clone())
+                    .or_default()
+                    .insert(name.clone(), unit.file.clone());
+                global_module_map_after.insert(name.clone(), unit.namespace.clone());
+                global_module_file_map_after.insert(name.clone(), unit.file.clone());
+            }
+        }
+
+        let namespace_functions_after = parsed_after.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.function_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_classes_after = parsed_after.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.class_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_modules_after = parsed_after.iter().fold(
+            HashMap::<String, HashSet<String>>::new(),
+            |mut acc, unit| {
+                acc.entry(unit.namespace.clone())
+                    .or_default()
+                    .extend(unit.module_names.iter().cloned());
+                acc
+            },
+        );
+        let namespace_api_fingerprints_after = compute_namespace_api_fingerprints(&parsed_after);
+        let file_api_fingerprints_after = parsed_after
+            .iter()
+            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+            .collect::<HashMap<_, _>>();
+        let rewrite_ctx_after = RewriteFingerprintContext {
+            namespace_functions: &namespace_functions_after,
+            namespace_function_files: &namespace_function_files_after,
+            global_function_map: &global_function_map_after,
+            global_function_file_map: &global_function_file_map_after,
+            namespace_classes: &namespace_classes_after,
+            namespace_class_files: &namespace_class_files_after,
+            namespace_interface_files: &namespace_interface_files_after,
+            global_class_map: &global_class_map_after,
+            global_class_file_map: &global_class_file_map_after,
+            global_interface_map: &global_interface_map_after,
+            global_interface_file_map: &global_interface_file_map_after,
+            global_enum_map: &global_enum_map_after,
+            global_enum_file_map: &global_enum_file_map_after,
+            namespace_modules: &namespace_modules_after,
+            namespace_module_files: &namespace_module_files_after,
+            global_module_map: &global_module_map_after,
+            global_module_file_map: &global_module_file_map_after,
+            namespace_api_fingerprints: &namespace_api_fingerprints_after,
+            file_api_fingerprints: &file_api_fingerprints_after,
+            symbol_lookup: Arc::new(build_project_symbol_lookup(
+                &global_function_map_after,
+                &global_function_file_map_after,
+                &global_class_map_after,
+                &global_class_file_map_after,
+                &global_interface_map_after,
+                &global_interface_file_map_after,
+                &global_enum_map_after,
+                &global_enum_file_map_after,
+                &global_module_map_after,
+                &global_module_file_map_after,
+            )),
+        };
+        let main_after = parsed_after
+            .iter()
+            .find(|u| u.file == main_file)
+            .expect("main after");
+        let rewrite_fp_after =
+            compute_rewrite_context_fingerprint_for_unit(main_after, "app", &rewrite_ctx_after);
 
         assert_ne!(rewrite_fp_before, rewrite_fp_after);
 
