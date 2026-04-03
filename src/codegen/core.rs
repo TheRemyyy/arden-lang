@@ -539,6 +539,22 @@ impl<'ctx> Codegen<'ctx> {
             return Some(canonical);
         }
 
+        if !name.contains('.') {
+            let mut wildcard_matches = self
+                .import_aliases
+                .values()
+                .filter_map(|path| path.strip_suffix(".*"))
+                .filter_map(|module_path| {
+                    self.canonical_codegen_type_name(&format!("{}.{}", module_path, name))
+                })
+                .collect::<Vec<_>>();
+            wildcard_matches.sort_unstable();
+            wildcard_matches.dedup();
+            if wildcard_matches.len() == 1 {
+                return Some(wildcard_matches[0].clone());
+            }
+        }
+
         if let Some((alias, rest)) = name.split_once('.') {
             if let Some(path) = self.import_aliases.get(alias) {
                 let candidate = format!("{}.{}", path, rest);
@@ -2823,13 +2839,17 @@ impl<'ctx> Codegen<'ctx> {
     ) {
         let maybe_record_builtin_like =
             |name: &str, args: &[Type], instantiations: &mut HashMap<String, Vec<Type>>| {
-                if class_templates.contains_key(name)
-                    && !args
+                if let Some(resolved_name) =
+                    Self::resolve_class_template_name(class_templates, import_aliases, name)
+                {
+                    if args
                         .iter()
                         .any(|arg| Self::type_contains_generic_names(arg, in_scope_generics))
-                {
+                    {
+                        return;
+                    }
                     instantiations
-                        .entry(Self::generic_class_spec_name(name, args))
+                        .entry(Self::generic_class_spec_name(&resolved_name, args))
                         .or_insert_with(|| args.to_vec());
                 }
             };
@@ -6998,10 +7018,12 @@ impl<'ctx> Codegen<'ctx> {
                     if !path.ends_with(".*") && self.canonical_codegen_type_name(path).is_some() {
                         path.clone()
                     } else {
-                        name.clone()
+                        self.resolve_alias_qualified_codegen_type_name(name)
+                            .unwrap_or_else(|| name.clone())
                     }
                 } else {
-                    name.clone()
+                    self.resolve_alias_qualified_codegen_type_name(name)
+                        .unwrap_or_else(|| name.clone())
                 }
             }
             Expr::Field { .. } => Self::flatten_field_chain(expr)?.join("."),
@@ -7023,7 +7045,7 @@ impl<'ctx> Codegen<'ctx> {
                 let expected_base = class_template_family(expected_name);
                 let resolved_base_name = class_template_family(&resolved_base);
                 if expected_base == resolved_base_name {
-                    type_source = expected_name.clone();
+                    type_source = Self::format_type_string(ret.as_ref());
                 }
             }
         }
@@ -7773,6 +7795,12 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub(crate) fn normalize_codegen_type(&self, ty: &Type) -> Type {
+        let normalize_builtin_named_generic = |builtin_name: &str, args: &[Type]| -> Option<Type> {
+            let resolved_name = self
+                .resolve_alias_qualified_codegen_type_name(builtin_name)
+                .unwrap_or_else(|| builtin_name.to_string());
+            self.normalize_user_defined_generic_type(&resolved_name, args)
+        };
         match ty {
             Type::Named(name) => self
                 .resolve_alias_qualified_codegen_type_name(name)
@@ -7798,61 +7826,61 @@ impl<'ctx> Codegen<'ctx> {
             ),
             Type::Option(inner) => {
                 let inner = self.normalize_codegen_type(inner);
-                self.normalize_user_defined_generic_type("Option", std::slice::from_ref(&inner))
+                normalize_builtin_named_generic("Option", std::slice::from_ref(&inner))
                     .unwrap_or_else(|| Type::Option(Box::new(inner)))
             }
             Type::Result(ok, err) => {
                 let ok = self.normalize_codegen_type(ok);
                 let err = self.normalize_codegen_type(err);
-                self.normalize_user_defined_generic_type("Result", &[ok.clone(), err.clone()])
+                normalize_builtin_named_generic("Result", &[ok.clone(), err.clone()])
                     .unwrap_or_else(|| Type::Result(Box::new(ok), Box::new(err)))
             }
             Type::List(inner) => {
                 let inner = self.normalize_codegen_type(inner);
-                self.normalize_user_defined_generic_type("List", std::slice::from_ref(&inner))
+                normalize_builtin_named_generic("List", std::slice::from_ref(&inner))
                     .unwrap_or_else(|| Type::List(Box::new(inner)))
             }
             Type::Map(k, v) => {
                 let k = self.normalize_codegen_type(k);
                 let v = self.normalize_codegen_type(v);
-                self.normalize_user_defined_generic_type("Map", &[k.clone(), v.clone()])
+                normalize_builtin_named_generic("Map", &[k.clone(), v.clone()])
                     .unwrap_or_else(|| Type::Map(Box::new(k), Box::new(v)))
             }
             Type::Set(inner) => {
                 let inner = self.normalize_codegen_type(inner);
-                self.normalize_user_defined_generic_type("Set", std::slice::from_ref(&inner))
+                normalize_builtin_named_generic("Set", std::slice::from_ref(&inner))
                     .unwrap_or_else(|| Type::Set(Box::new(inner)))
             }
             Type::Ref(inner) => Type::Ref(Box::new(self.normalize_codegen_type(inner))),
             Type::MutRef(inner) => Type::MutRef(Box::new(self.normalize_codegen_type(inner))),
             Type::Box(inner) => {
                 let inner = self.normalize_codegen_type(inner);
-                self.normalize_user_defined_generic_type("Box", std::slice::from_ref(&inner))
+                normalize_builtin_named_generic("Box", std::slice::from_ref(&inner))
                     .unwrap_or_else(|| Type::Box(Box::new(inner)))
             }
             Type::Rc(inner) => {
                 let inner = self.normalize_codegen_type(inner);
-                self.normalize_user_defined_generic_type("Rc", std::slice::from_ref(&inner))
+                normalize_builtin_named_generic("Rc", std::slice::from_ref(&inner))
                     .unwrap_or_else(|| Type::Rc(Box::new(inner)))
             }
             Type::Arc(inner) => {
                 let inner = self.normalize_codegen_type(inner);
-                self.normalize_user_defined_generic_type("Arc", std::slice::from_ref(&inner))
+                normalize_builtin_named_generic("Arc", std::slice::from_ref(&inner))
                     .unwrap_or_else(|| Type::Arc(Box::new(inner)))
             }
             Type::Ptr(inner) => {
                 let inner = self.normalize_codegen_type(inner);
-                self.normalize_user_defined_generic_type("Ptr", std::slice::from_ref(&inner))
+                normalize_builtin_named_generic("Ptr", std::slice::from_ref(&inner))
                     .unwrap_or_else(|| Type::Ptr(Box::new(inner)))
             }
             Type::Task(inner) => {
                 let inner = self.normalize_codegen_type(inner);
-                self.normalize_user_defined_generic_type("Task", std::slice::from_ref(&inner))
+                normalize_builtin_named_generic("Task", std::slice::from_ref(&inner))
                     .unwrap_or_else(|| Type::Task(Box::new(inner)))
             }
             Type::Range(inner) => {
                 let inner = self.normalize_codegen_type(inner);
-                self.normalize_user_defined_generic_type("Range", std::slice::from_ref(&inner))
+                normalize_builtin_named_generic("Range", std::slice::from_ref(&inner))
                     .unwrap_or_else(|| Type::Range(Box::new(inner)))
             }
             _ => ty.clone(),
@@ -13758,6 +13786,13 @@ impl<'ctx> Codegen<'ctx> {
             } else {
                 resolved_ident.as_str()
             };
+            if !self.variables.contains_key(name)
+                && self
+                    .resolve_alias_qualified_codegen_type_name(builtin_name)
+                    .is_some_and(|resolved| self.classes.contains_key(&resolved))
+            {
+                return self.compile_construct(builtin_name, args);
+            }
             if builtin_name == "println" || builtin_name == "print" {
                 return self.compile_print(args, builtin_name == "println");
             }

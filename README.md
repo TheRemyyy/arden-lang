@@ -40,63 +40,6 @@ echo 'import std.io.*; function main(): None { println("Hello"); return None; }'
 ./target/release/apex-compiler run hello.apex
 ```
 
-## Performance Snapshot
-
-The repo includes a reproducible benchmark runner in [`benchmark/run.py`](benchmark/run.py) that compares Apex, Rust, and Go on the same workloads.
-
-Beyond the baseline suite, the benchmark harness now also includes:
-
-- `matrix_mul_heavy` for a more meaningful CPU-bound runtime pass
-- `compile_project_extreme_graph` for a much larger synthetic project compile
-- `incremental_rebuild_extreme_graph*` for harsher invalidation/rebuild scenarios
-- `--apex-timings` to capture Apex phase breakdowns from `apex build --timings`
-
-I verified a small subset locally on **April 2, 2026** using:
-
-```bash
-python3 benchmark/run.py --bench matrix_mul_heavy --repeats 1 --warmup 0 --no-build
-python3 benchmark/run.py --bench compile_project_10_files --compile-mode hot --repeats 1 --warmup 0 --no-build
-python3 benchmark/run.py --bench incremental_rebuild_1_file --repeats 1 --warmup 0 --no-build --apex-timings
-```
-
-Current local snapshot for the heavier CPU-bound runtime benchmark (`matrix_mul_heavy`):
-
-| Language | Runtime mean |
-|---|---:|
-| Apex | 0.0106 s |
-| Rust | 0.0218 s |
-| Go | 0.0144 s |
-
-Current local snapshot for the generated 10-file compile benchmark:
-
-| Language | Hot compile mean |
-|---|---:|
-| Apex | 0.106 s |
-| Rust | 0.131 s |
-| Go | 3.097 s |
-
-Current local snapshot for incremental rebuild after changing one file:
-
-| Language | Full compile mean | Rebuild mean |
-|---|---:|---:|
-| Apex | 0.1846 s | 0.0108 s |
-| Rust | 0.1288 s | 0.1647 s |
-| Go | 3.0512 s | 0.1497 s |
-
-In this measured scenario, Apex rebuilds were roughly 13x faster than Rust and roughly 14x faster than Go.
-
-With `--apex-timings`, the benchmark report also captures where Apex spends build time. On the verified 1-file rebuild scenario, the cold build was dominated by `object codegen` and `final link`, while the hot rebuild collapsed to a cache-heavy path with only `parse + symbol scan`, `dependency graph`, and `semantic cache gate` showing up materially.
-
-I also ran an Apex-only extreme synthetic project probe outside the cross-language suite:
-
-- cold build of a generated 2200-file graph: about `21.0 s`
-- hot rebuild after one leaf edit: about `0.628 s`
-- biggest cold-build phases: `rewrite ~8.17 s`, `object codegen ~11.57 s`
-
-These are single-run sanity checks on one machine, not publication-grade benchmark claims. The important point is that Apex now has runtime benchmarks, incremental compile benchmarks, harsher synthetic compile scenarios, and phase-level timing data instead of a vague "fast compilation" bullet.
-
-For the full suite and workload descriptions, see [`benchmark/README.md`](benchmark/README.md).
-
 ## Status
 
 Apex is an experimental but actively developed compiler.
@@ -273,6 +216,63 @@ Useful entry points:
 - [`examples/24_test_attributes.apex`](examples/24_test_attributes.apex)
 - [`examples/37_interfaces_contracts.apex`](examples/37_interfaces_contracts.apex)
 - [`examples/insane_showcase_project`](examples/insane_showcase_project/)
+
+## Performance Snapshot
+
+The repo includes a reproducible benchmark runner in [`benchmark/run.py`](benchmark/run.py) that compares Apex, Rust, and Go on the same workloads.
+
+Beyond the baseline suite, the benchmark harness now also includes:
+
+- `matrix_mul_heavy` for a more meaningful CPU-bound runtime pass
+- `compile_project_extreme_graph` for a much larger synthetic project compile
+- `incremental_rebuild_extreme_graph*` for harsher invalidation/rebuild scenarios
+- `--apex-timings` to capture Apex phase breakdowns from `apex build --timings`
+
+I verified a small subset locally on **April 2, 2026** using:
+
+```bash
+python3 benchmark/run.py --bench matrix_mul_heavy --repeats 1 --warmup 0 --no-build
+python3 benchmark/run.py --bench compile_project_10_files --compile-mode hot --repeats 1 --warmup 0 --no-build
+python3 benchmark/run.py --bench incremental_rebuild_1_file --repeats 1 --warmup 0 --no-build --apex-timings
+```
+
+Current local snapshot for the heavier CPU-bound runtime benchmark (`matrix_mul_heavy`):
+
+| Language | Runtime mean |
+|---|---:|
+| Apex | 0.0106 s |
+| Rust | 0.0218 s |
+| Go | 0.0144 s |
+
+Current local snapshot for the generated 10-file compile benchmark:
+
+| Language | Hot compile mean |
+|---|---:|
+| Apex | 0.106 s |
+| Rust | 0.131 s |
+| Go | 3.097 s |
+
+Current local snapshot for incremental rebuild after changing one file:
+
+| Language | Full compile mean | Rebuild mean |
+|---|---:|---:|
+| Apex | 0.1846 s | 0.0108 s |
+| Rust | 0.1288 s | 0.1647 s |
+| Go | 3.0512 s | 0.1497 s |
+
+In this measured scenario, Apex rebuilds were roughly 13x faster than Rust and roughly 14x faster than Go.
+
+With `--apex-timings`, the benchmark report also captures where Apex spends build time. On the verified 1-file rebuild scenario, the cold build was dominated by `object codegen` and `final link`, while the hot rebuild collapsed to a cache-heavy path with only `parse + symbol scan`, `dependency graph`, and `semantic cache gate` showing up materially.
+
+I also ran an Apex-only extreme synthetic project probe outside the cross-language suite:
+
+- cold build of a generated 2200-file graph: about `21.0 s`
+- hot rebuild after one leaf edit: about `0.628 s`
+- biggest cold-build phases: `rewrite ~8.17 s`, `object codegen ~11.57 s`
+
+These are single-run sanity checks on one machine, not publication-grade benchmark claims. The important point is that Apex now has runtime benchmarks, incremental compile benchmarks, harsher synthetic compile scenarios, and phase-level timing data instead of a vague "fast compilation" bullet.
+
+For the full suite and workload descriptions, see [`benchmark/README.md`](benchmark/README.md).
 
 ## Contributing
 

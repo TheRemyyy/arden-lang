@@ -857,6 +857,22 @@ impl TypeChecker {
             return Some(resolved);
         }
 
+        if !name.contains('.') {
+            let mut wildcard_matches = self
+                .import_aliases
+                .values()
+                .filter_map(|path| path.strip_suffix(".*"))
+                .filter_map(|module_path| {
+                    self.resolve_known_type_name(&format!("{}.{}", module_path, name))
+                })
+                .collect::<Vec<_>>();
+            wildcard_matches.sort_unstable();
+            wildcard_matches.dedup();
+            if wildcard_matches.len() == 1 {
+                return Some(wildcard_matches[0].clone());
+            }
+        }
+
         if let Some(path) = self.import_aliases.get(name) {
             if !path.ends_with(".*") {
                 if let Some(resolved) = self.resolve_known_type_name(path) {
@@ -4998,6 +5014,98 @@ impl TypeChecker {
         Some(ResolvedType::Unknown)
     }
 
+    fn check_class_constructor_call_with_expected_type(
+        &mut self,
+        callee: &Expr,
+        args: &[Spanned<Expr>],
+        type_args: &[Type],
+        span: Span,
+        expected: &ResolvedType,
+    ) -> Option<ResolvedType> {
+        let ResolvedType::Class(expected_class_name) = expected else {
+            return None;
+        };
+
+        let mut type_source = Self::nominal_function_value_type_source(callee)?;
+        if !type_args.is_empty() {
+            type_source = format!(
+                "{}<{}>",
+                type_source,
+                type_args
+                    .iter()
+                    .map(Self::format_ast_type_source)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        } else {
+            let resolved_base = self.resolve_nominal_reference_name(&type_source)?;
+            if self.class_base_name(expected_class_name) != self.class_base_name(&resolved_base) {
+                return None;
+            }
+            type_source = expected_class_name.clone();
+        }
+
+        let scoped_ty = self.resolve_type_source_string(&type_source);
+        let (class_name, class_substitutions) = self.instantiated_class_substitutions(&scoped_ty);
+        let class = self.classes.get(&class_name).cloned()?;
+
+        self.validate_class_type_argument_bounds(&scoped_ty, span.clone(), "Constructor");
+        self.check_class_visibility(&class_name, span.clone());
+
+        if let Some(ctor_params) = &class.constructor {
+            let ctor_params = ctor_params
+                .iter()
+                .map(|(name, ty)| {
+                    (
+                        name.clone(),
+                        Self::substitute_type_vars(ty, &class_substitutions),
+                    )
+                })
+                .collect::<Vec<_>>();
+            if args.len() != ctor_params.len() {
+                self.error(
+                    format!(
+                        "Constructor {} expects {} arguments, got {}",
+                        scoped_ty,
+                        ctor_params.len(),
+                        args.len()
+                    ),
+                    span,
+                );
+                return Some(ResolvedType::Unknown);
+            }
+            for (arg, (_, expected_ty)) in args.iter().zip(ctor_params.iter()) {
+                let actual = self.check_expr_with_expected_type(
+                    &arg.node,
+                    arg.span.clone(),
+                    Some(expected_ty),
+                );
+                if !self.types_compatible(expected_ty, &actual) {
+                    self.error(
+                        format!(
+                            "Constructor argument type mismatch: expected {}, got {}",
+                            Self::format_resolved_type_for_diagnostic(expected_ty),
+                            Self::format_resolved_type_for_diagnostic(&actual)
+                        ),
+                        arg.span.clone(),
+                    );
+                }
+            }
+        } else if !args.is_empty() {
+            self.error(
+                format!(
+                    "Constructor {} expects 0 arguments, got {}",
+                    scoped_ty,
+                    args.len()
+                ),
+                span,
+            );
+            return Some(ResolvedType::Unknown);
+        }
+
+        Some(self.parse_type_string(&scoped_ty))
+    }
+
     /// Check an expression and return its type
     fn check_expr_with_expected_type(
         &mut self,
@@ -5029,6 +5137,15 @@ impl TypeChecker {
                 expected_ty,
             ) {
                 return container_ty;
+            }
+            if let Some(class_ty) = self.check_class_constructor_call_with_expected_type(
+                &callee.node,
+                args,
+                type_args,
+                span.clone(),
+                expected_ty,
+            ) {
+                return class_ty;
             }
         }
         if let (Expr::Block(body), Some(expected_ty)) = (expr, expected) {
@@ -6896,6 +7013,32 @@ impl TypeChecker {
                         return ResolvedType::Class(enum_name.clone());
                     }
                 }
+            }
+            if self.lookup_variable(name).is_none()
+                && self
+                    .resolve_nominal_reference_name(name)
+                    .is_some_and(|resolved| self.classes.contains_key(&resolved))
+            {
+                let call_type_source = if type_args.is_empty() {
+                    name.clone()
+                } else {
+                    format!(
+                        "{}<{}>",
+                        name,
+                        type_args
+                            .iter()
+                            .map(Self::format_ast_type_source)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+                return self.check_expr(
+                    &Expr::Construct {
+                        ty: call_type_source,
+                        args: args.to_vec(),
+                    },
+                    span.clone(),
+                );
             }
             let resolved_name = canonical_ident_call.as_deref().unwrap_or(name);
             if !type_args.is_empty() && Self::builtin_required_effect(resolved_name).is_some() {

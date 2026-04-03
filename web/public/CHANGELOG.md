@@ -8,9 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed stale safe rewrite-cache reuse after entry namespace changes:
+  - project builds now disable the dependency-graph-based rewrite fast path when the cached entry namespace no longer matches the current entry namespace, so unchanged files are re-rewritten instead of reusing ASTs mangled for the wrong project entry context
+  - this fixes real rebuilds where changing an entry file from `package app;` to `package core;` reused a cached `core/main` class rewrite and then failed in codegen with `Unknown type: main`
+  - added a project regression that rebuilds after an entry-namespace change and verifies the resulting binary still runs
+- Fixed entry-namespace module mangling for symbols named `main`:
+  - project rewrite now keeps the special unmangled `main` name only for the actual entry function, while classes, interfaces, enums, and modules named `main` in the entry namespace stay fully mangled like `core__main`
+  - this fixes real programs such as `package core; module main { function ping(): Integer { ... } } function main(): Integer { return main.ping(); }`, which previously failed in codegen with `Undefined function: core__main__ping`
+  - added a runtime regression that compiles and runs an entry-namespace `module main` program and verifies it exits with `22`
+- Fixed checked constructor calls for entry-namespace classes named `main`:
+  - checked single-file builds now resolve `main(22)` to the class constructor when `main` is also a class name in the current namespace, instead of typechecking it as a recursive call to the entry function `main()`
+  - single-file codegen now also lowers that direct ident call to a constructor path before global function lookup, fixing a real segfault where the backend emitted `call i32 @main()` and then treated the integer return value as a class pointer
+  - added a runtime regression that compiles and runs `package core; class main { ... } function main(): Integer { value: main = main(22); return value.get(); }` and verifies it exits with `22`
 - Fixed object shard cache reuse across reordered file batches:
   - object shard cache keys and metadata matching now normalize shard members by file path, so the same shard compiled in a different file order still reuses the cached object instead of triggering a needless rebuild
   - added regressions covering both shard-key generation and cache-hit lookup for reordered but otherwise identical shard members
+- Fixed stale project build cache hits after same-length source edits:
+  - project build fingerprints now hash actual source contents instead of relying only on file length and modified time, so preserved-mtime edits can no longer reuse an out-of-date binary
+  - added a regression that rewrites `return 11` to `return 22` at the same byte length, preserves the original mtime, and verifies the rebuilt binary returns the new value
+- Fixed stale parse cache hits after same-length source edits:
+  - parse cache reuse now validates the cached source fingerprint even when file length and modified time match, so preserved-mtime edits can no longer return stale AST and semantic fingerprints
+  - added a regression that rewrites `return 11` to `return 22` at the same byte length, preserves the original mtime, and verifies `parse_project_unit()` reparses instead of falsely reporting a cache hit
 - Fixed class constructor function values for checked and unchecked builds:
   - generic constructors such as `Box<Integer>` now work as first-class function values in both semantic and codegen paths, so bindings like `ctor: (Integer) -> Box<Integer> = Box<Integer>` compile and run instead of failing with `Undefined variable: Box`
   - exact-import class aliases such as `import Box as B; ctor = B<Integer>` now also compile and run instead of failing with `Undefined variable: B`
@@ -21,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - generic class specialization discovery now recognizes direct dotted class template names like `M.Box` in addition to mangled/internal forms, so nested generic classes emit their concrete `__spec__...` class and constructor metadata before codegen
 - Fixed inferred generic constructor function values in codegen:
   - contextual bindings such as `ctor: (Integer) -> Box<Integer> = Box`, `import M.Box as B; ctor = B`, and `import U as u; ctor = u.M.Box` now compile and run instead of failing in codegen with `Undefined variable: ...`
+  - wildcard-imported constructor bindings such as `import M.*; ctor: (Integer) -> Box<Integer> = Box` now also compile and run in both checked and `--no-check` modes instead of leaking `Undefined variable: Box`
   - constructor function-value lowering now matches expected return types against specialized class families like `Box__spec__...`, so omitted explicit type arguments still resolve to the correct generic constructor from context
 - Fixed wildcard-imported nested generic class constructors in codegen:
   - direct wildcard calls such as `import M.*; Box<Integer>(13).value` and `Box<Integer>(13).get()` now compile and run in checked and `--no-check` builds instead of emitting unspecialized `M__Box__new` IR that returned raw pointers from `main()`

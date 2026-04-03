@@ -741,7 +741,11 @@ pub fn rewrite_program_for_project(
                             global_module_map,
                             &mut scopes,
                         );
-                        f.name = mangle_project_symbol(current_namespace, entry_namespace, &f.name);
+                        f.name = mangle_project_function_symbol(
+                            current_namespace,
+                            entry_namespace,
+                            &f.name,
+                        );
                         Decl::Function(f)
                     }
                     Decl::Class(class) => {
@@ -1755,10 +1759,15 @@ pub fn rewrite_program_for_project(
 }
 
 fn mangle_project_symbol(namespace: &str, entry_namespace: &str, name: &str) -> String {
+    let _ = entry_namespace;
+    format!("{}__{}", namespace.replace('.', "__"), name)
+}
+
+fn mangle_project_function_symbol(namespace: &str, entry_namespace: &str, name: &str) -> String {
     if name == "main" && namespace == entry_namespace {
         "main".to_string()
     } else {
-        format!("{}__{}", namespace.replace('.', "__"), name)
+        mangle_project_symbol(namespace, entry_namespace, name)
     }
 }
 
@@ -4802,7 +4811,7 @@ fn rewrite_expr_calls_for_project(
                         ) {
                             return Expr::Call {
                                 callee: Box::new(ast::Spanned::new(
-                                    Expr::Ident(mangle_project_symbol(
+                                    Expr::Ident(mangle_project_function_symbol(
                                         &owner_ns,
                                         entry_namespace,
                                         &candidate,
@@ -5524,7 +5533,7 @@ fn rewrite_expr_calls_for_project(
                                     } else if symbol_name.is_empty() && member_parts.len() == 1 {
                                         if let Some(owner_ns) = global_function_map.get(field) {
                                             if owner_ns == ns {
-                                                Expr::Ident(mangle_project_symbol(
+                                                Expr::Ident(mangle_project_function_symbol(
                                                     owner_ns,
                                                     entry_namespace,
                                                     field,
@@ -5581,7 +5590,7 @@ fn rewrite_expr_calls_for_project(
                                             global_function_map,
                                         )
                                     {
-                                        Expr::Ident(mangle_project_symbol(
+                                        Expr::Ident(mangle_project_function_symbol(
                                             &owner_ns,
                                             entry_namespace,
                                             &candidate,
@@ -5766,7 +5775,7 @@ fn rewrite_expr_calls_for_project(
                                 } else if symbol_name.is_empty() && member_parts.len() == 1 {
                                     if let Some(owner_ns) = global_function_map.get(field) {
                                         if owner_ns == ns {
-                                            Expr::Ident(mangle_project_symbol(
+                                            Expr::Ident(mangle_project_function_symbol(
                                                 owner_ns,
                                                 entry_namespace,
                                                 field,
@@ -5823,7 +5832,7 @@ fn rewrite_expr_calls_for_project(
                                         global_function_map,
                                     )
                                 {
-                                    Expr::Ident(mangle_project_symbol(
+                                    Expr::Ident(mangle_project_function_symbol(
                                         &owner_ns,
                                         entry_namespace,
                                         &candidate,
@@ -5900,7 +5909,7 @@ fn rewrite_expr_calls_for_project(
                     if is_shadowed(name, scopes) {
                         Expr::Ident(name.clone())
                     } else if local_functions.contains(name) {
-                        Expr::Ident(mangle_project_symbol(
+                        Expr::Ident(mangle_project_function_symbol(
                             current_namespace,
                             entry_namespace,
                             name,
@@ -5912,10 +5921,14 @@ fn rewrite_expr_calls_for_project(
                         {
                             Expr::Ident(symbol_name.clone())
                         } else {
-                            Expr::Ident(mangle_project_symbol(ns, entry_namespace, symbol_name))
+                            Expr::Ident(mangle_project_function_symbol(
+                                ns,
+                                entry_namespace,
+                                symbol_name,
+                            ))
                         }
                     } else if let Some(ns) = global_function_map.get(name) {
-                        Expr::Ident(mangle_project_symbol(ns, entry_namespace, name))
+                        Expr::Ident(mangle_project_function_symbol(ns, entry_namespace, name))
                     } else {
                         Expr::Ident(name.clone())
                     }
@@ -6174,7 +6187,7 @@ fn rewrite_expr_calls_for_project(
                             member_parts,
                             global_function_map,
                         ) {
-                            return Expr::Ident(mangle_project_symbol(
+                            return Expr::Ident(mangle_project_function_symbol(
                                 &owner_ns,
                                 entry_namespace,
                                 &candidate,
@@ -6239,7 +6252,7 @@ fn rewrite_expr_calls_for_project(
                         if symbol_name.is_empty() && member_parts.len() == 1 {
                             if let Some(owner_ns) = global_function_map.get(field) {
                                 if owner_ns == ns {
-                                    return Expr::Ident(mangle_project_symbol(
+                                    return Expr::Ident(mangle_project_function_symbol(
                                         owner_ns,
                                         entry_namespace,
                                         field,
@@ -6253,7 +6266,7 @@ fn rewrite_expr_calls_for_project(
                             member_parts,
                             global_function_map,
                         ) {
-                            return Expr::Ident(mangle_project_symbol(
+                            return Expr::Ident(mangle_project_function_symbol(
                                 &owner_ns,
                                 entry_namespace,
                                 &candidate,
@@ -6298,7 +6311,7 @@ fn rewrite_expr_calls_for_project(
                             std::slice::from_ref(field),
                             global_function_map,
                         ) {
-                            return Expr::Ident(mangle_project_symbol(
+                            return Expr::Ident(mangle_project_function_symbol(
                                 &owner_ns,
                                 entry_namespace,
                                 &candidate,
@@ -6348,7 +6361,7 @@ fn rewrite_expr_calls_for_project(
                         if symbol_name.is_empty() {
                             if let Some(owner_ns) = global_function_map.get(field) {
                                 if owner_ns == ns {
-                                    return Expr::Ident(mangle_project_symbol(
+                                    return Expr::Ident(mangle_project_function_symbol(
                                         owner_ns,
                                         entry_namespace,
                                         field,
@@ -7133,7 +7146,11 @@ fn rewrite_expr_calls_for_project(
                 {
                     Expr::Ident(symbol_name.clone())
                 } else {
-                    Expr::Ident(mangle_project_symbol(ns, entry_namespace, symbol_name))
+                    Expr::Ident(mangle_project_function_symbol(
+                        ns,
+                        entry_namespace,
+                        symbol_name,
+                    ))
                 }
             } else if let Some((import_ns, symbol_name)) = imported_modules.get(name) {
                 if let Some((owner_ns, enum_name, variant_name)) =
@@ -7154,7 +7171,7 @@ fn rewrite_expr_calls_for_project(
                     Expr::Ident(name.clone())
                 }
             } else if let Some(ns) = global_function_map.get(name) {
-                Expr::Ident(mangle_project_symbol(ns, entry_namespace, name))
+                Expr::Ident(mangle_project_function_symbol(ns, entry_namespace, name))
             } else {
                 Expr::Ident(name.clone())
             }

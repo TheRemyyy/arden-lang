@@ -460,37 +460,15 @@ fn compute_project_fingerprint(
 
     for file in files {
         file.hash(&mut hasher);
-        let meta = fs::metadata(file).map_err(|e| {
+        let contents = fs::read(file).map_err(|e| {
             format!(
-                "{}: Failed to read metadata for '{}': {}",
+                "{}: Failed to read source for '{}': {}",
                 "error".red().bold(),
                 file.display(),
                 e
             )
         })?;
-        meta.len().hash(&mut hasher);
-
-        let modified = meta
-            .modified()
-            .map_err(|e| {
-                format!(
-                    "{}: Failed to read modified time for '{}': {}",
-                    "error".red().bold(),
-                    file.display(),
-                    e
-                )
-            })?
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| {
-                format!(
-                    "{}: Invalid modified time for '{}': {}",
-                    "error".red().bold(),
-                    file.display(),
-                    e
-                )
-            })?;
-        modified.as_secs().hash(&mut hasher);
-        modified.subsec_nanos().hash(&mut hasher);
+        contents.hash(&mut hasher);
     }
 
     Ok(format!("{:016x}", hasher.finish()))
@@ -583,7 +561,7 @@ fn save_semantic_cached_fingerprint(project_root: &Path, fingerprint: &str) -> R
 }
 
 const PARSE_CACHE_SCHEMA: &str = "v9";
-const DEPENDENCY_GRAPH_CACHE_SCHEMA: &str = "v2";
+const DEPENDENCY_GRAPH_CACHE_SCHEMA: &str = "v3";
 const SEMANTIC_SUMMARY_CACHE_SCHEMA: &str = "v2";
 const TYPECHECK_SUMMARY_CACHE_SCHEMA: &str = "v4";
 
@@ -654,6 +632,7 @@ struct RewrittenProjectUnit {
 struct DependencyGraphCache {
     schema: String,
     compiler_version: String,
+    entry_namespace: String,
     files: Vec<DependencyGraphFileEntry>,
 }
 
@@ -3763,6 +3742,7 @@ fn transitive_dependencies_from_precomputed(
 }
 
 fn dependency_graph_cache_from_state(
+    entry_namespace: &str,
     parsed_files: &[ParsedProjectUnit],
     forward_graph: &HashMap<PathBuf, HashSet<PathBuf>>,
 ) -> DependencyGraphCache {
@@ -3789,8 +3769,16 @@ fn dependency_graph_cache_from_state(
     DependencyGraphCache {
         schema: DEPENDENCY_GRAPH_CACHE_SCHEMA.to_string(),
         compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+        entry_namespace: entry_namespace.to_string(),
         files,
     }
+}
+
+fn can_reuse_safe_rewrite_cache(
+    previous_dependency_graph: Option<&DependencyGraphCache>,
+    entry_namespace: &str,
+) -> bool {
+    previous_dependency_graph.is_some_and(|cache| cache.entry_namespace == entry_namespace)
 }
 
 fn semantic_summary_cache_from_state(
@@ -4861,29 +4849,6 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         .unwrap_or("unknown.apex");
     let file_metadata = current_file_metadata_stamp(file)?;
     let cached_entry = load_parsed_file_cache_entry(project_root, file)?;
-    let cached_entry = match cached_entry {
-        Some(cache) if cache.file_metadata == file_metadata => {
-            return Ok(ParsedProjectUnit {
-                file: file.to_path_buf(),
-                namespace: cache.namespace,
-                program: cache.program,
-                imports: cache.imports,
-                api_fingerprint: cache.api_fingerprint,
-                semantic_fingerprint: cache.semantic_fingerprint,
-                import_check_fingerprint: cache.import_check_fingerprint,
-                function_names: cache.function_names,
-                class_names: cache.class_names,
-                interface_names: cache.interface_names,
-                enum_names: cache.enum_names,
-                module_names: cache.module_names,
-                referenced_symbols: cache.referenced_symbols,
-                qualified_symbol_refs: cache.qualified_symbol_refs,
-                api_referenced_symbols: cache.api_referenced_symbols,
-                from_parse_cache: true,
-            });
-        }
-        other => other,
-    };
     let (
         namespace,
         program,
@@ -4893,7 +4858,16 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         source_fingerprint_for_cache,
         from_parse_cache,
     ) = if let Some(cache) = cached_entry.as_ref() {
-        if cache.file_metadata == file_metadata {
+        let source = fs::read_to_string(file).map_err(|e| {
+            format!(
+                "{}: Failed to read '{}': {}",
+                "error".red().bold(),
+                file.display(),
+                e
+            )
+        })?;
+        let source_fp = source_fingerprint(&source);
+        if cache.file_metadata == file_metadata && cache.source_fingerprint == source_fp {
             (
                 cache.namespace.clone(),
                 cache.program.clone(),
@@ -4904,15 +4878,6 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 true,
             )
         } else {
-            let source = fs::read_to_string(file).map_err(|e| {
-                format!(
-                    "{}: Failed to read '{}': {}",
-                    "error".red().bold(),
-                    file.display(),
-                    e
-                )
-            })?;
-            let source_fp = source_fingerprint(&source);
             if cache.source_fingerprint == source_fp {
                 (
                     cache.namespace.clone(),
@@ -6254,8 +6219,16 @@ fn build_project(
             )
         });
     let reverse_file_dependency_graph = build_reverse_dependency_graph(&file_dependency_graph);
-    let current_dependency_graph_cache =
-        dependency_graph_cache_from_state(&parsed_files, &file_dependency_graph);
+    let current_entry_namespace = parsed_files
+        .iter()
+        .find(|unit| unit.file == config.get_entry_path(&project_root))
+        .map(|unit| unit.namespace.clone())
+        .unwrap_or_else(|| "global".to_string());
+    let current_dependency_graph_cache = dependency_graph_cache_from_state(
+        &current_entry_namespace,
+        &parsed_files,
+        &file_dependency_graph,
+    );
     if dependency_graph_cache_hits > 0 {
         println!(
             "{} Reused dependency graph entries for {}/{} files",
@@ -6633,19 +6606,20 @@ fn build_project(
         file_api_fingerprints: &file_api_fingerprints,
         symbol_lookup: Arc::new(project_symbol_lookup.clone()),
     };
-    let safe_rewrite_cache_files: HashSet<PathBuf> = if previous_dependency_graph.is_some() {
-        parsed_files
-            .iter()
-            .filter(|unit| {
-                !body_only_changed.contains(&unit.file)
-                    && !api_changed.contains(&unit.file)
-                    && !dependent_api_impact.contains(&unit.file)
-            })
-            .map(|unit| unit.file.clone())
-            .collect()
-    } else {
-        HashSet::new()
-    };
+    let safe_rewrite_cache_files: HashSet<PathBuf> =
+        if can_reuse_safe_rewrite_cache(previous_dependency_graph.as_ref(), &entry_namespace) {
+            parsed_files
+                .iter()
+                .filter(|unit| {
+                    !body_only_changed.contains(&unit.file)
+                        && !api_changed.contains(&unit.file)
+                        && !dependent_api_impact.contains(&unit.file)
+                })
+                .map(|unit| unit.file.clone())
+                .collect()
+        } else {
+            HashSet::new()
+        };
 
     // Phase 2: Check imports for each file
     if do_check {
@@ -10065,9 +10039,9 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
 mod tests {
     use super::{
         api_program_fingerprint, build_file_dependency_graph_incremental, build_project,
-        build_project_symbol_lookup, build_reverse_dependency_graph, check_command, check_file,
-        codegen_program_for_unit, compile_file, compile_source, component_fingerprint,
-        compute_link_fingerprint, compute_namespace_api_fingerprints,
+        build_project_symbol_lookup, build_reverse_dependency_graph, can_reuse_safe_rewrite_cache,
+        check_command, check_file, codegen_program_for_unit, compile_file, compile_source,
+        component_fingerprint, compute_link_fingerprint, compute_namespace_api_fingerprints,
         compute_rewrite_context_fingerprint_for_unit, dedupe_link_inputs, escape_response_file_arg,
         find_test_files, fix_target, format_targets, lex_file, lint_target,
         load_cached_fingerprint, load_link_manifest_cache, load_object_shard_cache_hit,
@@ -27195,6 +27169,46 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_no_check_runs_wildcard_imported_inferred_generic_class_constructor_function_value_runtime(
+    ) {
+        let temp_root = make_temp_project_root(
+            "no-check-wildcard-imported-inferred-generic-class-ctor-fn-value-runtime",
+        );
+        let source_path = temp_root
+            .join("no_check_wildcard_imported_inferred_generic_class_ctor_fn_value_runtime.apex");
+        let output_path = temp_root
+            .join("no_check_wildcard_imported_inferred_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                    function get(): T { return this.value; }
+                }
+            }
+
+            import M.*;
+
+            function main(): Integer {
+                ctor: (Integer) -> Box<Integer> = Box;
+                return ctor(17).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None).expect(
+            "unchecked wildcard imported inferred generic class constructor function value should codegen",
+        );
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled unchecked wildcard imported inferred generic class constructor function value binary",
+        );
+        assert_eq!(status.code(), Some(17));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_runs_nested_generic_class_field_access_runtime() {
         let temp_root = make_temp_project_root("no-check-nested-generic-class-field-runtime");
         let source_path = temp_root.join("no_check_nested_generic_class_field_runtime.apex");
@@ -29244,6 +29258,46 @@ function main(): Integer {
             "run compiled namespace alias inferred generic class constructor function value binary",
         );
         assert_eq!(status.code(), Some(9));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_wildcard_imported_inferred_generic_class_constructor_function_value_runtime(
+    ) {
+        let temp_root = make_temp_project_root(
+            "wildcard-imported-inferred-generic-class-ctor-fn-value-runtime",
+        );
+        let source_path =
+            temp_root.join("wildcard_imported_inferred_generic_class_ctor_fn_value_runtime.apex");
+        let output_path =
+            temp_root.join("wildcard_imported_inferred_generic_class_ctor_fn_value_runtime");
+        let source = r#"
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                    function get(): T { return this.value; }
+                }
+            }
+
+            import M.*;
+
+            function main(): Integer {
+                ctor: (Integer) -> Box<Integer> = Box;
+                return ctor(17).get();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None).expect(
+            "wildcard imported inferred generic class constructor function value should codegen",
+        );
+
+        let status = std::process::Command::new(&output_path).status().expect(
+            "run compiled wildcard imported inferred generic class constructor function value binary",
+        );
+        assert_eq!(status.code(), Some(17));
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -36163,6 +36217,109 @@ function main(): Integer {
         let _ = fs::remove_dir_all(temp_root);
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn project_build_rebuilds_after_same_length_source_edit_with_preserved_mtime() {
+        let temp_root = make_temp_project_root("project-build-same-length-preserved-mtime");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "build/out");
+        let source_path = temp_root.join("src/main.apex");
+        let output_path = temp_root.join("build/out");
+        let mtime_reference = temp_root.join("src/main.mtime_ref.apex");
+
+        fs::write(
+            &source_path,
+            "package app;\nfunction main(): Integer { return 11; }\n",
+        )
+        .expect("write initial main");
+        fs::copy(&source_path, &mtime_reference).expect("write mtime reference");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect("initial build should pass");
+        });
+        let first_status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run first built binary");
+        assert_eq!(first_status.code(), Some(11));
+
+        fs::write(
+            &source_path,
+            "package app;\nfunction main(): Integer { return 22; }\n",
+        )
+        .expect("rewrite main with same-length content");
+        let touch_status = std::process::Command::new("touch")
+            .arg("-r")
+            .arg(&mtime_reference)
+            .arg(&source_path)
+            .status()
+            .expect("run touch to preserve main mtime");
+        assert!(touch_status.success(), "touch should preserve source mtime");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("build should rebuild after same-length content change");
+        });
+        let second_status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run rebuilt binary after same-length content change");
+        assert_eq!(second_status.code(), Some(22));
+
+        let _ = fs::remove_file(mtime_reference);
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn parse_project_unit_reparses_after_same_length_source_edit_with_preserved_mtime() {
+        let temp_root = make_temp_project_root("parse-cache-same-length-preserved-mtime");
+        let source_path = temp_root.join("src/main.apex");
+        let mtime_reference = temp_root.join("src/main.mtime_ref.apex");
+
+        fs::write(
+            &source_path,
+            "package app;\nfunction main(): Integer { return 11; }\n",
+        )
+        .expect("write initial source");
+        fs::copy(&source_path, &mtime_reference).expect("write mtime reference");
+
+        let first = parse_project_unit(&temp_root, &source_path).expect("first parse");
+        assert!(!first.from_parse_cache);
+
+        fs::write(
+            &source_path,
+            "package app;\nfunction main(): Integer { return 22; }\n",
+        )
+        .expect("rewrite source with same-length content");
+        let touch_status = std::process::Command::new("touch")
+            .arg("-r")
+            .arg(&mtime_reference)
+            .arg(&source_path)
+            .status()
+            .expect("run touch to preserve source mtime");
+        assert!(touch_status.success(), "touch should preserve source mtime");
+
+        let second = parse_project_unit(&temp_root, &source_path)
+            .expect("second parse after same-length content change");
+        assert!(!second.from_parse_cache);
+        assert_ne!(first.semantic_fingerprint, second.semantic_fingerprint);
+
+        let _ = fs::remove_file(mtime_reference);
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn safe_rewrite_cache_reuse_requires_matching_entry_namespace() {
+        let previous = DependencyGraphCache {
+            schema: DEPENDENCY_GRAPH_CACHE_SCHEMA.to_string(),
+            compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+            entry_namespace: "app".to_string(),
+            files: Vec::new(),
+        };
+
+        assert!(can_reuse_safe_rewrite_cache(Some(&previous), "app"));
+        assert!(!can_reuse_safe_rewrite_cache(Some(&previous), "core"));
+        assert!(!can_reuse_safe_rewrite_cache(None, "app"));
+    }
+
     #[test]
     fn project_commands_recover_after_repeated_output_path_toggles() {
         let temp_root = make_temp_project_root("project-commands-repeated-output-toggles");
@@ -39225,6 +39382,7 @@ function main(): Integer {
         let previous = DependencyGraphCache {
             schema: DEPENDENCY_GRAPH_CACHE_SCHEMA.to_string(),
             compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+            entry_namespace: "app".to_string(),
             files: vec![
                 DependencyGraphFileEntry {
                     file: PathBuf::from("src/app.apex"),
@@ -39759,5 +39917,78 @@ function main(): Integer {
                 ("fc".to_string(), 1usize),
             ]
         );
+    }
+
+    #[test]
+    fn compile_source_runs_entry_namespace_module_named_main_runtime() {
+        let temp_root = make_temp_project_root("entry-namespace-module-main-runtime");
+        let source_path = temp_root.join("entry_namespace_module_main_runtime.apex");
+        let output_path = temp_root.join("entry_namespace_module_main_runtime");
+        let source = r#"
+package core;
+
+module main {
+    function ping(): Integer { return 22; }
+}
+
+function main(): Integer {
+    return main.ping();
+}
+"#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("entry namespace module named main should compile");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled entry namespace module named main binary");
+        assert_eq!(
+            output.status.code(),
+            Some(22),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_runs_entry_namespace_class_named_main_runtime() {
+        let temp_root = make_temp_project_root("entry-namespace-class-main-runtime");
+        let source_path = temp_root.join("entry_namespace_class_main_runtime.apex");
+        let output_path = temp_root.join("entry_namespace_class_main_runtime");
+        let source = r#"
+package core;
+
+class main {
+    value: Integer;
+    constructor(v: Integer) { this.value = v; }
+    function get(): Integer { return this.value; }
+}
+
+function main(): Integer {
+    value: main = main(22);
+    return value.get();
+}
+"#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("entry namespace class named main should compile");
+
+        let output = std::process::Command::new(&output_path)
+            .output()
+            .expect("run compiled entry namespace class named main binary");
+        assert_eq!(
+            output.status.code(),
+            Some(22),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 }
