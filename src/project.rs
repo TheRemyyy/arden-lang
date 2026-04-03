@@ -73,18 +73,12 @@ fn default_opt_level() -> String {
 }
 
 fn validate_project_path(
-    project_root: &Path,
+    canonical_root: &Path,
+    _project_root: &Path,
     relative_path: &str,
     label: &str,
-) -> Result<(), String> {
-    let canonical_root = project_root.canonicalize().map_err(|e| {
-        format!(
-            "Failed to resolve project root '{}': {}",
-            project_root.display(),
-            e
-        )
-    })?;
-    let resolved_path = project_root.join(relative_path);
+) -> Result<PathBuf, String> {
+    let resolved_path = normalize_project_relative_path(canonical_root, Path::new(relative_path))?;
 
     if !resolved_path.exists() {
         return Err(format!(
@@ -95,9 +89,9 @@ fn validate_project_path(
         ));
     }
 
-    let canonical_path = resolved_path.canonicalize().map_err(|e| {
+    let metadata = fs::symlink_metadata(&resolved_path).map_err(|e| {
         format!(
-            "Failed to resolve {} '{}' at '{}': {}",
+            "Failed to inspect {} '{}' at '{}': {}",
             label,
             relative_path,
             resolved_path.display(),
@@ -105,35 +99,51 @@ fn validate_project_path(
         )
     })?;
 
-    if !canonical_path.is_file() {
+    if !metadata.file_type().is_file() {
         return Err(format!(
             "{} '{}' must resolve to a file, found '{}'",
             label,
             relative_path,
-            canonical_path.display()
+            resolved_path.display()
         ));
     }
 
-    if canonical_path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
+    if resolved_path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
         return Err(format!(
             "{} '{}' must resolve to an .apex source file",
             label, relative_path
         ));
     }
 
-    if !canonical_path.starts_with(&canonical_root) {
-        return Err(format!(
-            "{} '{}' resolves outside the project root '{}'",
-            label,
-            relative_path,
-            canonical_root.display()
-        ));
+    if metadata.file_type().is_symlink() {
+        let canonical_path = resolved_path.canonicalize().map_err(|e| {
+            format!(
+                "Failed to resolve {} '{}' at '{}': {}",
+                label,
+                relative_path,
+                resolved_path.display(),
+                e
+            )
+        })?;
+        if !canonical_path.starts_with(canonical_root) {
+            return Err(format!(
+                "{} '{}' resolves outside the project root '{}'",
+                label,
+                relative_path,
+                canonical_root.display()
+            ));
+        }
+        return Ok(canonical_path);
     }
 
-    Ok(())
+    Ok(resolved_path)
 }
 
-fn validate_output_path(project_root: &Path, relative_path: &str) -> Result<(), String> {
+fn validate_output_path(
+    canonical_root: &Path,
+    project_root: &Path,
+    relative_path: &str,
+) -> Result<(), String> {
     if relative_path.trim().is_empty() {
         return Err("Output path must not be empty".to_string());
     }
@@ -146,13 +156,6 @@ fn validate_output_path(project_root: &Path, relative_path: &str) -> Result<(), 
         ));
     }
 
-    let canonical_root = project_root.canonicalize().map_err(|e| {
-        format!(
-            "Failed to resolve project root '{}': {}",
-            project_root.display(),
-            e
-        )
-    })?;
     let resolved_path = project_root.join(output_path);
 
     let existing_parent = resolved_path
@@ -175,7 +178,7 @@ fn validate_output_path(project_root: &Path, relative_path: &str) -> Result<(), 
         )
     })?;
 
-    if !canonical_parent.starts_with(&canonical_root) {
+    if !canonical_parent.starts_with(canonical_root) {
         return Err(format!(
             "Output path '{}' resolves outside the project root '{}'",
             relative_path,
@@ -194,24 +197,17 @@ fn validate_output_path(project_root: &Path, relative_path: &str) -> Result<(), 
 }
 
 fn normalize_project_relative_path(
-    project_root: &Path,
+    canonical_root: &Path,
     relative_path: &Path,
 ) -> Result<PathBuf, String> {
-    let canonical_root = project_root.canonicalize().map_err(|e| {
-        format!(
-            "Failed to resolve project root '{}': {}",
-            project_root.display(),
-            e
-        )
-    })?;
-    let mut normalized = canonical_root.clone();
+    let mut normalized = canonical_root.to_path_buf();
 
     for component in relative_path.components() {
         match component {
             Component::CurDir => {}
             Component::Normal(part) => normalized.push(part),
             Component::ParentDir => {
-                if !normalized.pop() || !normalized.starts_with(&canonical_root) {
+                if !normalized.pop() || !normalized.starts_with(canonical_root) {
                     return Err(format!(
                         "Path '{}' resolves outside the project root '{}'",
                         relative_path.display(),
@@ -309,11 +305,19 @@ impl ProjectConfig {
 
     /// Validate project configuration
     pub fn validate(&self, project_root: &Path) -> Result<(), String> {
-        validate_project_path(project_root, &self.entry, "Entry point")?;
-        validate_output_path(project_root, &self.output)?;
+        let canonical_root = project_root.canonicalize().map_err(|e| {
+            format!(
+                "Failed to resolve project root '{}': {}",
+                project_root.display(),
+                e
+            )
+        })?;
 
-        let output_path = normalize_project_relative_path(project_root, Path::new(&self.output))?;
-        let config_path = normalize_project_relative_path(project_root, Path::new("apex.toml"))?;
+        validate_project_path(&canonical_root, project_root, &self.entry, "Entry point")?;
+        validate_output_path(&canonical_root, project_root, &self.output)?;
+
+        let output_path = normalize_project_relative_path(&canonical_root, Path::new(&self.output))?;
+        let config_path = normalize_project_relative_path(&canonical_root, Path::new("apex.toml"))?;
         if output_path == config_path {
             return Err(format!(
                 "Output path '{}' must not overwrite the project config",
@@ -325,17 +329,11 @@ impl ProjectConfig {
 
         // Check all source files exist
         for file in &self.files {
-            validate_project_path(project_root, file, "Source file")?;
+            let source_path =
+                validate_project_path(&canonical_root, project_root, file, "Source file")?;
             if !seen_files.insert(file.as_str()) {
                 return Err(format!("Duplicate source file '{}' listed in files", file));
             }
-            let source_path = project_root.join(file).canonicalize().map_err(|e| {
-                format!(
-                    "Failed to resolve source file '{}': {}",
-                    project_root.join(file).display(),
-                    e
-                )
-            })?;
             if output_path == source_path {
                 return Err(format!(
                     "Output path '{}' must not overwrite source file '{}'",

@@ -365,7 +365,7 @@ fn ensure_output_parent_dir(output_path: &Path) -> Result<(), String> {
 }
 
 fn compute_project_fingerprint(
-    project_root: &Path,
+    files: &[PathBuf],
     config: &ProjectConfig,
     emit_llvm: bool,
     do_check: bool,
@@ -386,11 +386,9 @@ fn compute_project_fingerprint(
     emit_llvm.hash(&mut hasher);
     do_check.hash(&mut hasher);
 
-    let mut files = config.get_source_files(project_root);
-    files.sort();
     for file in files {
         file.hash(&mut hasher);
-        let meta = fs::metadata(&file).map_err(|e| {
+        let meta = fs::metadata(file).map_err(|e| {
             format!(
                 "{}: Failed to read metadata for '{}': {}",
                 "error".red().bold(),
@@ -643,9 +641,10 @@ struct SymbolLookupResolution {
     owner_file: PathBuf,
 }
 
-type ExactSymbolLookup = HashMap<String, Option<SymbolLookupResolution>>;
+type SharedSymbolLookupResolution = Arc<SymbolLookupResolution>;
+type ExactSymbolLookup = HashMap<String, Option<SharedSymbolLookupResolution>>;
 type WildcardMemberLookup =
-    HashMap<String, HashMap<String, Option<SymbolLookupResolution>>>;
+    HashMap<String, HashMap<String, Option<SharedSymbolLookupResolution>>>;
 
 #[derive(Debug, Clone)]
 struct ProjectSymbolLookup {
@@ -691,6 +690,22 @@ impl BuildTimings {
     }
 
     fn measure_value<T, F>(&mut self, label: &str, f: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        let start = Instant::now();
+        let result = f();
+        if self.enabled {
+            self.phases.push(BuildTimingPhase {
+                label: label.to_string(),
+                ms: start.elapsed().as_secs_f64() * 1000.0,
+                counters: Vec::new(),
+            });
+        }
+        result
+    }
+
+    fn measure_step<T, F>(&mut self, label: &str, f: F) -> T
     where
         F: FnOnce() -> T,
     {
@@ -2375,7 +2390,7 @@ fn save_typecheck_summary_cache(
     write_cache_blob(&path, "typecheck summary cache", cache)
 }
 
-const REWRITE_CACHE_SCHEMA: &str = "v8";
+const REWRITE_CACHE_SCHEMA: &str = "v9";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RewrittenFileCacheEntry {
@@ -2384,13 +2399,17 @@ struct RewrittenFileCacheEntry {
     semantic_fingerprint: String,
     rewrite_context_fingerprint: String,
     rewritten_program: Program,
+    api_program: Program,
+    specialization_projection: Program,
+    active_symbols: Vec<String>,
+    has_specialization_demand: bool,
 }
 
 const OBJECT_CACHE_SCHEMA: &str = "v3";
 const OBJECT_SHARD_CACHE_SCHEMA: &str = "v1";
 const LINK_MANIFEST_CACHE_SCHEMA: &str = "v1";
-const OBJECT_CODEGEN_SHARD_SIZE: usize = 32;
-const OBJECT_CODEGEN_SHARD_THRESHOLD: usize = 256;
+const OBJECT_CODEGEN_SHARD_SIZE: usize = 8;
+const OBJECT_CODEGEN_SHARD_THRESHOLD: usize = usize::MAX;
 
 fn env_usize_override(name: &str, default: usize) -> usize {
     std::env::var(name)
@@ -2606,11 +2625,25 @@ fn hash_file_api_fingerprint(
 }
 
 fn qualified_symbol_path(namespace: &str, symbol_name: &str) -> String {
-    if namespace.is_empty() {
-        symbol_name.replace("__", ".")
-    } else {
-        format!("{}.{}", namespace, symbol_name.replace("__", "."))
+    let separator_count = symbol_name.matches("__").count();
+    let mut path = String::with_capacity(namespace.len() + symbol_name.len() + separator_count + 1);
+    if !namespace.is_empty() {
+        path.push_str(namespace);
+        path.push('.');
     }
+    if separator_count == 0 {
+        path.push_str(symbol_name);
+        return path;
+    }
+
+    let mut remaining = symbol_name;
+    while let Some(index) = remaining.find("__") {
+        path.push_str(&remaining[..index]);
+        path.push('.');
+        remaining = &remaining[index + 2..];
+    }
+    path.push_str(remaining);
+    path
 }
 
 fn qualified_symbol_path_for_parts(namespace: &str, member_parts: &[String]) -> Option<String> {
@@ -2626,27 +2659,46 @@ fn qualified_symbol_path_for_parts(namespace: &str, member_parts: &[String]) -> 
 }
 
 fn wildcard_member_import_path(owner_namespace: &str, symbol_name: &str) -> (String, String) {
-    let mut parts = symbol_name.split("__").collect::<Vec<_>>();
-    if parts.len() == 1 {
+    let Some(last_separator) = symbol_name.rfind("__") else {
         return (owner_namespace.to_string(), symbol_name.to_string());
+    };
+
+    let member_name = symbol_name[last_separator + 2..].to_string();
+    let prefix = &symbol_name[..last_separator];
+    let separator_count = prefix.matches("__").count();
+    let mut import_namespace =
+        String::with_capacity(owner_namespace.len() + prefix.len() + separator_count + 1);
+    import_namespace.push_str(owner_namespace);
+    import_namespace.push('.');
+    if separator_count == 0 {
+        import_namespace.push_str(prefix);
+        return (import_namespace, member_name);
     }
 
-    let member_name = parts.pop().unwrap_or_default().to_string();
-    let import_namespace = format!("{}.{}", owner_namespace, parts.join("."));
+    let mut remaining = prefix;
+    while let Some(index) = remaining.find("__") {
+        import_namespace.push_str(&remaining[..index]);
+        import_namespace.push('.');
+        remaining = &remaining[index + 2..];
+    }
+    import_namespace.push_str(remaining);
     (import_namespace, member_name)
 }
 
 fn insert_lookup_resolution(
-    target: &mut HashMap<String, Option<SymbolLookupResolution>>,
+    target: &mut HashMap<String, Option<SharedSymbolLookupResolution>>,
     key: String,
-    resolution: SymbolLookupResolution,
+    resolution: SharedSymbolLookupResolution,
 ) {
     match target.entry(key) {
         std::collections::hash_map::Entry::Vacant(entry) => {
             entry.insert(Some(resolution));
         }
         std::collections::hash_map::Entry::Occupied(mut entry) => {
-            let unchanged = entry.get().as_ref().is_some_and(|current| current == &resolution);
+            let unchanged = entry
+                .get()
+                .as_ref()
+                .is_some_and(|current| current.as_ref() == resolution.as_ref());
             if !unchanged {
                 entry.insert(None);
             }
@@ -2661,15 +2713,15 @@ fn insert_symbol_lookup_entry(
     symbol_name: &str,
     owner_file: &Path,
 ) {
-    let resolution = SymbolLookupResolution {
+    let resolution = Arc::new(SymbolLookupResolution {
         owner_namespace: owner_namespace.to_string(),
         symbol_name: symbol_name.to_string(),
         owner_file: owner_file.to_path_buf(),
-    };
+    });
     insert_lookup_resolution(
         exact_lookup,
         qualified_symbol_path(owner_namespace, symbol_name),
-        resolution.clone(),
+        Arc::clone(&resolution),
     );
 
     let (import_namespace, member_name) =
@@ -2679,6 +2731,43 @@ fn insert_symbol_lookup_entry(
         member_name,
         resolution,
     );
+}
+
+fn register_global_symbol(
+    symbol_name: &str,
+    owner_namespace: &str,
+    owner_file: &Path,
+    global_map: &mut HashMap<String, String>,
+    global_file_map: &mut HashMap<String, PathBuf>,
+    collisions: &mut Vec<(String, String, String)>,
+    exact_lookup: &mut ExactSymbolLookup,
+    wildcard_lookup: &mut WildcardMemberLookup,
+    build_symbol_lookup: bool,
+) {
+    match global_map.entry(symbol_name.to_string()) {
+        std::collections::hash_map::Entry::Vacant(entry) => {
+            entry.insert(owner_namespace.to_string());
+            global_file_map.insert(symbol_name.to_string(), owner_file.to_path_buf());
+            if build_symbol_lookup {
+                insert_symbol_lookup_entry(
+                    exact_lookup,
+                    wildcard_lookup,
+                    owner_namespace,
+                    symbol_name,
+                    owner_file,
+                );
+            }
+        }
+        std::collections::hash_map::Entry::Occupied(entry) => {
+            if entry.get() != owner_namespace {
+                collisions.push((
+                    symbol_name.to_string(),
+                    entry.get().clone(),
+                    owner_namespace.to_string(),
+                ));
+            }
+        }
+    }
 }
 
 fn build_project_symbol_lookup(
@@ -2693,8 +2782,13 @@ fn build_project_symbol_lookup(
     global_module_map: &HashMap<String, String>,
     global_module_file_map: &HashMap<String, PathBuf>,
 ) -> ProjectSymbolLookup {
-    let mut exact = HashMap::new();
-    let mut wildcard_members = HashMap::new();
+    let symbol_count = global_function_map.len()
+        + global_class_map.len()
+        + global_interface_map.len()
+        + global_enum_map.len()
+        + global_module_map.len();
+    let mut exact = HashMap::with_capacity(symbol_count);
+    let mut wildcard_members = HashMap::with_capacity(symbol_count);
 
     for (symbol_name, owner_namespace) in global_function_map {
         if let Some(owner_file) = global_function_file_map.get(symbol_name) {
@@ -2762,7 +2856,10 @@ fn exact_symbol_resolution<'a>(
     lookup: &'a ProjectSymbolLookup,
     qualified_path: &str,
 ) -> Option<&'a SymbolLookupResolution> {
-    lookup.exact.get(qualified_path).and_then(Option::as_ref)
+    lookup
+        .exact
+        .get(qualified_path)
+        .and_then(Option::as_deref)
 }
 
 fn wildcard_symbol_resolution<'a>(
@@ -2774,7 +2871,7 @@ fn wildcard_symbol_resolution<'a>(
         .wildcard_members
         .get(import_namespace)
         .and_then(|members| members.get(member_name))
-        .and_then(Option::as_ref)
+        .and_then(Option::as_deref)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3181,40 +3278,48 @@ fn resolve_direct_dependencies_for_unit(
                 .direct_symbol_ref_count
                 .fetch_add(1, Ordering::Relaxed);
         }
-        if let Some(owner_file) = ctx
-            .namespace_function_files
-            .get(&unit.namespace)
-            .and_then(|map| map.get(symbol))
+        if ctx
+            .global_function_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
         {
-            if owner_file != &unit.file {
-                deps.insert(owner_file.clone());
+            if let Some(owner_file) = ctx.global_function_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    deps.insert(owner_file.clone());
+                }
             }
         }
-        if let Some(owner_file) = ctx
-            .namespace_class_files
-            .get(&unit.namespace)
-            .and_then(|map| map.get(symbol))
+        if ctx
+            .global_class_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
         {
-            if owner_file != &unit.file {
-                deps.insert(owner_file.clone());
+            if let Some(owner_file) = ctx.global_class_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    deps.insert(owner_file.clone());
+                }
             }
         }
-        if let Some(owner_file) = ctx
-            .namespace_interface_files
-            .get(&unit.namespace)
-            .and_then(|map| map.get(symbol))
+        if ctx
+            .global_interface_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
         {
-            if owner_file != &unit.file {
-                deps.insert(owner_file.clone());
+            if let Some(owner_file) = ctx.global_interface_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    deps.insert(owner_file.clone());
+                }
             }
         }
-        if let Some(owner_file) = ctx
-            .namespace_module_files
-            .get(&unit.namespace)
-            .and_then(|map| map.get(symbol))
+        if ctx
+            .global_module_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
         {
-            if owner_file != &unit.file {
-                deps.insert(owner_file.clone());
+            if let Some(owner_file) = ctx.global_module_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    deps.insert(owner_file.clone());
+                }
             }
         }
     }
@@ -3920,40 +4025,48 @@ fn compute_rewrite_context_fingerprint_for_unit_impl(
                 .local_symbol_ref_count
                 .fetch_add(1, Ordering::Relaxed);
         }
-        if let Some(owner_file) = ctx
-            .namespace_function_files
-            .get(&unit.namespace)
-            .and_then(|map| map.get(symbol))
+        if ctx
+            .global_function_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
         {
-            if owner_file != &unit.file {
-                hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+            if let Some(owner_file) = ctx.global_function_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+                }
             }
         }
-        if let Some(owner_file) = ctx
-            .namespace_class_files
-            .get(&unit.namespace)
-            .and_then(|map| map.get(symbol))
+        if ctx
+            .global_class_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
         {
-            if owner_file != &unit.file {
-                hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+            if let Some(owner_file) = ctx.global_class_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+                }
             }
         }
-        if let Some(owner_file) = ctx
-            .namespace_interface_files
-            .get(&unit.namespace)
-            .and_then(|map| map.get(symbol))
+        if ctx
+            .global_interface_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
         {
-            if owner_file != &unit.file {
-                hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+            if let Some(owner_file) = ctx.global_interface_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+                }
             }
         }
-        if let Some(owner_file) = ctx
-            .namespace_module_files
-            .get(&unit.namespace)
-            .and_then(|map| map.get(symbol))
+        if ctx
+            .global_module_map
+            .get(symbol)
+            .is_some_and(|owner_namespace| owner_namespace == &unit.namespace)
         {
-            if owner_file != &unit.file {
-                hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+            if let Some(owner_file) = ctx.global_module_file_map.get(symbol) {
+                if owner_file != &unit.file {
+                    hash_file_api_fingerprint(ctx.file_api_fingerprints, owner_file, &mut hasher);
+                }
             }
         }
     }
@@ -4249,9 +4362,8 @@ fn load_rewritten_file_cache(
     file: &Path,
     semantic_fingerprint: &str,
     rewrite_context_fingerprint: &str,
-) -> Result<Option<Program>, String> {
-    let path = rewritten_file_cache_path(project_root, file);
-    let entry: RewrittenFileCacheEntry = match read_cache_blob(&path, "rewrite cache")? {
+) -> Result<Option<RewrittenFileCacheEntry>, String> {
+    let entry = match load_rewritten_file_cache_entry(project_root, file)? {
         Some(entry) => entry,
         None => return Ok(None),
     };
@@ -4264,7 +4376,35 @@ fn load_rewritten_file_cache(
         return Ok(None);
     }
 
-    Ok(Some(entry.rewritten_program))
+    Ok(Some(entry))
+}
+
+fn load_rewritten_file_cache_entry(
+    project_root: &Path,
+    file: &Path,
+) -> Result<Option<RewrittenFileCacheEntry>, String> {
+    let path = rewritten_file_cache_path(project_root, file);
+    read_cache_blob(&path, "rewrite cache")
+}
+
+fn load_rewritten_file_cache_if_semantic_matches(
+    project_root: &Path,
+    file: &Path,
+    semantic_fingerprint: &str,
+) -> Result<Option<RewrittenFileCacheEntry>, String> {
+    let entry = match load_rewritten_file_cache_entry(project_root, file)? {
+        Some(entry) => entry,
+        None => return Ok(None),
+    };
+
+    if entry.schema != REWRITE_CACHE_SCHEMA
+        || entry.compiler_version != env!("CARGO_PKG_VERSION")
+        || entry.semantic_fingerprint != semantic_fingerprint
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(entry))
 }
 
 fn save_rewritten_file_cache(
@@ -4273,6 +4413,10 @@ fn save_rewritten_file_cache(
     semantic_fingerprint: &str,
     rewrite_context_fingerprint: &str,
     rewritten_program: &Program,
+    api_program: &Program,
+    specialization_projection: &Program,
+    active_symbols: &HashSet<String>,
+    has_specialization_demand: bool,
 ) -> Result<(), String> {
     let path = rewritten_file_cache_path(project_root, file);
     if let Some(parent) = path.parent() {
@@ -4292,6 +4436,14 @@ fn save_rewritten_file_cache(
         semantic_fingerprint: semantic_fingerprint.to_string(),
         rewrite_context_fingerprint: rewrite_context_fingerprint.to_string(),
         rewritten_program: rewritten_program.clone(),
+        api_program: api_program.clone(),
+        specialization_projection: specialization_projection.clone(),
+        active_symbols: {
+            let mut symbols = active_symbols.iter().cloned().collect::<Vec<_>>();
+            symbols.sort();
+            symbols
+        },
+        has_specialization_demand,
     };
     write_cache_blob(&path, "rewrite cache", &entry)
 }
@@ -4570,6 +4722,29 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         .unwrap_or("unknown.apex");
     let file_metadata = current_file_metadata_stamp(file)?;
     let cached_entry = load_parsed_file_cache_entry(project_root, file)?;
+    let cached_entry = match cached_entry {
+        Some(cache) if cache.file_metadata == file_metadata => {
+            return Ok(ParsedProjectUnit {
+                file: file.to_path_buf(),
+                namespace: cache.namespace,
+                program: cache.program,
+                imports: cache.imports,
+                api_fingerprint: cache.api_fingerprint,
+                semantic_fingerprint: cache.semantic_fingerprint,
+                import_check_fingerprint: cache.import_check_fingerprint,
+                function_names: cache.function_names,
+                class_names: cache.class_names,
+                interface_names: cache.interface_names,
+                enum_names: cache.enum_names,
+                module_names: cache.module_names,
+                referenced_symbols: cache.referenced_symbols,
+                qualified_symbol_refs: cache.qualified_symbol_refs,
+                api_referenced_symbols: cache.api_referenced_symbols,
+                from_parse_cache: true,
+            });
+        }
+        other => other,
+    };
     let (
         namespace,
         program,
@@ -5513,20 +5688,26 @@ fn build_project(
     let config_path = project_root.join("apex.toml");
     let config = ProjectConfig::load(&config_path)?;
 
-    // Validate project
-    config.validate(&project_root)?;
+    build_timings.measure("project config validation", || config.validate(&project_root))?;
     validate_opt_level(Some(&config.opt_level))?;
-    for source_file in config.get_source_files(&project_root) {
-        validate_source_file_path(&source_file)?;
-    }
+    let files = build_timings.measure_step("source file discovery", || {
+        let mut files = config.get_source_files(&project_root);
+        files.sort();
+        files
+    });
+    build_timings.record_counts("source file discovery", &[("files", files.len())]);
 
     let output_path = project_root.join(&config.output);
     if !check_only {
         ensure_output_parent_dir(&output_path)?;
     }
-    let fingerprint = compute_project_fingerprint(&project_root, &config, emit_llvm, do_check)?;
+    let fingerprint = build_timings.measure("project fingerprint", || {
+        compute_project_fingerprint(&files, &config, emit_llvm, do_check)
+    })?;
     if !check_only {
-        if let Some(cached) = load_cached_fingerprint(&project_root)? {
+        if let Some(cached) = build_timings.measure("build cache lookup", || {
+            load_cached_fingerprint(&project_root)
+        })? {
             if cached == fingerprint && project_build_artifact_exists(&output_path, emit_llvm) {
                 println!(
                     "{} {}",
@@ -5547,7 +5728,6 @@ fn build_project(
     );
 
     // Phase 1: Parse all files (parallel) and extract namespace information
-    let files = config.get_source_files(&project_root);
     let mut parsed_files: Vec<ParsedProjectUnit> = Vec::new();
     let mut global_function_map: HashMap<String, String> = HashMap::new(); // func_name -> namespace
     let mut global_function_file_map: HashMap<String, PathBuf> = HashMap::new(); // func_name -> owner file
@@ -5559,6 +5739,8 @@ fn build_project(
     let mut global_enum_file_map: HashMap<String, PathBuf> = HashMap::new(); // enum_name -> owner file
     let mut global_module_map: HashMap<String, String> = HashMap::new(); // module_name -> namespace
     let mut global_module_file_map: HashMap<String, PathBuf> = HashMap::new(); // module_name -> owner file
+    let mut project_symbol_lookup_exact: ExactSymbolLookup = HashMap::new();
+    let mut project_symbol_lookup_wildcard_members: WildcardMemberLookup = HashMap::new();
     let mut namespace_class_map: HashMap<String, HashSet<String>> = HashMap::new();
     let mut namespace_interface_map: HashMap<String, HashSet<String>> = HashMap::new();
     let mut namespace_enum_map: HashMap<String, HashSet<String>> = HashMap::new();
@@ -5578,103 +5760,181 @@ fn build_project(
                 .collect::<Result<Vec<_>, String>>()
         })?;
     parsed_units.sort_by(|a, b| a.file.cmp(&b.file));
-
-    for unit in parsed_units {
-        if unit.from_parse_cache {
-            parse_cache_hits += 1;
-        }
-
-        // Extract symbol definitions for global maps
-        let class_entry = namespace_class_map
-            .entry(unit.namespace.clone())
-            .or_default();
-        let interface_entry = namespace_interface_map
-            .entry(unit.namespace.clone())
-            .or_default();
-        let enum_entry = namespace_enum_map
-            .entry(unit.namespace.clone())
-            .or_default();
-        let module_entry = namespace_module_map
-            .entry(unit.namespace.clone())
-            .or_default();
-
-        for func_name in &unit.function_names {
-            if let Some(existing_ns) = global_function_map.get(func_name) {
-                if existing_ns != &unit.namespace {
-                    function_collisions.push((
-                        func_name.clone(),
-                        existing_ns.clone(),
-                        unit.namespace.clone(),
-                    ));
-                }
-            } else {
-                global_function_map.insert(func_name.clone(), unit.namespace.clone());
-                global_function_file_map.insert(func_name.clone(), unit.file.clone());
-            }
-        }
-        for class_name in &unit.class_names {
-            class_entry.insert(class_name.clone());
-            if let Some(existing_ns) = global_class_map.get(class_name) {
-                if existing_ns != &unit.namespace {
-                    class_collisions.push((
-                        class_name.clone(),
-                        existing_ns.clone(),
-                        unit.namespace.clone(),
-                    ));
-                }
-            } else {
-                global_class_map.insert(class_name.clone(), unit.namespace.clone());
-                global_class_file_map.insert(class_name.clone(), unit.file.clone());
-            }
-        }
-        for interface_name in &unit.interface_names {
-            interface_entry.insert(interface_name.clone());
-            if let Some(existing_ns) = global_interface_map.get(interface_name) {
-                if existing_ns != &unit.namespace {
-                    interface_collisions.push((
-                        interface_name.clone(),
-                        existing_ns.clone(),
-                        unit.namespace.clone(),
-                    ));
-                }
-            } else {
-                global_interface_map.insert(interface_name.clone(), unit.namespace.clone());
-                global_interface_file_map.insert(interface_name.clone(), unit.file.clone());
-            }
-        }
-        for enum_name in &unit.enum_names {
-            enum_entry.insert(enum_name.clone());
-            if let Some(existing_ns) = global_enum_map.get(enum_name) {
-                if existing_ns != &unit.namespace {
-                    enum_collisions.push((
-                        enum_name.clone(),
-                        existing_ns.clone(),
-                        unit.namespace.clone(),
-                    ));
-                }
-            } else {
-                global_enum_map.insert(enum_name.clone(), unit.namespace.clone());
-                global_enum_file_map.insert(enum_name.clone(), unit.file.clone());
-            }
-        }
-        for module_name in &unit.module_names {
-            module_entry.insert(module_name.clone());
-            if let Some(existing_ns) = global_module_map.get(module_name) {
-                if existing_ns != &unit.namespace {
-                    module_collisions.push((
-                        module_name.clone(),
-                        existing_ns.clone(),
-                        unit.namespace.clone(),
-                    ));
-                }
-            } else {
-                global_module_map.insert(module_name.clone(), unit.namespace.clone());
-                global_module_file_map.insert(module_name.clone(), unit.file.clone());
-            }
-        }
-
-        parsed_files.push(unit);
+    let total_function_names: usize = parsed_units
+        .iter()
+        .map(|unit| unit.function_names.len())
+        .sum();
+    let total_class_names: usize = parsed_units.iter().map(|unit| unit.class_names.len()).sum();
+    let total_interface_names: usize = parsed_units
+        .iter()
+        .map(|unit| unit.interface_names.len())
+        .sum();
+    let total_enum_names: usize = parsed_units.iter().map(|unit| unit.enum_names.len()).sum();
+    let total_module_names: usize = parsed_units.iter().map(|unit| unit.module_names.len()).sum();
+    let needs_project_symbol_lookup = parsed_units.iter().any(|unit| {
+        unit.imports
+            .iter()
+            .any(|import| !import.path.starts_with("std."))
+    });
+    global_function_map.reserve(total_function_names);
+    global_function_file_map.reserve(total_function_names);
+    global_class_map.reserve(total_class_names);
+    global_class_file_map.reserve(total_class_names);
+    global_interface_map.reserve(total_interface_names);
+    global_interface_file_map.reserve(total_interface_names);
+    global_enum_map.reserve(total_enum_names);
+    global_enum_file_map.reserve(total_enum_names);
+    global_module_map.reserve(total_module_names);
+    global_module_file_map.reserve(total_module_names);
+    if needs_project_symbol_lookup {
+        project_symbol_lookup_exact.reserve(
+            total_function_names
+                + total_class_names
+                + total_interface_names
+                + total_enum_names
+                + total_module_names,
+        );
+        project_symbol_lookup_wildcard_members.reserve(
+            total_function_names
+                + total_class_names
+                + total_interface_names
+                + total_enum_names
+                + total_module_names,
+        );
     }
+    namespace_class_map.reserve(parsed_units.len());
+    namespace_interface_map.reserve(parsed_units.len());
+    namespace_enum_map.reserve(parsed_units.len());
+    namespace_module_map.reserve(parsed_units.len());
+    let mut parse_index_namespace_sets_ns = 0_u64;
+    let mut parse_index_function_register_ns = 0_u64;
+    let mut parse_index_class_register_ns = 0_u64;
+    let mut parse_index_interface_register_ns = 0_u64;
+    let mut parse_index_enum_register_ns = 0_u64;
+    let mut parse_index_module_register_ns = 0_u64;
+    let mut parse_index_parsed_file_push_ns = 0_u64;
+
+    build_timings.measure_step("parse index assembly", || {
+        for unit in parsed_units {
+            if unit.from_parse_cache {
+                parse_cache_hits += 1;
+            }
+
+            let namespace_sets_started_at = Instant::now();
+            for func_name in &unit.function_names {
+                let started_at = Instant::now();
+                register_global_symbol(
+                    func_name,
+                    &unit.namespace,
+                    &unit.file,
+                    &mut global_function_map,
+                    &mut global_function_file_map,
+                    &mut function_collisions,
+                    &mut project_symbol_lookup_exact,
+                    &mut project_symbol_lookup_wildcard_members,
+                    needs_project_symbol_lookup,
+                );
+                parse_index_function_register_ns += elapsed_nanos_u64(started_at);
+            }
+            if !unit.class_names.is_empty() {
+                let class_entry = namespace_class_map
+                    .entry(unit.namespace.clone())
+                    .or_insert_with(|| HashSet::with_capacity(unit.class_names.len()));
+                for class_name in &unit.class_names {
+                    class_entry.insert(class_name.clone());
+                }
+                for class_name in &unit.class_names {
+                    let started_at = Instant::now();
+                    register_global_symbol(
+                        class_name,
+                        &unit.namespace,
+                        &unit.file,
+                        &mut global_class_map,
+                        &mut global_class_file_map,
+                        &mut class_collisions,
+                        &mut project_symbol_lookup_exact,
+                        &mut project_symbol_lookup_wildcard_members,
+                        needs_project_symbol_lookup,
+                    );
+                    parse_index_class_register_ns += elapsed_nanos_u64(started_at);
+                }
+            }
+            if !unit.interface_names.is_empty() {
+                let interface_entry = namespace_interface_map
+                    .entry(unit.namespace.clone())
+                    .or_insert_with(|| HashSet::with_capacity(unit.interface_names.len()));
+                for interface_name in &unit.interface_names {
+                    interface_entry.insert(interface_name.clone());
+                }
+                for interface_name in &unit.interface_names {
+                    let started_at = Instant::now();
+                    register_global_symbol(
+                        interface_name,
+                        &unit.namespace,
+                        &unit.file,
+                        &mut global_interface_map,
+                        &mut global_interface_file_map,
+                        &mut interface_collisions,
+                        &mut project_symbol_lookup_exact,
+                        &mut project_symbol_lookup_wildcard_members,
+                        needs_project_symbol_lookup,
+                    );
+                    parse_index_interface_register_ns += elapsed_nanos_u64(started_at);
+                }
+            }
+            if !unit.enum_names.is_empty() {
+                let enum_entry = namespace_enum_map
+                    .entry(unit.namespace.clone())
+                    .or_insert_with(|| HashSet::with_capacity(unit.enum_names.len()));
+                for enum_name in &unit.enum_names {
+                    enum_entry.insert(enum_name.clone());
+                }
+                for enum_name in &unit.enum_names {
+                    let started_at = Instant::now();
+                    register_global_symbol(
+                        enum_name,
+                        &unit.namespace,
+                        &unit.file,
+                        &mut global_enum_map,
+                        &mut global_enum_file_map,
+                        &mut enum_collisions,
+                        &mut project_symbol_lookup_exact,
+                        &mut project_symbol_lookup_wildcard_members,
+                        needs_project_symbol_lookup,
+                    );
+                    parse_index_enum_register_ns += elapsed_nanos_u64(started_at);
+                }
+            }
+            if !unit.module_names.is_empty() {
+                let module_entry = namespace_module_map
+                    .entry(unit.namespace.clone())
+                    .or_insert_with(|| HashSet::with_capacity(unit.module_names.len()));
+                for module_name in &unit.module_names {
+                    module_entry.insert(module_name.clone());
+                }
+                for module_name in &unit.module_names {
+                    let started_at = Instant::now();
+                    register_global_symbol(
+                        module_name,
+                        &unit.namespace,
+                        &unit.file,
+                        &mut global_module_map,
+                        &mut global_module_file_map,
+                        &mut module_collisions,
+                        &mut project_symbol_lookup_exact,
+                        &mut project_symbol_lookup_wildcard_members,
+                        needs_project_symbol_lookup,
+                    );
+                    parse_index_module_register_ns += elapsed_nanos_u64(started_at);
+                }
+            }
+            parse_index_namespace_sets_ns += elapsed_nanos_u64(namespace_sets_started_at);
+
+            let push_started_at = Instant::now();
+            parsed_files.push(unit);
+            parse_index_parsed_file_push_ns += elapsed_nanos_u64(push_started_at);
+        }
+    });
 
     if parse_cache_hits > 0 {
         println!(
@@ -5692,70 +5952,108 @@ fn build_project(
             ("parsed", files.len().saturating_sub(parse_cache_hits)),
         ],
     );
-
-    let previous_dependency_graph = load_dependency_graph_cache(&project_root)?;
+    build_timings.record_duration_ns(
+        "parse index/namespace sets",
+        parse_index_namespace_sets_ns,
+    );
+    build_timings.record_duration_ns(
+        "parse index/register functions",
+        parse_index_function_register_ns,
+    );
+    build_timings.record_duration_ns(
+        "parse index/register classes",
+        parse_index_class_register_ns,
+    );
+    build_timings.record_duration_ns(
+        "parse index/register interfaces",
+        parse_index_interface_register_ns,
+    );
+    build_timings.record_duration_ns(
+        "parse index/register enums",
+        parse_index_enum_register_ns,
+    );
+    build_timings.record_duration_ns(
+        "parse index/register modules",
+        parse_index_module_register_ns,
+    );
+    build_timings.record_duration_ns(
+        "parse index/push units",
+        parse_index_parsed_file_push_ns,
+    );
+    build_timings.record_counts(
+        "parse index/details",
+        &[
+            ("functions", total_function_names),
+            ("classes", total_class_names),
+            ("interfaces", total_interface_names),
+            ("enums", total_enum_names),
+            ("modules", total_module_names),
+            (
+                "project_symbol_lookup",
+                usize::from(needs_project_symbol_lookup),
+            ),
+        ],
+    );
+    let previous_dependency_graph =
+        build_timings.measure("dependency cache load", || load_dependency_graph_cache(&project_root))?;
     let mut namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
-    let mut namespace_function_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let mut namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let mut namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let mut namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    for unit in &parsed_files {
-        namespace_files_map
-            .entry(unit.namespace.clone())
-            .or_default()
-            .push(unit.file.clone());
-        for module_name in &unit.module_names {
+    namespace_files_map.reserve(parsed_files.len() + total_module_names);
+    let namespace_function_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let mut dependency_lookup_base_namespace_ns = 0_u64;
+    let mut dependency_lookup_module_namespace_ns = 0_u64;
+    let mut dependency_lookup_sort_dedup_ns = 0_u64;
+    build_timings.measure_step("dependency lookup prep", || {
+        for unit in &parsed_files {
+            let started_at = Instant::now();
             namespace_files_map
-                .entry(format!(
-                    "{}.{}",
-                    unit.namespace,
-                    module_name.replace("__", ".")
-                ))
+                .entry(unit.namespace.clone())
                 .or_default()
                 .push(unit.file.clone());
+            dependency_lookup_base_namespace_ns += elapsed_nanos_u64(started_at);
+            for module_name in &unit.module_names {
+                let started_at = Instant::now();
+                namespace_files_map
+                    .entry(format!(
+                        "{}.{}",
+                        unit.namespace,
+                        module_name.replace("__", ".")
+                    ))
+                    .or_default()
+                    .push(unit.file.clone());
+                dependency_lookup_module_namespace_ns += elapsed_nanos_u64(started_at);
+            }
         }
-        let function_entry = namespace_function_files
-            .entry(unit.namespace.clone())
-            .or_default();
-        for name in &unit.function_names {
-            function_entry.insert(name.clone(), unit.file.clone());
+        let sort_started_at = Instant::now();
+        for files in namespace_files_map.values_mut() {
+            files.sort();
+            files.dedup();
         }
-        let class_entry = namespace_class_files
-            .entry(unit.namespace.clone())
-            .or_default();
-        for name in &unit.class_names {
-            class_entry.insert(name.clone(), unit.file.clone());
-        }
-        let interface_entry = namespace_interface_files
-            .entry(unit.namespace.clone())
-            .or_default();
-        for name in &unit.interface_names {
-            interface_entry.insert(name.clone(), unit.file.clone());
-        }
-        let module_entry = namespace_module_files
-            .entry(unit.namespace.clone())
-            .or_default();
-        for name in &unit.module_names {
-            module_entry.insert(name.clone(), unit.file.clone());
-        }
-    }
-    for files in namespace_files_map.values_mut() {
-        files.sort();
-        files.dedup();
-    }
-
-    let project_symbol_lookup = build_project_symbol_lookup(
-        &global_function_map,
-        &global_function_file_map,
-        &global_class_map,
-        &global_class_file_map,
-        &global_interface_map,
-        &global_interface_file_map,
-        &global_enum_map,
-        &global_enum_file_map,
-        &global_module_map,
-        &global_module_file_map,
+        dependency_lookup_sort_dedup_ns += elapsed_nanos_u64(sort_started_at);
+    });
+    build_timings.record_duration_ns(
+        "dependency lookup/base namespace",
+        dependency_lookup_base_namespace_ns,
     );
+    build_timings.record_duration_ns(
+        "dependency lookup/module namespace",
+        dependency_lookup_module_namespace_ns,
+    );
+    build_timings.record_duration_ns("dependency lookup/function files", 0);
+    build_timings.record_duration_ns("dependency lookup/class files", 0);
+    build_timings.record_duration_ns("dependency lookup/interface files", 0);
+    build_timings.record_duration_ns("dependency lookup/module files", 0);
+    build_timings.record_duration_ns(
+        "dependency lookup/sort dedup",
+        dependency_lookup_sort_dedup_ns,
+    );
+
+    let project_symbol_lookup = ProjectSymbolLookup {
+        exact: project_symbol_lookup_exact,
+        wildcard_members: project_symbol_lookup_wildcard_members,
+    };
 
     let dependency_resolution_ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
@@ -6109,28 +6407,36 @@ fn build_project(
         validate_entry_main_signature(entry_program, &entry_source, entry_filename)?;
     }
 
-    let mut namespace_functions: HashMap<String, HashSet<String>> = HashMap::new();
-    for unit in &parsed_files {
-        let entry = namespace_functions
-            .entry(unit.namespace.clone())
-            .or_default();
-        for decl in &unit.program.declarations {
-            if let Decl::Function(func) = &decl.node {
-                entry.insert(func.name.clone());
+    let (namespace_functions, entry_namespace, namespace_api_fingerprints, file_api_fingerprints) =
+        build_timings.measure_step("rewrite prep", || {
+            let mut namespace_functions: HashMap<String, HashSet<String>> = HashMap::new();
+            for unit in &parsed_files {
+                if unit.function_names.is_empty() {
+                    continue;
+                }
+                namespace_functions
+                    .entry(unit.namespace.clone())
+                    .or_insert_with(|| HashSet::with_capacity(unit.function_names.len()))
+                    .extend(unit.function_names.iter().cloned());
             }
-        }
-    }
 
-    let entry_namespace = parsed_files
-        .iter()
-        .find(|unit| unit.file == entry_path)
-        .map(|unit| unit.namespace.clone())
-        .unwrap_or_else(|| "global".to_string());
-    let namespace_api_fingerprints = compute_namespace_api_fingerprints(&parsed_files);
-    let file_api_fingerprints: HashMap<PathBuf, String> = parsed_files
-        .iter()
-        .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
-        .collect();
+            let entry_namespace = parsed_files
+                .iter()
+                .find(|unit| unit.file == entry_path)
+                .map(|unit| unit.namespace.clone())
+                .unwrap_or_else(|| "global".to_string());
+            let namespace_api_fingerprints = compute_namespace_api_fingerprints(&parsed_files);
+            let file_api_fingerprints: HashMap<PathBuf, String> = parsed_files
+                .iter()
+                .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
+                .collect();
+            (
+                namespace_functions,
+                entry_namespace,
+                namespace_api_fingerprints,
+                file_api_fingerprints,
+            )
+        });
     let rewrite_fingerprint_ctx = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
         namespace_function_files: &namespace_function_files,
@@ -6152,6 +6458,19 @@ fn build_project(
         namespace_api_fingerprints: &namespace_api_fingerprints,
         file_api_fingerprints: &file_api_fingerprints,
         symbol_lookup: Arc::new(project_symbol_lookup.clone()),
+    };
+    let safe_rewrite_cache_files: HashSet<PathBuf> = if previous_dependency_graph.is_some() {
+        parsed_files
+            .iter()
+            .filter(|unit| {
+                !body_only_changed.contains(&unit.file)
+                    && !api_changed.contains(&unit.file)
+                    && !dependent_api_impact.contains(&unit.file)
+            })
+            .map(|unit| unit.file.clone())
+            .collect()
+    } else {
+        HashSet::new()
     };
 
     // Phase 2: Check imports for each file
@@ -6319,6 +6638,41 @@ fn build_project(
                 parsed_files
                     .par_iter()
                     .map(|unit| {
+                        if safe_rewrite_cache_files.contains(&unit.file) {
+                            let cache_lookup_started_at = Instant::now();
+                            if let Some(cached_entry) = load_rewritten_file_cache_if_semantic_matches(
+                                &project_root,
+                                &unit.file,
+                                &unit.semantic_fingerprint,
+                            )? {
+                                rewrite_timing_totals.cache_lookup_ns.fetch_add(
+                                    elapsed_nanos_u64(cache_lookup_started_at),
+                                    Ordering::Relaxed,
+                                );
+                                let cached = cached_entry.rewritten_program;
+                                return Ok(RewrittenProjectUnit {
+                                    file: unit.file.clone(),
+                                    program: cached,
+                                    api_program: cached_entry.api_program,
+                                    specialization_projection: cached_entry
+                                        .specialization_projection,
+                                    semantic_fingerprint: unit.semantic_fingerprint.clone(),
+                                    rewrite_context_fingerprint: cached_entry
+                                        .rewrite_context_fingerprint,
+                                    active_symbols: cached_entry
+                                        .active_symbols
+                                        .into_iter()
+                                        .collect(),
+                                    has_specialization_demand: cached_entry
+                                        .has_specialization_demand,
+                                    from_rewrite_cache: true,
+                                });
+                            }
+                            rewrite_timing_totals.cache_lookup_ns.fetch_add(
+                                elapsed_nanos_u64(cache_lookup_started_at),
+                                Ordering::Relaxed,
+                            );
+                        }
                         let fingerprint_started_at = Instant::now();
                         let rewrite_context_fingerprint =
                             compute_rewrite_context_fingerprint_for_unit_impl(
@@ -6341,45 +6695,16 @@ fn build_project(
                                 elapsed_nanos_u64(cache_lookup_started_at),
                                 Ordering::Relaxed,
                             );
-                            let active_symbols_started_at = Instant::now();
-                            let active_symbols = collect_active_symbols(&cached);
-                            rewrite_timing_totals.active_symbols_ns.fetch_add(
-                                elapsed_nanos_u64(active_symbols_started_at),
-                                Ordering::Relaxed,
-                            );
-                            let api_projection_started_at = Instant::now();
-                            let api_program = api_projection_program(&cached);
-                            rewrite_timing_totals.api_projection_ns.fetch_add(
-                                elapsed_nanos_u64(api_projection_started_at),
-                                Ordering::Relaxed,
-                            );
-                            let specialization_projection_started_at = Instant::now();
-                            let specialization_projection =
-                                specialization_projection_program(&cached);
-                            rewrite_timing_totals
-                                .specialization_projection_ns
-                                .fetch_add(
-                                    elapsed_nanos_u64(specialization_projection_started_at),
-                                    Ordering::Relaxed,
-                                );
-                            let specialization_demand_started_at = Instant::now();
-                            let has_specialization_demand =
-                                program_has_codegen_specialization_demand(&cached);
-                            rewrite_timing_totals
-                                .specialization_demand_ns
-                                .fetch_add(
-                                    elapsed_nanos_u64(specialization_demand_started_at),
-                                    Ordering::Relaxed,
-                                );
+                            let rewritten_program = cached.rewritten_program;
                             return Ok(RewrittenProjectUnit {
                                 file: unit.file.clone(),
-                                program: cached,
-                                api_program,
-                                specialization_projection,
+                                program: rewritten_program,
+                                api_program: cached.api_program,
+                                specialization_projection: cached.specialization_projection,
                                 semantic_fingerprint: unit.semantic_fingerprint.clone(),
                                 rewrite_context_fingerprint: rewrite_context_fingerprint.clone(),
-                                active_symbols,
-                                has_specialization_demand,
+                                active_symbols: cached.active_symbols.into_iter().collect(),
+                                has_specialization_demand: cached.has_specialization_demand,
                                 from_rewrite_cache: true,
                             });
                         }
@@ -6410,17 +6735,6 @@ fn build_project(
                             Ordering::Relaxed,
                         );
                         let cache_save_started_at = Instant::now();
-                        save_rewritten_file_cache(
-                            &project_root,
-                            &unit.file,
-                            &unit.semantic_fingerprint,
-                            &rewrite_context_fingerprint,
-                            &rewritten,
-                        )?;
-                        rewrite_timing_totals.cache_save_ns.fetch_add(
-                            elapsed_nanos_u64(cache_save_started_at),
-                            Ordering::Relaxed,
-                        );
                         let active_symbols_started_at = Instant::now();
                         let active_symbols = collect_active_symbols(&rewritten);
                         rewrite_timing_totals.active_symbols_ns.fetch_add(
@@ -6451,6 +6765,21 @@ fn build_project(
                                 elapsed_nanos_u64(specialization_demand_started_at),
                                 Ordering::Relaxed,
                             );
+                        save_rewritten_file_cache(
+                            &project_root,
+                            &unit.file,
+                            &unit.semantic_fingerprint,
+                            &rewrite_context_fingerprint,
+                            &rewritten,
+                            &api_program,
+                            &specialization_projection,
+                            &active_symbols,
+                            has_specialization_demand,
+                        )?;
+                        rewrite_timing_totals.cache_save_ns.fetch_add(
+                            elapsed_nanos_u64(cache_save_started_at),
+                            Ordering::Relaxed,
+                        );
                         Ok(RewrittenProjectUnit {
                             file: unit.file.clone(),
                             active_symbols,
@@ -6932,41 +7261,57 @@ fn build_project(
         }
 
         let object_build_fingerprint = compute_object_build_fingerprint(&link);
-        let previous_link_manifest = load_link_manifest_cache(&project_root)?;
-        let rewritten_file_indices: HashMap<PathBuf, usize> = rewritten_files
-            .iter()
-            .enumerate()
-            .map(|(index, unit)| (unit.file.clone(), index))
-            .collect();
-        let object_cache_paths_by_file: HashMap<PathBuf, ObjectCachePaths> = rewritten_files
-            .iter()
-            .map(|unit| {
-                (
-                    unit.file.clone(),
-                    object_cache_paths(&project_root, &unit.file),
-                )
-            })
-            .collect();
-        let codegen_reference_metadata: HashMap<PathBuf, CodegenReferenceMetadata> = parsed_files
-            .iter()
-            .map(|unit| {
-                (
-                    unit.file.clone(),
-                    CodegenReferenceMetadata {
-                        imports: unit.imports.clone(),
-                        referenced_symbols: unit.referenced_symbols.clone(),
-                        qualified_symbol_refs: unit.qualified_symbol_refs.clone(),
-                        api_referenced_symbols: unit.api_referenced_symbols.clone(),
-                    },
-                )
-            })
-            .collect();
-        let precomputed_dependency_closures =
-            precompute_all_transitive_dependencies(&file_dependency_graph);
-        let file_namespaces: HashMap<PathBuf, String> = parsed_files
-            .iter()
-            .map(|unit| (unit.file.clone(), unit.namespace.clone()))
-            .collect();
+        let previous_link_manifest = build_timings
+            .measure("link manifest load", || load_link_manifest_cache(&project_root))?;
+        let (
+            rewritten_file_indices,
+            object_cache_paths_by_file,
+            codegen_reference_metadata,
+            precomputed_dependency_closures,
+            file_namespaces,
+        ) = build_timings.measure_step("object prep", || {
+            let rewritten_file_indices: HashMap<PathBuf, usize> = rewritten_files
+                .iter()
+                .enumerate()
+                .map(|(index, unit)| (unit.file.clone(), index))
+                .collect();
+            let object_cache_paths_by_file: HashMap<PathBuf, ObjectCachePaths> = rewritten_files
+                .iter()
+                .map(|unit| {
+                    (
+                        unit.file.clone(),
+                        object_cache_paths(&project_root, &unit.file),
+                    )
+                })
+                .collect();
+            let codegen_reference_metadata: HashMap<PathBuf, CodegenReferenceMetadata> = parsed_files
+                .iter()
+                .map(|unit| {
+                    (
+                        unit.file.clone(),
+                        CodegenReferenceMetadata {
+                            imports: unit.imports.clone(),
+                            referenced_symbols: unit.referenced_symbols.clone(),
+                            qualified_symbol_refs: unit.qualified_symbol_refs.clone(),
+                            api_referenced_symbols: unit.api_referenced_symbols.clone(),
+                        },
+                    )
+                })
+                .collect();
+            let precomputed_dependency_closures =
+                precompute_all_transitive_dependencies(&file_dependency_graph);
+            let file_namespaces: HashMap<PathBuf, String> = parsed_files
+                .iter()
+                .map(|unit| (unit.file.clone(), unit.namespace.clone()))
+                .collect();
+            (
+                rewritten_file_indices,
+                object_cache_paths_by_file,
+                codegen_reference_metadata,
+                precomputed_dependency_closures,
+                file_namespaces,
+            )
+        });
         let mut object_paths: Vec<Option<PathBuf>> = vec![None; rewritten_files.len()];
         let object_candidate_count = rewritten_files
             .iter()
@@ -7087,6 +7432,8 @@ fn build_project(
                 ("candidates", object_candidate_count),
                 ("reused", object_cache_hits),
                 ("missed", object_candidate_count.saturating_sub(object_cache_hits)),
+                ("shard_size", object_shard_size),
+                ("shard_threshold", object_shard_threshold),
                 ("shards", object_shards.len()),
                 ("missed_shards", cache_misses.len()),
             ],
@@ -7237,6 +7584,8 @@ fn build_project(
                 ("candidates", object_candidate_count),
                 ("reused", object_cache_hits),
                 ("rebuilt", object_candidate_count.saturating_sub(object_cache_hits)),
+                ("shard_size", object_shard_size),
+                ("shard_threshold", object_shard_threshold),
                 ("rebuilt_shards", cache_misses.len()),
             ],
         );
@@ -7389,13 +7738,17 @@ fn build_project(
             );
         }
 
-        let link_inputs = dedupe_link_inputs(object_paths.into_iter().flatten().collect());
-        let current_link_manifest = LinkManifestCache {
-            schema: LINK_MANIFEST_CACHE_SCHEMA.to_string(),
-            compiler_version: env!("CARGO_PKG_VERSION").to_string(),
-            link_fingerprint: compute_link_fingerprint(&output_path, &link_inputs, &link),
-            link_inputs: link_inputs.clone(),
-        };
+        let link_inputs = build_timings.measure_step("link input assembly", || {
+            dedupe_link_inputs(object_paths.into_iter().flatten().collect())
+        });
+        let current_link_manifest = build_timings.measure_step("link manifest prep", || {
+            LinkManifestCache {
+                schema: LINK_MANIFEST_CACHE_SCHEMA.to_string(),
+                compiler_version: env!("CARGO_PKG_VERSION").to_string(),
+                link_fingerprint: compute_link_fingerprint(&output_path, &link_inputs, &link),
+                link_inputs: link_inputs.clone(),
+            }
+        });
 
         if should_skip_final_link(
             previous_link_manifest.as_ref(),
@@ -7419,7 +7772,9 @@ fn build_project(
                 "final link",
                 &[("objects", link_inputs.len()), ("linked", 1), ("reused", 0)],
             );
-            save_link_manifest_cache(&project_root, &current_link_manifest)?;
+            build_timings.measure("link manifest save", || {
+                save_link_manifest_cache(&project_root, &current_link_manifest)
+            })?;
         }
     }
 
@@ -7431,9 +7786,11 @@ fn build_project(
     );
 
     if !check_only {
-        save_cached_fingerprint(&project_root, &fingerprint)?;
-        save_semantic_cached_fingerprint(&project_root, &semantic_fingerprint)?;
-        save_dependency_graph_cache(&project_root, &current_dependency_graph_cache)?;
+        build_timings.measure("build cache save", || {
+            save_cached_fingerprint(&project_root, &fingerprint)?;
+            save_semantic_cached_fingerprint(&project_root, &semantic_fingerprint)?;
+            save_dependency_graph_cache(&project_root, &current_dependency_graph_cache)
+        })?;
     }
 
     build_timings.print();
