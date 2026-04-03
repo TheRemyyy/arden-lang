@@ -14,6 +14,8 @@ use inkwell::values::{
 };
 use inkwell::{AddressSpace, AtomicOrdering, FloatPredicate, IntPredicate};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::time::Instant;
 
 use crate::ast::*;
 use crate::parser::parse_type_source;
@@ -35,6 +37,325 @@ impl CodegenError {
 }
 
 pub type Result<T> = std::result::Result<T, CodegenError>;
+
+#[derive(Debug, Clone, Default)]
+pub struct CodegenPhaseTimingSnapshot {
+    pub program_has_generic_classes_ns: u64,
+    pub specialize_generic_classes_initial_ns: u64,
+    pub program_has_explicit_generic_calls_ns: u64,
+    pub specialize_explicit_generic_calls_ns: u64,
+    pub specialize_generic_classes_final_ns: u64,
+    pub collect_generated_spec_symbols_ns: u64,
+    pub specialized_active_symbols_ns: u64,
+    pub import_alias_collection_ns: u64,
+    pub enum_declare_pass_ns: u64,
+    pub enum_declare_decl_filter_ns: u64,
+    pub enum_declare_work_ns: u64,
+    pub decl_pass_ns: u64,
+    pub decl_pass_decl_filter_ns: u64,
+    pub decl_pass_class_work_ns: u64,
+    pub decl_pass_function_work_ns: u64,
+    pub decl_pass_module_work_ns: u64,
+    pub body_pass_ns: u64,
+    pub body_pass_decl_filter_ns: u64,
+    pub body_pass_function_work_ns: u64,
+    pub body_pass_class_work_ns: u64,
+    pub body_pass_module_work_ns: u64,
+    pub total_decls_count: usize,
+    pub import_alias_count: usize,
+    pub active_symbols_count: usize,
+    pub declaration_symbols_count: usize,
+    pub generated_spec_owners_count: usize,
+    pub declared_enum_count: usize,
+    pub declared_class_count: usize,
+    pub declared_function_count: usize,
+    pub declared_module_count: usize,
+    pub compiled_function_count: usize,
+    pub compiled_class_count: usize,
+    pub compiled_module_count: usize,
+}
+
+struct CodegenPhaseTimingTotals {
+    program_has_generic_classes_ns: AtomicU64,
+    specialize_generic_classes_initial_ns: AtomicU64,
+    program_has_explicit_generic_calls_ns: AtomicU64,
+    specialize_explicit_generic_calls_ns: AtomicU64,
+    specialize_generic_classes_final_ns: AtomicU64,
+    collect_generated_spec_symbols_ns: AtomicU64,
+    specialized_active_symbols_ns: AtomicU64,
+    import_alias_collection_ns: AtomicU64,
+    enum_declare_pass_ns: AtomicU64,
+    enum_declare_decl_filter_ns: AtomicU64,
+    enum_declare_work_ns: AtomicU64,
+    decl_pass_ns: AtomicU64,
+    decl_pass_decl_filter_ns: AtomicU64,
+    decl_pass_class_work_ns: AtomicU64,
+    decl_pass_function_work_ns: AtomicU64,
+    decl_pass_module_work_ns: AtomicU64,
+    body_pass_ns: AtomicU64,
+    body_pass_decl_filter_ns: AtomicU64,
+    body_pass_function_work_ns: AtomicU64,
+    body_pass_class_work_ns: AtomicU64,
+    body_pass_module_work_ns: AtomicU64,
+    total_decls_count: AtomicUsize,
+    import_alias_count: AtomicUsize,
+    active_symbols_count: AtomicUsize,
+    declaration_symbols_count: AtomicUsize,
+    generated_spec_owners_count: AtomicUsize,
+    declared_enum_count: AtomicUsize,
+    declared_class_count: AtomicUsize,
+    declared_function_count: AtomicUsize,
+    declared_module_count: AtomicUsize,
+    compiled_function_count: AtomicUsize,
+    compiled_class_count: AtomicUsize,
+    compiled_module_count: AtomicUsize,
+}
+
+static CODEGEN_PHASE_TIMING_TOTALS: CodegenPhaseTimingTotals = CodegenPhaseTimingTotals {
+    program_has_generic_classes_ns: AtomicU64::new(0),
+    specialize_generic_classes_initial_ns: AtomicU64::new(0),
+    program_has_explicit_generic_calls_ns: AtomicU64::new(0),
+    specialize_explicit_generic_calls_ns: AtomicU64::new(0),
+    specialize_generic_classes_final_ns: AtomicU64::new(0),
+    collect_generated_spec_symbols_ns: AtomicU64::new(0),
+    specialized_active_symbols_ns: AtomicU64::new(0),
+    import_alias_collection_ns: AtomicU64::new(0),
+    enum_declare_pass_ns: AtomicU64::new(0),
+    enum_declare_decl_filter_ns: AtomicU64::new(0),
+    enum_declare_work_ns: AtomicU64::new(0),
+    decl_pass_ns: AtomicU64::new(0),
+    decl_pass_decl_filter_ns: AtomicU64::new(0),
+    decl_pass_class_work_ns: AtomicU64::new(0),
+    decl_pass_function_work_ns: AtomicU64::new(0),
+    decl_pass_module_work_ns: AtomicU64::new(0),
+    body_pass_ns: AtomicU64::new(0),
+    body_pass_decl_filter_ns: AtomicU64::new(0),
+    body_pass_function_work_ns: AtomicU64::new(0),
+    body_pass_class_work_ns: AtomicU64::new(0),
+    body_pass_module_work_ns: AtomicU64::new(0),
+    total_decls_count: AtomicUsize::new(0),
+    import_alias_count: AtomicUsize::new(0),
+    active_symbols_count: AtomicUsize::new(0),
+    declaration_symbols_count: AtomicUsize::new(0),
+    generated_spec_owners_count: AtomicUsize::new(0),
+    declared_enum_count: AtomicUsize::new(0),
+    declared_class_count: AtomicUsize::new(0),
+    declared_function_count: AtomicUsize::new(0),
+    declared_module_count: AtomicUsize::new(0),
+    compiled_function_count: AtomicUsize::new(0),
+    compiled_class_count: AtomicUsize::new(0),
+    compiled_module_count: AtomicUsize::new(0),
+};
+
+fn elapsed_nanos_u64(started_at: Instant) -> u64 {
+    started_at.elapsed().as_nanos() as u64
+}
+
+pub fn reset_codegen_phase_timings() {
+    CODEGEN_PHASE_TIMING_TOTALS
+        .program_has_generic_classes_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .specialize_generic_classes_initial_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .program_has_explicit_generic_calls_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .specialize_explicit_generic_calls_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .specialize_generic_classes_final_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .collect_generated_spec_symbols_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .specialized_active_symbols_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .import_alias_collection_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .enum_declare_pass_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .enum_declare_decl_filter_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .enum_declare_work_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .decl_pass_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .decl_pass_decl_filter_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .decl_pass_class_work_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .decl_pass_function_work_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .decl_pass_module_work_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_pass_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_pass_decl_filter_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_pass_function_work_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_pass_class_work_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_pass_module_work_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .total_decls_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .import_alias_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .active_symbols_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .declaration_symbols_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .generated_spec_owners_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .declared_enum_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .declared_class_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .declared_function_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .declared_module_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .compiled_function_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .compiled_class_count
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .compiled_module_count
+        .store(0, Ordering::Relaxed);
+}
+
+pub fn snapshot_codegen_phase_timings() -> CodegenPhaseTimingSnapshot {
+    CodegenPhaseTimingSnapshot {
+        program_has_generic_classes_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .program_has_generic_classes_ns
+            .load(Ordering::Relaxed),
+        specialize_generic_classes_initial_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .specialize_generic_classes_initial_ns
+            .load(Ordering::Relaxed),
+        program_has_explicit_generic_calls_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .program_has_explicit_generic_calls_ns
+            .load(Ordering::Relaxed),
+        specialize_explicit_generic_calls_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .specialize_explicit_generic_calls_ns
+            .load(Ordering::Relaxed),
+        specialize_generic_classes_final_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .specialize_generic_classes_final_ns
+            .load(Ordering::Relaxed),
+        collect_generated_spec_symbols_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .collect_generated_spec_symbols_ns
+            .load(Ordering::Relaxed),
+        specialized_active_symbols_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .specialized_active_symbols_ns
+            .load(Ordering::Relaxed),
+        import_alias_collection_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .import_alias_collection_ns
+            .load(Ordering::Relaxed),
+        enum_declare_pass_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .enum_declare_pass_ns
+            .load(Ordering::Relaxed),
+        enum_declare_decl_filter_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .enum_declare_decl_filter_ns
+            .load(Ordering::Relaxed),
+        enum_declare_work_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .enum_declare_work_ns
+            .load(Ordering::Relaxed),
+        decl_pass_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_ns
+            .load(Ordering::Relaxed),
+        decl_pass_decl_filter_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_decl_filter_ns
+            .load(Ordering::Relaxed),
+        decl_pass_class_work_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_class_work_ns
+            .load(Ordering::Relaxed),
+        decl_pass_function_work_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_function_work_ns
+            .load(Ordering::Relaxed),
+        decl_pass_module_work_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_module_work_ns
+            .load(Ordering::Relaxed),
+        body_pass_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_ns
+            .load(Ordering::Relaxed),
+        body_pass_decl_filter_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_decl_filter_ns
+            .load(Ordering::Relaxed),
+        body_pass_function_work_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_function_work_ns
+            .load(Ordering::Relaxed),
+        body_pass_class_work_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_class_work_ns
+            .load(Ordering::Relaxed),
+        body_pass_module_work_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_module_work_ns
+            .load(Ordering::Relaxed),
+        total_decls_count: CODEGEN_PHASE_TIMING_TOTALS
+            .total_decls_count
+            .load(Ordering::Relaxed),
+        import_alias_count: CODEGEN_PHASE_TIMING_TOTALS
+            .import_alias_count
+            .load(Ordering::Relaxed),
+        active_symbols_count: CODEGEN_PHASE_TIMING_TOTALS
+            .active_symbols_count
+            .load(Ordering::Relaxed),
+        declaration_symbols_count: CODEGEN_PHASE_TIMING_TOTALS
+            .declaration_symbols_count
+            .load(Ordering::Relaxed),
+        generated_spec_owners_count: CODEGEN_PHASE_TIMING_TOTALS
+            .generated_spec_owners_count
+            .load(Ordering::Relaxed),
+        declared_enum_count: CODEGEN_PHASE_TIMING_TOTALS
+            .declared_enum_count
+            .load(Ordering::Relaxed),
+        declared_class_count: CODEGEN_PHASE_TIMING_TOTALS
+            .declared_class_count
+            .load(Ordering::Relaxed),
+        declared_function_count: CODEGEN_PHASE_TIMING_TOTALS
+            .declared_function_count
+            .load(Ordering::Relaxed),
+        declared_module_count: CODEGEN_PHASE_TIMING_TOTALS
+            .declared_module_count
+            .load(Ordering::Relaxed),
+        compiled_function_count: CODEGEN_PHASE_TIMING_TOTALS
+            .compiled_function_count
+            .load(Ordering::Relaxed),
+        compiled_class_count: CODEGEN_PHASE_TIMING_TOTALS
+            .compiled_class_count
+            .load(Ordering::Relaxed),
+        compiled_module_count: CODEGEN_PHASE_TIMING_TOTALS
+            .compiled_module_count
+            .load(Ordering::Relaxed),
+    }
+}
 
 /// Variable in codegen
 #[derive(Debug, Clone)]
@@ -5922,28 +6243,101 @@ impl<'ctx> Codegen<'ctx> {
             symbols_by_owner
         }
 
+        let generic_class_check_started_at = Instant::now();
         let has_generic_classes = Self::program_has_generic_classes(program);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .program_has_generic_classes_ns
+            .fetch_add(elapsed_nanos_u64(generic_class_check_started_at), Ordering::Relaxed);
         let class_specialized_program;
         let explicit_specialized_program;
         let final_specialized_program;
         let program = if has_generic_classes {
+            let specialize_generic_classes_started_at = Instant::now();
             class_specialized_program = Self::specialize_generic_classes(program)?;
-            if Self::program_has_explicit_generic_calls(&class_specialized_program) {
+            CODEGEN_PHASE_TIMING_TOTALS
+                .specialize_generic_classes_initial_ns
+                .fetch_add(
+                    elapsed_nanos_u64(specialize_generic_classes_started_at),
+                    Ordering::Relaxed,
+                );
+            let explicit_generic_check_started_at = Instant::now();
+            let has_explicit_generic_calls =
+                Self::program_has_explicit_generic_calls(&class_specialized_program);
+            CODEGEN_PHASE_TIMING_TOTALS
+                .program_has_explicit_generic_calls_ns
+                .fetch_add(
+                    elapsed_nanos_u64(explicit_generic_check_started_at),
+                    Ordering::Relaxed,
+                );
+            if has_explicit_generic_calls {
+                let specialize_explicit_started_at = Instant::now();
                 explicit_specialized_program =
                     Self::specialize_explicit_generic_calls(&class_specialized_program)?;
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .specialize_explicit_generic_calls_ns
+                    .fetch_add(
+                        elapsed_nanos_u64(specialize_explicit_started_at),
+                        Ordering::Relaxed,
+                    );
+                let specialize_generic_classes_final_started_at = Instant::now();
                 final_specialized_program =
                     Self::specialize_generic_classes(&explicit_specialized_program)?;
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .specialize_generic_classes_final_ns
+                    .fetch_add(
+                        elapsed_nanos_u64(specialize_generic_classes_final_started_at),
+                        Ordering::Relaxed,
+                    );
                 &final_specialized_program
             } else {
                 &class_specialized_program
             }
-        } else if Self::program_has_explicit_generic_calls(program) {
-            explicit_specialized_program = Self::specialize_explicit_generic_calls(program)?;
-            &explicit_specialized_program
         } else {
-            program
+            let explicit_generic_check_started_at = Instant::now();
+            let has_explicit_generic_calls = Self::program_has_explicit_generic_calls(program);
+            CODEGEN_PHASE_TIMING_TOTALS
+                .program_has_explicit_generic_calls_ns
+                .fetch_add(
+                    elapsed_nanos_u64(explicit_generic_check_started_at),
+                    Ordering::Relaxed,
+                );
+            if has_explicit_generic_calls {
+                let specialize_explicit_started_at = Instant::now();
+                explicit_specialized_program = Self::specialize_explicit_generic_calls(program)?;
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .specialize_explicit_generic_calls_ns
+                    .fetch_add(
+                        elapsed_nanos_u64(specialize_explicit_started_at),
+                        Ordering::Relaxed,
+                    );
+                &explicit_specialized_program
+            } else {
+                program
+            }
         };
+        CODEGEN_PHASE_TIMING_TOTALS
+            .total_decls_count
+            .fetch_add(program.declarations.len(), Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS.active_symbols_count.fetch_add(
+            active_symbols.map_or(0, HashSet::len),
+            Ordering::Relaxed,
+        );
+        CODEGEN_PHASE_TIMING_TOTALS.declaration_symbols_count.fetch_add(
+            declaration_symbols.map_or(0, HashSet::len),
+            Ordering::Relaxed,
+        );
+        let collect_generated_spec_symbols_started_at = Instant::now();
         let generated_spec_symbols_by_owner = collect_generated_spec_symbols(program);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .collect_generated_spec_symbols_ns
+            .fetch_add(
+                elapsed_nanos_u64(collect_generated_spec_symbols_started_at),
+                Ordering::Relaxed,
+            );
+        CODEGEN_PHASE_TIMING_TOTALS
+            .generated_spec_owners_count
+            .fetch_add(generated_spec_symbols_by_owner.len(), Ordering::Relaxed);
+        let specialized_active_symbols_started_at = Instant::now();
         let specialized_active_symbols = active_symbols.map(|symbols| {
             let mut combined = symbols.clone();
             let owner_symbols = symbols
@@ -5959,83 +6353,215 @@ impl<'ctx> Codegen<'ctx> {
             }
             combined
         });
+        CODEGEN_PHASE_TIMING_TOTALS
+            .specialized_active_symbols_ns
+            .fetch_add(
+                elapsed_nanos_u64(specialized_active_symbols_started_at),
+                Ordering::Relaxed,
+            );
 
+        let import_alias_collection_started_at = Instant::now();
+        let mut import_alias_count = 0_usize;
         self.import_aliases.clear();
         for decl in &program.declarations {
             if let Decl::Import(import) = &decl.node {
                 if let Some(alias) = &import.alias {
                     self.import_aliases
                         .insert(alias.clone(), import.path.clone());
+                    import_alias_count += 1;
                 } else if import.path.ends_with(".*") {
                     self.import_aliases
                         .insert(import.path.clone(), import.path.clone());
+                    import_alias_count += 1;
                 }
             }
         }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .import_alias_collection_ns
+            .fetch_add(
+                elapsed_nanos_u64(import_alias_collection_started_at),
+                Ordering::Relaxed,
+            );
+        CODEGEN_PHASE_TIMING_TOTALS
+            .import_alias_count
+            .fetch_add(import_alias_count, Ordering::Relaxed);
 
         // First pass (0): declare all enums first so Named(Enum) resolves correctly.
+        let enum_declare_pass_started_at = Instant::now();
+        let mut enum_declare_decl_filter_ns = 0_u64;
+        let mut enum_declare_work_ns = 0_u64;
+        let mut declared_enum_count = 0_usize;
         for decl in &program.declarations {
+            let decl_filter_started_at = Instant::now();
             let should_declare = declaration_symbols
                 .map(|symbols| self.should_compile_decl(&decl.node, symbols))
                 .unwrap_or(true);
+            enum_declare_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
             if !should_declare {
                 continue;
             }
             if let Decl::Enum(en) = &decl.node {
+                let declare_enum_started_at = Instant::now();
                 self.declare_enum(en)?;
+                enum_declare_work_ns += elapsed_nanos_u64(declare_enum_started_at);
+                declared_enum_count += 1;
             }
         }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .enum_declare_pass_ns
+            .fetch_add(elapsed_nanos_u64(enum_declare_pass_started_at), Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .enum_declare_decl_filter_ns
+            .fetch_add(enum_declare_decl_filter_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .enum_declare_work_ns
+            .fetch_add(enum_declare_work_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .declared_enum_count
+            .fetch_add(declared_enum_count, Ordering::Relaxed);
 
         // First pass: declare all classes and functions
+        let decl_pass_started_at = Instant::now();
+        let mut decl_pass_decl_filter_ns = 0_u64;
+        let mut decl_pass_class_work_ns = 0_u64;
+        let mut decl_pass_function_work_ns = 0_u64;
+        let mut decl_pass_module_work_ns = 0_u64;
+        let mut declared_class_count = 0_usize;
+        let mut declared_function_count = 0_usize;
+        let mut declared_module_count = 0_usize;
         for decl in &program.declarations {
+            let decl_filter_started_at = Instant::now();
             let should_declare = declaration_symbols
                 .map(|symbols| self.should_compile_decl(&decl.node, symbols))
                 .unwrap_or(true);
+            decl_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
             if !should_declare {
                 continue;
             }
             match &decl.node {
-                Decl::Class(class) => self.declare_class(class)?,
+                Decl::Class(class) => {
+                    let declare_started_at = Instant::now();
+                    self.declare_class(class)?;
+                    decl_pass_class_work_ns += elapsed_nanos_u64(declare_started_at);
+                    declared_class_count += 1;
+                }
                 Decl::Function(func) => {
+                    let declare_started_at = Instant::now();
                     self.declare_function(func)?;
+                    decl_pass_function_work_ns += elapsed_nanos_u64(declare_started_at);
+                    declared_function_count += 1;
                 }
                 Decl::Enum(_) => {}
                 Decl::Interface(_) => {} // Interfaces don't generate code
-                Decl::Module(module) => self.declare_module(module)?,
+                Decl::Module(module) => {
+                    let declare_started_at = Instant::now();
+                    self.declare_module(module)?;
+                    decl_pass_module_work_ns += elapsed_nanos_u64(declare_started_at);
+                    declared_module_count += 1;
+                }
                 Decl::Import(_) => {} // Handled at file level
             }
         }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_ns
+            .fetch_add(elapsed_nanos_u64(decl_pass_started_at), Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_decl_filter_ns
+            .fetch_add(decl_pass_decl_filter_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_class_work_ns
+            .fetch_add(decl_pass_class_work_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_function_work_ns
+            .fetch_add(decl_pass_function_work_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_module_work_ns
+            .fetch_add(decl_pass_module_work_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .declared_class_count
+            .fetch_add(declared_class_count, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .declared_function_count
+            .fetch_add(declared_function_count, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .declared_module_count
+            .fetch_add(declared_module_count, Ordering::Relaxed);
 
         // Second pass: compile function bodies
+        let body_pass_started_at = Instant::now();
+        let mut body_pass_decl_filter_ns = 0_u64;
+        let mut body_pass_function_work_ns = 0_u64;
+        let mut body_pass_class_work_ns = 0_u64;
+        let mut body_pass_module_work_ns = 0_u64;
+        let mut compiled_function_count = 0_usize;
+        let mut compiled_class_count = 0_usize;
+        let mut compiled_module_count = 0_usize;
         for decl in &program.declarations {
+            let decl_filter_started_at = Instant::now();
             let should_compile = specialized_active_symbols
                 .as_ref()
                 .map(|symbols| self.should_emit_decl_body(&decl.node, symbols))
                 .unwrap_or(true);
+            body_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
             if !should_compile {
                 continue;
             }
             match &decl.node {
-                Decl::Function(func) => self.compile_function(func)?,
+                Decl::Function(func) => {
+                    let compile_started_at = Instant::now();
+                    self.compile_function(func)?;
+                    body_pass_function_work_ns += elapsed_nanos_u64(compile_started_at);
+                    compiled_function_count += 1;
+                }
                 Decl::Class(class) => {
+                    let compile_started_at = Instant::now();
                     if let Some(symbols) = specialized_active_symbols.as_ref() {
                         self.compile_class_filtered(class, symbols)?;
                     } else {
                         self.compile_class(class)?;
                     }
+                    body_pass_class_work_ns += elapsed_nanos_u64(compile_started_at);
+                    compiled_class_count += 1;
                 }
                 Decl::Enum(_) => {}
                 Decl::Interface(_) => {} // Interfaces don't generate code
                 Decl::Module(module) => {
+                    let compile_started_at = Instant::now();
                     if let Some(symbols) = specialized_active_symbols.as_ref() {
                         self.compile_module_filtered(module, symbols)?;
                     } else {
                         self.compile_module(module)?;
                     }
+                    body_pass_module_work_ns += elapsed_nanos_u64(compile_started_at);
+                    compiled_module_count += 1;
                 }
                 Decl::Import(_) => {} // Handled at file level
             }
         }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_ns
+            .fetch_add(elapsed_nanos_u64(body_pass_started_at), Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_decl_filter_ns
+            .fetch_add(body_pass_decl_filter_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_function_work_ns
+            .fetch_add(body_pass_function_work_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_class_work_ns
+            .fetch_add(body_pass_class_work_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_module_work_ns
+            .fetch_add(body_pass_module_work_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .compiled_function_count
+            .fetch_add(compiled_function_count, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .compiled_class_count
+            .fetch_add(compiled_class_count, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .compiled_module_count
+            .fetch_add(compiled_module_count, Ordering::Relaxed);
 
         Ok(())
     }

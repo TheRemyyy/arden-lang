@@ -19,7 +19,7 @@ use inkwell::{AddressSpace, FloatPredicate, IntPredicate, OptimizationLevel};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -31,29 +31,71 @@ static LLVM_ALL_TARGETS_INIT: OnceLock<()> = OnceLock::new();
 #[derive(Debug, Clone, Default)]
 pub struct ObjectWriteTimingSnapshot {
     pub emit_object_bytes_ns: u64,
+    pub with_target_machine_ns: u64,
+    pub target_machine_config_ns: u64,
+    pub ensure_targets_initialized_ns: u64,
+    pub target_triple_ns: u64,
+    pub host_cpu_query_ns: u64,
+    pub opt_level_resolve_ns: u64,
+    pub target_from_triple_ns: u64,
+    pub target_machine_create_ns: u64,
     pub target_machine_setup_ns: u64,
+    pub module_set_triple_ns: u64,
+    pub module_set_data_layout_ns: u64,
     pub write_to_memory_buffer_ns: u64,
     pub memory_buffer_to_vec_ns: u64,
     pub direct_write_to_file_ns: u64,
     pub filesystem_write_ns: u64,
+    pub target_machine_cache_hit_count: usize,
+    pub target_machine_cache_miss_count: usize,
+    pub emit_object_call_count: usize,
+    pub write_object_call_count: usize,
 }
 
 struct ObjectWriteTimingTotals {
     emit_object_bytes_ns: AtomicU64,
+    with_target_machine_ns: AtomicU64,
+    target_machine_config_ns: AtomicU64,
+    ensure_targets_initialized_ns: AtomicU64,
+    target_triple_ns: AtomicU64,
+    host_cpu_query_ns: AtomicU64,
+    opt_level_resolve_ns: AtomicU64,
+    target_from_triple_ns: AtomicU64,
+    target_machine_create_ns: AtomicU64,
     target_machine_setup_ns: AtomicU64,
+    module_set_triple_ns: AtomicU64,
+    module_set_data_layout_ns: AtomicU64,
     write_to_memory_buffer_ns: AtomicU64,
     memory_buffer_to_vec_ns: AtomicU64,
     direct_write_to_file_ns: AtomicU64,
     filesystem_write_ns: AtomicU64,
+    target_machine_cache_hit_count: AtomicUsize,
+    target_machine_cache_miss_count: AtomicUsize,
+    emit_object_call_count: AtomicUsize,
+    write_object_call_count: AtomicUsize,
 }
 
 static OBJECT_WRITE_TIMING_TOTALS: ObjectWriteTimingTotals = ObjectWriteTimingTotals {
     emit_object_bytes_ns: AtomicU64::new(0),
+    with_target_machine_ns: AtomicU64::new(0),
+    target_machine_config_ns: AtomicU64::new(0),
+    ensure_targets_initialized_ns: AtomicU64::new(0),
+    target_triple_ns: AtomicU64::new(0),
+    host_cpu_query_ns: AtomicU64::new(0),
+    opt_level_resolve_ns: AtomicU64::new(0),
+    target_from_triple_ns: AtomicU64::new(0),
+    target_machine_create_ns: AtomicU64::new(0),
     target_machine_setup_ns: AtomicU64::new(0),
+    module_set_triple_ns: AtomicU64::new(0),
+    module_set_data_layout_ns: AtomicU64::new(0),
     write_to_memory_buffer_ns: AtomicU64::new(0),
     memory_buffer_to_vec_ns: AtomicU64::new(0),
     direct_write_to_file_ns: AtomicU64::new(0),
     filesystem_write_ns: AtomicU64::new(0),
+    target_machine_cache_hit_count: AtomicUsize::new(0),
+    target_machine_cache_miss_count: AtomicUsize::new(0),
+    emit_object_call_count: AtomicUsize::new(0),
+    write_object_call_count: AtomicUsize::new(0),
 };
 
 fn elapsed_nanos_u64(started_at: Instant) -> u64 {
@@ -65,7 +107,37 @@ pub fn reset_object_write_timings() {
         .emit_object_bytes_ns
         .store(0, Ordering::Relaxed);
     OBJECT_WRITE_TIMING_TOTALS
+        .with_target_machine_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .target_machine_config_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .ensure_targets_initialized_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .target_triple_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .host_cpu_query_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .opt_level_resolve_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .target_from_triple_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .target_machine_create_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
         .target_machine_setup_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .module_set_triple_ns
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .module_set_data_layout_ns
         .store(0, Ordering::Relaxed);
     OBJECT_WRITE_TIMING_TOTALS
         .write_to_memory_buffer_ns
@@ -79,6 +151,18 @@ pub fn reset_object_write_timings() {
     OBJECT_WRITE_TIMING_TOTALS
         .filesystem_write_ns
         .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .target_machine_cache_hit_count
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .target_machine_cache_miss_count
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .emit_object_call_count
+        .store(0, Ordering::Relaxed);
+    OBJECT_WRITE_TIMING_TOTALS
+        .write_object_call_count
+        .store(0, Ordering::Relaxed);
 }
 
 pub fn snapshot_object_write_timings() -> ObjectWriteTimingSnapshot {
@@ -86,8 +170,38 @@ pub fn snapshot_object_write_timings() -> ObjectWriteTimingSnapshot {
         emit_object_bytes_ns: OBJECT_WRITE_TIMING_TOTALS
             .emit_object_bytes_ns
             .load(Ordering::Relaxed),
+        with_target_machine_ns: OBJECT_WRITE_TIMING_TOTALS
+            .with_target_machine_ns
+            .load(Ordering::Relaxed),
+        target_machine_config_ns: OBJECT_WRITE_TIMING_TOTALS
+            .target_machine_config_ns
+            .load(Ordering::Relaxed),
+        ensure_targets_initialized_ns: OBJECT_WRITE_TIMING_TOTALS
+            .ensure_targets_initialized_ns
+            .load(Ordering::Relaxed),
+        target_triple_ns: OBJECT_WRITE_TIMING_TOTALS
+            .target_triple_ns
+            .load(Ordering::Relaxed),
+        host_cpu_query_ns: OBJECT_WRITE_TIMING_TOTALS
+            .host_cpu_query_ns
+            .load(Ordering::Relaxed),
+        opt_level_resolve_ns: OBJECT_WRITE_TIMING_TOTALS
+            .opt_level_resolve_ns
+            .load(Ordering::Relaxed),
+        target_from_triple_ns: OBJECT_WRITE_TIMING_TOTALS
+            .target_from_triple_ns
+            .load(Ordering::Relaxed),
+        target_machine_create_ns: OBJECT_WRITE_TIMING_TOTALS
+            .target_machine_create_ns
+            .load(Ordering::Relaxed),
         target_machine_setup_ns: OBJECT_WRITE_TIMING_TOTALS
             .target_machine_setup_ns
+            .load(Ordering::Relaxed),
+        module_set_triple_ns: OBJECT_WRITE_TIMING_TOTALS
+            .module_set_triple_ns
+            .load(Ordering::Relaxed),
+        module_set_data_layout_ns: OBJECT_WRITE_TIMING_TOTALS
+            .module_set_data_layout_ns
             .load(Ordering::Relaxed),
         write_to_memory_buffer_ns: OBJECT_WRITE_TIMING_TOTALS
             .write_to_memory_buffer_ns
@@ -100,6 +214,18 @@ pub fn snapshot_object_write_timings() -> ObjectWriteTimingSnapshot {
             .load(Ordering::Relaxed),
         filesystem_write_ns: OBJECT_WRITE_TIMING_TOTALS
             .filesystem_write_ns
+            .load(Ordering::Relaxed),
+        target_machine_cache_hit_count: OBJECT_WRITE_TIMING_TOTALS
+            .target_machine_cache_hit_count
+            .load(Ordering::Relaxed),
+        target_machine_cache_miss_count: OBJECT_WRITE_TIMING_TOTALS
+            .target_machine_cache_miss_count
+            .load(Ordering::Relaxed),
+        emit_object_call_count: OBJECT_WRITE_TIMING_TOTALS
+            .emit_object_call_count
+            .load(Ordering::Relaxed),
+        write_object_call_count: OBJECT_WRITE_TIMING_TOTALS
+            .write_object_call_count
             .load(Ordering::Relaxed),
     }
 }
@@ -2603,14 +2729,27 @@ impl<'ctx> Codegen<'ctx> {
         target_triple: Option<&str>,
         output_kind: &OutputKind,
     ) -> std::result::Result<(TargetMachineCacheKey, TargetTriple), String> {
+        let target_machine_config_started_at = Instant::now();
+        let ensure_targets_started_at = Instant::now();
         Self::ensure_object_emission_targets_initialized(target_triple)?;
+        OBJECT_WRITE_TIMING_TOTALS
+            .ensure_targets_initialized_ns
+            .fetch_add(elapsed_nanos_u64(ensure_targets_started_at), Ordering::Relaxed);
 
+        let target_triple_started_at = Instant::now();
         let triple = target_triple
             .map(TargetTriple::create)
             .unwrap_or_else(TargetMachine::get_default_triple);
+        OBJECT_WRITE_TIMING_TOTALS
+            .target_triple_ns
+            .fetch_add(elapsed_nanos_u64(target_triple_started_at), Ordering::Relaxed);
         let triple_string = triple.as_str().to_string_lossy().into_owned();
+        let host_cpu_query_started_at = Instant::now();
         let host_cpu_name = TargetMachine::get_host_cpu_name();
         let host_cpu_features = TargetMachine::get_host_cpu_features();
+        OBJECT_WRITE_TIMING_TOTALS
+            .host_cpu_query_ns
+            .fetch_add(elapsed_nanos_u64(host_cpu_query_started_at), Ordering::Relaxed);
         let cpu = if target_triple.is_some() {
             "generic".to_string()
         } else {
@@ -2627,18 +2766,22 @@ impl<'ctx> Codegen<'ctx> {
                 .map_err(|e| format!("Failed to decode host CPU features: {}", e))?
                 .to_string()
         };
+        let opt_level_resolve_started_at = Instant::now();
         let opt_key = match Self::resolve_optimization_level(opt_level) {
             OptimizationLevel::None => "0",
             OptimizationLevel::Less => "1",
             OptimizationLevel::Default => "2",
             OptimizationLevel::Aggressive => "3",
         };
+        OBJECT_WRITE_TIMING_TOTALS
+            .opt_level_resolve_ns
+            .fetch_add(elapsed_nanos_u64(opt_level_resolve_started_at), Ordering::Relaxed);
         let reloc_mode = match output_kind {
             OutputKind::Shared => "pic",
             OutputKind::Bin | OutputKind::Static => "default",
         };
 
-        Ok((
+        let result = Ok((
             TargetMachineCacheKey {
                 triple: triple_string,
                 cpu,
@@ -2647,7 +2790,14 @@ impl<'ctx> Codegen<'ctx> {
                 reloc_mode,
             },
             triple,
-        ))
+        ));
+        OBJECT_WRITE_TIMING_TOTALS
+            .target_machine_config_ns
+            .fetch_add(
+                elapsed_nanos_u64(target_machine_config_started_at),
+                Ordering::Relaxed,
+            );
+        result
     }
 
     fn with_target_machine<R>(
@@ -2656,18 +2806,33 @@ impl<'ctx> Codegen<'ctx> {
         output_kind: &OutputKind,
         f: impl FnOnce(&TargetMachine, &TargetTriple) -> std::result::Result<R, String>,
     ) -> std::result::Result<R, String> {
+        let with_target_machine_started_at = Instant::now();
         let (key, triple) = Self::target_machine_config(opt_level, target_triple, output_kind)?;
-        TARGET_MACHINE_CACHE.with(|cache| {
+        let result = TARGET_MACHINE_CACHE.with(|cache| {
             let mut cache = cache.borrow_mut();
             if !cache.contains_key(&key) {
+                OBJECT_WRITE_TIMING_TOTALS
+                    .target_machine_cache_miss_count
+                    .fetch_add(1, Ordering::Relaxed);
                 let machine = Self::create_target_machine(&triple, &key, opt_level, output_kind)?;
                 cache.insert(key.clone(), machine);
+            } else {
+                OBJECT_WRITE_TIMING_TOTALS
+                    .target_machine_cache_hit_count
+                    .fetch_add(1, Ordering::Relaxed);
             }
             let machine = cache
                 .get(&key)
                 .ok_or_else(|| "target machine cache missing inserted machine".to_string())?;
             f(machine, &triple)
-        })
+        });
+        OBJECT_WRITE_TIMING_TOTALS
+            .with_target_machine_ns
+            .fetch_add(
+                elapsed_nanos_u64(with_target_machine_started_at),
+                Ordering::Relaxed,
+            );
+        result
     }
 
     fn create_target_machine(
@@ -2676,8 +2841,13 @@ impl<'ctx> Codegen<'ctx> {
         opt_level: Option<&str>,
         output_kind: &OutputKind,
     ) -> std::result::Result<TargetMachine, String> {
+        let target_from_triple_started_at = Instant::now();
         let target = Target::from_triple(triple).map_err(|e| e.to_string())?;
-        target
+        OBJECT_WRITE_TIMING_TOTALS
+            .target_from_triple_ns
+            .fetch_add(elapsed_nanos_u64(target_from_triple_started_at), Ordering::Relaxed);
+        let target_machine_create_started_at = Instant::now();
+        let machine = target
             .create_target_machine(
                 triple,
                 &key.cpu,
@@ -2689,7 +2859,14 @@ impl<'ctx> Codegen<'ctx> {
                 },
                 CodeModel::Default,
             )
-            .ok_or_else(|| "failed to create target machine".to_string())
+            .ok_or_else(|| "failed to create target machine".to_string());
+        OBJECT_WRITE_TIMING_TOTALS
+            .target_machine_create_ns
+            .fetch_add(
+                elapsed_nanos_u64(target_machine_create_started_at),
+                Ordering::Relaxed,
+            );
+        machine
     }
 
     pub fn emit_object_bytes(
@@ -2699,11 +2876,22 @@ impl<'ctx> Codegen<'ctx> {
         output_kind: &OutputKind,
     ) -> std::result::Result<Vec<u8>, String> {
         let started_at = Instant::now();
+        OBJECT_WRITE_TIMING_TOTALS
+            .emit_object_call_count
+            .fetch_add(1, Ordering::Relaxed);
         let result = Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
             let setup_started_at = Instant::now();
+            let set_triple_started_at = Instant::now();
             self.module.set_triple(triple);
+            OBJECT_WRITE_TIMING_TOTALS
+                .module_set_triple_ns
+                .fetch_add(elapsed_nanos_u64(set_triple_started_at), Ordering::Relaxed);
+            let set_data_layout_started_at = Instant::now();
             self.module
                 .set_data_layout(&machine.get_target_data().get_data_layout());
+            OBJECT_WRITE_TIMING_TOTALS
+                .module_set_data_layout_ns
+                .fetch_add(elapsed_nanos_u64(set_data_layout_started_at), Ordering::Relaxed);
             OBJECT_WRITE_TIMING_TOTALS
                 .target_machine_setup_ns
                 .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
@@ -2736,12 +2924,23 @@ impl<'ctx> Codegen<'ctx> {
         output_kind: &OutputKind,
     ) -> std::result::Result<(), String> {
         let write_started_at = Instant::now();
+        OBJECT_WRITE_TIMING_TOTALS
+            .write_object_call_count
+            .fetch_add(1, Ordering::Relaxed);
         let result =
             Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
                 let setup_started_at = Instant::now();
+                let set_triple_started_at = Instant::now();
                 self.module.set_triple(triple);
+                OBJECT_WRITE_TIMING_TOTALS
+                    .module_set_triple_ns
+                    .fetch_add(elapsed_nanos_u64(set_triple_started_at), Ordering::Relaxed);
+                let set_data_layout_started_at = Instant::now();
                 self.module
                     .set_data_layout(&machine.get_target_data().get_data_layout());
+                OBJECT_WRITE_TIMING_TOTALS
+                    .module_set_data_layout_ns
+                    .fetch_add(elapsed_nanos_u64(set_data_layout_started_at), Ordering::Relaxed);
                 OBJECT_WRITE_TIMING_TOTALS
                     .target_machine_setup_ns
                     .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);

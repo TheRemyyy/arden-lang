@@ -316,6 +316,27 @@ fn read_cache_blob<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Opti
     Ok(Some(value))
 }
 
+fn read_cache_blob_with_timing<T: DeserializeOwned>(
+    path: &Path,
+    label: &str,
+    totals: &CacheIoTimingTotals,
+) -> Result<Option<T>, String> {
+    let started_at = Instant::now();
+    let value = read_cache_blob(path, label)?;
+    let elapsed_ns = elapsed_nanos_u64(started_at);
+    totals.load_ns.fetch_add(elapsed_ns, Ordering::Relaxed);
+    if let Some(bytes) = path
+        .metadata()
+        .ok()
+        .filter(|_| value.is_some())
+        .map(|metadata| metadata.len())
+    {
+        totals.bytes_read.fetch_add(bytes, Ordering::Relaxed);
+        totals.load_count.fetch_add(1, Ordering::Relaxed);
+    }
+    Ok(value)
+}
+
 fn write_cache_blob<T: Serialize>(path: &Path, label: &str, value: &T) -> Result<(), String> {
     let bytes = bincode::serialize(value).map_err(|e| {
         format!(
@@ -335,6 +356,42 @@ fn write_cache_blob<T: Serialize>(path: &Path, label: &str, value: &T) -> Result
             e
         )
     })
+}
+
+fn write_cache_blob_with_timing<T: Serialize>(
+    path: &Path,
+    label: &str,
+    value: &T,
+    totals: &CacheIoTimingTotals,
+) -> Result<(), String> {
+    let bytes = bincode::serialize(value).map_err(|e| {
+        format!(
+            "{}: Failed to serialize {} '{}': {}",
+            "error".red().bold(),
+            label,
+            path.display(),
+            e
+        )
+    })?;
+    let byte_len = bytes.len() as u64;
+    let started_at = Instant::now();
+    fs::write(path, bytes).map_err(|e| {
+        format!(
+            "{}: Failed to write {} '{}': {}",
+            "error".red().bold(),
+            label,
+            path.display(),
+            e
+        )
+    })?;
+    totals
+        .save_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    totals
+        .bytes_written
+        .fetch_add(byte_len, Ordering::Relaxed);
+    totals.save_count.fetch_add(1, Ordering::Relaxed);
+    Ok(())
 }
 
 fn project_build_artifact_exists(output_path: &Path, emit_llvm: bool) -> bool {
@@ -849,8 +906,14 @@ struct DeclarationClosureTimingTotals {
 
 #[derive(Default)]
 struct ObjectEmitTimingTotals {
+    context_create_ns: AtomicU64,
+    codegen_new_ns: AtomicU64,
     compile_filtered_ns: AtomicU64,
+    object_dir_setup_ns: AtomicU64,
     write_object_ns: AtomicU64,
+    active_symbol_count: AtomicUsize,
+    declaration_symbol_count: AtomicUsize,
+    program_decl_count: AtomicUsize,
 }
 
 #[derive(Default)]
@@ -881,6 +944,52 @@ struct ObjectCodegenTimingTotals {
     closure_body_symbols_ns: AtomicU64,
     llvm_emit_ns: AtomicU64,
     cache_save_ns: AtomicU64,
+}
+
+#[derive(Default)]
+struct CacheIoTimingTotals {
+    load_ns: AtomicU64,
+    save_ns: AtomicU64,
+    bytes_read: AtomicU64,
+    bytes_written: AtomicU64,
+    load_count: AtomicUsize,
+    save_count: AtomicUsize,
+}
+
+static PARSE_CACHE_TIMING_TOTALS: CacheIoTimingTotals = CacheIoTimingTotals {
+    load_ns: AtomicU64::new(0),
+    save_ns: AtomicU64::new(0),
+    bytes_read: AtomicU64::new(0),
+    bytes_written: AtomicU64::new(0),
+    load_count: AtomicUsize::new(0),
+    save_count: AtomicUsize::new(0),
+};
+
+static REWRITE_CACHE_TIMING_TOTALS: CacheIoTimingTotals = CacheIoTimingTotals {
+    load_ns: AtomicU64::new(0),
+    save_ns: AtomicU64::new(0),
+    bytes_read: AtomicU64::new(0),
+    bytes_written: AtomicU64::new(0),
+    load_count: AtomicUsize::new(0),
+    save_count: AtomicUsize::new(0),
+};
+
+static OBJECT_CACHE_META_TIMING_TOTALS: CacheIoTimingTotals = CacheIoTimingTotals {
+    load_ns: AtomicU64::new(0),
+    save_ns: AtomicU64::new(0),
+    bytes_read: AtomicU64::new(0),
+    bytes_written: AtomicU64::new(0),
+    load_count: AtomicUsize::new(0),
+    save_count: AtomicUsize::new(0),
+};
+
+fn reset_cache_io_timing_totals(totals: &CacheIoTimingTotals) {
+    totals.load_ns.store(0, Ordering::Relaxed);
+    totals.save_ns.store(0, Ordering::Relaxed);
+    totals.bytes_read.store(0, Ordering::Relaxed);
+    totals.bytes_written.store(0, Ordering::Relaxed);
+    totals.load_count.store(0, Ordering::Relaxed);
+    totals.save_count.store(0, Ordering::Relaxed);
 }
 
 fn parsed_file_cache_path(project_root: &Path, file: &Path) -> PathBuf {
@@ -2151,7 +2260,8 @@ fn load_parsed_file_cache_entry(
     file: &Path,
 ) -> Result<Option<ParsedFileCacheEntry>, String> {
     let path = parsed_file_cache_path(project_root, file);
-    let entry: ParsedFileCacheEntry = match read_cache_blob(&path, "parse cache")? {
+    let entry: ParsedFileCacheEntry =
+        match read_cache_blob_with_timing(&path, "parse cache", &PARSE_CACHE_TIMING_TOTALS)? {
         Some(entry) => entry,
         None => return Ok(None),
     };
@@ -2179,7 +2289,7 @@ fn save_parsed_file_cache(
             )
         })?;
     }
-    write_cache_blob(&path, "parse cache", entry)
+    write_cache_blob_with_timing(&path, "parse cache", entry, &PARSE_CACHE_TIMING_TOTALS)
 }
 
 const IMPORT_CHECK_CACHE_SCHEMA: &str = "v2";
@@ -4384,7 +4494,7 @@ fn load_rewritten_file_cache_entry(
     file: &Path,
 ) -> Result<Option<RewrittenFileCacheEntry>, String> {
     let path = rewritten_file_cache_path(project_root, file);
-    read_cache_blob(&path, "rewrite cache")
+    read_cache_blob_with_timing(&path, "rewrite cache", &REWRITE_CACHE_TIMING_TOTALS)
 }
 
 fn load_rewritten_file_cache_if_semantic_matches(
@@ -4445,7 +4555,7 @@ fn save_rewritten_file_cache(
         },
         has_specialization_demand,
     };
-    write_cache_blob(&path, "rewrite cache", &entry)
+    write_cache_blob_with_timing(&path, "rewrite cache", &entry, &REWRITE_CACHE_TIMING_TOTALS)
 }
 
 fn object_ext() -> &'static str {
@@ -4620,8 +4730,11 @@ fn load_object_cache_hit(
     if !cache_paths.meta_path.exists() || !cache_paths.object_path.exists() {
         return Ok(None);
     }
-    let meta: ObjectCacheEntry = match read_cache_blob(&cache_paths.meta_path, "object cache meta")?
-    {
+    let meta: ObjectCacheEntry = match read_cache_blob_with_timing(
+        &cache_paths.meta_path,
+        "object cache meta",
+        &OBJECT_CACHE_META_TIMING_TOTALS,
+    )? {
         Some(meta) => meta,
         None => return Ok(None),
     };
@@ -4662,7 +4775,12 @@ fn save_object_cache_meta(
         rewrite_context_fingerprint: rewrite_context_fingerprint.to_string(),
         object_build_fingerprint: object_build_fingerprint.to_string(),
     };
-    write_cache_blob(&cache_paths.meta_path, "object cache meta", &meta)
+    write_cache_blob_with_timing(
+        &cache_paths.meta_path,
+        "object cache meta",
+        &meta,
+        &OBJECT_CACHE_META_TIMING_TOTALS,
+    )
 }
 
 fn load_object_shard_cache_hit(
@@ -4673,8 +4791,11 @@ fn load_object_shard_cache_hit(
     if !cache_paths.meta_path.exists() || !cache_paths.object_path.exists() {
         return Ok(None);
     }
-    let meta: ObjectShardCacheEntry =
-        match read_cache_blob(&cache_paths.meta_path, "object shard cache meta")? {
+    let meta: ObjectShardCacheEntry = match read_cache_blob_with_timing(
+        &cache_paths.meta_path,
+        "object shard cache meta",
+        &OBJECT_CACHE_META_TIMING_TOTALS,
+    )? {
             Some(meta) => meta,
             None => return Ok(None),
         };
@@ -4712,7 +4833,12 @@ fn save_object_shard_cache_meta(
         object_build_fingerprint: object_build_fingerprint.to_string(),
         members: members.to_vec(),
     };
-    write_cache_blob(&cache_paths.meta_path, "object shard cache meta", &meta)
+    write_cache_blob_with_timing(
+        &cache_paths.meta_path,
+        "object shard cache meta",
+        &meta,
+        &OBJECT_CACHE_META_TIMING_TOTALS,
+    )
 }
 
 fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectUnit, String> {
@@ -5680,6 +5806,9 @@ fn build_project(
     show_timings: bool,
 ) -> Result<(), String> {
     let mut build_timings = BuildTimings::new(show_timings);
+    reset_cache_io_timing_totals(&PARSE_CACHE_TIMING_TOTALS);
+    reset_cache_io_timing_totals(&REWRITE_CACHE_TIMING_TOTALS);
+    reset_cache_io_timing_totals(&OBJECT_CACHE_META_TIMING_TOTALS);
     let cwd = current_dir_checked()?;
     let project_root = find_project_root(&cwd)
         .ok_or_else(|| format!("{}: No apex.toml found. Are you in a project directory?\nRun `apex new <name>` to create a new project.",
@@ -5950,6 +6079,35 @@ fn build_project(
             ("considered", files.len()),
             ("reused", parse_cache_hits),
             ("parsed", files.len().saturating_sub(parse_cache_hits)),
+        ],
+    );
+    build_timings.record_duration_ns(
+        "parse cache/load",
+        PARSE_CACHE_TIMING_TOTALS.load_ns.load(Ordering::Relaxed),
+    );
+    build_timings.record_duration_ns(
+        "parse cache/save",
+        PARSE_CACHE_TIMING_TOTALS.save_ns.load(Ordering::Relaxed),
+    );
+    build_timings.record_counts(
+        "parse cache/io",
+        &[
+            (
+                "loads",
+                PARSE_CACHE_TIMING_TOTALS.load_count.load(Ordering::Relaxed),
+            ),
+            (
+                "saves",
+                PARSE_CACHE_TIMING_TOTALS.save_count.load(Ordering::Relaxed),
+            ),
+            (
+                "bytes_read",
+                PARSE_CACHE_TIMING_TOTALS.bytes_read.load(Ordering::Relaxed) as usize,
+            ),
+            (
+                "bytes_written",
+                PARSE_CACHE_TIMING_TOTALS.bytes_written.load(Ordering::Relaxed) as usize,
+            ),
         ],
     );
     build_timings.record_duration_ns(
@@ -6826,6 +6984,35 @@ fn build_project(
         ],
     );
     build_timings.record_duration_ns(
+        "rewrite cache/load",
+        REWRITE_CACHE_TIMING_TOTALS.load_ns.load(Ordering::Relaxed),
+    );
+    build_timings.record_duration_ns(
+        "rewrite cache/save",
+        REWRITE_CACHE_TIMING_TOTALS.save_ns.load(Ordering::Relaxed),
+    );
+    build_timings.record_counts(
+        "rewrite cache/io",
+        &[
+            (
+                "loads",
+                REWRITE_CACHE_TIMING_TOTALS.load_count.load(Ordering::Relaxed),
+            ),
+            (
+                "saves",
+                REWRITE_CACHE_TIMING_TOTALS.save_count.load(Ordering::Relaxed),
+            ),
+            (
+                "bytes_read",
+                REWRITE_CACHE_TIMING_TOTALS.bytes_read.load(Ordering::Relaxed) as usize,
+            ),
+            (
+                "bytes_written",
+                REWRITE_CACHE_TIMING_TOTALS.bytes_written.load(Ordering::Relaxed) as usize,
+            ),
+        ],
+    );
+    build_timings.record_duration_ns(
         "rewrite/context fingerprint",
         rewrite_timing_totals
             .rewrite_context_fingerprint_ns
@@ -7438,10 +7625,32 @@ fn build_project(
                 ("missed_shards", cache_misses.len()),
             ],
         );
+        build_timings.record_duration_ns(
+            "object cache meta/load",
+            OBJECT_CACHE_META_TIMING_TOTALS.load_ns.load(Ordering::Relaxed),
+        );
+        build_timings.record_counts(
+            "object cache meta/read",
+            &[
+                (
+                    "loads",
+                    OBJECT_CACHE_META_TIMING_TOTALS
+                        .load_count
+                        .load(Ordering::Relaxed),
+                ),
+                (
+                    "bytes_read",
+                    OBJECT_CACHE_META_TIMING_TOTALS
+                        .bytes_read
+                        .load(Ordering::Relaxed) as usize,
+                ),
+            ],
+        );
 
         let object_codegen_timing_totals = Arc::new(ObjectCodegenTimingTotals::default());
         let declaration_closure_timing_totals = Arc::new(DeclarationClosureTimingTotals::default());
         let object_emit_timing_totals = Arc::new(ObjectEmitTimingTotals::default());
+        crate::codegen::core::reset_codegen_phase_timings();
         crate::codegen::util::reset_object_write_timings();
         let compiled_results: Vec<(usize, PathBuf)> =
             build_timings.measure("object codegen", || {
@@ -7616,9 +7825,46 @@ fn build_project(
             object_codegen_timing_totals.cache_save_ns.load(Ordering::Relaxed),
         );
         build_timings.record_duration_ns(
+            "object cache meta/save",
+            OBJECT_CACHE_META_TIMING_TOTALS.save_ns.load(Ordering::Relaxed),
+        );
+        build_timings.record_counts(
+            "object cache meta/write",
+            &[
+                (
+                    "saves",
+                    OBJECT_CACHE_META_TIMING_TOTALS
+                        .save_count
+                        .load(Ordering::Relaxed),
+                ),
+                (
+                    "bytes_written",
+                    OBJECT_CACHE_META_TIMING_TOTALS
+                        .bytes_written
+                        .load(Ordering::Relaxed) as usize,
+                ),
+            ],
+        );
+        build_timings.record_duration_ns(
+            "object codegen/emit context create",
+            object_emit_timing_totals
+                .context_create_ns
+                .load(Ordering::Relaxed),
+        );
+        build_timings.record_duration_ns(
+            "object codegen/emit codegen new",
+            object_emit_timing_totals.codegen_new_ns.load(Ordering::Relaxed),
+        );
+        build_timings.record_duration_ns(
             "object codegen/emit compile filtered",
             object_emit_timing_totals
                 .compile_filtered_ns
+                .load(Ordering::Relaxed),
+        );
+        build_timings.record_duration_ns(
+            "object codegen/emit object dir setup",
+            object_emit_timing_totals
+                .object_dir_setup_ns
                 .load(Ordering::Relaxed),
         );
         build_timings.record_duration_ns(
@@ -7626,6 +7872,143 @@ fn build_project(
             object_emit_timing_totals
                 .write_object_ns
                 .load(Ordering::Relaxed),
+        );
+        build_timings.record_counts(
+            "object codegen/emit details",
+            &[
+                (
+                    "active_symbols",
+                    object_emit_timing_totals
+                        .active_symbol_count
+                        .load(Ordering::Relaxed),
+                ),
+                (
+                    "decl_symbols",
+                    object_emit_timing_totals
+                        .declaration_symbol_count
+                        .load(Ordering::Relaxed),
+                ),
+                (
+                    "program_decls",
+                    object_emit_timing_totals
+                        .program_decl_count
+                        .load(Ordering::Relaxed),
+                ),
+            ],
+        );
+        let codegen_phase_timings = crate::codegen::core::snapshot_codegen_phase_timings();
+        build_timings.record_duration_ns(
+            "object codegen/core generic class check",
+            codegen_phase_timings.program_has_generic_classes_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core specialize classes 1",
+            codegen_phase_timings.specialize_generic_classes_initial_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core explicit generic check",
+            codegen_phase_timings.program_has_explicit_generic_calls_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core specialize explicit",
+            codegen_phase_timings.specialize_explicit_generic_calls_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core specialize classes 2",
+            codegen_phase_timings.specialize_generic_classes_final_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core collect spec symbols",
+            codegen_phase_timings.collect_generated_spec_symbols_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core specialize active",
+            codegen_phase_timings.specialized_active_symbols_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core import aliases",
+            codegen_phase_timings.import_alias_collection_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core enum pass",
+            codegen_phase_timings.enum_declare_pass_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core enum filters",
+            codegen_phase_timings.enum_declare_decl_filter_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core enum work",
+            codegen_phase_timings.enum_declare_work_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core decl pass",
+            codegen_phase_timings.decl_pass_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core decl filters",
+            codegen_phase_timings.decl_pass_decl_filter_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core decl class work",
+            codegen_phase_timings.decl_pass_class_work_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core decl fn work",
+            codegen_phase_timings.decl_pass_function_work_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core decl module work",
+            codegen_phase_timings.decl_pass_module_work_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core body pass",
+            codegen_phase_timings.body_pass_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core body filters",
+            codegen_phase_timings.body_pass_decl_filter_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core body fn work",
+            codegen_phase_timings.body_pass_function_work_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core body class work",
+            codegen_phase_timings.body_pass_class_work_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core body module work",
+            codegen_phase_timings.body_pass_module_work_ns,
+        );
+        build_timings.record_counts(
+            "object codegen/core counts",
+            &[
+                ("decls", codegen_phase_timings.total_decls_count),
+                ("import_aliases", codegen_phase_timings.import_alias_count),
+                ("active_symbols", codegen_phase_timings.active_symbols_count),
+                (
+                    "decl_symbols",
+                    codegen_phase_timings.declaration_symbols_count,
+                ),
+                (
+                    "spec_owners",
+                    codegen_phase_timings.generated_spec_owners_count,
+                ),
+                ("declared_enums", codegen_phase_timings.declared_enum_count),
+                ("declared_classes", codegen_phase_timings.declared_class_count),
+                (
+                    "declared_functions",
+                    codegen_phase_timings.declared_function_count,
+                ),
+                ("declared_modules", codegen_phase_timings.declared_module_count),
+                (
+                    "compiled_functions",
+                    codegen_phase_timings.compiled_function_count,
+                ),
+                ("compiled_classes", codegen_phase_timings.compiled_class_count),
+                ("compiled_modules", codegen_phase_timings.compiled_module_count),
+            ],
         );
         build_timings.record_duration_ns(
             "object codegen/decl closure seed",
@@ -7705,8 +8088,48 @@ fn build_project(
                 + object_write_timings.filesystem_write_ns,
         );
         build_timings.record_duration_ns(
+            "object codegen/write object with TM",
+            object_write_timings.with_target_machine_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object TM config",
+            object_write_timings.target_machine_config_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object TM init",
+            object_write_timings.ensure_targets_initialized_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object triple",
+            object_write_timings.target_triple_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object host cpu",
+            object_write_timings.host_cpu_query_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object opt resolve",
+            object_write_timings.opt_level_resolve_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object target from triple",
+            object_write_timings.target_from_triple_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object TM create",
+            object_write_timings.target_machine_create_ns,
+        );
+        build_timings.record_duration_ns(
             "object codegen/write object target setup",
             object_write_timings.target_machine_setup_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object set triple",
+            object_write_timings.module_set_triple_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/write object set layout",
+            object_write_timings.module_set_data_layout_ns,
         );
         build_timings.record_duration_ns(
             "object codegen/write object memory buffer",
@@ -7723,6 +8146,18 @@ fn build_project(
         build_timings.record_duration_ns(
             "object codegen/write object fs write",
             object_write_timings.filesystem_write_ns,
+        );
+        build_timings.record_counts(
+            "object codegen/write object counts",
+            &[
+                ("tm_cache_hits", object_write_timings.target_machine_cache_hit_count),
+                (
+                    "tm_cache_misses",
+                    object_write_timings.target_machine_cache_miss_count,
+                ),
+                ("emit_calls", object_write_timings.emit_object_call_count),
+                ("write_calls", object_write_timings.write_object_call_count),
+            ],
         );
 
         for (index, obj_path) in compiled_results {
@@ -7841,12 +8276,33 @@ fn compile_program_ast_to_object_filtered(
     declaration_symbols: &HashSet<String>,
     timings: Option<&ObjectEmitTimingTotals>,
 ) -> Result<(), String> {
+    let context_started_at = Instant::now();
     let context = Context::create();
+    if let Some(timings) = timings {
+        timings
+            .context_create_ns
+            .fetch_add(elapsed_nanos_u64(context_started_at), Ordering::Relaxed);
+        timings
+            .active_symbol_count
+            .fetch_add(active_symbols.len(), Ordering::Relaxed);
+        timings
+            .declaration_symbol_count
+            .fetch_add(declaration_symbols.len(), Ordering::Relaxed);
+        timings
+            .program_decl_count
+            .fetch_add(program.declarations.len(), Ordering::Relaxed);
+    }
     let module_name = source_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("main");
+    let codegen_new_started_at = Instant::now();
     let mut codegen = Codegen::new(&context, module_name);
+    if let Some(timings) = timings {
+        timings
+            .codegen_new_ns
+            .fetch_add(elapsed_nanos_u64(codegen_new_started_at), Ordering::Relaxed);
+    }
     let compile_started_at = Instant::now();
     codegen
         .compile_filtered_with_decl_symbols(program, active_symbols, declaration_symbols)
@@ -7858,6 +8314,7 @@ fn compile_program_ast_to_object_filtered(
     }
 
     if let Some(parent) = object_path.parent() {
+        let object_dir_setup_started_at = Instant::now();
         fs::create_dir_all(parent).map_err(|e| {
             format!(
                 "{}: Failed to create object cache directory '{}': {}",
@@ -7866,6 +8323,11 @@ fn compile_program_ast_to_object_filtered(
                 e
             )
         })?;
+        if let Some(timings) = timings {
+            timings
+                .object_dir_setup_ns
+                .fetch_add(elapsed_nanos_u64(object_dir_setup_started_at), Ordering::Relaxed);
+        }
     }
     let write_started_at = Instant::now();
     codegen
