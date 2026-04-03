@@ -709,6 +709,33 @@ impl TypeChecker {
         ))
     }
 
+    fn resolve_wildcard_import_module_function_candidate(
+        &self,
+        module_name: &str,
+        member_parts: &[String],
+    ) -> Option<String> {
+        if member_parts.is_empty() || self.lookup_variable(module_name).is_some() {
+            return None;
+        }
+        let mut matches = self
+            .import_aliases
+            .values()
+            .filter_map(|path| path.strip_suffix(".*"))
+            .map(|namespace| {
+                format!(
+                    "{}__{}__{}",
+                    namespace.replace('.', "__"),
+                    module_name,
+                    member_parts.join("__")
+                )
+            })
+            .filter(|candidate| self.functions.contains_key(candidate))
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        (matches.len() == 1).then(|| matches[0].clone())
+    }
+
     fn resolve_function_value_name<'a>(&'a self, name: &'a str) -> Option<&'a str> {
         if self.functions.contains_key(name) {
             return Some(name);
@@ -1968,6 +1995,9 @@ impl TypeChecker {
                 if let Some(alias) = &import.alias {
                     self.import_aliases
                         .insert(alias.clone(), import.path.clone());
+                } else if import.path.ends_with(".*") {
+                    self.import_aliases
+                        .insert(import.path.clone(), import.path.clone());
                 }
             }
         }
@@ -5721,6 +5751,18 @@ impl TypeChecker {
                                     );
                                 }
                             }
+                            if let Some(candidate) = self
+                                .resolve_wildcard_import_module_function_candidate(
+                                    &path_parts[0],
+                                    &path_parts[1..],
+                                )
+                            {
+                                if let Some(sig) = self.functions.get(&candidate).cloned() {
+                                    return self.instantiate_function_value_type(
+                                        &candidate, &sig, type_args, span,
+                                    );
+                                }
+                            }
                             let mangled = path_parts.join("__");
                             if let Some(sig) = self.functions.get(&mangled).cloned() {
                                 return self.instantiate_function_value_type(
@@ -5927,6 +5969,14 @@ impl TypeChecker {
                                 let resolved = resolved.to_owned();
                                 return self.function_value_type_or_error(&resolved, span.clone());
                             }
+                        }
+                        if let Some(candidate) = self
+                            .resolve_wildcard_import_module_function_candidate(
+                                &path_parts[0],
+                                &path_parts[1..],
+                            )
+                        {
+                            return self.function_value_type_or_error(&candidate, span.clone());
                         }
 
                         let mangled = path_parts.join("__");
@@ -7202,6 +7252,71 @@ impl TypeChecker {
                                 }
                                 if sig.is_variadic && sig.is_extern {
                                     self.check_variadic_ffi_tail_args(&resolved, args, expected);
+                                }
+                            }
+                            return inst_return_type;
+                        }
+                    }
+                    if let Some(candidate) = self.resolve_wildcard_import_module_function_candidate(
+                        &path_parts[0],
+                        &path_parts[1..],
+                    ) {
+                        if let Some(sig) = self.functions.get(&candidate).cloned() {
+                            self.enforce_call_effects(&sig, span.clone(), &candidate);
+                            let (inst_params, inst_return_type, valid_explicit_type_args) = self
+                                .instantiate_signature_for_call(
+                                    &candidate,
+                                    &sig,
+                                    type_args,
+                                    span.clone(),
+                                );
+                            if !valid_explicit_type_args {
+                                return ResolvedType::Unknown;
+                            }
+                            let expected = inst_params.len();
+                            let bad_arity = if sig.is_variadic {
+                                args.len() < expected
+                            } else {
+                                args.len() != expected
+                            };
+                            if bad_arity {
+                                self.error(
+                                    format!(
+                                        "Function '{}' expects {} arguments, got {}",
+                                        candidate,
+                                        if sig.is_variadic {
+                                            format!("at least {}", expected)
+                                        } else {
+                                            expected.to_string()
+                                        },
+                                        args.len()
+                                    ),
+                                    span.clone(),
+                                );
+                            } else {
+                                for (arg, (_, param_type)) in args.iter().zip(inst_params.iter()) {
+                                    let arg_type = self.check_expr_with_expected_type(
+                                        &arg.node,
+                                        arg.span.clone(),
+                                        Some(param_type),
+                                    );
+                                    if !self.types_compatible(param_type, &arg_type) {
+                                        self.error(
+                                            format!(
+                                                "Argument type mismatch: expected {}, got {}",
+                                                Self::format_resolved_type_for_diagnostic(
+                                                    param_type
+                                                ),
+                                                Self::format_resolved_type_for_diagnostic(
+                                                    &arg_type
+                                                )
+                                            ),
+                                            arg.span.clone(),
+                                        );
+                                    }
+                                }
+                                if sig.is_variadic && sig.is_extern {
+                                    self.check_variadic_ffi_tail_args(&candidate, args, expected);
                                 }
                             }
                             return inst_return_type;

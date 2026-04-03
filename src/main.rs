@@ -29651,6 +29651,37 @@ function main(): Integer {
     }
 
     #[test]
+    fn compile_source_runs_wildcard_imported_module_named_main_runtime() {
+        let temp_root = make_temp_project_root("wildcard-imported-module-main-runtime");
+        let source_path = temp_root.join("wildcard_imported_module_main_runtime.apex");
+        let output_path = temp_root.join("wildcard_imported_module_main_runtime");
+        let source = r#"
+            module M {
+                module main {
+                    function ping(): Integer { return 22; }
+                }
+            }
+
+            import M.*;
+
+            function main(): Integer {
+                return main.ping();
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, true, None, None)
+            .expect("wildcard-imported module named main should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled wildcard-imported module named main binary");
+        assert_eq!(status.code(), Some(22));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_runs_if_expression_builtin_function_value_runtime() {
         let temp_root = make_temp_project_root("if-expression-builtin-function-value-runtime");
         let source_path = temp_root.join("if_expression_builtin_function_value_runtime.apex");

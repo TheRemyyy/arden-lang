@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - exact import aliases like `import M.main as Main;` now keep resolving `Main.ping()` as a module call instead of misclassifying the alias as an unrelated bare `main` function value
   - this fixes real checked single-file programs that previously failed with `Cannot call method on type () -> Integer` because exact-import alias resolution used a suffix-based function fallback on `M__main`
   - added a runtime regression for exact-imported `module main` calls, and it now compiles and exits with `22`
+- Fixed wildcard module imports when the imported module is named `main`:
+  - wildcard imports like `import M.*;` now resolve `main.ping()` through the unique wildcard-imported module path instead of treating `main` as the local entry function value
+  - this fixes real checked and codegen paths that previously failed with `Cannot call method on type () -> Integer` even though `M.main.ping()` was a valid module-qualified function
+  - added a runtime regression for wildcard-imported `module main` calls, and it now compiles and exits with `22`
 - Fixed stale safe rewrite-cache reuse after entry namespace changes:
   - project builds now disable the dependency-graph-based rewrite fast path when the cached entry namespace no longer matches the current entry namespace, so unchanged files are re-rewritten instead of reusing ASTs mangled for the wrong project entry context
   - this fixes real rebuilds where changing an entry file from `package app;` to `package core;` reused a cached `core/main` class rewrite and then failed in codegen with `Unknown type: main`

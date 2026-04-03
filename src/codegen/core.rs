@@ -6727,6 +6727,25 @@ impl<'ctx> Codegen<'ctx> {
 
     pub(crate) fn resolve_module_alias(&self, name: &str) -> String {
         if let Some(path) = self.import_aliases.get(name) {
+            if !path.ends_with(".*") {
+                let exact_module = path.replace('.', "__");
+                let module_prefix = format!("{}__", exact_module);
+                if self
+                    .functions
+                    .keys()
+                    .any(|candidate| candidate.starts_with(&module_prefix))
+                    || self
+                        .classes
+                        .keys()
+                        .any(|candidate| candidate.starts_with(&module_prefix))
+                    || self
+                        .enums
+                        .keys()
+                        .any(|candidate| candidate.starts_with(&module_prefix))
+                {
+                    return exact_module;
+                }
+            }
             let mut owner: Option<String> = None;
             for (func, ns) in stdlib_registry().get_functions() {
                 if ns == path {
@@ -6824,6 +6843,33 @@ impl<'ctx> Codegen<'ctx> {
         matches.sort_unstable();
         matches.dedup();
         (matches.len() == 1).then(|| (matches[0].clone(), variant_name.to_string()))
+    }
+
+    fn resolve_wildcard_import_module_function_candidate(
+        &self,
+        module_name: &str,
+        member_parts: &[String],
+    ) -> Option<String> {
+        if member_parts.is_empty() || self.variables.contains_key(module_name) {
+            return None;
+        }
+        let mut matches = self
+            .import_aliases
+            .values()
+            .filter_map(|path| path.strip_suffix(".*"))
+            .map(|namespace| {
+                format!(
+                    "{}__{}__{}",
+                    namespace.replace('.', "__"),
+                    module_name,
+                    member_parts.join("__")
+                )
+            })
+            .filter(|candidate| self.functions.contains_key(candidate))
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        (matches.len() == 1).then(|| matches[0].clone())
     }
 
     fn builtin_exact_import_alias_canonical(path: &str) -> Option<&'static str> {
@@ -6944,6 +6990,14 @@ impl<'ctx> Codegen<'ctx> {
                             if self.functions.contains_key(&candidate) {
                                 return Some(candidate);
                             }
+                        }
+                        if let Some(candidate) = self
+                            .resolve_wildcard_import_module_function_candidate(
+                                &path_parts[0],
+                                &path_parts[1..],
+                            )
+                        {
+                            return Some(candidate);
                         }
 
                         if path_parts.len() == 2 {
@@ -13922,6 +13976,30 @@ impl<'ctx> Codegen<'ctx> {
                         }
                     };
                 }
+                if let Some(candidate) = self.resolve_wildcard_import_module_function_candidate(
+                    owner_name,
+                    std::slice::from_ref(field),
+                ) {
+                    if let Some((func, _)) = self.functions.get(&candidate).cloned() {
+                        let mut compiled_args: Vec<BasicValueEnum> = vec![self
+                            .context
+                            .ptr_type(AddressSpace::default())
+                            .const_null()
+                            .into()];
+                        for a in args {
+                            compiled_args.push(self.compile_expr(&a.node)?);
+                        }
+                        let args_meta: Vec<BasicMetadataValueEnum> =
+                            compiled_args.iter().map(|a| (*a).into()).collect();
+                        let call = self.builder.build_call(func, &args_meta, "call").unwrap();
+                        return match call.try_as_basic_value() {
+                            ValueKind::Basic(val) => Ok(val),
+                            ValueKind::Instruction(_) => {
+                                Ok(self.context.i8_type().const_int(0, false).into())
+                            }
+                        };
+                    }
+                }
             }
         }
 
@@ -13981,6 +14059,30 @@ impl<'ctx> Codegen<'ctx> {
                             Ok(self.context.i8_type().const_int(0, false).into())
                         }
                     };
+                }
+                if let Some(candidate) = self.resolve_wildcard_import_module_function_candidate(
+                    &path_parts[0],
+                    &path_parts[1..],
+                ) {
+                    if let Some((func, _)) = self.functions.get(&candidate).cloned() {
+                        let mut compiled_args: Vec<BasicValueEnum> = vec![self
+                            .context
+                            .ptr_type(AddressSpace::default())
+                            .const_null()
+                            .into()];
+                        for a in args {
+                            compiled_args.push(self.compile_expr(&a.node)?);
+                        }
+                        let args_meta: Vec<BasicMetadataValueEnum> =
+                            compiled_args.iter().map(|a| (*a).into()).collect();
+                        let call = self.builder.build_call(func, &args_meta, "call").unwrap();
+                        return match call.try_as_basic_value() {
+                            ValueKind::Basic(val) => Ok(val),
+                            ValueKind::Instruction(_) => {
+                                Ok(self.context.i8_type().const_int(0, false).into())
+                            }
+                        };
+                    }
                 }
             }
         }
