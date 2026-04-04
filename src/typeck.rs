@@ -4518,7 +4518,11 @@ impl TypeChecker {
             }
         }
 
-        let scoped_ty = self.resolve_type_source_string(&type_source);
+        let resolved_ctor_type = self.resolve_type_source(&type_source);
+        let scoped_ty = resolved_ctor_type
+            .clone()
+            .map(|resolved| resolved.to_string())
+            .unwrap_or_else(|| self.resolve_type_source_string(&type_source));
         let (class_name, class_substitutions) = self.instantiated_class_substitutions(&scoped_ty);
         let class = self.classes.get(&class_name).cloned()?;
 
@@ -4535,8 +4539,10 @@ impl TypeChecker {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let actual_ty =
-            ResolvedType::Function(ctor_params, Box::new(self.parse_type_string(&scoped_ty)));
+        let actual_ty = ResolvedType::Function(
+            ctor_params,
+            Box::new(resolved_ctor_type.unwrap_or_else(|| self.parse_type_string(&scoped_ty))),
+        );
 
         if let Some(expected_ty) = expected {
             if self.types_compatible(expected_ty, &actual_ty) {
@@ -5091,7 +5097,11 @@ impl TypeChecker {
             type_source = expected_class_name.clone();
         }
 
-        let scoped_ty = self.resolve_type_source_string(&type_source);
+        let resolved_ctor_type = self.resolve_type_source(&type_source);
+        let scoped_ty = resolved_ctor_type
+            .clone()
+            .map(|resolved| resolved.to_string())
+            .unwrap_or_else(|| self.resolve_type_source_string(&type_source));
         let (class_name, class_substitutions) = self.instantiated_class_substitutions(&scoped_ty);
         let class = self.classes.get(&class_name).cloned()?;
 
@@ -5149,7 +5159,7 @@ impl TypeChecker {
             return Some(ResolvedType::Unknown);
         }
 
-        Some(self.parse_type_string(&scoped_ty))
+        Some(resolved_ctor_type.unwrap_or_else(|| self.parse_type_string(&scoped_ty)))
     }
 
     /// Check an expression and return its type
@@ -6144,7 +6154,11 @@ impl TypeChecker {
                     }
                 }
 
-                let scoped_ty = self.resolve_type_source_string(ty);
+                let resolved_construct_type = self.resolve_type_source(ty);
+                let scoped_ty = resolved_construct_type
+                    .clone()
+                    .map(|resolved| resolved.to_string())
+                    .unwrap_or_else(|| self.resolve_type_source_string(ty));
 
                 if let Some((enum_name, variant_name)) = self.resolve_import_alias_variant(ty) {
                     if let Some(enum_info) = self.enums.get(&enum_name).cloned() {
@@ -6199,7 +6213,9 @@ impl TypeChecker {
                         );
                         return self.parse_type_string(&scoped_ty);
                     }
-                    let resolved = self.parse_type_string(&scoped_ty);
+                    let resolved = resolved_construct_type
+                        .clone()
+                        .unwrap_or_else(|| self.parse_type_string(&scoped_ty));
                     if !matches!(resolved, ResolvedType::Class(_))
                         && !matches!(resolved, ResolvedType::Unknown)
                     {
@@ -6273,7 +6289,7 @@ impl TypeChecker {
                             }
                         }
                     }
-                    self.parse_type_string(&scoped_ty)
+                    resolved_construct_type.unwrap_or_else(|| self.parse_type_string(&scoped_ty))
                 } else if scoped_ty == "List"
                     || scoped_ty == "Map"
                     || scoped_ty == "Set"
@@ -9629,15 +9645,20 @@ impl TypeChecker {
     }
 
     fn resolve_type_source_string(&self, s: &str) -> String {
-        parse_type_source(s)
-            .ok()
-            .map(|parsed| self.resolve_type(&parsed).to_string())
+        self.resolve_type_source(s)
+            .map(|resolved| resolved.to_string())
             .unwrap_or_else(|| {
                 self.resolve_nominal_reference_name(s).unwrap_or_else(|| {
                     self.module_scoped_type_name(s)
                         .unwrap_or_else(|| s.to_string())
                 })
             })
+    }
+
+    fn resolve_type_source(&self, s: &str) -> Option<ResolvedType> {
+        parse_type_source(s)
+            .ok()
+            .map(|parsed| self.resolve_type(&parsed))
     }
 
     fn parse_function_type_string(&self, s: &str) -> Option<(Vec<String>, String)> {
@@ -9783,6 +9804,60 @@ mod tests {
         let program = parser.parse_program().expect("parse");
         let mut checker = TypeChecker::new(source.to_string());
         checker.check(&program)
+    }
+
+    fn empty_interface() -> InterfaceInfo {
+        InterfaceInfo {
+            methods: HashMap::new(),
+            generic_param_names: Vec::new(),
+            generic_type_vars: Vec::new(),
+            extends: Vec::new(),
+            span: 0..0,
+        }
+    }
+
+    #[test]
+    fn resolves_nested_namespace_aliased_function_type_source_inside_generic_container() {
+        let mut checker = TypeChecker::new(String::new());
+        checker
+            .import_aliases
+            .insert("root".to_string(), "app".to_string());
+        checker
+            .interfaces
+            .insert("app__M__Api__Named".to_string(), empty_interface());
+
+        let resolved = checker
+            .resolve_type_source("List<(root.M.Api.Named) -> Integer>")
+            .expect("type source should parse");
+
+        assert_eq!(
+            resolved,
+            ResolvedType::List(Box::new(ResolvedType::Function(
+                vec![ResolvedType::Class("app__M__Api__Named".to_string())],
+                Box::new(ResolvedType::Integer),
+            )))
+        );
+    }
+
+    #[test]
+    fn parses_nested_namespace_aliased_function_type_string_inside_generic_container() {
+        let mut checker = TypeChecker::new(String::new());
+        checker
+            .import_aliases
+            .insert("root".to_string(), "app".to_string());
+        checker
+            .interfaces
+            .insert("app__M__Api__Named".to_string(), empty_interface());
+
+        let parsed = checker.parse_type_string("List<(root.M.Api.Named) -> Integer>");
+
+        assert_eq!(
+            parsed,
+            ResolvedType::List(Box::new(ResolvedType::Function(
+                vec![ResolvedType::Class("app__M__Api__Named".to_string())],
+                Box::new(ResolvedType::Integer),
+            )))
+        );
     }
 
     #[test]

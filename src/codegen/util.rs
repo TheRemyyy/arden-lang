@@ -1099,10 +1099,9 @@ impl<'ctx> Codegen<'ctx> {
             | Type::Rc(inner)
             | Type::Arc(inner) => self.llvm_type(inner),
             _ => {
-                let _ = self.compile_expr(expr)?;
                 return Err(CodegenError::new(format!(
                     "Cannot dereference non-pointer type {}",
-                    Self::format_type_string(&expr_ty)
+                    Self::format_diagnostic_type(&expr_ty)
                 )));
             }
         };
@@ -1363,12 +1362,6 @@ impl<'ctx> Codegen<'ctx> {
             name.rsplit('.').next().unwrap_or(name)
         }
 
-        let val = self.compile_expr(expr)?;
-        let func = self
-            .current_function
-            .ok_or_else(|| CodegenError::new("match expression used outside function"))?;
-        let merge_bb = self.context.append_basic_block(func, "match.expr.merge");
-
         let match_ty = self.infer_expr_type(expr, &[]);
         let option_inner_ty = match &match_ty {
             Type::Option(inner) => Some((**inner).clone()),
@@ -1382,6 +1375,58 @@ impl<'ctx> Codegen<'ctx> {
             Type::Named(name) if self.enums.contains_key(name) => Some(name.clone()),
             _ => None,
         };
+
+        for arm in arms {
+            match &arm.pattern {
+                Pattern::Literal(lit) => {
+                    let pattern_ty = self.infer_expr_type(&Expr::Literal(lit.clone()), &[]);
+                    if self
+                        .common_compatible_codegen_type(&match_ty, &pattern_ty)
+                        .is_none()
+                    {
+                        return Err(CodegenError::new(format!(
+                            "Pattern type mismatch: expected {}, found {}",
+                            Self::format_diagnostic_type(&match_ty),
+                            Self::format_diagnostic_type(&pattern_ty)
+                        )));
+                    }
+                }
+                Pattern::Variant(variant_name, _) => {
+                    let resolved_variant = if !variant_name.contains('.') {
+                        imported_variant(self, variant_name)
+                    } else {
+                        None
+                    };
+                    let variant_leaf = resolved_variant
+                        .as_ref()
+                        .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
+                        .unwrap_or_else(|| pattern_variant_leaf(variant_name));
+                    let resolved_enum_name =
+                        resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
+                    let matches_builtin_variant = matches!(variant_leaf, "Some" | "None")
+                        && option_inner_ty.is_some()
+                        || matches!(variant_leaf, "Ok" | "Error") && result_inner_tys.is_some();
+                    let enum_variant_exists = resolved_enum_name
+                        .or(enum_match_name.as_ref())
+                        .and_then(|enum_name| self.enums.get(enum_name))
+                        .is_some_and(|enum_info| enum_info.variants.contains_key(variant_leaf));
+                    if !matches_builtin_variant && !enum_variant_exists {
+                        return Err(CodegenError::new(format!(
+                            "Cannot match variant {} on type {}",
+                            variant_leaf,
+                            Self::format_diagnostic_type(&match_ty)
+                        )));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let val = self.compile_expr(expr)?;
+        let func = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("match expression used outside function"))?;
+        let merge_bb = self.context.append_basic_block(func, "match.expr.merge");
 
         let mut dispatch_bb = self
             .builder
@@ -1446,8 +1491,8 @@ impl<'ctx> Codegen<'ctx> {
                     {
                         return Err(CodegenError::new(format!(
                             "Pattern type mismatch: expected {}, found {}",
-                            Self::format_type_string(&match_ty),
-                            Self::format_type_string(&pattern_ty)
+                            Self::format_diagnostic_type(&match_ty),
+                            Self::format_diagnostic_type(&pattern_ty)
                         )));
                     }
                     let pattern_val = self.compile_literal(lit)?;
@@ -1589,7 +1634,7 @@ impl<'ctx> Codegen<'ctx> {
                         return Err(CodegenError::new(format!(
                             "Cannot match variant {} on type {}",
                             variant_leaf,
-                            Self::format_type_string(&match_ty)
+                            Self::format_diagnostic_type(&match_ty)
                         )));
                     }
                 }
@@ -1860,7 +1905,7 @@ impl<'ctx> Codegen<'ctx> {
                     });
                     return Err(CodegenError::new(format!(
                         "Cannot index type {}",
-                        Self::format_type_string(&diagnostic_ty)
+                        Self::format_diagnostic_type(&diagnostic_ty)
                     )));
                 }
 
@@ -2008,13 +2053,10 @@ impl<'ctx> Codegen<'ctx> {
                     | Type::Box(_)
                     | Type::Rc(_)
                     | Type::Arc(_) => Ok(self.compile_expr(&inner.node)?.into_pointer_value()),
-                    _ => {
-                        let _ = self.compile_expr(&inner.node)?;
-                        Err(CodegenError::new(format!(
-                            "Cannot dereference non-pointer type {}",
-                            Self::format_type_string(&inner_ty)
-                        )))
-                    }
+                    _ => Err(CodegenError::new(format!(
+                        "Cannot dereference non-pointer type {}",
+                        Self::format_diagnostic_type(&inner_ty)
+                    ))),
                 }
             }
             _ => Err(CodegenError::new("Invalid lvalue")),

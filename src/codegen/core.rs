@@ -434,11 +434,99 @@ pub struct Codegen<'ctx> {
     async_functions: HashMap<String, AsyncFunctionPlan<'ctx>>,
     extern_functions: HashSet<String>,
     import_aliases: HashMap<String, String>,
+    current_package: String,
 }
 
 impl<'ctx> Codegen<'ctx> {
     fn format_diagnostic_name(name: &str) -> String {
         name.replace("__", ".")
+    }
+
+    pub(crate) fn format_diagnostic_type(ty: &Type) -> String {
+        match ty {
+            Type::Named(name) => Self::format_specialized_class_diagnostic_name(name)
+                .unwrap_or_else(|| Self::format_diagnostic_name(name)),
+            Type::Generic(name, args) => format!(
+                "{}<{}>",
+                Self::format_specialized_class_diagnostic_name(name)
+                    .unwrap_or_else(|| Self::format_diagnostic_name(name)),
+                args.iter()
+                    .map(Self::format_diagnostic_type)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            _ => Self::format_diagnostic_name(&Self::format_type_string(ty)),
+        }
+    }
+
+    fn format_specialized_class_diagnostic_name(name: &str) -> Option<String> {
+        let (base_name, suffixes) = name.split_once("__spec__")?;
+        let args = if let Some(decoded) = Self::decode_specialization_suffix_token(suffixes) {
+            vec![decoded]
+        } else {
+            suffixes
+                .split('_')
+                .filter(|part| !part.is_empty())
+                .map(Self::decode_specialization_suffix_token)
+                .collect::<Option<Vec<_>>>()?
+        };
+        Some(format!(
+            "{}<{}>",
+            Self::format_diagnostic_name(base_name),
+            args.join(", ")
+        ))
+    }
+
+    fn decode_specialization_suffix_token(token: &str) -> Option<String> {
+        match token {
+            "I64" => Some("Integer".to_string()),
+            "F64" => Some("Float".to_string()),
+            "Bool" => Some("Boolean".to_string()),
+            "Str" => Some("String".to_string()),
+            "Char" => Some("Char".to_string()),
+            "None" => Some("None".to_string()),
+            _ => {
+                for (prefix, display_name) in [
+                    ("MutRef", "&mut "),
+                    ("Ref", "&"),
+                    ("Option", "Option<"),
+                    ("List", "List<"),
+                    ("Set", "Set<"),
+                    ("Box", "Box<"),
+                    ("Rc", "Rc<"),
+                    ("Arc", "Arc<"),
+                    ("Ptr", "Ptr<"),
+                    ("Task", "Task<"),
+                    ("Range", "Range<"),
+                    ("Opt", "Option<"),
+                ] {
+                    if let Some(inner) = token.strip_prefix(prefix) {
+                        let decoded_inner = Self::decode_specialization_suffix_token(inner)?;
+                        return match prefix {
+                            "Ref" | "MutRef" => Some(format!("{display_name}{decoded_inner}")),
+                            _ => Some(format!("{display_name}{decoded_inner}>")),
+                        };
+                    }
+                }
+
+                for prefix in ["Result", "Res", "Map"] {
+                    if let Some(inner) = token.strip_prefix(prefix) {
+                        let (left, right) = inner.split_once('_')?;
+                        let left = Self::decode_specialization_suffix_token(left)?;
+                        let right = Self::decode_specialization_suffix_token(right)?;
+                        let display_name = match prefix {
+                            "Map" => "Map",
+                            _ => "Result",
+                        };
+                        return Some(format!("{display_name}<{left}, {right}>"));
+                    }
+                }
+
+                token
+                    .strip_prefix('N')
+                    .map(|name| Self::format_diagnostic_name(&name.replace('_', "__")))
+            }
+        }
     }
 
     pub(crate) fn undefined_variable_error(name: &str) -> CodegenError {
@@ -452,7 +540,7 @@ impl<'ctx> Codegen<'ctx> {
     fn non_function_call_error(ty: &Type) -> CodegenError {
         CodegenError::new(format!(
             "Cannot call non-function type {}",
-            Self::format_type_string(ty)
+            Self::format_diagnostic_type(ty)
         ))
     }
 
@@ -535,7 +623,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub(crate) fn resolve_alias_qualified_codegen_type_name(&self, name: &str) -> Option<String> {
-        if let Some(canonical) = self.canonical_codegen_type_name(name) {
+        if let Some(canonical) = self.canonical_or_current_package_type_name(name) {
             return Some(canonical);
         }
 
@@ -545,7 +633,10 @@ impl<'ctx> Codegen<'ctx> {
                 .values()
                 .filter_map(|path| path.strip_suffix(".*"))
                 .filter_map(|module_path| {
-                    self.canonical_codegen_type_name(&format!("{}.{}", module_path, name))
+                    self.canonical_or_current_package_type_name(&format!(
+                        "{}.{}",
+                        module_path, name
+                    ))
                 })
                 .collect::<Vec<_>>();
             wildcard_matches.sort_unstable();
@@ -558,7 +649,7 @@ impl<'ctx> Codegen<'ctx> {
         if let Some((alias, rest)) = name.split_once('.') {
             if let Some(path) = self.import_aliases.get(alias) {
                 let candidate = format!("{}.{}", path, rest);
-                if let Some(canonical) = self.canonical_codegen_type_name(&candidate) {
+                if let Some(canonical) = self.canonical_or_current_package_type_name(&candidate) {
                     return Some(canonical);
                 }
             }
@@ -568,7 +659,22 @@ impl<'ctx> Codegen<'ctx> {
         if path.ends_with(".*") {
             return None;
         }
-        self.canonical_codegen_type_name(path)
+        self.canonical_or_current_package_type_name(path)
+    }
+
+    fn current_package_relative_path<'a>(&self, path: &'a str) -> Option<&'a str> {
+        if self.current_package.is_empty() {
+            return None;
+        }
+        path.strip_prefix(&self.current_package)
+            .and_then(|rest| rest.strip_prefix('.'))
+    }
+
+    fn canonical_or_current_package_type_name(&self, name: &str) -> Option<String> {
+        self.canonical_codegen_type_name(name).or_else(|| {
+            self.current_package_relative_path(name)
+                .and_then(|relative| self.canonical_codegen_type_name(relative))
+        })
     }
 
     pub(crate) fn type_specialization_suffix(ty: &Type) -> String {
@@ -668,6 +774,48 @@ impl<'ctx> Codegen<'ctx> {
             Type::Ptr(inner) => format!("Ptr<{}>", Self::format_type_string(inner)),
             Type::Task(inner) => format!("Task<{}>", Self::format_type_string(inner)),
             Type::Range(inner) => format!("Range<{}>", Self::format_type_string(inner)),
+        }
+    }
+
+    fn supports_display_scalar(ty: &Type) -> bool {
+        matches!(
+            ty,
+            Type::Integer | Type::Float | Type::Boolean | Type::String | Type::Char | Type::None
+        ) || matches!(ty, Type::Option(inner) if Self::supports_display_scalar(inner))
+            || matches!(
+                ty,
+                Type::Result(ok, err)
+                    if Self::supports_display_scalar(ok) && Self::supports_display_scalar(err)
+            )
+    }
+
+    fn supports_display_expr(expr: &Expr, ty: &Type) -> bool {
+        if Self::supports_display_scalar(ty) {
+            return true;
+        }
+
+        let Expr::Call { callee, args, .. } = expr else {
+            return false;
+        };
+        let Expr::Field { object, field } = &callee.node else {
+            return false;
+        };
+        let Expr::Ident(owner_name) = &object.node else {
+            return false;
+        };
+
+        match (owner_name.as_str(), field.as_str(), ty) {
+            ("Option", "none", Type::Option(_)) => true,
+            ("Option", "some", Type::Option(inner)) => args
+                .first()
+                .is_some_and(|arg| Self::supports_display_expr(&arg.node, inner)),
+            ("Result", "ok", Type::Result(ok, _)) => args
+                .first()
+                .is_some_and(|arg| Self::supports_display_expr(&arg.node, ok)),
+            ("Result", "error", Type::Result(_, err)) => args
+                .first()
+                .is_some_and(|arg| Self::supports_display_expr(&arg.node, err)),
+            _ => false,
         }
     }
 
@@ -5929,16 +6077,33 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn normalize_import_resolution_path(current_package: Option<&str>, path: &str) -> String {
+        current_package
+            .and_then(|package| {
+                path.strip_prefix(package)
+                    .and_then(|rest| rest.strip_prefix('.'))
+            })
+            .map(str::to_string)
+            .unwrap_or_else(|| path.to_string())
+    }
+
     fn collect_import_resolution_paths(program: &Program) -> HashMap<String, String> {
         let mut import_paths = HashMap::new();
+        let current_package = program.package.as_deref();
         for decl in &program.declarations {
             let Decl::Import(import) = &decl.node else {
                 continue;
             };
             if let Some(alias) = &import.alias {
-                import_paths.insert(alias.clone(), import.path.clone());
+                import_paths.insert(
+                    alias.clone(),
+                    Self::normalize_import_resolution_path(current_package, &import.path),
+                );
             } else if import.path.ends_with(".*") {
-                import_paths.insert(import.path.clone(), import.path.clone());
+                import_paths.insert(
+                    import.path.clone(),
+                    Self::normalize_import_resolution_path(current_package, &import.path),
+                );
             }
         }
         import_paths
@@ -6033,6 +6198,7 @@ impl<'ctx> Codegen<'ctx> {
             async_functions: HashMap::new(),
             extern_functions: HashSet::new(),
             import_aliases: HashMap::new(),
+            current_package: String::new(),
         }
     }
 
@@ -6121,7 +6287,7 @@ impl<'ctx> Codegen<'ctx> {
             return Err(CodegenError::new(format!(
                 "{}() requires numeric type, got {}",
                 name,
-                Self::format_type_string(&arg_ty)
+                Self::format_diagnostic_type(&arg_ty)
             )));
         }
         Ok(arg_ty)
@@ -6141,8 +6307,8 @@ impl<'ctx> Codegen<'ctx> {
             return Err(CodegenError::new(format!(
                 "{}() arguments must be numeric types, got {} and {}",
                 name,
-                Self::format_type_string(&left_ty),
-                Self::format_type_string(&right_ty)
+                Self::format_diagnostic_type(&left_ty),
+                Self::format_diagnostic_type(&right_ty)
             )));
         }
         Ok((left_ty, right_ty))
@@ -6178,6 +6344,7 @@ impl<'ctx> Codegen<'ctx> {
         active_symbols: Option<&HashSet<String>>,
         declaration_symbols: Option<&HashSet<String>>,
     ) -> Result<()> {
+        self.current_package = program.package.clone().unwrap_or_default();
         fn collect_generated_spec_symbols(program: &Program) -> HashMap<String, HashSet<String>> {
             fn collect_decl_symbols(
                 decl: &Spanned<Decl>,
@@ -6728,7 +6895,10 @@ impl<'ctx> Codegen<'ctx> {
     pub(crate) fn resolve_module_alias(&self, name: &str) -> String {
         if let Some(path) = self.import_aliases.get(name) {
             if !path.ends_with(".*") {
-                let exact_module = path.replace('.', "__");
+                let exact_module = self
+                    .current_package_relative_path(path)
+                    .unwrap_or(path)
+                    .replace('.', "__");
                 let module_prefix = format!("{}__", exact_module);
                 if self
                     .functions
@@ -6788,7 +6958,10 @@ impl<'ctx> Codegen<'ctx> {
             return canonical;
         }
 
-        let full_mangled = path.replace('.', "__");
+        let full_mangled = self
+            .current_package_relative_path(path)
+            .unwrap_or(path)
+            .replace('.', "__");
         if self.functions.contains_key(&full_mangled) {
             return full_mangled;
         }
@@ -10257,12 +10430,6 @@ impl<'ctx> Codegen<'ctx> {
                 .is_empty()
                 .then_some((enum_name, variant_name, variant_info.tag))
         };
-        let val = self.compile_expr(&expr.node)?;
-        let func = self
-            .current_function
-            .ok_or_else(|| CodegenError::new("match statement used outside function"))?;
-        let merge_bb = self.context.append_basic_block(func, "match.merge");
-
         let match_ty = self.infer_expr_type(&expr.node, &[]);
         let option_inner_ty = match &match_ty {
             Type::Option(inner) => Some((**inner).clone()),
@@ -10278,6 +10445,62 @@ impl<'ctx> Codegen<'ctx> {
             Type::Named(name) if self.enums.contains_key(name) => Some(name.clone()),
             _ => None,
         };
+
+        for arm in arms {
+            fn pattern_variant_leaf(name: &str) -> &str {
+                name.rsplit('.').next().unwrap_or(name)
+            }
+
+            match &arm.pattern {
+                Pattern::Literal(lit) => {
+                    let pattern_ty = self.infer_expr_type(&Expr::Literal(lit.clone()), &[]);
+                    if self
+                        .common_compatible_codegen_type(&match_ty, &pattern_ty)
+                        .is_none()
+                    {
+                        return Err(CodegenError::new(format!(
+                            "Pattern type mismatch: expected {}, found {}",
+                            Self::format_diagnostic_type(&match_ty),
+                            Self::format_diagnostic_type(&pattern_ty)
+                        )));
+                    }
+                }
+                Pattern::Variant(variant_name, _) => {
+                    let resolved_variant = if !variant_name.contains('.') {
+                        imported_variant(self, variant_name)
+                    } else {
+                        None
+                    };
+                    let variant_leaf = resolved_variant
+                        .as_ref()
+                        .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
+                        .unwrap_or_else(|| pattern_variant_leaf(variant_name));
+                    let resolved_enum_name =
+                        resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
+                    let matches_builtin_variant = (is_option_match
+                        && matches!(variant_leaf, "Some" | "None"))
+                        || (is_result_match && matches!(variant_leaf, "Ok" | "Error"));
+                    let enum_variant_exists = resolved_enum_name
+                        .or(enum_match_name.as_ref())
+                        .and_then(|enum_name| self.enums.get(enum_name))
+                        .is_some_and(|enum_info| enum_info.variants.contains_key(variant_leaf));
+                    if !matches_builtin_variant && !enum_variant_exists {
+                        return Err(CodegenError::new(format!(
+                            "Cannot match variant {} on type {}",
+                            variant_leaf,
+                            Self::format_diagnostic_type(&match_ty)
+                        )));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let val = self.compile_expr(&expr.node)?;
+        let func = self
+            .current_function
+            .ok_or_else(|| CodegenError::new("match statement used outside function"))?;
+        let merge_bb = self.context.append_basic_block(func, "match.merge");
 
         let mut dispatch_bb = self
             .builder
@@ -10340,8 +10563,8 @@ impl<'ctx> Codegen<'ctx> {
                     {
                         return Err(CodegenError::new(format!(
                             "Pattern type mismatch: expected {}, found {}",
-                            Self::format_type_string(&match_ty),
-                            Self::format_type_string(&pattern_ty)
+                            Self::format_diagnostic_type(&match_ty),
+                            Self::format_diagnostic_type(&pattern_ty)
                         )));
                     }
                     let pattern_val = self.compile_literal(lit)?;
@@ -10484,7 +10707,7 @@ impl<'ctx> Codegen<'ctx> {
                         return Err(CodegenError::new(format!(
                             "Cannot match variant {} on type {}",
                             variant_leaf,
-                            Self::format_type_string(&match_ty)
+                            Self::format_diagnostic_type(&match_ty)
                         )));
                     }
                 }
@@ -11294,7 +11517,7 @@ impl<'ctx> Codegen<'ctx> {
                 let Type::Task(inner_ty) = task_ty else {
                     return Err(CodegenError::new(format!(
                         "'await' can only be used on Task types, got {}",
-                        Self::format_type_string(&task_ty)
+                        Self::format_diagnostic_type(&task_ty)
                     )));
                 };
 
@@ -11329,7 +11552,7 @@ impl<'ctx> Codegen<'ctx> {
                     if !matches!(msg_ty, Type::String) {
                         return Err(CodegenError::new(format!(
                             "require() message must be String, got {}",
-                            Self::format_type_string(&msg_ty)
+                            Self::format_diagnostic_type(&msg_ty)
                         )));
                     }
                     // Print the error message
@@ -11631,8 +11854,8 @@ impl<'ctx> Codegen<'ctx> {
         if &actual_ty != expected_ty {
             return Err(CodegenError::new(format!(
                 "Type mismatch: expected {}, got {}",
-                Self::format_type_string(expected_ty),
-                Self::format_type_string(&actual_ty)
+                Self::format_diagnostic_type(expected_ty),
+                Self::format_diagnostic_type(&actual_ty)
             )));
         }
 
@@ -13219,7 +13442,7 @@ impl<'ctx> Codegen<'ctx> {
             }
             _ => Err(CodegenError::new(format!(
                 "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
-                Self::format_type_string(&display_ty)
+                Self::format_diagnostic_name(&Self::format_type_string(&display_ty))
             ))),
         }
     }
@@ -13316,7 +13539,7 @@ impl<'ctx> Codegen<'ctx> {
         if !matches!(cond_ty, Type::Boolean) {
             return Err(CodegenError::new(format!(
                 "Condition must be Boolean, found {}",
-                Self::format_type_string(&cond_ty)
+                Self::format_diagnostic_type(&cond_ty)
             )));
         }
         Ok(self.compile_expr(expr)?.into_int_value())
@@ -13327,7 +13550,7 @@ impl<'ctx> Codegen<'ctx> {
         if !matches!(index_ty, Type::Integer) {
             return Err(CodegenError::new(format!(
                 "Index must be Integer, found {}",
-                Self::format_type_string(&index_ty)
+                Self::format_diagnostic_type(&index_ty)
             )));
         }
         Ok(self.compile_expr(expr)?.into_int_value())
@@ -13352,7 +13575,7 @@ impl<'ctx> Codegen<'ctx> {
         if !matches!(expr_ty, Type::Integer) {
             return Err(CodegenError::new(format!(
                 "Cannot iterate over {}",
-                Self::format_type_string(&expr_ty)
+                Self::format_diagnostic_type(&expr_ty)
             )));
         }
         Ok(self.compile_expr(expr)?.into_int_value())
@@ -13442,6 +13665,7 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
+        self.ensure_binary_operator_supported(op, &left_ty, &right_ty)?;
         let lhs = self.compile_expr(left)?;
         let rhs = self.compile_expr(right)?;
         self.compile_binary_values(op, lhs, rhs, &left_ty, &right_ty)
@@ -13718,8 +13942,8 @@ impl<'ctx> Codegen<'ctx> {
                 } else {
                     Err(CodegenError::new(format!(
                         "Arithmetic operator requires numeric types, got {} and {}",
-                        Self::format_type_string(left_ty),
-                        Self::format_type_string(right_ty)
+                        Self::format_diagnostic_type(left_ty),
+                        Self::format_diagnostic_type(right_ty)
                     )))
                 }
             }
@@ -13729,8 +13953,8 @@ impl<'ctx> Codegen<'ctx> {
                 } else {
                     Err(CodegenError::new(format!(
                         "Cannot compare {} and {}",
-                        Self::format_type_string(left_ty),
-                        Self::format_type_string(right_ty)
+                        Self::format_diagnostic_type(left_ty),
+                        Self::format_diagnostic_type(right_ty)
                     )))
                 }
             }
@@ -13740,8 +13964,8 @@ impl<'ctx> Codegen<'ctx> {
                 } else {
                     Err(CodegenError::new(format!(
                         "Comparison requires numeric types, got {} and {}",
-                        Self::format_type_string(left_ty),
-                        Self::format_type_string(right_ty)
+                        Self::format_diagnostic_type(left_ty),
+                        Self::format_diagnostic_type(right_ty)
                     )))
                 }
             }
@@ -13751,8 +13975,8 @@ impl<'ctx> Codegen<'ctx> {
                 } else {
                     Err(CodegenError::new(format!(
                         "Logical operator requires Boolean types, got {} and {}",
-                        Self::format_type_string(left_ty),
-                        Self::format_type_string(right_ty)
+                        Self::format_diagnostic_type(left_ty),
+                        Self::format_diagnostic_type(right_ty)
                     )))
                 }
             }
@@ -13797,16 +14021,16 @@ impl<'ctx> Codegen<'ctx> {
 
     pub fn compile_unary(&mut self, op: UnaryOp, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
         let expr_ty = self.infer_expr_type(expr, &[]);
-        let val = self.compile_expr(expr)?;
 
         match op {
             UnaryOp::Neg => {
                 if !expr_ty.is_numeric() {
                     return Err(CodegenError::new(format!(
                         "Cannot negate non-numeric type {}",
-                        Self::format_type_string(&expr_ty)
+                        Self::format_diagnostic_type(&expr_ty)
                     )));
                 }
+                let val = self.compile_expr(expr)?;
                 if val.is_int_value() {
                     Ok(self
                         .builder
@@ -13827,9 +14051,10 @@ impl<'ctx> Codegen<'ctx> {
                 if !matches!(expr_ty, Type::Boolean) {
                     return Err(CodegenError::new(format!(
                         "Cannot apply '!' to non-boolean type {}",
-                        Self::format_type_string(&expr_ty)
+                        Self::format_diagnostic_type(&expr_ty)
                     )));
                 }
+                let val = self.compile_expr(expr)?;
                 Ok(self
                     .builder
                     .build_not(val.into_int_value(), "not")
@@ -13957,6 +14182,14 @@ impl<'ctx> Codegen<'ctx> {
                 let resolved_owner = self
                     .resolve_alias_qualified_codegen_type_name(owner_name)
                     .unwrap_or_else(|| self.resolve_module_alias(owner_name));
+                let type_path = format!("{}.{}", resolved_owner, field);
+                if let Some(resolved_type_name) =
+                    self.resolve_alias_qualified_codegen_type_name(&type_path)
+                {
+                    if self.classes.contains_key(&resolved_type_name) {
+                        return self.compile_construct(&type_path, args);
+                    }
+                }
                 // Enum constructor: `MyEnum.Variant(...)`
                 if let Some(enum_info) = self.enums.get(&resolved_owner) {
                     if let Some(variant_info) = enum_info.variants.get(field).cloned() {
@@ -14269,7 +14502,6 @@ impl<'ctx> Codegen<'ctx> {
                 });
             }
 
-            let _ = self.compile_expr(callee)?;
             return Err(Self::non_function_call_error(&callee_ty));
         }
 
@@ -16564,7 +16796,6 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
-        let obj_val = self.compile_expr(object)?;
         let object_ty = self.infer_object_type(object);
         let deref_object_ty = object_ty
             .clone()
@@ -16581,10 +16812,11 @@ impl<'ctx> Codegen<'ctx> {
             });
             return Err(CodegenError::new(format!(
                 "Cannot index type {}",
-                Self::format_type_string(&diagnostic_ty)
+                Self::format_diagnostic_type(&diagnostic_ty)
             )));
         }
 
+        let obj_val = self.compile_expr(object)?;
         if let Some(Type::Map(_, _)) = &deref_object_ty {
             let index_arg = [Spanned::new(index.clone(), 0..0)];
             if let Some(map_ty) = &deref_object_ty {
@@ -17167,6 +17399,12 @@ impl<'ctx> Codegen<'ctx> {
 
         for arg in args {
             let arg_ty = self.infer_expr_type(&arg.node, &[]);
+            if !Self::supports_display_expr(&arg.node, &arg_ty) {
+                return Err(CodegenError::new(format!(
+                    "println() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
+                    Self::format_diagnostic_type(&arg_ty)
+                )));
+            }
             let val = self.compile_expr_with_expected_type(&arg.node, &arg_ty)?;
             let display = self.compile_value_to_display_string(val, &arg_ty)?;
             let fmt = "%s";
@@ -17225,6 +17463,12 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 StringPart::Expr(expr) => {
                     let expr_ty = self.infer_expr_type(&expr.node, &[]);
+                    if !Self::supports_display_expr(&expr.node, &expr_ty) {
+                        return Err(CodegenError::new(format!(
+                            "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
+                            Self::format_diagnostic_name(&Self::format_type_string(&expr_ty))
+                        )));
+                    }
                     let val = self.compile_expr_with_expected_type(&expr.node, &expr_ty)?;
                     let display = self.compile_value_to_display_string(val, &expr_ty)?;
                     let display_len_call = self
@@ -17302,10 +17546,9 @@ impl<'ctx> Codegen<'ctx> {
         // Compile the inner expression (should be Option<T> or Result<T, E>)
         let inner_ty = self.infer_expr_type(inner, &[]);
         if !matches!(inner_ty, Type::Option(_) | Type::Result(_, _)) {
-            let _ = self.compile_expr(inner)?;
             return Err(CodegenError::new(format!(
                 "'?' operator can only be used on Option or Result, got {}",
-                Self::format_type_string(&inner_ty)
+                Self::format_diagnostic_type(&inner_ty)
             )));
         }
         let value = self.compile_expr(inner)?;
@@ -17867,7 +18110,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !matches!(arg_ty, Type::Integer | Type::Float) {
                     return Err(CodegenError::new(format!(
                         "to_float() requires Integer or Float, got {}",
-                        Self::format_type_string(&arg_ty)
+                        Self::format_diagnostic_type(&arg_ty)
                     )));
                 }
                 let val = self.compile_expr(&args[0].node)?;
@@ -17890,7 +18133,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !matches!(arg_ty, Type::Integer | Type::Float | Type::String) {
                     return Err(CodegenError::new(format!(
                         "to_int() requires Integer, Float, or String, got {}",
-                        Self::format_type_string(&arg_ty)
+                        Self::format_diagnostic_type(&arg_ty)
                     )));
                 }
                 let val = self.compile_expr(&args[0].node)?;
@@ -17932,6 +18175,12 @@ impl<'ctx> Codegen<'ctx> {
             }
             "to_string" => {
                 let arg_ty = self.infer_expr_type(&args[0].node, &[]);
+                if !Self::supports_display_expr(&args[0].node, &arg_ty) {
+                    return Err(CodegenError::new(format!(
+                        "to_string() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
+                        Self::format_diagnostic_type(&arg_ty)
+                    )));
+                }
                 let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let rendered = self.compile_value_to_display_string(val, &arg_ty)?;
                 Ok(Some(rendered.into()))
@@ -17943,7 +18192,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !matches!(s_ty, Type::String) {
                     return Err(CodegenError::new(format!(
                         "Str.len() requires String, got {}",
-                        Self::format_type_string(&s_ty)
+                        Self::format_diagnostic_type(&s_ty)
                     )));
                 }
                 let s = self.compile_expr(&args[0].node)?;
@@ -18771,7 +19020,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !matches!(path_ty, Type::String) {
                     return Err(CodegenError::new(format!(
                         "File.read() requires String path, got {}",
-                        Self::format_type_string(&path_ty)
+                        Self::format_diagnostic_type(&path_ty)
                     )));
                 }
                 let path = self.compile_expr(&args[0].node)?;
@@ -19037,7 +19286,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !matches!(path_ty, Type::String) {
                     return Err(CodegenError::new(format!(
                         "File.exists() requires String path, got {}",
-                        Self::format_type_string(&path_ty)
+                        Self::format_diagnostic_type(&path_ty)
                     )));
                 }
                 let path = self.compile_expr(&args[0].node)?;
@@ -19130,7 +19379,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !matches!(path_ty, Type::String) {
                     return Err(CodegenError::new(format!(
                         "File.delete() requires String path, got {}",
-                        Self::format_type_string(&path_ty)
+                        Self::format_diagnostic_type(&path_ty)
                     )));
                 }
                 let path = self.compile_expr(&args[0].node)?;

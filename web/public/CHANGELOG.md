@@ -24,6 +24,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed stale namespace-aliased extern signatures in project rebuilds:
   - extern function parameter and return types now validate dotted namespace-alias type paths through the declaration import-check path before FFI-safety validation runs
   - this fixes invalid builds that reference missing paths like `root.M.Api.Named` in `extern(c)` signatures, which previously produced cascading `Unknown type` and non-FFI-safe extern diagnostics instead of stopping at the import root cause
+- Fixed nested namespace-aliased function types inside generic constructors:
+  - constructor type resolution now keeps parsed AST-based canonical types instead of round-tripping them through intermediate type strings in constructor and constructor-function-value paths
+  - this fixes valid project builds such as `List<(root.M.Api.Named) -> Integer>()`, which previously failed with a bogus mismatch against `List<(app.M.Api.Named) -> Integer>`
+- Fixed nested module-local composite constructor type rewrites:
+  - project rewrite now rewrites module-local `let` and `for` annotations, already-mangled local symbols, constructor type strings, and explicit constructor type arguments through the same module-local type rewrite path
+  - this fixes valid nested-module builds such as `List<(Named) -> Integer>()` and `Box<Named>()`, which previously drifted to inconsistent names like `app__Named` instead of `app__M__Named`
+- Fixed local-module generic function call type arguments in project rewrite:
+  - explicit type arguments on local module function calls now rewrite through the same project type rewrite path as constructor and declaration types
+  - this fixes project builds such as `M.make<M.Box>()`, which previously left local module type arguments unre-written and could fall into ambiguous or stale type resolution
+- Fixed module-local generic interface reference rewriting:
+  - generic `extends`, `implements`, and bound interface references now rewrite their type arguments through the same full project/module type rewrite path as normal annotations
+  - this fixes nested module references such as `Named<Payload>`, which previously rewrote only the interface base and left local type arguments stale
+- Fixed module-local generic function values with local type arguments:
+  - module-local explicit generic function values now rewrite both the callee and their type arguments through the same local-module rewrite path as calls and constructors
+  - this fixes valid project builds such as `f: (Box) -> Box = id<Box>;` inside a module, which previously drifted to `app.Box` instead of `app.M.Box`
+- Fixed module-local lambda parameter type rewriting:
+  - project rewrite now rewrites lambda parameter annotations inside modules through the same local-module type path as `let`, `for`, constructor, and function-value annotations
+  - this fixes valid project builds such as `f: (Named) -> Integer = (value: Named) => value.value();`, which previously drifted to `app.Named` instead of `app.M.Named`
+- Fixed module-local nested enum variant match patterns:
+  - project rewrite now rewrites `match` arm variant patterns inside modules through the same nested-module enum resolution path as other local enum references
+  - this fixes valid project builds such as matching on `N.E.A(v)` inside a module, which previously fell through to `Undefined variable: app__N`
+- Fixed module-local nested module constructors and generic function values after intermediate mangling:
+  - project rewrite now normalizes already-mangled local nested module heads like `app__M__N.Box` back through the same local-module member resolution path used for raw `N.Box` references, including function-value fields
+  - this fixes valid project builds such as `value: N.Box = N.Box(55);` and `f: (N.Box) -> N.Box = N.id<N.Box>;` inside a module, which previously fell through to `Codegen error: Undefined variable: app__M__N`
+- Fixed unchecked interpolation diagnostics for module-local nominal expressions:
+  - unchecked codegen now validates interpolation display support from the inferred expression type before attempting to compile module/class paths into runtime values
+  - this fixes cases such as `"box={M.Box(7)}"` under `--no-check`, which previously fell through to a misleading `Codegen error: Undefined variable: M` instead of the proper display-formatting diagnostic
+- Fixed unchecked `println()` diagnostics for module-local nominal expressions:
+  - unchecked codegen now validates `println()` display support before compiling module/class paths, and formats module-local nominal type names with user-facing dotted paths
+  - this fixes cases such as `println(M.Box(7));` under `--no-check`, which previously fell through to a misleading `Codegen error: Undefined variable: M` instead of the proper `println()` display-formatting diagnostic
+- Fixed unchecked `to_string()` diagnostics for module-local nominal expressions:
+  - unchecked codegen now validates `to_string()` display support before compiling module/class paths, and formats module-local nominal type names with user-facing dotted paths
+  - this fixes cases such as `to_string(M.Box(7))` under `--no-check`, which previously fell through to a misleading `Codegen error: Undefined variable: M` instead of the proper `to_string()` display-formatting diagnostic
+- Fixed unchecked builtin and control-flow diagnostics leaking mangled module-local type names:
+  - unchecked codegen now formats inferred type names through the same user-facing dotted-path diagnostic path for boolean-condition checks, index checks, numeric conversions, `Str.len()`, and numeric stdlib argument validation
+  - this fixes cases such as `assert_true(M.Box(7))`, `xs[M.Box(7)]`, `to_float(M.Box(7))`, `to_int(M.Box(7))`, and `Str.len(M.Box(7))`, which previously reported internal names like `M__Box` instead of `M.Box`
+- Fixed unchecked unary, logical, math, loop, and file diagnostics for module-local nominal types:
+  - unary and binary codegen now rejects unsupported operand types before compiling module/class paths into runtime values, and the remaining diagnostics format module-local nominal types with user-facing dotted names
+  - this fixes cases such as `-M.Box(7)`, `!M.Box(7)`, `M.Box(7) && true`, `Math.min(M.Box(7), 1.0)`, `for (i in M.Box(7))`, and `File.read(M.Box(7))`, which previously either leaked internal names like `M__Box` or fell through to misleading `Undefined variable: M` codegen errors
+- Fixed unchecked `await`, `require`, `?`, and indexing diagnostics for module-local nominal types:
+  - unchecked codegen now formats module-local nominal types with user-facing dotted names for `await` and `require`, and rejects invalid `?` / indexing targets before attempting to compile module/class paths into runtime values
+  - this fixes cases such as `await M.Box(7)`, `require(true, M.Box(7))`, `M.Box(7)?`, and `M.Box(7)[0]`, which previously either leaked internal names like `M__Box` or fell through to misleading `Undefined variable: M` codegen errors
+- Fixed unchecked `match` and enum-variant function value diagnostics for module-local nominal types:
+  - unchecked `match` codegen now pre-validates literal and variant patterns before compiling the matched expression, and both `match` and enum-variant function value mismatch diagnostics now format module-local nominal types with user-facing dotted names
+  - this fixes cases such as `match (M.Box(1)) { 1 => ... }`, `match (value: M.Token) { Some(v) => ... }`, and `f: () -> M.Token = M.Token.Int`, which previously either leaked internal names like `M__Token` or fell through to misleading `Undefined variable: M` codegen errors
+- Fixed unchecked dereference diagnostics for module-local nominal types:
+  - unchecked dereference codegen now rejects non-pointer types before compiling module/class paths into runtime values, and dereference diagnostics format module-local nominal types with user-facing dotted names
+  - this fixes cases such as `*M.Box(1)`, which previously fell through to a misleading `Undefined variable: M` codegen error instead of `Cannot dereference non-pointer type M.Box`
+- Fixed unchecked non-function call and index-assignment diagnostics for module-local nominal types:
+  - unchecked call and lvalue-index codegen now rejects invalid non-function callees and non-indexable assignment targets before compiling module/class paths into runtime values, and formats module-local nominal types with user-facing dotted names
+  - this fixes cases such as `M.Box(1)(2)` and `value: M.Box = M.Box(1); value[0] = 1;`, which previously fell through to misleading `Undefined variable: M` codegen errors instead of `Cannot call non-function type M.Box` and `Cannot index type M.Box`
+- Fixed unchecked single-file module-local constructor calls:
+  - unchecked call codegen now recognizes two-part module-local class constructor paths like `M.Box(...)` before falling through to module-function dispatch, using the same alias-qualified type resolution path as other constructor lookups
+  - this fixes valid single-file `--no-check` builds such as `return M.Box(7);`, which previously failed with `Codegen error: Undefined variable: M` and also blocked downstream diagnostics that depended on compiling the constructor first
+- Fixed duplicate import-check error printing in CLI commands:
+  - single-file compile/check and project build paths now return rendered import-check diagnostics to the top-level CLI without pre-printing them inside helper functions
+  - this fixes stale project builds such as removing `root.M.Box` after an initial successful build, which previously printed the same `Import check failed` / member-missing diagnostic twice on stderr
+- Fixed unchecked single-file current-package alias constructors:
+  - unchecked codegen now resolves exact import aliases and namespace aliases against the current file package when mapping type/module import paths back to local codegen symbols
+  - this fixes valid single-file `--no-check` builds such as `import app as root; root.M.Box(7)` and `import app.M.Box as BoxType; BoxType(7)`, which previously failed with `Undefined variable: root` or `Unknown type: BoxType`
+- Fixed unchecked single-file current-package exact-import generic class alias specialization:
+  - generic specialization import-path collection now normalizes current-package exact import aliases before resolving class templates, so generic class alias constructors specialize to the concrete payload type instead of falling back to the unspecialized pointer-based template
+  - this fixes valid single-file `--no-check` builds such as `import app.M.Box as BoxType; BoxType<Integer>(7)`, which previously reached clang with invalid IR and failed with a return-type mismatch like `ret ptr` in an `i32` function
+- Fixed unchecked diagnostics leaking specialized generic class internals for current-package exact-import aliases:
+  - user-facing diagnostic formatting now renders specialized generic class names like `M__Box__spec__I64`, `M__Box__spec__ListI64`, `M__Box__spec__OptI64`, `M__Box__spec__MapStr_I64`, and `M__Box__spec__ResI64_Str` back to readable forms such as `M.Box<Integer>`, `M.Box<List<Integer>>`, `M.Box<Option<Integer>>`, `M.Box<Map<String, Integer>>`, and `M.Box<Result<Integer, String>>`, and `println()` / `to_string()` now route those errors through the same diagnostic formatter
+  - this fixes unchecked exact-import alias cases such as `BoxType<Integer>(7)(1)`, `BoxType<Integer>(7)[0]`, `println(BoxType<Integer>(7))`, `BoxType<List<Integer>>(...) [0]`, `println(BoxType<Option<Integer>>(...))`, `BoxType<Map<String, Integer>>(...) [0]`, and `println(BoxType<Result<Integer, String>>(...))`, which previously leaked internal names like `M.Box.spec.I64`, `M.Box.spec.ListI64`, `M.Box.spec.OptI64`, `M.Box.spec.MapStr_I64`, or `M.Box.spec.ResI64_Str`
+- Fixed stale namespace-aliased lambda signatures in project rebuilds:
+  - lambda parameter types now validate dotted namespace-alias type paths through the declaration import-check path instead of deferring them to later semantic type resolution
+  - this fixes incremental rebuilds where removing `root.M.Api.Named` from a helper module previously fell through to a late `Unknown type: root.M.Api.Named` error inside lambda parameter signatures instead of stopping at the stale import root cause
+- Fixed invalid nested namespace-aliased constructor type arguments:
+  - explicit call-site type arguments such as `root.M.Box<root.M.Api.Named>()` and other generic call forms now validate dotted namespace-alias type arguments through the declaration import-check path
+  - this fixes builds that previously accepted missing namespace-aliased generic constructor type arguments entirely and incorrectly compiled through without any diagnostic
+- Fixed stale namespace-aliased composite local annotations:
+  - local `let` and `for` annotations now validate nested namespace-alias types through the declaration import-check path, not just shallow nominal references
+  - this fixes incremental rebuilds where composite annotations like `(root.M.Api.Named) -> Integer` previously fell through to late `Unknown type: root.M.Api.Named` errors instead of stopping at the stale import root cause
 - Fixed stale exact-imported interface aliases inside declaration clauses:
   - import checking now parses and validates `extends`, `implements`, and generic bound type references through the same alias-resolution path as normal type annotations
   - this fixes stale rebuilds where declaration-only aliases such as `import app.M.Api.Named as Named; class Book implements Named { ... }` previously bypassed import-check revalidation and fell through to later semantic errors

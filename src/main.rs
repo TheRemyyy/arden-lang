@@ -7021,7 +7021,6 @@ fn build_project(
 
         for result in import_results {
             if let Err(rendered) = result {
-                eprint!("{rendered}");
                 return Err(format!("Import check failed\n{rendered}"));
             }
         }
@@ -8898,7 +8897,6 @@ fn compile_source(
             for err in errors {
                 rendered.push_str(&format!("  → {}\n", err.format()));
             }
-            eprint!("{rendered}");
             return Err(format!("Import check failed\n{rendered}"));
         }
 
@@ -9403,7 +9401,6 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
         for err in errors {
             rendered.push_str(&format!("  → {}\n", err.format()));
         }
-        eprint!("{rendered}");
         return Err(format!("Import check failed\n{rendered}"));
     }
 
@@ -10355,6 +10352,7 @@ mod tests {
     use std::os::unix::ffi::OsStringExt;
     use std::path::Path;
     use std::path::PathBuf;
+    use std::process::Command;
     use std::sync::{Arc, Mutex, OnceLock};
     use std::thread;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -18469,6 +18467,323 @@ enum main {
     }
 
     #[test]
+    fn project_build_reports_import_error_for_stale_nested_namespace_aliased_lambda_signature() {
+        let temp_root =
+            make_temp_project_root("project-stale-nested-namespace-aliased-lambda-signature");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer {\n    f: (root.M.Api.Named) -> Integer = (value: root.M.Api.Named) => 0;\n    return 0;\n}\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("initial namespace aliased lambda signature build should succeed");
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without namespace aliased lambda signature interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after namespace aliased lambda signature interface removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Unknown type: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_invalid_nested_namespace_aliased_constructor_type_arg(
+    ) {
+        let temp_root =
+            make_temp_project_root("project-invalid-nested-namespace-aliased-constructor-type-arg");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer {\n    root.M.Box<root.M.Api.Named>();\n    return 0;\n}\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M {\n    module Api { interface Labelled { function name(): Integer; } }\n    class Box<T> { constructor() {} }\n}\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false)
+                .expect_err("build should fail for invalid namespace aliased constructor type arg");
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Built smoke"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_reports_import_error_for_stale_nested_namespace_aliased_function_type_let_annotation(
+    ) {
+        let temp_root = make_temp_project_root(
+            "project-stale-nested-namespace-aliased-function-type-let-annotation",
+        );
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer {\n    f: (root.M.Api.Named) -> Integer = (value: root.M.Api.Named) => 0;\n    return 0;\n}\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "initial namespace aliased function-type let annotation build should succeed",
+            );
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
+        )
+        .expect("rewrite helper without namespace aliased function-type let annotation interface");
+
+        with_current_dir(&temp_root, || {
+            let err = build_project(false, false, true, false, false).expect_err(
+                "build should fail after namespace aliased function-type let annotation interface removal",
+            );
+            assert!(
+                err.contains("Imported namespace alias 'root' has no member 'M.Api.Named'"),
+                "{err}"
+            );
+            assert!(err.contains("Import check failed"), "{err}");
+            assert!(!err.contains("Unknown type: root.M.Api.Named"), "{err}");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_accepts_nested_namespace_aliased_function_type_inside_generic_constructor() {
+        let temp_root = make_temp_project_root(
+            "project-nested-namespace-aliased-function-type-inside-generic-constructor",
+        );
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer {\n    values: List<(root.M.Api.Named) -> Integer> = List<(root.M.Api.Named) -> Integer>();\n    return 0;\n}\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should accept nested namespace aliased function types in generic constructors",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_accepts_nested_module_local_function_type_inside_generic_constructor() {
+        let temp_root = make_temp_project_root(
+            "project-nested-module-local-function-type-inside-generic-constructor",
+        );
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    interface Named { function name(): Integer; }\n    function make(): Integer {\n        values: List<(Named) -> Integer> = List<(Named) -> Integer>();\n        return 0;\n    }\n}\nfunction main(): Integer { return M.make(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should accept nested module-local function types in generic constructors",
+            );
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_accepts_local_module_function_call_type_args() {
+        let temp_root = make_temp_project_root("project-local-module-function-call-type-args");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nimport util.*;\nmodule M {\n    class Box { constructor() {} }\n    function make<T>(): None { }\n}\nfunction main(): None {\n    M.make<M.Box>();\n}\n",
+        )
+        .expect("write main");
+        fs::write(
+            src_dir.join("helper.apex"),
+            "package util;\nmodule N {\n    module M {\n        class Box { constructor() {} }\n    }\n}\n",
+        )
+        .expect("write helper");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should accept local module function call type args");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_accepts_module_local_generic_interface_references() {
+        let temp_root = make_temp_project_root("project-module-local-generic-interface-references");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    class Payload { constructor() {} }\n    interface Named<T> { }\n    interface Child extends Named<Payload> { }\n    class Book implements Named<Payload> { constructor() {} }\n}\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should accept module-local generic interface references");
+        });
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_accepts_module_local_generic_function_values_with_local_type_args() {
+        let temp_root =
+            make_temp_project_root("project-module-local-generic-function-values-local-type-args");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n    }\n    function id<T>(value: T): T { return value; }\n    function run(): Integer {\n        f: (Box) -> Box = id<Box>;\n        return f(Box(7)).value;\n    }\n}\nfunction main(): Integer { return M.run(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should accept module-local generic function values with local type args",
+            );
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled module-local generic function value binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_accepts_module_local_lambda_parameter_types() {
+        let temp_root = make_temp_project_root("project-module-local-lambda-parameter-types");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    interface Named { function value(): Integer; }\n    class Box implements Named {\n        inner: Integer;\n        constructor(inner: Integer) { this.inner = inner; }\n        function value(): Integer { return this.inner; }\n    }\n    function run(): Integer {\n        f: (Named) -> Integer = (value: Named) => value.value();\n        return f(Box(21));\n    }\n}\nfunction main(): Integer { return M.run(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should accept module-local lambda parameter types");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled module-local lambda parameter binary");
+        assert_eq!(status.code(), Some(21));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_accepts_module_local_nested_enum_variant_patterns() {
+        let temp_root = make_temp_project_root("project-module-local-nested-enum-variant-patterns");
+        let src_dir = temp_root.join("src");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nmodule M {\n    module N {\n        enum E { A(Integer), B(Integer) }\n    }\n    function run(): Integer {\n        value: N.E = N.E.A(44);\n        return match (value) {\n            N.E.A(v) => v,\n            N.E.B(v) => v,\n        };\n    }\n}\nfunction main(): Integer { return M.run(); }\n",
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false)
+                .expect("project build should accept module-local nested enum variant patterns");
+        });
+
+        let output_path = temp_root.join("smoke");
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled module-local nested enum variant pattern binary");
+        assert_eq!(status.code(), Some(44));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn project_build_avoids_cascading_errors_for_stale_nested_namespace_aliased_interface_type() {
         let temp_root =
             make_temp_project_root("project-stale-nested-namespace-aliased-interface-type");
@@ -25643,6 +25958,451 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_non_function_call_with_user_facing_type_diagnostic(
+    ) {
+        let temp_root = make_temp_project_root("no-check-module-local-call-non-function-type");
+        let source_path = temp_root.join("no_check_module_local_call_non_function_type.apex");
+        let output_path = temp_root.join("no_check_module_local_call_non_function_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): Integer {
+                return M.Box(1)(2);
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("module-local non-function call should fail in codegen without checks");
+        assert!(err.contains("Cannot call non-function type M.Box"), "{err}");
+        assert!(!err.contains("Undefined variable: M"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_module_local_constructor_in_single_file_mode() {
+        let temp_root = make_temp_project_root("no-check-module-local-constructor-runtime");
+        let source_path = temp_root.join("no_check_module_local_constructor_runtime.apex");
+        let output_path = temp_root.join("no_check_module_local_constructor_runtime");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            function make(): M.Box {
+                return M.Box(7);
+            }
+
+            function main(): Integer {
+                value: M.Box = make();
+                return value.value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("module-local constructor should codegen without checks");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled module-local constructor binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_current_package_namespace_alias_constructor() {
+        let temp_root = make_temp_project_root("no-check-current-package-namespace-alias-ctor");
+        let source_path = temp_root.join("no_check_current_package_namespace_alias_ctor.apex");
+        let output_path = temp_root.join("no_check_current_package_namespace_alias_ctor");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app as root;
+
+            function main(): Integer {
+                value: root.M.Box = root.M.Box(7);
+                return value.value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("current-package namespace alias constructor should codegen without checks");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled current-package namespace alias constructor binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_current_package_exact_import_class_alias_constructor() {
+        let temp_root = make_temp_project_root("no-check-current-package-exact-alias-ctor");
+        let source_path = temp_root.join("no_check_current_package_exact_alias_ctor.apex");
+        let output_path = temp_root.join("no_check_current_package_exact_alias_ctor");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                value: BoxType = BoxType(7);
+                return value.value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect("current-package exact imported class alias constructor should codegen");
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled current-package exact class alias constructor binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_runs_current_package_exact_import_generic_class_alias_constructor() {
+        let temp_root = make_temp_project_root("no-check-current-package-exact-generic-alias-ctor");
+        let source_path = temp_root.join("no_check_current_package_exact_generic_alias_ctor.apex");
+        let output_path = temp_root.join("no_check_current_package_exact_generic_alias_ctor");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                value: BoxType<Integer> = BoxType<Integer>(7);
+                return value.value;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        compile_source(source, &source_path, &output_path, false, false, None, None).expect(
+            "current-package exact imported generic class alias constructor should codegen",
+        );
+
+        let status = std::process::Command::new(&output_path)
+            .status()
+            .expect("run compiled current-package exact generic class alias constructor binary");
+        assert_eq!(status.code(), Some(7));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_current_package_exact_import_generic_class_alias_non_function_call_with_user_facing_type(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-current-package-exact-generic-alias-non-function");
+        let source_path =
+            temp_root.join("no_check_current_package_exact_generic_alias_non_function.apex");
+        let output_path =
+            temp_root.join("no_check_current_package_exact_generic_alias_non_function");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                return BoxType<Integer>(7)(1);
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic class alias non-function call should fail");
+        assert!(err.contains("Cannot call non-function type M.Box<Integer>"), "{err}");
+        assert!(!err.contains("M.Box.spec.I64"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_current_package_exact_import_generic_class_alias_index_with_user_facing_type(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-current-package-exact-generic-alias-index");
+        let source_path = temp_root.join("no_check_current_package_exact_generic_alias_index.apex");
+        let output_path =
+            temp_root.join("no_check_current_package_exact_generic_alias_index");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                return BoxType<Integer>(7)[0];
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic class alias indexing should fail");
+        assert!(err.contains("Cannot index type M.Box<Integer>"), "{err}");
+        assert!(!err.contains("M.Box.spec.I64"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_current_package_exact_import_generic_class_alias_println_with_user_facing_type(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-current-package-exact-generic-alias-println");
+        let source_path =
+            temp_root.join("no_check_current_package_exact_generic_alias_println.apex");
+        let output_path =
+            temp_root.join("no_check_current_package_exact_generic_alias_println");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): None {
+                println(BoxType<Integer>(7));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("generic class alias println should fail");
+        assert!(err.contains("got M.Box<Integer>"), "{err}");
+        assert!(!err.contains("M.Box.spec.I64"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_current_package_exact_import_list_generic_class_alias_index_with_user_facing_type(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-current-package-exact-list-generic-alias-index");
+        let source_path =
+            temp_root.join("no_check_current_package_exact_list_generic_alias_index.apex");
+        let output_path =
+            temp_root.join("no_check_current_package_exact_list_generic_alias_index");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                return BoxType<List<Integer>>(List<Integer>())[0];
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("list generic class alias indexing should fail");
+        assert!(err.contains("Cannot index type M.Box<List<Integer>>"), "{err}");
+        assert!(!err.contains("M.Box.spec.ListI64"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_current_package_exact_import_option_generic_class_alias_println_with_user_facing_type(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-current-package-exact-option-generic-alias-println");
+        let source_path =
+            temp_root.join("no_check_current_package_exact_option_generic_alias_println.apex");
+        let output_path =
+            temp_root.join("no_check_current_package_exact_option_generic_alias_println");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): None {
+                println(BoxType<Option<Integer>>(Option.none<Integer>()));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("option generic class alias println should fail");
+        assert!(err.contains("got M.Box<Option<Integer>>"), "{err}");
+        assert!(!err.contains("M.Box.spec.OptI64"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_current_package_exact_import_map_generic_class_alias_index_with_user_facing_type(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-current-package-exact-map-generic-alias-index");
+        let source_path =
+            temp_root.join("no_check_current_package_exact_map_generic_alias_index.apex");
+        let output_path =
+            temp_root.join("no_check_current_package_exact_map_generic_alias_index");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                return BoxType<Map<String, Integer>>(Map<String, Integer>())[0];
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("map generic class alias indexing should fail");
+        assert!(
+            err.contains("Cannot index type M.Box<Map<String, Integer>>"),
+            "{err}"
+        );
+        assert!(!err.contains("M.Box.spec.MapStr_I64"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_current_package_exact_import_result_generic_class_alias_println_with_user_facing_type(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-current-package-exact-result-generic-alias-println");
+        let source_path =
+            temp_root.join("no_check_current_package_exact_result_generic_alias_println.apex");
+        let output_path =
+            temp_root.join("no_check_current_package_exact_result_generic_alias_println");
+        let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): None {
+                println(BoxType<Result<Integer, String>>(Result.ok(7)));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("result generic class alias println should fail");
+        assert!(err.contains("got M.Box<Result<Integer, String>>"), "{err}");
+        assert!(!err.contains("M.Box.spec.ResI64_Str"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_field_non_function_call_with_type_diagnostic() {
         let temp_root = make_temp_project_root("no-check-field-call-non-function-type");
         let source_path = temp_root.join("no_check_field_call_non_function_type.apex");
@@ -25726,6 +26486,40 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_class_indexing_with_user_facing_type_diagnostic(
+    ) {
+        let temp_root = make_temp_project_root("no-check-module-local-class-index-type");
+        let source_path = temp_root.join("no_check_module_local_class_index_type.apex");
+        let output_path = temp_root.join("no_check_module_local_class_index_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            function render(): Integer {
+                return M.Box(1)[0];
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("module-local class indexing should fail in codegen without checks");
+        assert!(err.contains("Cannot index type M.Box"), "{err}");
+        assert!(!err.contains("Undefined variable: M"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_integer_index_assignment_with_type_diagnostic() {
         let temp_root = make_temp_project_root("no-check-integer-index-assign-type");
         let source_path = temp_root.join("no_check_integer_index_assign_type.apex");
@@ -25772,6 +26566,36 @@ enum main {
             .expect_err("class index assignment should fail in codegen without checks");
         assert!(err.contains("Cannot index type Box"), "{err}");
         assert!(!err.contains("expected PointerValue"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_module_local_class_index_assignment_with_user_facing_type_diagnostic(
+    ) {
+        let temp_root = make_temp_project_root("no-check-module-local-class-index-assign-type");
+        let source_path = temp_root.join("no_check_module_local_class_index_assign_type.apex");
+        let output_path = temp_root.join("no_check_module_local_class_index_assign_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): None {
+                mut value: M.Box = M.Box(1);
+                value[0] = 1;
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("module-local class index assignment should fail in codegen");
+        assert!(err.contains("Cannot index type M.Box"), "{err}");
+        assert!(!err.contains("Undefined variable: M"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -25824,6 +26648,40 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_deref_with_user_facing_type_diagnostic() {
+        let temp_root = make_temp_project_root("no-check-module-local-deref-type");
+        let source_path = temp_root.join("no_check_module_local_deref_type.apex");
+        let output_path = temp_root.join("no_check_module_local_deref_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): Integer {
+                return *M.Box(1);
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("module-local deref should fail in codegen without checks");
+        assert!(
+            err.contains("Cannot dereference non-pointer type M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: M"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_integer_deref_assignment_with_type_diagnostic() {
         let temp_root = make_temp_project_root("no-check-integer-deref-assign-type");
         let source_path = temp_root.join("no_check_integer_deref_assign_type.apex");
@@ -25869,6 +26727,41 @@ enum main {
             "{err}"
         );
         assert!(!err.contains("expected the StructValue variant"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_try_on_module_local_non_option_result_type_with_user_facing_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-try-module-local-non-result");
+        let source_path = temp_root.join("no_check_invalid_try_module_local_non_result.apex");
+        let output_path = temp_root.join("no_check_invalid_try_module_local_non_result");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): Integer {
+                return M.Box(7)?;
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("? on module-local Box should fail in codegen without checks");
+        assert!(
+            err.contains("'?' operator can only be used on Option or Result, got M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: M"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -26293,6 +27186,74 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_invalid_unary_neg_with_user_facing_type_name() {
+        let temp_root = make_temp_project_root("no-check-invalid-unary-neg-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_unary_neg_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_unary_neg_module_local_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): Integer {
+                return -M.Box(7);
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid unary negation on module-local Box should fail in codegen");
+        assert!(
+            err.contains("Cannot negate non-numeric type M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: M"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_module_local_invalid_unary_not_with_user_facing_type_name() {
+        let temp_root = make_temp_project_root("no-check-invalid-unary-not-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_unary_not_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_unary_not_module_local_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): Boolean {
+                return !M.Box(7);
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("invalid unary not on module-local Box should fail in codegen");
+        assert!(
+            err.contains("Cannot apply '!' to non-boolean type M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: M"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_non_boolean_if_statement_condition_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-if-stmt-condition");
         let source_path = temp_root.join("no_check_invalid_if_stmt_condition.apex");
@@ -26473,6 +27434,38 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_non_boolean_assert_true_condition_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-assert-true-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_assert_true_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_assert_true_module_local_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): None {
+                assert_true(M.Box(7));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("assert_true on module-local Box should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_checked_rejects_non_boolean_assert_true_condition() {
         let temp_root = make_temp_project_root("checked-invalid-assert-true-condition");
         let source_path = temp_root.join("checked_invalid_assert_true_condition.apex");
@@ -26511,6 +27504,38 @@ enum main {
             err.contains("Condition must be Boolean, found Integer"),
             "{err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_module_local_non_boolean_assert_false_condition_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-assert-false-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_assert_false_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_assert_false_module_local_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): None {
+                assert_false(M.Box(7));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("assert_false on module-local Box should fail in codegen");
+        assert!(
+            err.contains("Condition must be Boolean, found M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -26624,6 +27649,36 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_non_integer_list_index_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-list-index-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_list_index_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_list_index_module_local_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                xs: List<Integer> = List<Integer>();
+                xs.push(10);
+                return xs[M.Box(7)];
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("list index with module-local Box should fail in codegen");
+        assert!(err.contains("Index must be Integer, found M.Box"), "{err}");
+        assert!(!err.contains("M__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_non_integer_list_index_assignment_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-list-index-assignment-type");
         let source_path = temp_root.join("no_check_invalid_list_index_assignment_type.apex");
@@ -26667,6 +27722,38 @@ enum main {
         let err = compile_source(source, &source_path, &output_path, false, false, None, None)
             .expect_err("for-loop sugar over Boolean should fail in codegen");
         assert!(err.contains("Cannot iterate over Boolean"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_module_local_non_integer_for_loop_sugar_iterable_with_user_facing_type_name(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-invalid-for-loop-sugar-module-local-iterable");
+        let source_path =
+            temp_root.join("no_check_invalid_for_loop_sugar_module_local_iterable.apex");
+        let output_path = temp_root.join("no_check_invalid_for_loop_sugar_module_local_iterable");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): None {
+                for (i in M.Box(7)) {
+                }
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("for-loop sugar over module-local Box should fail in codegen");
+        assert!(err.contains("Cannot iterate over M.Box"), "{err}");
+        assert!(!err.contains("M__Box"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -26810,6 +27897,39 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_non_string_file_exists_path_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-file-exists-module-local-path");
+        let source_path = temp_root.join("no_check_invalid_file_exists_module_local_path.apex");
+        let output_path = temp_root.join("no_check_invalid_file_exists_module_local_path");
+        let source = r#"
+            import std.file.*;
+
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                return if (File.exists(M.Box(7))) { 0 } else { 1 };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("File.exists(module-local Box) should fail in codegen");
+        assert!(
+            err.contains("File.exists() requires String path, got M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_non_string_file_read_path_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-file-read-path-type");
         let source_path = temp_root.join("no_check_invalid_file_read_path_type.apex");
@@ -26835,6 +27955,43 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_non_string_file_read_path_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-file-read-module-local-path");
+        let source_path = temp_root.join("no_check_invalid_file_read_module_local_path.apex");
+        let output_path = temp_root.join("no_check_invalid_file_read_module_local_path");
+        let source = r#"
+            import std.file.*;
+
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): String {
+                return File.read(M.Box(7));
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("File.read(module-local Box) should fail in codegen");
+        assert!(
+            err.contains("File.read() requires String path, got M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_non_string_file_delete_path_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-file-delete-path-type");
         let source_path = temp_root.join("no_check_invalid_file_delete_path_type.apex");
@@ -26855,6 +28012,40 @@ enum main {
             err.contains("File.delete() requires String path, got Boolean"),
             "{err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_module_local_non_string_file_delete_path_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-file-delete-module-local-path");
+        let source_path = temp_root.join("no_check_invalid_file_delete_module_local_path.apex");
+        let output_path = temp_root.join("no_check_invalid_file_delete_module_local_path");
+        let source = r#"
+            import std.file.*;
+
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): None {
+                File.delete(M.Box(7));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("File.delete(module-local Box) should fail in codegen");
+        assert!(
+            err.contains("File.delete() requires String path, got M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -27019,6 +28210,38 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_non_string_require_message_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-require-module-local-message");
+        let source_path = temp_root.join("no_check_invalid_require_module_local_message.apex");
+        let output_path = temp_root.join("no_check_invalid_require_module_local_message");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): None {
+                require(true, M.Box(7));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("require(Boolean, module-local Box) should fail in codegen");
+        assert!(
+            err.contains("require() message must be String, got M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_non_string_str_len_argument_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-str-len-argument-type");
         let source_path = temp_root.join("no_check_invalid_str_len_argument_type.apex");
@@ -27038,6 +28261,39 @@ enum main {
             err.contains("Str.len() requires String, got Boolean"),
             "{err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_module_local_non_string_str_len_argument_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-str-len-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_str_len_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_str_len_module_local_type");
+        let source = r#"
+            import std.str.*;
+
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                return Str.len(M.Box(7));
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("Str.len(module-local Box) should fail in codegen");
+        assert!(
+            err.contains("Str.len() requires String, got M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -27278,6 +28534,37 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_non_numeric_to_float_argument_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-to-float-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_to_float_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_to_float_module_local_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): Float {
+                return to_float(M.Box(7));
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("to_float(module-local Box) should fail in codegen");
+        assert!(
+            err.contains("to_float() requires Integer or Float, got M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_non_supported_to_int_boolean_argument_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-to-int-boolean-argument-type");
         let source_path = temp_root.join("no_check_invalid_to_int_boolean_argument_type.apex");
@@ -27295,6 +28582,37 @@ enum main {
             err.contains("to_int() requires Integer, Float, or String, got Boolean"),
             "{err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_module_local_non_supported_to_int_argument_with_user_facing_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-to-int-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_to_int_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_to_int_module_local_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                return to_int(M.Box(7));
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("to_int(module-local Box) should fail in codegen");
+        assert!(
+            err.contains("to_int() requires Integer, Float, or String, got M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -27462,6 +28780,40 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_await_on_module_local_box_with_user_facing_type_name() {
+        let temp_root = make_temp_project_root("no-check-invalid-await-module-local-box");
+        let source_path = temp_root.join("no_check_invalid_await_module_local_box.apex");
+        let output_path = temp_root.join("no_check_invalid_await_module_local_box");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): Integer {
+                return await M.Box(7);
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("await on module-local Box should fail in codegen");
+        assert!(
+            err.contains("'await' can only be used on Task types, got M.Box"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_println_on_unsupported_display_type_with_type_name() {
         let temp_root = make_temp_project_root("no-check-invalid-println-unsupported-display");
         let source_path = temp_root.join("no_check_invalid_println_unsupported_display.apex");
@@ -27484,7 +28836,7 @@ enum main {
             .expect_err("println(Box) should fail in codegen");
         assert!(
             err.contains(
-                "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got Box"
+                "println() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got Box"
             ),
             "{err}"
         );
@@ -27523,6 +28875,118 @@ enum main {
             ),
             "{err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_interpolation_on_module_local_unsupported_display_type_with_type_name(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-invalid-interpolation-module-local-display");
+        let source_path =
+            temp_root.join("no_check_invalid_interpolation_module_local_display.apex");
+        let output_path = temp_root.join("no_check_invalid_interpolation_module_local_display");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): String {
+                return "box={M.Box(7)}";
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("string interpolation on module-local Box should fail in codegen");
+        assert!(
+            err.contains(
+                "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got M.Box"
+            ),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: M"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_println_on_module_local_unsupported_display_type_with_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-println-module-local-display");
+        let source_path = temp_root.join("no_check_invalid_println_module_local_display.apex");
+        let output_path = temp_root.join("no_check_invalid_println_module_local_display");
+        let source = r#"
+            import std.io.*;
+
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): None {
+                println(M.Box(7));
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("println on module-local Box should fail in codegen");
+        assert!(
+            err.contains(
+                "println() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got M.Box"
+            ),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: M"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_to_string_on_module_local_unsupported_display_type_with_type_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-to-string-module-local-display");
+        let source_path = temp_root.join("no_check_invalid_to_string_module_local_display.apex");
+        let output_path = temp_root.join("no_check_invalid_to_string_module_local_display");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): String {
+                return to_string(M.Box(7));
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("to_string on module-local Box should fail in codegen");
+        assert!(
+            err.contains(
+                "to_string() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got M.Box"
+            ),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: M"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -28998,6 +30462,115 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_math_min_on_module_local_non_numeric_type_with_user_facing_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-math-min-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_math_min_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_math_min_module_local_type");
+        let source = r#"
+            import std.math.*;
+
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): Float {
+                return Math.min(M.Box(7), 1.0);
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("Math.min(module-local Box, Float) should fail in codegen");
+        assert!(
+            err.contains("Math.min() arguments must be numeric types, got M.Box and Float"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_math_max_on_module_local_non_numeric_type_with_user_facing_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-math-max-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_math_max_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_math_max_module_local_type");
+        let source = r#"
+            import std.math.*;
+
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): Float {
+                return Math.max(M.Box(7), 1.0);
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("Math.max(module-local Box, Float) should fail in codegen");
+        assert!(
+            err.contains("Math.max() arguments must be numeric types, got M.Box and Float"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Box"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_logical_operator_on_module_local_non_boolean_type_with_user_facing_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-logical-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_logical_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_logical_module_local_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function render(): Boolean {
+                return M.Box(7) && true;
+            }
+
+            function main(): None {
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("logical operator on module-local Box should fail in codegen");
+        assert!(
+            err.contains("Logical operator requires Boolean types, got M.Box and Boolean"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: M"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_invalid_to_float_function_value_signature() {
         let temp_root = make_temp_project_root("no-check-invalid-to-float-fn-value-signature");
         let source_path = temp_root.join("no_check_invalid_to_float_fn_value_signature.apex");
@@ -29071,6 +30644,40 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_match_literal_type_mismatch_with_user_facing_name(
+    ) {
+        let temp_root = make_temp_project_root("no-check-invalid-match-literal-module-local-type");
+        let source_path = temp_root.join("no_check_invalid_match_literal_module_local_type.apex");
+        let output_path = temp_root.join("no_check_invalid_match_literal_module_local_type");
+        let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                return match (M.Box(1)) {
+                    1 => 0,
+                    _ => 1,
+                };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("module-local match literal type mismatch should fail in codegen");
+        assert!(
+            err.contains("Pattern type mismatch: expected M.Box, found Integer"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: M"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_match_expr_variant_type_mismatch_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-match-expr-variant-type");
         let source_path = temp_root.join("no_check_invalid_match_expr_variant_type.apex");
@@ -29096,6 +30703,40 @@ enum main {
     }
 
     #[test]
+    fn compile_source_no_check_rejects_module_local_match_expr_variant_type_mismatch_with_user_facing_name(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-invalid-match-expr-module-local-variant-type");
+        let source_path =
+            temp_root.join("no_check_invalid_match_expr_module_local_variant_type.apex");
+        let output_path = temp_root.join("no_check_invalid_match_expr_module_local_variant_type");
+        let source = r#"
+            module M {
+                enum Token { Int(Integer) }
+            }
+
+            function main(): Integer {
+                value: M.Token = M.Token.Int(1);
+                return match (value) {
+                    Some(v) => 0,
+                    _ => 1,
+                };
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("module-local match expression variant mismatch should fail");
+        assert!(
+            err.contains("Cannot match variant Some on type M.Token"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Token"), "{err}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn compile_source_no_check_rejects_match_stmt_variant_type_mismatch_in_codegen() {
         let temp_root = make_temp_project_root("no-check-invalid-match-stmt-variant-type");
         let source_path = temp_root.join("no_check_invalid_match_stmt_variant_type.apex");
@@ -29116,6 +30757,40 @@ enum main {
             err.contains("Cannot match variant Some on type Boolean"),
             "{err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_module_local_match_stmt_variant_type_mismatch_with_user_facing_name(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-invalid-match-stmt-module-local-variant-type");
+        let source_path =
+            temp_root.join("no_check_invalid_match_stmt_module_local_variant_type.apex");
+        let output_path = temp_root.join("no_check_invalid_match_stmt_module_local_variant_type");
+        let source = r#"
+            module M {
+                enum Token { Int(Integer) }
+            }
+
+            function main(): Integer {
+                value: M.Token = M.Token.Int(1);
+                match (value) {
+                    Some(v) => { return 0; }
+                    _ => { return 1; }
+                }
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("module-local match statement variant mismatch should fail");
+        assert!(
+            err.contains("Cannot match variant Some on type M.Token"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Token"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -31287,6 +32962,38 @@ function main(): Integer {
             err.contains("Type mismatch: expected (String) -> Boxed, got (Integer) -> Boxed"),
             "unexpected error: {err}"
         );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn compile_source_no_check_rejects_module_local_enum_variant_function_value_type_mismatch_with_user_facing_name(
+    ) {
+        let temp_root =
+            make_temp_project_root("no-check-module-local-enum-variant-fn-value-type-mismatch");
+        let source_path =
+            temp_root.join("no_check_module_local_enum_variant_fn_value_type_mismatch.apex");
+        let output_path =
+            temp_root.join("no_check_module_local_enum_variant_fn_value_type_mismatch");
+        let source = r#"
+            module M {
+                enum Token { Int(Integer) }
+            }
+
+            function main(): None {
+                f: () -> M.Token = M.Token.Int;
+                return None;
+            }
+        "#;
+
+        fs::write(&source_path, source).expect("write source");
+        let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+            .expect_err("module-local enum variant function value mismatch should fail");
+        assert!(
+            err.contains("Type mismatch: expected () -> M.Token, got (Integer) -> M.Token"),
+            "{err}"
+        );
+        assert!(!err.contains("M__Token"), "{err}");
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -36610,6 +38317,82 @@ function main(): Integer {
     }
 
     #[test]
+    fn cli_build_reports_import_check_errors_only_once() {
+        let _lock = cli_test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let temp_root = make_temp_project_root("cli-build-import-check-single-print");
+        write_test_project_config(
+            &temp_root,
+            &["src/main.apex", "src/helper.apex"],
+            "src/main.apex",
+            "smoke",
+        );
+        fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer { value: root.M.Box = root.M.Box(7); return value.value; }\n",
+        )
+        .expect("write main");
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { class Box { value: Integer; constructor(value: Integer) { this.value = value; } } }\n",
+        )
+        .expect("write helper");
+
+        let status = Command::new("cargo")
+            .arg("run")
+            .arg("--quiet")
+            .arg("--manifest-path")
+            .arg(env!("CARGO_MANIFEST_DIR").to_string() + "/Cargo.toml")
+            .arg("--")
+            .arg("build")
+            .current_dir(&temp_root)
+            .status()
+            .expect("run initial project build");
+        assert!(status.success(), "initial build should succeed");
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { class Other { value: Integer; constructor(value: Integer) { this.value = value; } } }\n",
+        )
+        .expect("rewrite helper without imported constructor symbol");
+
+        let output = Command::new("cargo")
+            .arg("run")
+            .arg("--quiet")
+            .arg("--manifest-path")
+            .arg(env!("CARGO_MANIFEST_DIR").to_string() + "/Cargo.toml")
+            .arg("--")
+            .arg("build")
+            .current_dir(&temp_root)
+            .output()
+            .expect("run stale-import build");
+        assert!(
+            !output.status.success(),
+            "stale import build should fail: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("Imported namespace alias 'root' has no member 'M.Box'"),
+            "{stderr}"
+        );
+        assert_eq!(
+            stderr
+                .matches("Imported namespace alias 'root' has no member 'M.Box'")
+                .count(),
+            1,
+            "{stderr}"
+        );
+        assert_eq!(stderr.matches("Import check failed").count(), 1, "{stderr}");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn cli_run_tests_accepts_relative_project_file_path() {
         let temp_root = make_temp_project_root("cli-test-relative-project-file");
         let src_dir = temp_root.join("src");
@@ -41197,6 +42980,63 @@ function main(): Integer {
         assert_eq!(
             output.status.code(),
             Some(11),
+            "stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn project_build_runs_module_local_nested_module_constructor_and_generic_function_value() {
+        let temp_root = make_temp_project_root("project-build-module-local-nested-members");
+        write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+        fs::write(
+            temp_root.join("src/main.apex"),
+            r#"
+package app;
+
+module M {
+    module N {
+        class Box {
+            value: Integer;
+            constructor(value: Integer) { this.value = value; }
+        }
+
+        function id<T>(value: T): T { return value; }
+    }
+
+    function run_box(): Integer {
+        value: N.Box = N.Box(55);
+        return value.value;
+    }
+
+    function run_id(): Integer {
+        f: (N.Box) -> N.Box = N.id<N.Box>;
+        return f(N.Box(55)).value;
+    }
+}
+
+function main(): Integer {
+    return M.run_box() + M.run_id();
+}
+"#,
+        )
+        .expect("write main");
+
+        with_current_dir(&temp_root, || {
+            build_project(false, false, true, false, false).expect(
+                "project build should succeed for module-local nested constructor and fn value",
+            );
+        });
+
+        let output = std::process::Command::new(temp_root.join("smoke"))
+            .output()
+            .expect("run compiled nested module project binary");
+        assert_eq!(
+            output.status.code(),
+            Some(110),
             "stdout={} stderr={}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)

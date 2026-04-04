@@ -1012,7 +1012,7 @@ impl<'a> ImportChecker<'a> {
                         }
                         if let Expr::Call { type_args, .. } = expr {
                             for ty in type_args {
-                                self.check_type(ty, 0..0);
+                                self.check_decl_type(ty, 0..0);
                             }
                         }
                         return;
@@ -1084,7 +1084,7 @@ impl<'a> ImportChecker<'a> {
                 }
                 if let Expr::Call { type_args, .. } = expr {
                     for ty in type_args {
-                        self.check_type(ty, 0..0);
+                        self.check_decl_type(ty, 0..0);
                     }
                 }
             }
@@ -1134,7 +1134,7 @@ impl<'a> ImportChecker<'a> {
             Expr::Lambda { body, params } => {
                 if let Expr::Lambda { params, .. } = expr {
                     for param in params {
-                        self.check_type(&param.ty, 0..0);
+                        self.check_decl_type(&param.ty, 0..0);
                     }
                 }
                 self.enter_scope();
@@ -1145,7 +1145,7 @@ impl<'a> ImportChecker<'a> {
             Expr::Construct { args, .. } => {
                 if let Expr::Construct { ty, .. } = expr {
                     if let Ok(parsed_ty) = crate::parser::parse_type_source(ty) {
-                        self.check_type(&parsed_ty, 0..0);
+                        self.check_decl_type(&parsed_ty, 0..0);
                     } else {
                         self.check_qualified_name_alias_usage(ty, 0..0);
                     }
@@ -1161,7 +1161,7 @@ impl<'a> ImportChecker<'a> {
                         .is_some()
                     {
                         for ty in type_args {
-                            self.check_type(ty, 0..0);
+                            self.check_decl_type(ty, 0..0);
                         }
                         return;
                     }
@@ -1225,7 +1225,7 @@ impl<'a> ImportChecker<'a> {
                 }
 
                 for ty in type_args {
-                    self.check_type(ty, 0..0);
+                    self.check_decl_type(ty, 0..0);
                 }
             }
             Expr::IfExpr {
@@ -1301,7 +1301,7 @@ impl<'a> ImportChecker<'a> {
             }
             Stmt::Let { value, .. } => {
                 if let Stmt::Let { ty, .. } = stmt {
-                    self.check_type(ty, 0..0);
+                    self.check_decl_type(ty, 0..0);
                 }
                 self.check_expr(&value.node);
                 if let Stmt::Let { name, .. } = stmt {
@@ -1332,7 +1332,7 @@ impl<'a> ImportChecker<'a> {
                     ..
                 } = stmt
                 {
-                    self.check_type(var_type, 0..0);
+                    self.check_decl_type(var_type, 0..0);
                 }
                 self.check_expr(&iterable.node);
                 self.enter_scope();
