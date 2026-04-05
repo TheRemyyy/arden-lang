@@ -1098,6 +1098,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_deref(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
+        let inferred_expr_ty = self.infer_object_type(expr);
         let expr_ty = self.infer_expr_type(expr, &[]);
         let pointee_ty = match &expr_ty {
             Type::Ref(inner)
@@ -1107,6 +1108,9 @@ impl<'ctx> Codegen<'ctx> {
             | Type::Rc(inner)
             | Type::Arc(inner) => self.llvm_type(inner),
             _ => {
+                if inferred_expr_ty.is_none() {
+                    let _ = self.compile_expr(expr)?;
+                }
                 return Err(CodegenError::new(format!(
                     "Cannot dereference non-pointer type {}",
                     Self::format_diagnostic_type(&expr_ty)
@@ -1845,12 +1849,22 @@ impl<'ctx> Codegen<'ctx> {
                 .map(|v| v.ptr)
                 .ok_or_else(|| Self::undefined_variable_error(name)),
             Expr::Field { object, field } => {
-                let object_ty = self.infer_object_type(&object.node);
+                if let Some(err) = self.call_expr_arity_error(&object.node) {
+                    return Err(err);
+                }
+                if let Expr::Ident(name) = &object.node {
+                    if !self.variables.contains_key(name) {
+                        return Err(Self::undefined_variable_error(name));
+                    }
+                }
+                let object_ty = self
+                    .infer_object_type(&object.node)
+                    .or_else(|| Some(self.infer_expr_type(&object.node, &[])));
                 if let Some(object_ty) = object_ty.as_ref() {
                     if self.type_to_class_name(object_ty).is_none() {
                         return Err(CodegenError::new(format!(
                             "Cannot access field on type {}",
-                            Self::format_type_string(object_ty)
+                            Self::format_diagnostic_type(object_ty)
                         )));
                     }
                 }
@@ -1862,6 +1876,7 @@ impl<'ctx> Codegen<'ctx> {
 
                 let class_name = self
                     .infer_object_type(&object.node)
+                    .or_else(|| Some(self.infer_expr_type(&object.node, &[])))
                     .and_then(|ty| self.type_to_class_name(&ty))
                     .ok_or_else(|| CodegenError::new("Cannot determine object type"))?;
 
@@ -1896,17 +1911,28 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Index { object, index } => {
+                if let Expr::Ident(name) = &object.node {
+                    if !self.variables.contains_key(name) {
+                        return Err(Self::undefined_variable_error(name));
+                    }
+                }
                 let idx_val = self.compile_non_negative_integer_index_expr(
                     &index.node,
                     "List index cannot be negative",
                 )?;
-                let object_ty = self.infer_object_type(&object.node);
+                let inferred_object_ty = self.infer_object_type(&object.node);
+                let object_ty = inferred_object_ty
+                    .clone()
+                    .or_else(|| Some(self.infer_expr_type(&object.node, &[])));
                 let deref_object_ty = object_ty
                     .clone()
                     .map(|ty| self.deref_codegen_type(&ty).clone());
                 let supports_index_assignment = matches!(deref_object_ty, Some(Type::List(_)));
 
                 if !supports_index_assignment {
+                    if inferred_object_ty.is_none() {
+                        let _ = self.compile_expr(&object.node)?;
+                    }
                     let diagnostic_ty = deref_object_ty.clone().unwrap_or_else(|| {
                         self.deref_codegen_type(&self.infer_expr_type(&object.node, &[]))
                             .clone()

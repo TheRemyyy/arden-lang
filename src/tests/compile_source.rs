@@ -5927,6 +5927,62 @@ fn compile_source_no_check_reports_undefined_variable_for_unknown_field_root() {
 }
 
 #[test]
+fn compile_source_no_check_rejects_nested_undefined_root_before_read_or_method_diagnostic() {
+    let temp_root = make_temp_project_root("no-check-nested-undefined-root-read-method");
+    let read_source_path = temp_root.join("no_check_nested_undefined_root_read.apex");
+    let read_output_path = temp_root.join("no_check_nested_undefined_root_read");
+    let read_source = r#"
+            function main(): None {
+                println(missing.inner.items[0]);
+                return None;
+            }
+        "#;
+
+    fs::write(&read_source_path, read_source).expect("write read source");
+    let read_err = compile_source(
+        read_source,
+        &read_source_path,
+        &read_output_path,
+        false,
+        false,
+        None,
+        None,
+    )
+    .expect_err("nested undefined-root read should fail in codegen");
+    assert!(
+        read_err.contains("Undefined variable: missing"),
+        "{read_err}"
+    );
+
+    let method_source_path = temp_root.join("no_check_nested_undefined_root_method.apex");
+    let method_output_path = temp_root.join("no_check_nested_undefined_root_method");
+    let method_source = r#"
+            function main(): None {
+                missing.inner.items.push(1);
+                return None;
+            }
+        "#;
+
+    fs::write(&method_source_path, method_source).expect("write method source");
+    let method_err = compile_source(
+        method_source,
+        &method_source_path,
+        &method_output_path,
+        false,
+        false,
+        None,
+        None,
+    )
+    .expect_err("nested undefined-root method should fail in codegen");
+    assert!(
+        method_err.contains("Undefined variable: missing"),
+        "{method_err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_reports_undefined_function_for_unknown_direct_call() {
     let temp_root = make_temp_project_root("no-check-unknown-direct-call-primary-error");
     let source_path = temp_root.join("no_check_unknown_direct_call_primary_error.apex");
@@ -9358,6 +9414,123 @@ fn compile_source_no_check_rejects_unknown_class_field_assignment_with_class_dia
     assert!(
         err.contains("Unknown field 'missing' on class 'Box'"),
         "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_nested_unknown_field_before_index_assignment_diagnostic() {
+    let temp_root = make_temp_project_root("no-check-nested-unknown-field-index-assignment");
+    let source_path = temp_root.join("no_check_nested_unknown_field_index_assignment.apex");
+    let output_path = temp_root.join("no_check_nested_unknown_field_index_assignment");
+    let source = r#"
+            class Inner {
+                mut items: List<Integer>;
+                constructor() { this.items = List<Integer>(); }
+            }
+
+            class Box {
+                mut inner: Inner;
+                constructor() { this.inner = Inner(); }
+            }
+
+            class Holder {
+                make: () -> Box;
+                constructor(make: () -> Box) { this.make = make; }
+            }
+
+            function build(): Box {
+                return Box();
+            }
+
+            function main(): None {
+                holder: Holder = Holder(build);
+                holder.make().inner.missing[0] = 9;
+                return None;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("nested missing field index assignment should fail in codegen");
+    assert!(
+        err.contains("Unknown field 'missing' on class 'Inner'"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_nested_deref_root_cause_diagnostic() {
+    let temp_root = make_temp_project_root("no-check-nested-deref-root-cause");
+    let undef_source_path = temp_root.join("no_check_nested_deref_undefined_root.apex");
+    let undef_output_path = temp_root.join("no_check_nested_deref_undefined_root");
+    let undef_source = r#"
+            function main(): None {
+                println(*missing.inner.ptr);
+                return None;
+            }
+        "#;
+
+    fs::write(&undef_source_path, undef_source).expect("write undefined-root source");
+    let undef_err = compile_source(
+        undef_source,
+        &undef_source_path,
+        &undef_output_path,
+        false,
+        false,
+        None,
+        None,
+    )
+    .expect_err("nested undefined-root deref should fail in codegen");
+    assert!(
+        undef_err.contains("Undefined variable: missing"),
+        "{undef_err}"
+    );
+
+    let missing_source_path = temp_root.join("no_check_nested_deref_missing_field.apex");
+    let missing_output_path = temp_root.join("no_check_nested_deref_missing_field");
+    let missing_source = r#"
+            class Inner {
+                value: Integer;
+                constructor() { this.value = 1; }
+            }
+
+            class Box {
+                inner: Inner;
+                constructor() { this.inner = Inner(); }
+            }
+
+            class Holder {
+                make: () -> Box;
+                constructor(make: () -> Box) { this.make = make; }
+            }
+
+            function build(): Box { return Box(); }
+
+            function main(): None {
+                holder: Holder = Holder(build);
+                println(*holder.make().inner.missing);
+                return None;
+            }
+        "#;
+
+    fs::write(&missing_source_path, missing_source).expect("write missing-field source");
+    let missing_err = compile_source(
+        missing_source,
+        &missing_source_path,
+        &missing_output_path,
+        false,
+        false,
+        None,
+        None,
+    )
+    .expect_err("nested missing-field deref should fail in codegen");
+    assert!(
+        missing_err.contains("Unknown field 'missing' on class 'Inner'"),
+        "{missing_err}"
     );
 
     let _ = fs::remove_dir_all(temp_root);

@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed unchecked nested receiver diagnostics in the refactored codegen pipeline:
+  - field, method, index, lvalue, and dereference codegen now prefer root-cause failures from unresolved nested receivers over fallback inferred `Integer` type diagnostics, and call-derived receivers now reuse the same fallback inference path across unchecked lowering
+  - this fixes unchecked cases such as `missing.inner.items[0]`, `missing.inner.items.push(1)`, `holder.make().inner.missing[0] = 9`, and `*holder.make().inner.missing`, which previously reported misleading `Cannot access/call/index/dereference ... Integer` diagnostics instead of `Undefined variable: ...` or `Unknown field ...`
 - Fixed stale namespace-alias declaration type diagnostics in project rebuilds:
   - import checking now validates full dotted namespace-alias type paths inside declaration clauses such as `implements`, `extends`, and generic bounds instead of checking only the alias root
   - namespace-alias imports now also contribute their namespace API fingerprint directly to rewrite-context invalidation, keeping project import-check cache reuse conservative for whole-namespace aliases

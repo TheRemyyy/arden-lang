@@ -541,6 +541,34 @@ impl<'ctx> Codegen<'ctx> {
         ))
     }
 
+    fn function_call_arity_error(function_ty: &Type, got: usize) -> CodegenError {
+        let expected = match function_ty {
+            Type::Function(params, _) => params.len(),
+            _ => 0,
+        };
+        CodegenError::new(format!(
+            "Function value {} expects {} argument(s), got {}",
+            Self::format_diagnostic_type(function_ty),
+            expected,
+            got
+        ))
+    }
+
+    pub(crate) fn call_expr_arity_error(&self, expr: &Expr) -> Option<CodegenError> {
+        let Expr::Call { callee, args, .. } = expr else {
+            return None;
+        };
+        let callee_ty = self.infer_expr_type(&callee.node, &[]);
+        let Type::Function(_, _) = callee_ty else {
+            return None;
+        };
+        let expected = match &callee_ty {
+            Type::Function(params, _) => params.len(),
+            _ => unreachable!(),
+        };
+        (args.len() != expected).then(|| Self::function_call_arity_error(&callee_ty, args.len()))
+    }
+
     pub(crate) fn unknown_field_error(field: &str, ty: &Type) -> CodegenError {
         CodegenError::new(format!(
             "Unknown field '{}' on class '{}'",
@@ -14682,36 +14710,48 @@ impl<'ctx> Codegen<'ctx> {
         method: &str,
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
-        // Infer object type first
-        let obj_ty = self.infer_object_type(object).or_else(|| {
-            let Expr::Call {
-                callee, type_args, ..
-            } = object
-            else {
-                return None;
-            };
-            let path_parts = flatten_field_chain(&callee.node)?;
-            let full_path = path_parts.join(".");
-            if !type_args.is_empty() {
-                let normalized = self
-                    .resolve_alias_qualified_codegen_type_name(&full_path)
-                    .and_then(|resolved| {
-                        self.normalize_user_defined_generic_type(&resolved, type_args)
-                    })
-                    .unwrap_or_else(|| {
-                        self.normalize_codegen_type(&Type::Generic(
-                            full_path.clone(),
-                            type_args.clone(),
-                        ))
-                    });
-                if self.type_to_class_name(&normalized).is_some() {
-                    return Some(normalized);
-                }
+        if let Some(err) = self.call_expr_arity_error(object) {
+            return Err(err);
+        }
+        if let Expr::Ident(name) = object {
+            if !self.variables.contains_key(name) {
+                return Err(Self::undefined_variable_error(name));
             }
-            self.resolve_alias_qualified_codegen_type_name(&full_path)
-                .filter(|resolved| self.classes.contains_key(resolved))
-                .map(Type::Named)
-        });
+        }
+        // Infer object type first
+        let inferred_obj_ty = self.infer_object_type(object);
+        let obj_ty = inferred_obj_ty
+            .clone()
+            .or_else(|| {
+                let Expr::Call {
+                    callee, type_args, ..
+                } = object
+                else {
+                    return None;
+                };
+                let path_parts = flatten_field_chain(&callee.node)?;
+                let full_path = path_parts.join(".");
+                if !type_args.is_empty() {
+                    let normalized = self
+                        .resolve_alias_qualified_codegen_type_name(&full_path)
+                        .and_then(|resolved| {
+                            self.normalize_user_defined_generic_type(&resolved, type_args)
+                        })
+                        .unwrap_or_else(|| {
+                            self.normalize_codegen_type(&Type::Generic(
+                                full_path.clone(),
+                                type_args.clone(),
+                            ))
+                        });
+                    if self.type_to_class_name(&normalized).is_some() {
+                        return Some(normalized);
+                    }
+                }
+                self.resolve_alias_qualified_codegen_type_name(&full_path)
+                    .filter(|resolved| self.classes.contains_key(resolved))
+                    .map(Type::Named)
+            })
+            .or_else(|| Some(self.infer_expr_type(object, &[])));
         let deref_obj_ty = obj_ty
             .clone()
             .map(|ty| self.deref_codegen_type(&ty).clone());
@@ -14846,6 +14886,9 @@ impl<'ctx> Codegen<'ctx> {
 
         if let Some(obj_ty) = deref_obj_ty.as_ref() {
             if self.type_to_class_name(obj_ty).is_none() {
+                if inferred_obj_ty.is_none() {
+                    let _ = self.compile_expr(object)?;
+                }
                 return Err(CodegenError::new(format!(
                     "Cannot call method on type {}",
                     Self::format_type_string(obj_ty)
@@ -15562,13 +15605,28 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
+        if let Some(err) = self.call_expr_arity_error(object) {
+            return Err(err);
+        }
+        if let Expr::Ident(name) = object {
+            if !self.variables.contains_key(name) {
+                return Err(Self::undefined_variable_error(name));
+            }
+        }
+
         // Get class name using type inference
-        let obj_ty = self.infer_object_type(object);
+        let inferred_obj_ty = self.infer_object_type(object);
+        let obj_ty = inferred_obj_ty
+            .clone()
+            .or_else(|| Some(self.infer_expr_type(object, &[])));
         if let Some(obj_ty) = obj_ty.as_ref() {
             if self.unwrap_class_like_type(obj_ty).is_none() {
+                if inferred_obj_ty.is_none() {
+                    let _ = self.compile_expr(object)?;
+                }
                 return Err(CodegenError::new(format!(
                     "Cannot access field on type {}",
-                    Self::format_type_string(obj_ty)
+                    Self::format_diagnostic_type(obj_ty)
                 )));
             }
         }
@@ -15581,6 +15639,7 @@ impl<'ctx> Codegen<'ctx> {
             .as_ref()
             .and_then(|ty| self.unwrap_class_like_type(ty).map(|(name, _)| name))
             .ok_or_else(|| {
+                let _ = self.compile_expr(object);
                 CodegenError::new(format!(
                     "Cannot determine object type for field access: {:?}.{}",
                     object, field
@@ -15608,6 +15667,12 @@ impl<'ctx> Codegen<'ctx> {
                 );
             }
             if candidates.is_empty() {
+                if self.enums.contains_key(&class_name) {
+                    return Err(Self::unknown_field_error(
+                        field,
+                        obj_ty.as_ref().expect("class-like type already validated"),
+                    ));
+                }
                 return Err(CodegenError::new(format!("Unknown class: {}", class_name)));
             }
             return Err(CodegenError::new(format!(
@@ -15823,12 +15888,22 @@ impl<'ctx> Codegen<'ctx> {
 
     /// Get pointer to a field (for in-place modifications on collections)
     pub fn compile_field_ptr(&mut self, object: &Expr, field: &str) -> Result<PointerValue<'ctx>> {
-        let obj_ty = self.infer_object_type(object);
+        if let Some(err) = self.call_expr_arity_error(object) {
+            return Err(err);
+        }
+        if let Expr::Ident(name) = object {
+            if !self.variables.contains_key(name) {
+                return Err(Self::undefined_variable_error(name));
+            }
+        }
+        let obj_ty = self
+            .infer_object_type(object)
+            .or_else(|| Some(self.infer_expr_type(object, &[])));
         if let Some(obj_ty) = obj_ty.as_ref() {
             if self.unwrap_class_like_type(obj_ty).is_none() {
                 return Err(CodegenError::new(format!(
                     "Cannot access field on type {}",
-                    Self::format_type_string(obj_ty)
+                    Self::format_diagnostic_type(obj_ty)
                 )));
             }
         }
@@ -16830,7 +16905,15 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
-        let object_ty = self.infer_object_type(object);
+        if let Expr::Ident(name) = object {
+            if !self.variables.contains_key(name) {
+                return Err(Self::undefined_variable_error(name));
+            }
+        }
+        let inferred_object_ty = self.infer_object_type(object);
+        let object_ty = inferred_object_ty
+            .clone()
+            .or_else(|| Some(self.infer_expr_type(object, &[])));
         let deref_object_ty = object_ty
             .clone()
             .map(|ty| self.deref_codegen_type(&ty).clone());
@@ -16840,6 +16923,9 @@ impl<'ctx> Codegen<'ctx> {
         );
 
         if !supports_indexing {
+            if inferred_object_ty.is_none() {
+                let _ = self.compile_expr(object)?;
+            }
             let diagnostic_ty = deref_object_ty.clone().unwrap_or_else(|| {
                 self.deref_codegen_type(&self.infer_expr_type(object, &[]))
                     .clone()
