@@ -11,6 +11,69 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 static STDLIB_REGISTRY: OnceLock<StdLib> = OnceLock::new();
+const STDLIB_FUNCTIONS: &[(&str, &str)] = &[
+    ("println", "std.io"),
+    ("print", "std.io"),
+    ("read_line", "std.io"),
+    ("File__read", "std.fs"),
+    ("File__write", "std.fs"),
+    ("File__exists", "std.fs"),
+    ("File__delete", "std.fs"),
+    ("System__getenv", "std.system"),
+    ("System__shell", "std.system"),
+    ("System__exec", "std.system"),
+    ("System__cwd", "std.system"),
+    ("System__os", "std.system"),
+    ("System__exit", "std.system"),
+    ("System__args", "std.system"),
+    ("Time__now", "std.time"),
+    ("Time__unix", "std.time"),
+    ("Time__sleep", "std.time"),
+    ("Args__count", "std.args"),
+    ("Args__get", "std.args"),
+    ("Math__sqrt", "std.math"),
+    ("Math__sin", "std.math"),
+    ("Math__cos", "std.math"),
+    ("Math__tan", "std.math"),
+    ("Math__pow", "std.math"),
+    ("Math__abs", "std.math"),
+    ("Math__min", "std.math"),
+    ("Math__max", "std.math"),
+    ("Math__floor", "std.math"),
+    ("Math__ceil", "std.math"),
+    ("Math__round", "std.math"),
+    ("Math__log", "std.math"),
+    ("Math__log10", "std.math"),
+    ("Math__exp", "std.math"),
+    ("Math__pi", "std.math"),
+    ("Math__e", "std.math"),
+    ("Math__random", "std.math"),
+    ("Str__len", "std.string"),
+    ("Str__compare", "std.string"),
+    ("Str__concat", "std.string"),
+    ("Str__upper", "std.string"),
+    ("Str__lower", "std.string"),
+    ("Str__trim", "std.string"),
+    ("Str__contains", "std.string"),
+    ("Str__startsWith", "std.string"),
+    ("Str__endsWith", "std.string"),
+    ("assert", "builtin"),
+    ("assert_eq", "builtin"),
+    ("assert_ne", "builtin"),
+    ("assert_true", "builtin"),
+    ("assert_false", "builtin"),
+    ("assert_null", "builtin"),
+    ("assert_not_null", "builtin"),
+    ("fail", "builtin"),
+    ("to_string", "builtin"),
+    ("length", "builtin"),
+    ("exit", "builtin"),
+    ("range", "builtin"),
+];
+
+fn alias_lookup_key(namespace_path: &str, member: &str) -> String {
+    format!("{namespace_path}\u{0}{member}")
+}
 
 pub fn stdlib_registry() -> &'static StdLib {
     STDLIB_REGISTRY.get_or_init(StdLib::new)
@@ -20,89 +83,30 @@ pub fn stdlib_registry() -> &'static StdLib {
 pub struct StdLib {
     /// function_name -> namespace (e.g., "println" -> "std.io")
     functions: HashMap<String, String>,
+    alias_calls: HashMap<String, String>,
 }
 
 impl StdLib {
     pub fn new() -> Self {
-        let mut functions = HashMap::new();
+        let mut functions = HashMap::with_capacity(STDLIB_FUNCTIONS.len());
+        let mut alias_calls = HashMap::with_capacity(STDLIB_FUNCTIONS.len());
 
-        // std.io - Input/Output
-        functions.insert("println".to_string(), "std.io".to_string());
-        functions.insert("print".to_string(), "std.io".to_string());
-        functions.insert("read_line".to_string(), "std.io".to_string());
+        for (function_name, namespace) in STDLIB_FUNCTIONS {
+            functions.insert((*function_name).to_string(), (*namespace).to_string());
+            let member = function_name
+                .split_once("__")
+                .map(|(_, member)| member)
+                .unwrap_or(function_name);
+            alias_calls.insert(
+                alias_lookup_key(namespace, member),
+                (*function_name).to_string(),
+            );
+        }
 
-        // std.fs - File System
-        functions.insert("File__read".to_string(), "std.fs".to_string());
-        functions.insert("File__write".to_string(), "std.fs".to_string());
-        functions.insert("File__exists".to_string(), "std.fs".to_string());
-        functions.insert("File__delete".to_string(), "std.fs".to_string());
-
-        // std.system - System operations
-        functions.insert("System__getenv".to_string(), "std.system".to_string());
-        functions.insert("System__shell".to_string(), "std.system".to_string());
-        functions.insert("System__exec".to_string(), "std.system".to_string());
-        functions.insert("System__cwd".to_string(), "std.system".to_string());
-        functions.insert("System__os".to_string(), "std.system".to_string());
-        functions.insert("System__exit".to_string(), "std.system".to_string());
-        functions.insert("System__args".to_string(), "std.system".to_string());
-
-        // std.time - Time functions
-        functions.insert("Time__now".to_string(), "std.time".to_string());
-        functions.insert("Time__unix".to_string(), "std.time".to_string());
-        functions.insert("Time__sleep".to_string(), "std.time".to_string());
-
-        // std.args - Process arguments
-        functions.insert("Args__count".to_string(), "std.args".to_string());
-        functions.insert("Args__get".to_string(), "std.args".to_string());
-
-        // std.math - Math functions (already in Math module)
-        functions.insert("Math__sqrt".to_string(), "std.math".to_string());
-        functions.insert("Math__sin".to_string(), "std.math".to_string());
-        functions.insert("Math__cos".to_string(), "std.math".to_string());
-        functions.insert("Math__tan".to_string(), "std.math".to_string());
-        functions.insert("Math__pow".to_string(), "std.math".to_string());
-        functions.insert("Math__abs".to_string(), "std.math".to_string());
-        functions.insert("Math__min".to_string(), "std.math".to_string());
-        functions.insert("Math__max".to_string(), "std.math".to_string());
-        functions.insert("Math__floor".to_string(), "std.math".to_string());
-        functions.insert("Math__ceil".to_string(), "std.math".to_string());
-        functions.insert("Math__round".to_string(), "std.math".to_string());
-        functions.insert("Math__log".to_string(), "std.math".to_string());
-        functions.insert("Math__log10".to_string(), "std.math".to_string());
-        functions.insert("Math__exp".to_string(), "std.math".to_string());
-        functions.insert("Math__pi".to_string(), "std.math".to_string());
-        functions.insert("Math__e".to_string(), "std.math".to_string());
-        functions.insert("Math__random".to_string(), "std.math".to_string());
-
-        // std.string - String utilities
-        functions.insert("Str__len".to_string(), "std.string".to_string());
-        functions.insert("Str__compare".to_string(), "std.string".to_string());
-        functions.insert("Str__concat".to_string(), "std.string".to_string());
-        functions.insert("Str__upper".to_string(), "std.string".to_string());
-        functions.insert("Str__lower".to_string(), "std.string".to_string());
-        functions.insert("Str__trim".to_string(), "std.string".to_string());
-        functions.insert("Str__contains".to_string(), "std.string".to_string());
-        functions.insert("Str__startsWith".to_string(), "std.string".to_string());
-        functions.insert("Str__endsWith".to_string(), "std.string".to_string());
-
-        // std.assert - Assertion functions for testing (builtin - no import needed)
-        functions.insert("assert".to_string(), "builtin".to_string());
-        functions.insert("assert_eq".to_string(), "builtin".to_string());
-        functions.insert("assert_ne".to_string(), "builtin".to_string());
-        functions.insert("assert_true".to_string(), "builtin".to_string());
-        functions.insert("assert_false".to_string(), "builtin".to_string());
-        functions.insert("assert_null".to_string(), "builtin".to_string());
-        functions.insert("assert_not_null".to_string(), "builtin".to_string());
-        functions.insert("fail".to_string(), "builtin".to_string());
-
-        // Builtin functions that DON'T require import
-        // These are language primitives
-        functions.insert("to_string".to_string(), "builtin".to_string());
-        functions.insert("length".to_string(), "builtin".to_string());
-        functions.insert("exit".to_string(), "builtin".to_string());
-        functions.insert("range".to_string(), "builtin".to_string());
-
-        Self { functions }
+        Self {
+            functions,
+            alias_calls,
+        }
     }
 
     /// Get the namespace for a stdlib function (returns None if not found)
@@ -123,27 +127,9 @@ impl StdLib {
     /// - ("std.math", "abs") -> Some("Math__abs")
     /// - ("std.string", "len") -> Some("Str__len")
     pub fn resolve_alias_call(&self, namespace_path: &str, member: &str) -> Option<String> {
-        // Free-function style (std.io.println -> println)
-        if self
-            .get_namespace(member)
-            .is_some_and(|ns| ns == namespace_path)
-        {
-            return Some(member.to_string());
-        }
-
-        // Module-style (std.math.abs -> Math__abs, std.string.len -> Str__len, ...)
-        let suffix = format!("__{}", member);
-        let mut candidate: Option<String> = None;
-        for (func, ns) in &self.functions {
-            if ns == namespace_path && func.ends_with(&suffix) {
-                if candidate.is_some() {
-                    // Ambiguous mapping; keep conservative.
-                    return None;
-                }
-                candidate = Some(func.clone());
-            }
-        }
-        candidate
+        self.alias_calls
+            .get(&alias_lookup_key(namespace_path, member))
+            .cloned()
     }
 }
 

@@ -675,7 +675,7 @@ pub(crate) struct ImportCheckTimingTotals {
 }
 
 #[derive(Default)]
-pub(crate) struct RewriteTimingTotals {
+pub(crate) struct PipelineRewriteTimingTotals {
     pub(crate) rewrite_context_fingerprint_ns: AtomicU64,
     pub(crate) cache_lookup_ns: AtomicU64,
     pub(crate) rewrite_program_ns: AtomicU64,
