@@ -7354,12 +7354,14 @@ impl<'ctx> Codegen<'ctx> {
         closure = self
             .builder
             .build_insert_value(closure, fn_ptr, 0, "ctor_fn")
-            .unwrap()
+            .map_err(|e| CodegenError::new(format!("failed to build constructor closure fn: {e}")))?
             .into_struct_value();
         closure = self
             .builder
             .build_insert_value(closure, null_env, 1, "ctor_env")
-            .unwrap()
+            .map_err(|e| {
+                CodegenError::new(format!("failed to build constructor closure env: {e}"))
+            })?
             .into_struct_value();
 
         if &actual_ty == expected_ty {
@@ -8673,7 +8675,7 @@ impl<'ctx> Codegen<'ctx> {
         let raw = self
             .builder
             .build_load(self.context.i8_type(), ptr, name)
-            .unwrap()
+            .map_err(|e| CodegenError::new(format!("failed to build atomic bool load: {e}")))?
             .into_int_value();
         let block = self
             .builder
@@ -8684,15 +8686,14 @@ impl<'ctx> Codegen<'ctx> {
             .ok_or_else(|| CodegenError::new("failed to capture atomic load instruction"))?;
         inst.set_atomic_ordering(ordering)
             .map_err(|e| CodegenError::new(format!("failed to set atomic load ordering: {e}")))?;
-        Ok(self
-            .builder
+        self.builder
             .build_int_compare(
                 IntPredicate::NE,
                 raw,
                 self.context.i8_type().const_zero(),
                 &format!("{name}_bool"),
             )
-            .unwrap())
+            .map_err(|e| CodegenError::new(format!("failed to compare atomic bool load: {e}")))
     }
 
     fn build_atomic_bool_store(
@@ -8704,8 +8705,13 @@ impl<'ctx> Codegen<'ctx> {
         let byte_value = self
             .builder
             .build_int_cast(value, self.context.i8_type(), "atomic_flag_store")
-            .unwrap();
-        let inst = self.builder.build_store(ptr, byte_value).unwrap();
+            .map_err(|e| {
+                CodegenError::new(format!("failed to cast atomic bool store value: {e}"))
+            })?;
+        let inst = self
+            .builder
+            .build_store(ptr, byte_value)
+            .map_err(|e| CodegenError::new(format!("failed to build atomic bool store: {e}")))?;
         inst.set_atomic_ordering(ordering)
             .map_err(|e| CodegenError::new(format!("failed to set atomic store ordering: {e}")))?;
         Ok(())
@@ -8783,7 +8789,7 @@ impl<'ctx> Codegen<'ctx> {
         let raw = self
             .builder
             .build_call(malloc, &[size.into()], "task_alloc")
-            .unwrap();
+            .map_err(|e| CodegenError::new(format!("failed to call malloc for Task: {e}")))?;
         let task_raw =
             self.extract_call_pointer_value(raw, "malloc should return pointer for Task")?;
 
@@ -8794,7 +8800,9 @@ impl<'ctx> Codegen<'ctx> {
                 self.context.ptr_type(AddressSpace::default()),
                 "task_ptr",
             )
-            .unwrap();
+            .map_err(|e| {
+                CodegenError::new(format!("failed to cast Task allocation pointer: {e}"))
+            })?;
 
         let i32_ty = self.context.i32_type();
         let zero = i32_ty.const_int(0, false);
@@ -8806,43 +8814,51 @@ impl<'ctx> Codegen<'ctx> {
         let thread_field = unsafe {
             self.builder
                 .build_gep(task_ty, task_ptr, &[zero, thread_idx], "task_thread_field")
-                .unwrap()
+                .map_err(|e| CodegenError::new(format!("failed to get Task thread field: {e}")))?
         };
         self.builder
             .build_store(thread_field, self.context.i64_type().const_int(0, false))
-            .unwrap();
+            .map_err(|e| {
+                CodegenError::new(format!("failed to initialize Task thread field: {e}"))
+            })?;
 
         let result_field = unsafe {
             self.builder
                 .build_gep(task_ty, task_ptr, &[zero, result_idx], "task_result_ptr")
-                .unwrap()
+                .map_err(|e| CodegenError::new(format!("failed to get Task result field: {e}")))?
         };
         self.builder
             .build_store(
                 result_field,
                 self.context.ptr_type(AddressSpace::default()).const_null(),
             )
-            .unwrap();
+            .map_err(|e| {
+                CodegenError::new(format!("failed to initialize Task result field: {e}"))
+            })?;
 
         let done_field = unsafe {
             self.builder
                 .build_gep(task_ty, task_ptr, &[zero, done_idx], "task_done")
-                .unwrap()
+                .map_err(|e| CodegenError::new(format!("failed to get Task done field: {e}")))?
         };
         self.builder
             .build_store(done_field, self.context.i8_type().const_int(0, false))
-            .unwrap();
+            .map_err(|e| CodegenError::new(format!("failed to initialize Task done field: {e}")))?;
         let completed_field = unsafe {
             self.builder
                 .build_gep(task_ty, task_ptr, &[zero, completed_idx], "task_completed")
-                .unwrap()
+                .map_err(|e| {
+                    CodegenError::new(format!("failed to get Task completed field: {e}"))
+                })?
         };
         self.builder
             .build_store(completed_field, self.context.i8_type().const_int(0, false))
-            .unwrap();
+            .map_err(|e| {
+                CodegenError::new(format!("failed to initialize Task completed field: {e}"))
+            })?;
         self.builder
             .build_store(env_task_slot_ptr, task_ptr)
-            .unwrap();
+            .map_err(|e| CodegenError::new(format!("failed to store Task handle in env: {e}")))?;
 
         let thread_val = {
             let null_ptr = self.context.ptr_type(AddressSpace::default()).const_null();
@@ -8853,7 +8869,9 @@ impl<'ctx> Codegen<'ctx> {
                     self.context.ptr_type(AddressSpace::default()),
                     "task_start_fn",
                 )
-                .unwrap();
+                .map_err(|e| {
+                    CodegenError::new(format!("failed to cast Task runner function: {e}"))
+                })?;
             #[cfg(windows)]
             {
                 let create_thread = self.get_or_declare_create_thread_win();
@@ -8871,12 +8889,16 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "task_spawn",
                     )
-                    .unwrap();
+                    .map_err(|e| {
+                        CodegenError::new(format!("failed to spawn Windows task thread: {e}"))
+                    })?;
                 let handle = self
                     .extract_call_pointer_value(raw_handle, "CreateThread should return handle")?;
                 self.builder
                     .build_ptr_to_int(handle, self.context.i64_type(), "task_thread")
-                    .unwrap()
+                    .map_err(|e| {
+                        CodegenError::new(format!("failed to convert Windows task handle: {e}"))
+                    })?
             }
             #[cfg(not(windows))]
             {
@@ -8884,10 +8906,14 @@ impl<'ctx> Codegen<'ctx> {
                 let thread_tmp = self
                     .builder
                     .build_alloca(self.context.i64_type(), "task_thread_tmp")
-                    .unwrap();
+                    .map_err(|e| {
+                        CodegenError::new(format!("failed to allocate task thread temp: {e}"))
+                    })?;
                 self.builder
                     .build_store(thread_tmp, self.context.i64_type().const_int(0, false))
-                    .unwrap();
+                    .map_err(|e| {
+                        CodegenError::new(format!("failed to initialize task thread temp: {e}"))
+                    })?;
                 let _spawn_status = self
                     .builder
                     .build_call(
@@ -8900,24 +8926,27 @@ impl<'ctx> Codegen<'ctx> {
                         ],
                         "task_spawn",
                     )
-                    .unwrap();
+                    .map_err(|e| CodegenError::new(format!("failed to spawn pthread task: {e}")))?;
 
                 self.builder
                     .build_load(self.context.i64_type(), thread_tmp, "task_thread")
-                    .unwrap()
+                    .map_err(|e| {
+                        CodegenError::new(format!("failed to load pthread task handle: {e}"))
+                    })?
                     .into_int_value()
             }
         };
-        self.builder.build_store(thread_field, thread_val).unwrap();
+        self.builder
+            .build_store(thread_field, thread_val)
+            .map_err(|e| CodegenError::new(format!("failed to store Task thread handle: {e}")))?;
 
-        Ok(self
-            .builder
+        self.builder
             .build_pointer_cast(
                 task_ptr,
                 self.context.ptr_type(AddressSpace::default()),
                 "task_raw",
             )
-            .unwrap())
+            .map_err(|e| CodegenError::new(format!("failed to cast Task pointer for return: {e}")))
     }
 
     fn await_task(
@@ -12449,7 +12478,11 @@ impl<'ctx> Codegen<'ctx> {
         let env_alloc = self
             .builder
             .build_call(malloc, &[env_size.into()], "fn_adapter_env_alloc")
-            .unwrap();
+            .map_err(|e| {
+                CodegenError::new(format!(
+                    "failed to call malloc for function adapter env: {e}"
+                ))
+            })?;
         let env_ptr =
             self.extract_call_pointer_value(env_alloc, "malloc failed for function adapter env")?;
         let stored_closure_ptr = unsafe {
@@ -12463,11 +12496,17 @@ impl<'ctx> Codegen<'ctx> {
                     ],
                     "fn_adapter_closure_ptr",
                 )
-                .unwrap()
+                .map_err(|e| {
+                    CodegenError::new(format!(
+                        "failed to get function adapter closure storage: {e}"
+                    ))
+                })?
         };
         self.builder
             .build_store(stored_closure_ptr, closure_struct)
-            .unwrap();
+            .map_err(|e| {
+                CodegenError::new(format!("failed to store function adapter closure: {e}"))
+            })?;
 
         let adapter_name = format!("__fn_closure_adapter_{}", self.lambda_counter);
         self.lambda_counter += 1;
@@ -12511,22 +12550,36 @@ impl<'ctx> Codegen<'ctx> {
                     ],
                     "fn_adapter_env_closure_ptr",
                 )
-                .unwrap()
+                .map_err(|e| {
+                    CodegenError::new(format!(
+                        "failed to get function adapter env closure pointer: {e}"
+                    ))
+                })?
         };
         let loaded_closure = self
             .builder
             .build_load(closure_ty, closure_field_ptr, "fn_adapter_closure")
-            .unwrap()
+            .map_err(|e| {
+                CodegenError::new(format!("failed to load function adapter closure: {e}"))
+            })?
             .into_struct_value();
         let loaded_fn_ptr = self
             .builder
             .build_extract_value(loaded_closure, 0, "fn_adapter_fn_ptr")
-            .unwrap()
+            .map_err(|e| {
+                CodegenError::new(format!(
+                    "failed to extract function adapter fn pointer: {e}"
+                ))
+            })?
             .into_pointer_value();
         let loaded_env_ptr = self
             .builder
             .build_extract_value(loaded_closure, 1, "fn_adapter_env_ptr")
-            .unwrap()
+            .map_err(|e| {
+                CodegenError::new(format!(
+                    "failed to extract function adapter env pointer: {e}"
+                ))
+            })?
             .into_pointer_value();
 
         let mut actual_llvm_params: Vec<BasicMetadataTypeEnum> = vec![ptr_type.into()];
@@ -12548,7 +12601,9 @@ impl<'ctx> Codegen<'ctx> {
                 self.context.ptr_type(AddressSpace::default()),
                 "fn_adapter_typed_fn_ptr",
             )
-            .unwrap();
+            .map_err(|e| {
+                CodegenError::new(format!("failed to cast function adapter fn pointer: {e}"))
+            })?;
         let mut call_args: Vec<BasicMetadataValueEnum> = vec![loaded_env_ptr.into()];
         for (index, (expected_param_ty, actual_param_ty)) in
             expected_params.iter().zip(actual_params.iter()).enumerate()
@@ -12563,7 +12618,9 @@ impl<'ctx> Codegen<'ctx> {
         let call = self
             .builder
             .build_indirect_call(actual_fn_type, typed_fn_ptr, &call_args, "fn_adapter_call")
-            .unwrap();
+            .map_err(|e| {
+                CodegenError::new(format!("failed to build function adapter call: {e}"))
+            })?;
         let result = self.extract_call_value(call);
         let adapted = self.adapt_function_adapter_return(
             result?,
@@ -12571,7 +12628,9 @@ impl<'ctx> Codegen<'ctx> {
             expected_ret.as_ref(),
             "fn_adapter_return",
         )?;
-        self.builder.build_return(Some(&adapted)).unwrap();
+        self.builder.build_return(Some(&adapted)).map_err(|e| {
+            CodegenError::new(format!("failed to return function adapter result: {e}"))
+        })?;
 
         self.current_function = saved_function;
         self.current_return_type = saved_return_type;
@@ -12591,12 +12650,12 @@ impl<'ctx> Codegen<'ctx> {
                 0,
                 "fn",
             )
-            .unwrap()
+            .map_err(|e| CodegenError::new(format!("failed to build adapter closure fn: {e}")))?
             .into_struct_value();
         wrapper_closure = self
             .builder
             .build_insert_value(wrapper_closure, env_ptr, 1, "env")
-            .unwrap()
+            .map_err(|e| CodegenError::new(format!("failed to build adapter closure env: {e}")))?
             .into_struct_value();
         Ok(Some(wrapper_closure.into()))
     }

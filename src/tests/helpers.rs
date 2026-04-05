@@ -161,51 +161,47 @@ pub(crate) fn assert_frontend_pipeline_ok(source: &str) {
     let program = parse_program(source);
 
     let mut type_checker = TypeChecker::new(source.to_string());
-    if let Err(errors) = type_checker.check(&program) {
-        panic!(
-            "type check failed: {}",
-            errors
-                .into_iter()
-                .map(|e| e.message)
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
+    assert_diagnostics_ok(type_checker.check(&program), "type check failed", |error| {
+        error.message
+    });
 
     let mut borrow_checker = BorrowChecker::new();
-    if let Err(errors) = borrow_checker.check(&program) {
-        panic!(
-            "borrow check failed: {}",
-            errors
-                .into_iter()
-                .map(|e| e.message)
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
+    assert_diagnostics_ok(
+        borrow_checker.check(&program),
+        "borrow check failed",
+        |error| error.message,
+    );
 
     let formatted = format_program_canonical(&program);
     let reparsed = parse_program(&formatted);
 
     let mut type_checker = TypeChecker::new(formatted.clone());
-    if let Err(errors) = type_checker.check(&reparsed) {
-        panic!(
-            "type check after format failed: {}",
-            errors
-                .into_iter()
-                .map(|e| e.message)
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
+    assert_diagnostics_ok(
+        type_checker.check(&reparsed),
+        "type check after format failed",
+        |error| error.message,
+    );
 
     let mut borrow_checker = BorrowChecker::new();
-    if let Err(errors) = borrow_checker.check(&reparsed) {
+    assert_diagnostics_ok(
+        borrow_checker.check(&reparsed),
+        "borrow check after format failed",
+        |error| error.message,
+    );
+}
+
+fn assert_diagnostics_ok<T, E>(
+    result: std::result::Result<T, Vec<E>>,
+    context: &str,
+    mut message: impl FnMut(E) -> String,
+) {
+    if let Err(errors) = result {
         panic!(
-            "borrow check after format failed: {}",
+            "{}: {}",
+            context,
             errors
                 .into_iter()
-                .map(|e| e.message)
+                .map(&mut message)
                 .collect::<Vec<_>>()
                 .join("\n")
         );
