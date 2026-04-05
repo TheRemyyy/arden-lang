@@ -145,6 +145,58 @@ impl std::fmt::Display for ResolvedType {
     }
 }
 
+fn split_generic_args_static(s: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut angle_depth = 0usize;
+    let mut paren_depth = 0usize;
+
+    for c in s.chars() {
+        match c {
+            '<' => {
+                angle_depth += 1;
+                current.push(c);
+            }
+            '>' => {
+                angle_depth = angle_depth.saturating_sub(1);
+                current.push(c);
+            }
+            '(' => {
+                paren_depth += 1;
+                current.push(c);
+            }
+            ')' => {
+                paren_depth = paren_depth.saturating_sub(1);
+                current.push(c);
+            }
+            ',' if angle_depth == 0 && paren_depth == 0 => {
+                parts.push(current.trim().to_string());
+                current = String::new();
+            }
+            _ => current.push(c),
+        }
+    }
+    parts.push(current.trim().to_string());
+    parts
+}
+
+fn format_diagnostic_class_name(name: &str) -> String {
+    if let Some(open_bracket) = name.find('<') {
+        if name.ends_with('>') {
+            let base = &name[..open_bracket];
+            let inner = &name[open_bracket + 1..name.len() - 1];
+            let formatted_args = split_generic_args_static(inner)
+                .into_iter()
+                .map(|arg| format_diagnostic_class_name(&arg))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return format!("{}<{}>", base.replace("__", "."), formatted_args);
+        }
+    }
+
+    name.replace("__", ".")
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum NumericConst {
     Integer(i64),
@@ -262,8 +314,6 @@ pub struct TypeChecker {
     current_is_pure: bool,
     /// Whether current function allows any effects
     current_allow_any: bool,
-    /// Source code for error messages
-    source: String,
     /// Function/method generic type parameter bindings in current checking context
     current_generic_type_bindings: HashMap<String, ResolvedType>,
     /// Interface bounds declared for generic type variables
@@ -310,156 +360,16 @@ impl TypeChecker {
             ("Option", "none", ResolvedType::Option(_)) => true,
             ("Option", "some", ResolvedType::Option(inner)) => args
                 .first()
-                .is_some_and(|arg| self.supports_display_expr(&arg.node, inner)),
+                .is_some_and(|arg| self.supports_display_expr(&arg.node, inner.as_ref())),
             ("Result", "ok", ResolvedType::Result(ok, _)) => args
                 .first()
-                .is_some_and(|arg| self.supports_display_expr(&arg.node, ok)),
+                .is_some_and(|arg| self.supports_display_expr(&arg.node, ok.as_ref())),
             ("Result", "error", ResolvedType::Result(_, err)) => args
                 .first()
-                .is_some_and(|arg| self.supports_display_expr(&arg.node, err)),
+                .is_some_and(|arg| self.supports_display_expr(&arg.node, err.as_ref())),
             _ => false,
         }
     }
-
-    fn format_diagnostic_class_name(name: &str) -> String {
-        if let Some(open_bracket) = name.find('<') {
-            if name.ends_with('>') {
-                let base = &name[..open_bracket];
-                let inner = &name[open_bracket + 1..name.len() - 1];
-                let formatted_args = Self::split_generic_args_static(inner)
-                    .into_iter()
-                    .map(|arg| Self::format_diagnostic_class_name(&arg))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                return format!("{}<{}>", base.replace("__", "."), formatted_args);
-            }
-        }
-
-        name.replace("__", ".")
-    }
-
-    fn format_resolved_type_for_diagnostic(ty: &ResolvedType) -> String {
-        match ty {
-            ResolvedType::Integer => "Integer".to_string(),
-            ResolvedType::Float => "Float".to_string(),
-            ResolvedType::Boolean => "Boolean".to_string(),
-            ResolvedType::String => "String".to_string(),
-            ResolvedType::Char => "Char".to_string(),
-            ResolvedType::None => "None".to_string(),
-            ResolvedType::Class(name) => Self::format_diagnostic_class_name(name),
-            ResolvedType::Option(inner) => {
-                format!(
-                    "Option<{}>",
-                    Self::format_resolved_type_for_diagnostic(inner)
-                )
-            }
-            ResolvedType::Result(ok, err) => format!(
-                "Result<{}, {}>",
-                Self::format_resolved_type_for_diagnostic(ok),
-                Self::format_resolved_type_for_diagnostic(err)
-            ),
-            ResolvedType::List(inner) => {
-                format!("List<{}>", Self::format_resolved_type_for_diagnostic(inner))
-            }
-            ResolvedType::Map(key, value) => format!(
-                "Map<{}, {}>",
-                Self::format_resolved_type_for_diagnostic(key),
-                Self::format_resolved_type_for_diagnostic(value)
-            ),
-            ResolvedType::Set(inner) => {
-                format!("Set<{}>", Self::format_resolved_type_for_diagnostic(inner))
-            }
-            ResolvedType::Ref(inner) => {
-                format!("&{}", Self::format_resolved_type_for_diagnostic(inner))
-            }
-            ResolvedType::MutRef(inner) => {
-                format!("&mut {}", Self::format_resolved_type_for_diagnostic(inner))
-            }
-            ResolvedType::Box(inner) => {
-                format!("Box<{}>", Self::format_resolved_type_for_diagnostic(inner))
-            }
-            ResolvedType::Rc(inner) => {
-                format!("Rc<{}>", Self::format_resolved_type_for_diagnostic(inner))
-            }
-            ResolvedType::Arc(inner) => {
-                format!("Arc<{}>", Self::format_resolved_type_for_diagnostic(inner))
-            }
-            ResolvedType::Ptr(inner) => {
-                format!("Ptr<{}>", Self::format_resolved_type_for_diagnostic(inner))
-            }
-            ResolvedType::Task(inner) => {
-                format!("Task<{}>", Self::format_resolved_type_for_diagnostic(inner))
-            }
-            ResolvedType::Range(inner) => {
-                format!(
-                    "Range<{}>",
-                    Self::format_resolved_type_for_diagnostic(inner)
-                )
-            }
-            ResolvedType::Function(params, ret) => format!(
-                "({}) -> {}",
-                params
-                    .iter()
-                    .map(Self::format_resolved_type_for_diagnostic)
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                Self::format_resolved_type_for_diagnostic(ret)
-            ),
-            ResolvedType::TypeVar(id) => format!("?T{}", id),
-            ResolvedType::Unknown => "unknown".to_string(),
-        }
-    }
-
-    fn format_ast_type_source(ty: &Type) -> String {
-        match ty {
-            Type::Integer => "Integer".to_string(),
-            Type::Float => "Float".to_string(),
-            Type::Boolean => "Boolean".to_string(),
-            Type::String => "String".to_string(),
-            Type::Char => "Char".to_string(),
-            Type::None => "None".to_string(),
-            Type::Named(name) => name.clone(),
-            Type::Generic(name, args) => format!(
-                "{}<{}>",
-                name,
-                args.iter()
-                    .map(Self::format_ast_type_source)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            Type::Function(params, ret) => format!(
-                "({}) -> {}",
-                params
-                    .iter()
-                    .map(Self::format_ast_type_source)
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                Self::format_ast_type_source(ret)
-            ),
-            Type::Option(inner) => format!("Option<{}>", Self::format_ast_type_source(inner)),
-            Type::Result(ok, err) => format!(
-                "Result<{}, {}>",
-                Self::format_ast_type_source(ok),
-                Self::format_ast_type_source(err)
-            ),
-            Type::List(inner) => format!("List<{}>", Self::format_ast_type_source(inner)),
-            Type::Map(k, v) => format!(
-                "Map<{}, {}>",
-                Self::format_ast_type_source(k),
-                Self::format_ast_type_source(v)
-            ),
-            Type::Set(inner) => format!("Set<{}>", Self::format_ast_type_source(inner)),
-            Type::Ref(inner) => format!("&{}", Self::format_ast_type_source(inner)),
-            Type::MutRef(inner) => format!("&mut {}", Self::format_ast_type_source(inner)),
-            Type::Box(inner) => format!("Box<{}>", Self::format_ast_type_source(inner)),
-            Type::Rc(inner) => format!("Rc<{}>", Self::format_ast_type_source(inner)),
-            Type::Arc(inner) => format!("Arc<{}>", Self::format_ast_type_source(inner)),
-            Type::Ptr(inner) => format!("Ptr<{}>", Self::format_ast_type_source(inner)),
-            Type::Task(inner) => format!("Task<{}>", Self::format_ast_type_source(inner)),
-            Type::Range(inner) => format!("Range<{}>", Self::format_ast_type_source(inner)),
-        }
-    }
-
     fn resolved_type_contains_unknown(ty: &ResolvedType) -> bool {
         match ty {
             ResolvedType::Unknown => true,
@@ -555,216 +465,7 @@ impl TypeChecker {
             _ => None,
         }
     }
-
-    fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
-        match expr {
-            Expr::Ident(name) => Some(vec![name.clone()]),
-            Expr::Field { object, field } => {
-                let mut parts = Self::flatten_field_chain(&object.node)?;
-                parts.push(field.clone());
-                Some(parts)
-            }
-            _ => None,
-        }
-    }
-
-    fn resolve_stdlib_alias_call_name(&self, alias_ident: &str, member: &str) -> Option<String> {
-        // Local bindings must shadow import aliases.
-        if self.lookup_variable(alias_ident).is_some() {
-            return None;
-        }
-        let namespace_path = self.import_aliases.get(alias_ident)?;
-        stdlib_registry().resolve_alias_call(namespace_path, member)
-    }
-
-    fn resolve_import_alias_symbol(&self, alias_ident: &str) -> Option<String> {
-        // Local bindings must shadow import aliases.
-        if self.lookup_variable(alias_ident).is_some() {
-            return None;
-        }
-        let path = self.import_aliases.get(alias_ident)?;
-        if let Some(canonical) = Self::builtin_exact_import_alias_canonical(path) {
-            return Some(canonical.to_string());
-        }
-        if path.ends_with(".*") {
-            return None;
-        }
-        let mut parts = path.split('.').collect::<Vec<_>>();
-        let symbol = parts.pop()?;
-        let namespace = parts.join(".");
-        if let Some(canonical) = stdlib_registry().resolve_alias_call(&namespace, symbol) {
-            return Some(canonical);
-        }
-        let full_mangled = path.replace('.', "__");
-        if self.functions.contains_key(&full_mangled) {
-            return Some(full_mangled);
-        }
-        if stdlib_registry()
-            .get_namespace(symbol)
-            .is_some_and(|owner| owner == &namespace)
-        {
-            return Some(symbol.to_string());
-        }
-        None
-    }
-
-    fn resolve_import_alias_variant(&self, alias_ident: &str) -> Option<(String, String)> {
-        if self.lookup_variable(alias_ident).is_some() {
-            return None;
-        }
-        let path = self.import_aliases.get(alias_ident)?;
-        if path.ends_with(".*") {
-            return None;
-        }
-        let (enum_path, variant_name) = path.rsplit_once('.')?;
-        let (namespace, enum_name) = enum_path
-            .rsplit_once('.')
-            .map_or((String::new(), enum_path.to_string()), |(ns, name)| {
-                (ns.to_string(), name.to_string())
-            });
-        if matches!(enum_name.as_str(), "Option" | "Result") {
-            return Some((enum_name, variant_name.to_string()));
-        }
-        if self.enums.contains_key(&enum_name) {
-            return Some((enum_name, variant_name.to_string()));
-        }
-        let mangled = if namespace.is_empty() {
-            enum_name.clone()
-        } else {
-            format!("{}__{}", namespace.replace('.', "__"), enum_name)
-        };
-        if self.enums.contains_key(&mangled) {
-            return Some((mangled, variant_name.to_string()));
-        }
-        let suffix = format!("__{}", enum_name);
-        let mut matches = self
-            .enums
-            .keys()
-            .filter(|candidate| *candidate == &enum_name || candidate.ends_with(&suffix))
-            .cloned()
-            .collect::<Vec<_>>();
-        matches.sort_unstable();
-        matches.dedup();
-        (matches.len() == 1).then(|| (matches[0].clone(), variant_name.to_string()))
-    }
-
-    fn parse_construct_nominal_type_source(ty: &str) -> Option<(String, Vec<Type>)> {
-        match parse_type_source(ty).ok()? {
-            Type::Named(name) => Some((name, Vec::new())),
-            Type::Generic(name, args) => Some((name, args)),
-            _ => None,
-        }
-    }
-
-    fn builtin_exact_import_alias_canonical(path: &str) -> Option<&'static str> {
-        match path {
-            "Option.Some" => Some("Option__some"),
-            "Option.None" => Some("Option__none"),
-            "Result.Ok" => Some("Result__ok"),
-            "Result.Error" => Some("Result__error"),
-            _ => None,
-        }
-    }
-
-    fn resolve_enum_name(&self, name: &str) -> Option<String> {
-        if self.enums.contains_key(name) {
-            return Some(name.to_string());
-        }
-        if let Some(leaf) = name.rsplit("__").next() {
-            if leaf != name && self.enums.contains_key(leaf) {
-                return Some(leaf.to_string());
-            }
-        }
-        let suffix = format!("__{}", name);
-        let mut matches = self
-            .enums
-            .keys()
-            .filter(|candidate| *candidate == name || candidate.ends_with(&suffix))
-            .cloned()
-            .collect::<Vec<_>>();
-        matches.sort_unstable();
-        matches.dedup();
-        (matches.len() == 1).then(|| matches[0].clone())
-    }
-
-    fn resolve_import_alias_module_candidate(
-        &self,
-        alias_ident: &str,
-        member_parts: &[String],
-    ) -> Option<String> {
-        if member_parts.is_empty() || self.lookup_variable(alias_ident).is_some() {
-            return None;
-        }
-        if self.resolve_import_alias_symbol(alias_ident).is_some() {
-            return None;
-        }
-        let path = self.import_aliases.get(alias_ident)?;
-        if path.ends_with(".*") {
-            return None;
-        }
-        Some(format!(
-            "{}__{}",
-            path.replace('.', "__"),
-            member_parts.join("__")
-        ))
-    }
-
-    fn resolve_wildcard_import_module_function_candidate(
-        &self,
-        module_name: &str,
-        member_parts: &[String],
-    ) -> Option<String> {
-        if member_parts.is_empty() || self.lookup_variable(module_name).is_some() {
-            return None;
-        }
-        let mut matches = self
-            .import_aliases
-            .values()
-            .filter_map(|path| path.strip_suffix(".*"))
-            .map(|namespace| {
-                format!(
-                    "{}__{}__{}",
-                    namespace.replace('.', "__"),
-                    module_name,
-                    member_parts.join("__")
-                )
-            })
-            .filter(|candidate| self.functions.contains_key(candidate))
-            .collect::<Vec<_>>();
-        matches.sort_unstable();
-        matches.dedup();
-        (matches.len() == 1).then(|| matches[0].clone())
-    }
-
-    fn resolve_function_value_name<'a>(&'a self, name: &'a str) -> Option<&'a str> {
-        if self.functions.contains_key(name) {
-            return Some(name);
-        }
-
-        let suffix = if name.contains("__") {
-            name.rsplit("__").next().unwrap_or(name)
-        } else {
-            name
-        };
-
-        let mut matches = self
-            .functions
-            .keys()
-            .filter(|candidate| {
-                *candidate == suffix || candidate.ends_with(&format!("__{}", suffix))
-            })
-            .map(|candidate| candidate.as_str())
-            .collect::<Vec<_>>();
-        matches.sort_unstable();
-        matches.dedup();
-        if matches.len() == 1 {
-            Some(matches[0])
-        } else {
-            None
-        }
-    }
-
-    pub fn new(source: String) -> Self {
+    pub fn new() -> Self {
         let global_scope = Scope {
             variables: HashMap::new(),
             parent: None,
@@ -788,729 +489,12 @@ impl TypeChecker {
             current_effects: Vec::new(),
             current_is_pure: false,
             current_allow_any: false,
-            source,
             current_generic_type_bindings: HashMap::new(),
             type_var_bounds: HashMap::new(),
             current_module_prefix: None,
         }
     }
-
-    fn module_scoped_type_name(&self, name: &str) -> Option<String> {
-        let prefix = self.current_module_prefix.as_deref()?;
-        let (base_name, generic_suffix) = name
-            .find('<')
-            .map(|idx| (&name[..idx], &name[idx..]))
-            .unwrap_or((name, ""));
-        let candidate = format!("{}__{}", prefix, base_name.replace('.', "__"));
-        (self.classes.contains_key(&candidate)
-            || self.enums.contains_key(&candidate)
-            || self.interfaces.contains_key(&candidate))
-        .then_some(format!("{}{}", candidate, generic_suffix))
-    }
-
-    fn module_scoped_generic_type(
-        &self,
-        name: &str,
-        args: &[ResolvedType],
-    ) -> Option<ResolvedType> {
-        let scoped_name = self.module_scoped_type_name(name)?;
-        let rendered_args = args
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        Some(ResolvedType::Class(format!(
-            "{}<{}>",
-            scoped_name, rendered_args
-        )))
-    }
-
-    fn known_type_exists(&self, name: &str) -> bool {
-        self.classes.contains_key(name)
-            || self.enums.contains_key(name)
-            || self.interfaces.contains_key(name)
-    }
-
-    fn resolve_known_type_name(&self, name: &str) -> Option<String> {
-        if self.known_type_exists(name) {
-            return Some(name.to_string());
-        }
-
-        if let Some(module_scoped) = self.module_scoped_type_name(name) {
-            let scoped_name = module_scoped
-                .split_once('<')
-                .map_or(module_scoped.as_str(), |(base, _)| base);
-            if self.known_type_exists(scoped_name) {
-                return Some(scoped_name.to_string());
-            }
-        }
-
-        if name.contains('.') {
-            let mangled = name.replace('.', "__");
-            if self.known_type_exists(&mangled) {
-                return Some(mangled);
-            }
-        }
-
-        let suffix = format!("__{}", name.replace('.', "__"));
-        let mut matches = self
-            .classes
-            .keys()
-            .chain(self.enums.keys())
-            .chain(self.interfaces.keys())
-            .filter(|candidate| *candidate == name || candidate.ends_with(&suffix))
-            .cloned()
-            .collect::<Vec<_>>();
-        matches.sort_unstable();
-        matches.dedup();
-        (matches.len() == 1).then(|| matches[0].clone())
-    }
-
-    fn resolve_nominal_reference_name(&self, name: &str) -> Option<String> {
-        if let Ok(Type::Generic(base, args)) = parse_type_source(name) {
-            let resolved_base = self.resolve_nominal_reference_name(&base)?;
-            let resolved_args = args
-                .iter()
-                .map(|arg| self.resolve_type(arg).to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Some(format!("{}<{}>", resolved_base, resolved_args));
-        }
-
-        if let Some(resolved) = self.resolve_known_type_name(name) {
-            return Some(resolved);
-        }
-
-        if !name.contains('.') {
-            let mut wildcard_matches = self
-                .import_aliases
-                .values()
-                .filter_map(|path| path.strip_suffix(".*"))
-                .filter_map(|module_path| {
-                    self.resolve_known_type_name(&format!("{}.{}", module_path, name))
-                })
-                .collect::<Vec<_>>();
-            wildcard_matches.sort_unstable();
-            wildcard_matches.dedup();
-            if wildcard_matches.len() == 1 {
-                return Some(wildcard_matches[0].clone());
-            }
-        }
-
-        if let Some(path) = self.import_aliases.get(name) {
-            if !path.ends_with(".*") {
-                if let Some(resolved) = self.resolve_known_type_name(path) {
-                    return Some(resolved);
-                }
-            }
-        }
-
-        let (alias, rest) = name.split_once('.')?;
-        let member_parts = rest
-            .split('.')
-            .map(|part| part.to_string())
-            .collect::<Vec<_>>();
-        let candidate = self.resolve_import_alias_module_candidate(alias, &member_parts)?;
-        self.known_type_exists(&candidate).then_some(candidate)
-    }
-
-    fn resolve_user_defined_generic_type(
-        &self,
-        name: &str,
-        args: &[ResolvedType],
-    ) -> Option<ResolvedType> {
-        let resolved_name = self.resolve_nominal_reference_name(name)?;
-        let rendered_args = args
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        Some(ResolvedType::Class(format!(
-            "{}<{}>",
-            resolved_name, rendered_args
-        )))
-    }
-
-    fn apply_effect_seeds(
-        &mut self,
-        function_effects: &HashMap<String, Vec<String>>,
-        class_method_effects: &HashMap<String, HashMap<String, Vec<String>>>,
-    ) {
-        for (name, effects) in function_effects {
-            if let Some(sig) = self.functions.get_mut(name) {
-                sig.effects = effects.clone();
-            }
-        }
-        for (class_name, methods) in class_method_effects {
-            if let Some(class) = self.classes.get_mut(class_name) {
-                for (method_name, effects) in methods {
-                    if let Some(sig) = class.methods.get_mut(method_name) {
-                        sig.effects = effects.clone();
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn export_effect_summary(&self) -> (FunctionEffectsSummary, ClassMethodEffectsSummary) {
-        let function_effects = self
-            .functions
-            .iter()
-            .map(|(name, sig)| (name.clone(), sig.effects.clone()))
-            .collect();
-        let class_method_effects = self
-            .classes
-            .iter()
-            .map(|(class_name, class)| {
-                (
-                    class_name.clone(),
-                    class
-                        .methods
-                        .iter()
-                        .map(|(method_name, sig)| (method_name.clone(), sig.effects.clone()))
-                        .collect(),
-                )
-            })
-            .collect();
-        (function_effects, class_method_effects)
-    }
-
-    pub fn check_with_effect_seeds(
-        &mut self,
-        program: &Program,
-        function_effects: &FunctionEffectsSummary,
-        class_method_effects: &ClassMethodEffectsSummary,
-    ) -> Result<(), Vec<TypeError>> {
-        self.populate_import_aliases(program);
-        self.collect_declarations(program);
-        self.normalize_inheritance_references();
-        self.apply_effect_seeds(function_effects, class_method_effects);
-        for (name, iface) in self.interfaces.clone() {
-            for parent in iface.extends {
-                if !self
-                    .interfaces
-                    .contains_key(self.interface_base_name(&parent))
-                {
-                    self.error(
-                        format!(
-                            "Interface '{}' extends unknown interface '{}'",
-                            name, parent
-                        ),
-                        iface.span.clone(),
-                    );
-                }
-            }
-        }
-        self.infer_effects(program);
-
-        for decl in &program.declarations {
-            self.check_decl_with_prefix(&decl.node, decl.span.clone(), None);
-        }
-
-        if self.errors.is_empty() {
-            Ok(())
-        } else {
-            Err(std::mem::take(&mut self.errors))
-        }
-    }
-
-    fn make_generic_type_bindings(
-        &mut self,
-        generic_params: &[GenericParam],
-    ) -> HashMap<String, ResolvedType> {
-        generic_params
-            .iter()
-            .map(|p| {
-                let type_var = self.fresh_type_var();
-                if let ResolvedType::TypeVar(id) = type_var {
-                    self.type_var_bounds.insert(id, p.bounds.clone());
-                }
-                (p.name.clone(), type_var)
-            })
-            .collect()
-    }
-
-    fn validate_generic_param_bounds(
-        &mut self,
-        generic_params: &[GenericParam],
-        span: Span,
-        owner: &str,
-    ) {
-        for param in generic_params {
-            for bound in &param.bounds {
-                let resolved = self
-                    .resolve_nominal_reference_name(bound)
-                    .unwrap_or_else(|| bound.clone());
-                if self.interfaces.contains_key(&resolved) {
-                    continue;
-                }
-                if self.classes.contains_key(&resolved) || self.enums.contains_key(&resolved) {
-                    self.error(
-                        format!(
-                            "{} generic parameter '{}' must use an interface bound, found '{}'",
-                            owner, param.name, bound
-                        ),
-                        span.clone(),
-                    );
-                } else {
-                    self.error(
-                        format!(
-                            "{} generic parameter '{}' extends unknown interface '{}'",
-                            owner, param.name, bound
-                        ),
-                        span.clone(),
-                    );
-                }
-            }
-        }
-    }
-
-    fn type_satisfies_interface_bound(&self, actual: &ResolvedType, bound: &str) -> bool {
-        if matches!(actual, ResolvedType::Unknown | ResolvedType::TypeVar(_)) {
-            return true;
-        }
-        let resolved_bound = self
-            .resolve_nominal_reference_name(bound)
-            .unwrap_or_else(|| bound.to_string());
-        let ResolvedType::Class(actual_name) = actual else {
-            return false;
-        };
-        let actual_base = self.class_base_name(actual_name);
-        if actual_base == resolved_bound {
-            return true;
-        }
-        self.class_implements_interface(actual_base, &resolved_bound)
-            || self.interface_extends(actual_base, &resolved_bound)
-    }
-
-    fn type_var_satisfies_bounds(&self, type_var_id: usize, actual: &ResolvedType) -> bool {
-        self.type_var_bounds.get(&type_var_id).is_none_or(|bounds| {
-            bounds
-                .iter()
-                .all(|bound| self.type_satisfies_interface_bound(actual, bound))
-        })
-    }
-
-    fn validate_class_type_argument_bounds(&mut self, class_name: &str, span: Span, context: &str) {
-        let (base_name, substitutions) = self.instantiated_class_substitutions(class_name);
-        let Some(type_var_ids) = self
-            .classes
-            .get(&base_name)
-            .map(|class| class.generic_type_vars.clone())
-        else {
-            return;
-        };
-        for type_var_id in &type_var_ids {
-            let Some(actual) = substitutions.get(type_var_id) else {
-                continue;
-            };
-            if self.type_var_satisfies_bounds(*type_var_id, actual) {
-                continue;
-            }
-            let bounds = self
-                .type_var_bounds
-                .get(type_var_id)
-                .cloned()
-                .unwrap_or_default()
-                .join(", ");
-            self.error(
-                format!(
-                    "{} type argument {} does not satisfy bound(s) {}",
-                    context,
-                    Self::format_resolved_type_for_diagnostic(actual),
-                    Self::format_diagnostic_class_name(&bounds)
-                ),
-                span.clone(),
-            );
-        }
-    }
-
     #[allow(clippy::only_used_in_recursion)]
-    fn resolve_type_with_bindings(
-        &self,
-        ty: &Type,
-        bindings: &HashMap<String, ResolvedType>,
-    ) -> ResolvedType {
-        self.resolve_type_with_bindings_and_self_class(ty, bindings, None)
-    }
-
-    fn resolve_self_named_generic_class(
-        self_class: Option<(&str, &str)>,
-        builtin_like_name: &str,
-        resolved_args: &[ResolvedType],
-    ) -> Option<ResolvedType> {
-        let (self_name, self_key) = self_class?;
-        if self_name != builtin_like_name {
-            return None;
-        }
-        let rendered_args = resolved_args
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        Some(ResolvedType::Class(format!(
-            "{}<{}>",
-            self_key, rendered_args
-        )))
-    }
-
-    fn resolve_type_with_bindings_and_self_class(
-        &self,
-        ty: &Type,
-        bindings: &HashMap<String, ResolvedType>,
-        self_class: Option<(&str, &str)>,
-    ) -> ResolvedType {
-        match ty {
-            Type::Integer => ResolvedType::Integer,
-            Type::Float => ResolvedType::Float,
-            Type::Boolean => ResolvedType::Boolean,
-            Type::String => ResolvedType::String,
-            Type::Char => ResolvedType::Char,
-            Type::None => ResolvedType::None,
-            Type::Named(name) => {
-                if let Some(bound) = bindings.get(name) {
-                    return bound.clone();
-                }
-                if let Some((self_name, self_key)) = self_class {
-                    if name == self_name {
-                        return ResolvedType::Class(self_key.to_string());
-                    }
-                }
-                if let Some(resolved_name) = self.resolve_nominal_reference_name(name) {
-                    return ResolvedType::Class(resolved_name);
-                }
-                match name.as_str() {
-                    "Range" => ResolvedType::Class("Range".to_string()),
-                    _ => ResolvedType::Class(name.clone()),
-                }
-            }
-            Type::Option(inner) => {
-                let inner =
-                    self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Option",
-                    std::slice::from_ref(&inner),
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Option", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Option", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Option(Box::new(inner)))
-            }
-            Type::Result(ok, err) => {
-                let ok = self.resolve_type_with_bindings_and_self_class(ok, bindings, self_class);
-                let err = self.resolve_type_with_bindings_and_self_class(err, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Result",
-                    &[ok.clone(), err.clone()],
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Result", &[ok.clone(), err.clone()])
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Result", &[ok.clone(), err.clone()])
-                    })
-                    .unwrap_or_else(|| ResolvedType::Result(Box::new(ok), Box::new(err)))
-            }
-            Type::List(inner) => {
-                let inner =
-                    self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "List",
-                    std::slice::from_ref(&inner),
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("List", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("List", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::List(Box::new(inner)))
-            }
-            Type::Map(k, v) => {
-                let key = self.resolve_type_with_bindings_and_self_class(k, bindings, self_class);
-                let value = self.resolve_type_with_bindings_and_self_class(v, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Map",
-                    &[key.clone(), value.clone()],
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Map", &[key.clone(), value.clone()])
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Map", &[key.clone(), value.clone()])
-                    })
-                    .unwrap_or_else(|| ResolvedType::Map(Box::new(key), Box::new(value)))
-            }
-            Type::Set(inner) => {
-                let inner =
-                    self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Set",
-                    std::slice::from_ref(&inner),
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Set", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Set", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Set(Box::new(inner)))
-            }
-            Type::Ref(inner) => ResolvedType::Ref(Box::new(
-                self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class),
-            )),
-            Type::MutRef(inner) => ResolvedType::MutRef(Box::new(
-                self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class),
-            )),
-            Type::Box(inner) => {
-                let inner =
-                    self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Box",
-                    std::slice::from_ref(&inner),
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Box", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Box", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Box(Box::new(inner)))
-            }
-            Type::Rc(inner) => {
-                let inner =
-                    self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Rc",
-                    std::slice::from_ref(&inner),
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Rc", std::slice::from_ref(&inner))
-                    .or_else(|| self.module_scoped_generic_type("Rc", std::slice::from_ref(&inner)))
-                    .unwrap_or_else(|| ResolvedType::Rc(Box::new(inner)))
-            }
-            Type::Arc(inner) => {
-                let inner =
-                    self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Arc",
-                    std::slice::from_ref(&inner),
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Arc", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Arc", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Arc(Box::new(inner)))
-            }
-            Type::Ptr(inner) => {
-                let inner =
-                    self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Ptr",
-                    std::slice::from_ref(&inner),
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Ptr", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Ptr", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Ptr(Box::new(inner)))
-            }
-            Type::Task(inner) => {
-                let inner =
-                    self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Task",
-                    std::slice::from_ref(&inner),
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Task", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Task", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Task(Box::new(inner)))
-            }
-            Type::Range(inner) => {
-                let inner =
-                    self.resolve_type_with_bindings_and_self_class(inner, bindings, self_class);
-                if let Some(resolved) = Self::resolve_self_named_generic_class(
-                    self_class,
-                    "Range",
-                    std::slice::from_ref(&inner),
-                ) {
-                    return resolved;
-                }
-                self.resolve_user_defined_generic_type("Range", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Range", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Range(Box::new(inner)))
-            }
-            Type::Function(params, ret) => ResolvedType::Function(
-                params
-                    .iter()
-                    .map(|p| {
-                        self.resolve_type_with_bindings_and_self_class(p, bindings, self_class)
-                    })
-                    .collect(),
-                Box::new(self.resolve_type_with_bindings_and_self_class(ret, bindings, self_class)),
-            ),
-            Type::Generic(name, args) => {
-                let resolved_args = args
-                    .iter()
-                    .map(|arg| {
-                        self.resolve_type_with_bindings_and_self_class(arg, bindings, self_class)
-                    })
-                    .collect::<Vec<_>>();
-                if let Some((self_name, self_key)) = self_class {
-                    if name == self_name {
-                        let args = resolved_args
-                            .iter()
-                            .map(std::string::ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        return ResolvedType::Class(format!("{}<{}>", self_key, args));
-                    }
-                }
-                if let Some(resolved) = self.resolve_user_defined_generic_type(name, &resolved_args)
-                {
-                    return resolved;
-                }
-                match name.as_str() {
-                    "Option" if resolved_args.len() == 1 => {
-                        ResolvedType::Option(Box::new(resolved_args[0].clone()))
-                    }
-                    "Result" if resolved_args.len() == 2 => ResolvedType::Result(
-                        Box::new(resolved_args[0].clone()),
-                        Box::new(resolved_args[1].clone()),
-                    ),
-                    "List" if resolved_args.len() == 1 => {
-                        ResolvedType::List(Box::new(resolved_args[0].clone()))
-                    }
-                    "Map" if resolved_args.len() == 2 => ResolvedType::Map(
-                        Box::new(resolved_args[0].clone()),
-                        Box::new(resolved_args[1].clone()),
-                    ),
-                    "Set" if resolved_args.len() == 1 => {
-                        ResolvedType::Set(Box::new(resolved_args[0].clone()))
-                    }
-                    "Box" if resolved_args.len() == 1 => {
-                        ResolvedType::Box(Box::new(resolved_args[0].clone()))
-                    }
-                    "Rc" if resolved_args.len() == 1 => {
-                        ResolvedType::Rc(Box::new(resolved_args[0].clone()))
-                    }
-                    "Arc" if resolved_args.len() == 1 => {
-                        ResolvedType::Arc(Box::new(resolved_args[0].clone()))
-                    }
-                    "Ptr" if resolved_args.len() == 1 => {
-                        ResolvedType::Ptr(Box::new(resolved_args[0].clone()))
-                    }
-                    "Task" if resolved_args.len() == 1 => {
-                        ResolvedType::Task(Box::new(resolved_args[0].clone()))
-                    }
-                    "Range" if resolved_args.len() == 1 => {
-                        ResolvedType::Range(Box::new(resolved_args[0].clone()))
-                    }
-                    _ => {
-                        let args = resolved_args
-                            .iter()
-                            .map(std::string::ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        ResolvedType::Class(format!("{}<{}>", name, args))
-                    }
-                }
-            }
-        }
-    }
-
-    fn parse_effects_from_attributes(
-        &self,
-        attrs: &[Attribute],
-    ) -> (Vec<String>, bool, bool, bool) {
-        let mut effects = Vec::new();
-        let mut pure = false;
-        let mut any = false;
-        let mut has_explicit_effects = false;
-
-        for attr in attrs {
-            match attr {
-                Attribute::Pure => pure = true,
-                Attribute::EffectIo => {
-                    has_explicit_effects = true;
-                    effects.push("io".to_string());
-                }
-                Attribute::EffectNet => {
-                    has_explicit_effects = true;
-                    effects.push("net".to_string());
-                }
-                Attribute::EffectAlloc => {
-                    has_explicit_effects = true;
-                    effects.push("alloc".to_string());
-                }
-                Attribute::EffectUnsafe => {
-                    has_explicit_effects = true;
-                    effects.push("unsafe".to_string());
-                }
-                Attribute::EffectThread => {
-                    has_explicit_effects = true;
-                    effects.push("thread".to_string());
-                }
-                Attribute::EffectAny => {
-                    has_explicit_effects = true;
-                    any = true;
-                }
-                _ => {}
-            }
-        }
-
-        effects.sort();
-        effects.dedup();
-        (effects, pure, any, has_explicit_effects)
-    }
-
-    fn validate_effect_attributes(&mut self, attrs: &[Attribute], span: Span, subject: &str) {
-        let (effects, pure, any, _) = self.parse_effects_from_attributes(attrs);
-        if pure && any {
-            self.error(
-                format!(
-                    "{} cannot use both @Pure and @Any; pick one effect policy",
-                    subject
-                ),
-                span.clone(),
-            );
-        }
-        if pure && !effects.is_empty() {
-            self.error(
-                format!(
-                    "{} cannot combine @Pure with explicit effects ({})",
-                    subject,
-                    effects.join(", ")
-                ),
-                span,
-            );
-        }
-    }
-
     fn validate_extern_signature(&mut self, func: &FunctionDecl, span: Span) {
         if !func.is_extern {
             return;
@@ -1658,336 +642,6 @@ impl TypeChecker {
             self.enforce_required_effect(eff, span.clone(), callee);
         }
     }
-
-    fn infer_effects(&mut self, program: &Program) {
-        // Fixed-point inference over the call graph for declarations without explicit effects.
-        let mut changed = true;
-        let mut passes = 0usize;
-        while changed && passes < 24 {
-            changed = false;
-            passes += 1;
-            for decl in &program.declarations {
-                changed |= self.infer_effects_decl(&decl.node, None);
-            }
-        }
-    }
-
-    fn infer_effects_decl(&mut self, decl: &Decl, module_prefix: Option<&str>) -> bool {
-        match decl {
-            Decl::Function(func) => {
-                let key = if let Some(prefix) = module_prefix {
-                    format!("{}__{}", prefix, func.name)
-                } else {
-                    func.name.clone()
-                };
-                self.infer_effects_for_function_key(&key, &func.body, None)
-            }
-            Decl::Class(class) => {
-                let mut changed = false;
-                for method in &class.methods {
-                    changed |=
-                        self.infer_effects_for_method(&class.name, &method.name, &method.body);
-                }
-                changed
-            }
-            Decl::Module(module) => {
-                let next_prefix = if let Some(prefix) = module_prefix {
-                    format!("{}__{}", prefix, module.name)
-                } else {
-                    module.name.clone()
-                };
-                let mut changed = false;
-                for inner in &module.declarations {
-                    changed |= self.infer_effects_decl(&inner.node, Some(&next_prefix));
-                }
-                changed
-            }
-            _ => false,
-        }
-    }
-
-    fn infer_effects_for_function_key(
-        &mut self,
-        key: &str,
-        body: &Block,
-        current_class: Option<&str>,
-    ) -> bool {
-        let Some(sig) = self.functions.get(key).cloned() else {
-            return false;
-        };
-        if sig.is_pure || sig.allow_any || sig.has_explicit_effects {
-            return false;
-        }
-
-        let mut inferred: Vec<String> = self
-            .infer_effects_in_block(body, current_class)
-            .into_iter()
-            .collect();
-        inferred.sort();
-        inferred.dedup();
-
-        if inferred != sig.effects {
-            if let Some(edit_sig) = self.functions.get_mut(key) {
-                edit_sig.effects = inferred;
-                return true;
-            }
-        }
-        false
-    }
-
-    fn infer_effects_for_method(
-        &mut self,
-        class_name: &str,
-        method_name: &str,
-        body: &Block,
-    ) -> bool {
-        let Some(class_info) = self.classes.get(class_name).cloned() else {
-            return false;
-        };
-        let Some(method_sig) = class_info.methods.get(method_name).cloned() else {
-            return false;
-        };
-        if method_sig.is_pure || method_sig.allow_any || method_sig.has_explicit_effects {
-            return false;
-        }
-
-        let mut inferred: Vec<String> = self
-            .infer_effects_in_block(body, Some(class_name))
-            .into_iter()
-            .collect();
-        inferred.sort();
-        inferred.dedup();
-
-        if inferred != method_sig.effects {
-            if let Some(class_edit) = self.classes.get_mut(class_name) {
-                if let Some(sig_edit) = class_edit.methods.get_mut(method_name) {
-                    sig_edit.effects = inferred;
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    fn infer_effects_in_block(
-        &self,
-        block: &Block,
-        current_class: Option<&str>,
-    ) -> std::collections::BTreeSet<String> {
-        let mut out = std::collections::BTreeSet::new();
-        for stmt in block {
-            self.collect_effects_stmt(&stmt.node, current_class, &mut out);
-        }
-        out
-    }
-
-    fn collect_effects_stmt(
-        &self,
-        stmt: &Stmt,
-        current_class: Option<&str>,
-        out: &mut std::collections::BTreeSet<String>,
-    ) {
-        match stmt {
-            Stmt::Let { value, .. } => self.collect_effects_expr(&value.node, current_class, out),
-            Stmt::Assign { target, value } => {
-                self.collect_effects_expr(&target.node, current_class, out);
-                self.collect_effects_expr(&value.node, current_class, out);
-            }
-            Stmt::Expr(expr) => self.collect_effects_expr(&expr.node, current_class, out),
-            Stmt::Return(expr) => {
-                if let Some(expr) = expr {
-                    self.collect_effects_expr(&expr.node, current_class, out);
-                }
-            }
-            Stmt::If {
-                condition,
-                then_block,
-                else_block,
-            } => {
-                self.collect_effects_expr(&condition.node, current_class, out);
-                for s in then_block {
-                    self.collect_effects_stmt(&s.node, current_class, out);
-                }
-                if let Some(else_block) = else_block {
-                    for s in else_block {
-                        self.collect_effects_stmt(&s.node, current_class, out);
-                    }
-                }
-            }
-            Stmt::While { condition, body } => {
-                self.collect_effects_expr(&condition.node, current_class, out);
-                for s in body {
-                    self.collect_effects_stmt(&s.node, current_class, out);
-                }
-            }
-            Stmt::For { iterable, body, .. } => {
-                self.collect_effects_expr(&iterable.node, current_class, out);
-                for s in body {
-                    self.collect_effects_stmt(&s.node, current_class, out);
-                }
-            }
-            Stmt::Match { expr, arms } => {
-                self.collect_effects_expr(&expr.node, current_class, out);
-                for arm in arms {
-                    for s in &arm.body {
-                        self.collect_effects_stmt(&s.node, current_class, out);
-                    }
-                }
-            }
-            Stmt::Break | Stmt::Continue => {}
-        }
-    }
-
-    fn collect_effects_expr(
-        &self,
-        expr: &Expr,
-        current_class: Option<&str>,
-        out: &mut std::collections::BTreeSet<String>,
-    ) {
-        match expr {
-            Expr::Call { callee, args, .. } => {
-                if let Expr::Ident(name) = &callee.node {
-                    let canonical = self
-                        .resolve_import_alias_symbol(name)
-                        .unwrap_or_else(|| name.clone());
-                    if let Some(required) = Self::builtin_required_effect(&canonical) {
-                        out.insert(required.to_string());
-                    }
-                    if let Some(sig) = self.functions.get(&canonical) {
-                        for eff in &sig.effects {
-                            out.insert(eff.clone());
-                        }
-                    }
-                } else if let Expr::Field { object, field } = &callee.node {
-                    if let Expr::Ident(name) = &object.node {
-                        let builtin_name = self
-                            .resolve_stdlib_alias_call_name(name, field)
-                            .unwrap_or_else(|| format!("{}__{}", name, field));
-                        if let Some(required) = Self::builtin_required_effect(&builtin_name) {
-                            out.insert(required.to_string());
-                        }
-                        if let Some(sig) = self.functions.get(&builtin_name) {
-                            for eff in &sig.effects {
-                                out.insert(eff.clone());
-                            }
-                        }
-                        // Instance-style method call; infer conservatively by method name across classes.
-                        self.collect_class_method_name_effects(field, out);
-                    } else if matches!(object.node, Expr::This) {
-                        if let Some(class_name) = current_class {
-                            if let Some(class_info) = self.classes.get(class_name) {
-                                if let Some(sig) = class_info.methods.get(field) {
-                                    for eff in &sig.effects {
-                                        out.insert(eff.clone());
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        self.collect_class_method_name_effects(field, out);
-                    }
-                }
-
-                self.collect_effects_expr(&callee.node, current_class, out);
-                for arg in args {
-                    self.collect_effects_expr(&arg.node, current_class, out);
-                }
-            }
-            Expr::GenericFunctionValue { callee, .. } => {
-                self.collect_effects_expr(&callee.node, current_class, out);
-            }
-            Expr::Binary { left, right, .. } => {
-                self.collect_effects_expr(&left.node, current_class, out);
-                self.collect_effects_expr(&right.node, current_class, out);
-            }
-            Expr::Unary { expr, .. }
-            | Expr::Try(expr)
-            | Expr::Borrow(expr)
-            | Expr::MutBorrow(expr)
-            | Expr::Deref(expr)
-            | Expr::Await(expr) => {
-                self.collect_effects_expr(&expr.node, current_class, out);
-            }
-            Expr::Field { object, .. } => {
-                self.collect_effects_expr(&object.node, current_class, out)
-            }
-            Expr::Index { object, index } => {
-                self.collect_effects_expr(&object.node, current_class, out);
-                self.collect_effects_expr(&index.node, current_class, out);
-            }
-            Expr::Construct { args, .. } => {
-                for arg in args {
-                    self.collect_effects_expr(&arg.node, current_class, out);
-                }
-            }
-            Expr::Lambda { body, .. } => self.collect_effects_expr(&body.node, current_class, out),
-            Expr::Match { expr, arms } => {
-                self.collect_effects_expr(&expr.node, current_class, out);
-                for arm in arms {
-                    for s in &arm.body {
-                        self.collect_effects_stmt(&s.node, current_class, out);
-                    }
-                }
-            }
-            Expr::StringInterp(parts) => {
-                for part in parts {
-                    if let StringPart::Expr(e) = part {
-                        self.collect_effects_expr(&e.node, current_class, out);
-                    }
-                }
-            }
-            Expr::AsyncBlock(body) | Expr::Block(body) => {
-                for s in body {
-                    self.collect_effects_stmt(&s.node, current_class, out);
-                }
-            }
-            Expr::Require { condition, message } => {
-                self.collect_effects_expr(&condition.node, current_class, out);
-                if let Some(msg) = message {
-                    self.collect_effects_expr(&msg.node, current_class, out);
-                }
-            }
-            Expr::Range { start, end, .. } => {
-                if let Some(s) = start {
-                    self.collect_effects_expr(&s.node, current_class, out);
-                }
-                if let Some(e) = end {
-                    self.collect_effects_expr(&e.node, current_class, out);
-                }
-            }
-            Expr::IfExpr {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                self.collect_effects_expr(&condition.node, current_class, out);
-                for s in then_branch {
-                    self.collect_effects_stmt(&s.node, current_class, out);
-                }
-                if let Some(else_branch) = else_branch {
-                    for s in else_branch {
-                        self.collect_effects_stmt(&s.node, current_class, out);
-                    }
-                }
-            }
-            Expr::Literal(_) | Expr::Ident(_) | Expr::This => {}
-        }
-    }
-
-    fn collect_class_method_name_effects(
-        &self,
-        method_name: &str,
-        out: &mut std::collections::BTreeSet<String>,
-    ) {
-        for class_info in self.classes.values() {
-            if let Some(sig) = class_info.methods.get(method_name) {
-                for eff in &sig.effects {
-                    out.insert(eff.clone());
-                }
-            }
-        }
-    }
-
     fn populate_import_aliases(&mut self, program: &Program) {
         self.import_aliases.clear();
         for decl in &program.declarations {
@@ -2075,34 +729,6 @@ impl TypeChecker {
         }
         false
     }
-
-    fn collect_interface_methods(
-        &self,
-        interface_name: &str,
-        out: &mut HashMap<String, FuncSig>,
-        visited: &mut std::collections::HashSet<String>,
-    ) {
-        if !visited.insert(interface_name.to_string()) {
-            return;
-        }
-        let (base_name, _, name_substitutions) =
-            self.instantiated_interface_substitutions(interface_name);
-        let Some(info) = self.interfaces.get(&base_name) else {
-            return;
-        };
-        for parent in &info.extends {
-            let instantiated_parent =
-                self.substitute_interface_reference(parent, &name_substitutions);
-            self.collect_interface_methods(&instantiated_parent, out, visited);
-        }
-        for (name, sig) in &info.methods {
-            out.insert(
-                name.clone(),
-                self.instantiate_interface_signature(interface_name, sig),
-            );
-        }
-    }
-
     fn signatures_mutually_compatible(&self, left: &FuncSig, right: &FuncSig) -> bool {
         self.signatures_compatible(left, right) && self.signatures_compatible(right, left)
     }
@@ -2128,10 +754,10 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Interface '{}' inherits incompatible signatures for method '{}' from '{}' and '{}'",
-                                Self::format_diagnostic_class_name(key),
+                                format_diagnostic_class_name(key),
                                 method_name,
-                                Self::format_diagnostic_class_name(existing_parent),
-                                Self::format_diagnostic_class_name(&resolved_parent)
+                                format_diagnostic_class_name(existing_parent),
+                                format_diagnostic_class_name(&resolved_parent)
                             ),
                             span.clone(),
                         );
@@ -2171,9 +797,9 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Interface '{}.{}' overrides inherited method from '{}' with an incompatible signature",
-                            Self::format_diagnostic_class_name(key),
+                            format_diagnostic_class_name(key),
                             method.name,
-                            Self::format_diagnostic_class_name(parent_name)
+                            format_diagnostic_class_name(parent_name)
                         ),
                         span.clone(),
                     );
@@ -2512,489 +1138,7 @@ impl TypeChecker {
     }
 
     /// Run type checking on a program
-    pub fn check(&mut self, program: &Program) -> Result<(), Vec<TypeError>> {
-        self.populate_import_aliases(program);
-        // First pass: collect all declarations
-        self.collect_declarations(program);
-        self.normalize_inheritance_references();
-        for (name, iface) in self.interfaces.clone() {
-            for parent in iface.extends {
-                if !self
-                    .interfaces
-                    .contains_key(self.interface_base_name(&parent))
-                {
-                    self.error(
-                        format!(
-                            "Interface '{}' extends unknown interface '{}'",
-                            name, parent
-                        ),
-                        iface.span.clone(),
-                    );
-                }
-            }
-        }
-        // Infer effects for non-annotated call graph nodes
-        self.infer_effects(program);
-
-        // Second pass: check all function bodies
-        for decl in &program.declarations {
-            self.check_decl_with_prefix(&decl.node, decl.span.clone(), None);
-        }
-
-        if self.errors.is_empty() {
-            Ok(())
-        } else {
-            Err(std::mem::take(&mut self.errors))
-        }
-    }
-
     /// Collect all top-level declarations
-    fn collect_declarations(&mut self, program: &Program) {
-        self.predeclare_nominal_types(program);
-        for decl in &program.declarations {
-            match &decl.node {
-                Decl::Import(_) => {}
-                Decl::Function(func) => {
-                    self.insert_function_signature(func, &func.name, decl.span.clone(), None);
-                }
-                Decl::Class(class) => {
-                    self.insert_class_info(class, &class.name, decl.span.clone());
-                }
-                Decl::Interface(interface) => {
-                    self.insert_interface_info(interface, &interface.name, decl.span.clone());
-                }
-                Decl::Enum(en) => {
-                    self.insert_enum_info(en, &en.name, decl.span.clone());
-                }
-                Decl::Module(module) => {
-                    self.collect_module_declarations(module, &module.name, decl.span.clone());
-                }
-            }
-        }
-    }
-
-    fn predeclare_nominal_types(&mut self, program: &Program) {
-        for decl in &program.declarations {
-            self.predeclare_decl_nominal_types(&decl.node, None, decl.span.clone());
-        }
-    }
-
-    fn predeclare_decl_nominal_types(
-        &mut self,
-        decl: &Decl,
-        module_prefix: Option<&str>,
-        span: Span,
-    ) {
-        match decl {
-            Decl::Class(class) => {
-                let key = module_prefix
-                    .map(|prefix| format!("{}__{}", prefix, class.name))
-                    .unwrap_or_else(|| class.name.clone());
-                self.classes.entry(key).or_insert_with(|| ClassInfo {
-                    fields: HashMap::new(),
-                    methods: HashMap::new(),
-                    method_visibilities: HashMap::new(),
-                    constructor: None,
-                    generic_type_vars: Vec::new(),
-                    visibility: class.visibility,
-                    extends: class.extends.clone(),
-                    implements: class.implements.clone(),
-                    span: span.clone(),
-                });
-            }
-            Decl::Enum(en) => {
-                let key = module_prefix
-                    .map(|prefix| format!("{}__{}", prefix, en.name))
-                    .unwrap_or_else(|| en.name.clone());
-                self.enums.entry(key).or_insert_with(|| EnumInfo {
-                    variants: HashMap::new(),
-                    span: span.clone(),
-                });
-            }
-            Decl::Interface(interface) => {
-                let key = module_prefix
-                    .map(|prefix| format!("{}__{}", prefix, interface.name))
-                    .unwrap_or_else(|| interface.name.clone());
-                self.interfaces.entry(key).or_insert_with(|| InterfaceInfo {
-                    methods: HashMap::new(),
-                    generic_param_names: Vec::new(),
-                    generic_type_vars: Vec::new(),
-                    extends: interface.extends.clone(),
-                    span: span.clone(),
-                });
-            }
-            Decl::Module(module) => {
-                let nested_prefix = module_prefix
-                    .map(|prefix| format!("{}__{}", prefix, module.name))
-                    .unwrap_or_else(|| module.name.clone());
-                for inner_decl in &module.declarations {
-                    self.predeclare_decl_nominal_types(
-                        &inner_decl.node,
-                        Some(&nested_prefix),
-                        inner_decl.span.clone(),
-                    );
-                }
-            }
-            Decl::Function(_) | Decl::Import(_) => {}
-        }
-    }
-
-    fn normalize_inheritance_references(&mut self) {
-        let class_updates = self
-            .classes
-            .iter()
-            .map(|(name, info)| {
-                (
-                    name.clone(),
-                    info.extends.as_ref().map(|parent| {
-                        self.resolve_nominal_reference_name(parent)
-                            .unwrap_or_else(|| parent.clone())
-                    }),
-                    info.implements
-                        .iter()
-                        .map(|interface_name| {
-                            self.resolve_nominal_reference_name(interface_name)
-                                .unwrap_or_else(|| interface_name.clone())
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect::<Vec<_>>();
-        for (name, extends, implements) in class_updates {
-            if let Some(class) = self.classes.get_mut(&name) {
-                class.extends = extends;
-                class.implements = implements;
-            }
-        }
-
-        let interface_updates = self
-            .interfaces
-            .iter()
-            .map(|(name, info)| {
-                (
-                    name.clone(),
-                    info.extends
-                        .iter()
-                        .map(|parent| {
-                            self.resolve_nominal_reference_name(parent)
-                                .unwrap_or_else(|| parent.clone())
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect::<Vec<_>>();
-        for (name, extends) in interface_updates {
-            if let Some(interface) = self.interfaces.get_mut(&name) {
-                interface.extends = extends;
-            }
-        }
-    }
-
-    fn insert_class_info(&mut self, class: &ClassDecl, key: &str, span: Span) {
-        let class_generic_bindings = self.make_generic_type_bindings(&class.generic_params);
-        let class_generic_type_vars: Vec<usize> = class
-            .generic_params
-            .iter()
-            .filter_map(|p| match class_generic_bindings.get(&p.name) {
-                Some(ResolvedType::TypeVar(id)) => Some(*id),
-                _ => None,
-            })
-            .collect();
-        let mut fields = HashMap::new();
-        for field in &class.fields {
-            fields.insert(
-                field.name.clone(),
-                (
-                    self.resolve_type_with_bindings_and_self_class(
-                        &field.ty,
-                        &class_generic_bindings,
-                        Some((&class.name, key)),
-                    ),
-                    field.mutable,
-                    field.visibility,
-                ),
-            );
-        }
-
-        let mut methods = HashMap::new();
-        let mut method_visibilities = HashMap::new();
-        for method in &class.methods {
-            self.validate_effect_attributes(
-                &method.attributes,
-                span.clone(),
-                &format!("Method '{}.{}'", key, method.name),
-            );
-            let mut generic_bindings = class_generic_bindings.clone();
-            let method_generic_bindings = self.make_generic_type_bindings(&method.generic_params);
-            let generic_type_vars: Vec<usize> = method
-                .generic_params
-                .iter()
-                .filter_map(|p| match method_generic_bindings.get(&p.name) {
-                    Some(ResolvedType::TypeVar(id)) => Some(*id),
-                    _ => None,
-                })
-                .collect();
-            generic_bindings.extend(method_generic_bindings);
-            let params: Vec<(String, ResolvedType)> = method
-                .params
-                .iter()
-                .map(|p| {
-                    (
-                        p.name.clone(),
-                        self.resolve_type_with_bindings_and_self_class(
-                            &p.ty,
-                            &generic_bindings,
-                            Some((&class.name, key)),
-                        ),
-                    )
-                })
-                .collect();
-
-            let mut return_type = self.resolve_type_with_bindings_and_self_class(
-                &method.return_type,
-                &generic_bindings,
-                Some((&class.name, key)),
-            );
-            if method.is_async && !matches!(return_type, ResolvedType::Task(_)) {
-                return_type = ResolvedType::Task(Box::new(return_type));
-            }
-            let (effects, is_pure, allow_any, has_explicit_effects) =
-                self.parse_effects_from_attributes(&method.attributes);
-
-            methods.insert(
-                method.name.clone(),
-                FuncSig {
-                    params,
-                    return_type,
-                    generic_type_vars,
-                    is_variadic: method.is_variadic,
-                    is_extern: method.is_extern,
-                    effects,
-                    is_pure,
-                    allow_any,
-                    has_explicit_effects,
-                    span: span.clone(),
-                },
-            );
-            method_visibilities.insert(method.name.clone(), method.visibility);
-        }
-
-        let constructor = class.constructor.as_ref().map(|c| {
-            c.params
-                .iter()
-                .map(|p| {
-                    (
-                        p.name.clone(),
-                        self.resolve_type_with_bindings_and_self_class(
-                            &p.ty,
-                            &class_generic_bindings,
-                            Some((&class.name, key)),
-                        ),
-                    )
-                })
-                .collect()
-        });
-
-        self.classes.insert(
-            key.to_string(),
-            ClassInfo {
-                fields,
-                methods,
-                method_visibilities,
-                constructor,
-                generic_type_vars: class_generic_type_vars,
-                visibility: class.visibility,
-                extends: class.extends.clone(),
-                implements: class.implements.clone(),
-                span,
-            },
-        );
-    }
-
-    fn insert_interface_info(&mut self, interface: &InterfaceDecl, key: &str, span: Span) {
-        let interface_generic_bindings = self.make_generic_type_bindings(&interface.generic_params);
-        let interface_generic_type_vars: Vec<usize> = interface
-            .generic_params
-            .iter()
-            .filter_map(|p| match interface_generic_bindings.get(&p.name) {
-                Some(ResolvedType::TypeVar(id)) => Some(*id),
-                _ => None,
-            })
-            .collect();
-        let mut methods = HashMap::new();
-        for method in &interface.methods {
-            let params: Vec<(String, ResolvedType)> = method
-                .params
-                .iter()
-                .map(|p| {
-                    (
-                        p.name.clone(),
-                        self.resolve_type_with_bindings(&p.ty, &interface_generic_bindings),
-                    )
-                })
-                .collect();
-            methods.insert(
-                method.name.clone(),
-                FuncSig {
-                    params,
-                    return_type: self.resolve_type_with_bindings(
-                        &method.return_type,
-                        &interface_generic_bindings,
-                    ),
-                    generic_type_vars: Vec::new(),
-                    is_variadic: false,
-                    is_extern: false,
-                    effects: Vec::new(),
-                    is_pure: false,
-                    allow_any: false,
-                    has_explicit_effects: false,
-                    span: span.clone(),
-                },
-            );
-        }
-        self.interfaces.insert(
-            key.to_string(),
-            InterfaceInfo {
-                methods,
-                generic_param_names: interface
-                    .generic_params
-                    .iter()
-                    .map(|param| param.name.clone())
-                    .collect(),
-                generic_type_vars: interface_generic_type_vars,
-                extends: interface.extends.clone(),
-                span,
-            },
-        );
-    }
-
-    fn insert_enum_info(&mut self, en: &EnumDecl, key: &str, span: Span) {
-        let mut variants = HashMap::new();
-        for variant in &en.variants {
-            let fields = variant
-                .fields
-                .iter()
-                .map(|f| self.resolve_type(&f.ty))
-                .collect::<Vec<_>>();
-            variants.insert(variant.name.clone(), fields);
-            self.enum_variant_to_enum
-                .insert(variant.name.clone(), key.to_string());
-        }
-        self.enums
-            .insert(key.to_string(), EnumInfo { variants, span });
-    }
-
-    fn collect_module_declarations(&mut self, module: &ModuleDecl, prefix: &str, span: Span) {
-        let saved_module_prefix = self.current_module_prefix.clone();
-        self.current_module_prefix = Some(prefix.to_string());
-        for inner_decl in &module.declarations {
-            match &inner_decl.node {
-                Decl::Function(func) => {
-                    let prefixed_name = format!("{}__{}", prefix, func.name);
-                    self.insert_function_signature(
-                        func,
-                        &prefixed_name,
-                        inner_decl.span.clone(),
-                        Some(format!("Function '{}'", prefixed_name)),
-                    );
-                }
-                Decl::Class(class) => {
-                    let prefixed_name = format!("{}__{}", prefix, class.name);
-                    self.insert_class_info(class, &prefixed_name, inner_decl.span.clone());
-                }
-                Decl::Interface(interface) => {
-                    let prefixed_name = format!("{}__{}", prefix, interface.name);
-                    self.insert_interface_info(interface, &prefixed_name, inner_decl.span.clone());
-                }
-                Decl::Enum(en) => {
-                    let prefixed_name = format!("{}__{}", prefix, en.name);
-                    self.insert_enum_info(en, &prefixed_name, inner_decl.span.clone());
-                }
-                Decl::Module(nested) => {
-                    let nested_prefix = format!("{}__{}", prefix, nested.name);
-                    self.collect_module_declarations(nested, &nested_prefix, span.clone());
-                }
-                Decl::Import(_) => {}
-            }
-        }
-        self.current_module_prefix = saved_module_prefix;
-    }
-
-    fn insert_function_signature(
-        &mut self,
-        func: &FunctionDecl,
-        key: &str,
-        span: Span,
-        label_override: Option<String>,
-    ) {
-        let label = label_override.unwrap_or_else(|| format!("Function '{}'", key));
-        self.validate_effect_attributes(&func.attributes, span.clone(), &label);
-        self.validate_extern_signature(func, span.clone());
-
-        let generic_bindings = self.make_generic_type_bindings(&func.generic_params);
-        let generic_type_vars: Vec<usize> = func
-            .generic_params
-            .iter()
-            .filter_map(|p| match generic_bindings.get(&p.name) {
-                Some(ResolvedType::TypeVar(id)) => Some(*id),
-                _ => None,
-            })
-            .collect();
-        let params: Vec<(String, ResolvedType)> = func
-            .params
-            .iter()
-            .map(|p| {
-                (
-                    p.name.clone(),
-                    self.resolve_type_with_bindings(&p.ty, &generic_bindings),
-                )
-            })
-            .collect();
-        let mut return_type = self.resolve_type_with_bindings(&func.return_type, &generic_bindings);
-        if func.is_async && !matches!(return_type, ResolvedType::Task(_)) {
-            return_type = ResolvedType::Task(Box::new(return_type));
-        }
-        let (effects, is_pure, allow_any, has_explicit_effects) =
-            self.parse_effects_from_attributes(&func.attributes);
-
-        self.functions.insert(
-            key.to_string(),
-            FuncSig {
-                params,
-                return_type,
-                generic_type_vars,
-                is_variadic: func.is_variadic,
-                is_extern: func.is_extern,
-                effects,
-                is_pure,
-                allow_any,
-                has_explicit_effects,
-                span,
-            },
-        );
-    }
-
-    fn collect_module_function_signatures(&mut self, module: &ModuleDecl, prefix: &str) {
-        for inner_decl in &module.declarations {
-            match &inner_decl.node {
-                Decl::Function(func) => {
-                    let prefixed_name = format!("{}__{}", prefix, func.name);
-                    self.insert_function_signature(
-                        func,
-                        &prefixed_name,
-                        inner_decl.span.clone(),
-                        Some(format!("Function '{}'", prefixed_name)),
-                    );
-                }
-                Decl::Module(nested) => {
-                    let nested_prefix = format!("{}__{}", prefix, nested.name);
-                    self.collect_module_function_signatures(nested, &nested_prefix);
-                }
-                Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
-            }
-        }
-    }
-
     fn enum_payload_supported_for_codegen(&self, ty: &ResolvedType) -> bool {
         matches!(
             ty,
@@ -3504,8 +1648,8 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Class '{}' cannot extend interface '{}'",
-                        Self::format_diagnostic_class_name(class_key),
-                        Self::format_diagnostic_class_name(parent)
+                        format_diagnostic_class_name(class_key),
+                        format_diagnostic_class_name(parent)
                     ),
                     span.clone(),
                 );
@@ -3513,8 +1657,8 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Class '{}' extends unknown class '{}'",
-                        Self::format_diagnostic_class_name(class_key),
-                        Self::format_diagnostic_class_name(parent)
+                        format_diagnostic_class_name(class_key),
+                        format_diagnostic_class_name(parent)
                     ),
                     span.clone(),
                 );
@@ -3522,8 +1666,8 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Inheritance cycle detected: '{}' cannot extend '{}'",
-                        Self::format_diagnostic_class_name(class_key),
-                        Self::format_diagnostic_class_name(parent)
+                        format_diagnostic_class_name(class_key),
+                        format_diagnostic_class_name(parent)
                     ),
                     span.clone(),
                 );
@@ -3549,8 +1693,8 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Class '{}' implements unknown interface '{}'",
-                        Self::format_diagnostic_class_name(class_key),
-                        Self::format_diagnostic_class_name(interface_name)
+                        format_diagnostic_class_name(class_key),
+                        format_diagnostic_class_name(interface_name)
                     ),
                     span.clone(),
                 );
@@ -3572,10 +1716,10 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Class '{}' implements incompatible interface requirements for method '{}' from '{}' and '{}'",
-                                Self::format_diagnostic_class_name(class_key),
+                                format_diagnostic_class_name(class_key),
                                 method_name,
-                                Self::format_diagnostic_class_name(existing_interface),
-                                Self::format_diagnostic_class_name(&resolved_interface)
+                                format_diagnostic_class_name(existing_interface),
+                                format_diagnostic_class_name(&resolved_interface)
                             ),
                             span.clone(),
                         );
@@ -3592,7 +1736,7 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Class '{}' must implement interface method '{}'",
-                        Self::format_diagnostic_class_name(class_key),
+                        format_diagnostic_class_name(class_key),
                         method_name
                     ),
                     span.clone(),
@@ -3603,7 +1747,7 @@ impl TypeChecker {
                 self.error(
                     format!(
                         "Method '{}.{}' does not match interface signature",
-                        Self::format_diagnostic_class_name(&owner),
+                        format_diagnostic_class_name(&owner),
                         method_name
                     ),
                     actual_sig.span.clone(),
@@ -4178,7 +2322,7 @@ impl TypeChecker {
                                     format!(
                                         "Unknown variant '{}' for enum '{}'",
                                         name,
-                                        Self::format_diagnostic_class_name(enum_name)
+                                        format_diagnostic_class_name(enum_name)
                                     ),
                                     span,
                                 );
@@ -4367,201 +2511,13 @@ impl TypeChecker {
             Box::new(inst_return_type),
         )
     }
-
-    fn resolve_builtin_module_alias(&self, name: &str) -> String {
-        let Some(path) = self.import_aliases.get(name) else {
-            return name.to_string();
-        };
-        let mut owner: Option<String> = None;
-        for (func, ns) in stdlib_registry().get_functions() {
-            if ns == path {
-                if let Some((candidate_owner, _)) = func.split_once("__") {
-                    let candidate_owner = candidate_owner.to_string();
-                    if let Some(existing) = &owner {
-                        if existing != &candidate_owner {
-                            return name.to_string();
-                        }
-                    } else {
-                        owner = Some(candidate_owner);
-                    }
-                }
-            }
-        }
-        owner.unwrap_or_else(|| name.to_string())
-    }
-
-    fn resolve_contextual_function_value_name(&self, expr: &Expr) -> Option<String> {
-        match expr {
-            Expr::Ident(name) => self
-                .resolve_import_alias_symbol(name)
-                .or_else(|| {
-                    self.resolve_function_value_name(name)
-                        .map(|resolved| resolved.to_string())
-                })
-                .or_else(|| Self::builtin_function_value_type(name).map(|_| name.clone())),
-            Expr::Field { object, field } => {
-                if let Some(path_parts) = Self::flatten_field_chain(expr) {
-                    if path_parts.len() >= 2 {
-                        if let Some(path) = self.import_aliases.get(&path_parts[0]) {
-                            let namespace_path = if path_parts.len() == 2 {
-                                path.clone()
-                            } else {
-                                format!(
-                                    "{}.{}",
-                                    path,
-                                    path_parts[1..path_parts.len() - 1].join(".")
-                                )
-                            };
-                            if let Some(canonical) = stdlib_registry()
-                                .resolve_alias_call(&namespace_path, path_parts.last()?)
-                            {
-                                return Some(canonical);
-                            }
-                            let candidate = format!(
-                                "{}__{}",
-                                path.replace('.', "__"),
-                                path_parts[1..].join("__")
-                            );
-                            let resolved = self
-                                .resolve_function_value_name(&candidate)
-                                .unwrap_or(&candidate);
-                            if self.functions.contains_key(resolved) {
-                                return Some(resolved.to_string());
-                            }
-                        }
-
-                        if path_parts.len() == 2 {
-                            let builtin_owner = self.resolve_builtin_module_alias(&path_parts[0]);
-                            if matches!(builtin_owner.as_str(), "Option" | "Result") {
-                                let static_container_name = format!("{}__{}", builtin_owner, field);
-                                if Self::is_contextual_static_container_function_value(
-                                    &static_container_name,
-                                ) {
-                                    return Some(static_container_name);
-                                }
-                            }
-                            let builtin_name = format!("{}__{}", builtin_owner, field);
-                            if Self::builtin_matches_expected_function_type(
-                                &builtin_name,
-                                &ResolvedType::Unknown,
-                            ) {
-                                return Some(builtin_name);
-                            }
-                        }
-
-                        let mangled = path_parts.join("__");
-                        let resolved = self
-                            .resolve_function_value_name(&mangled)
-                            .unwrap_or(&mangled);
-                        if self.functions.contains_key(resolved) {
-                            return Some(resolved.to_string());
-                        }
-                    }
-                }
-                if let Expr::Ident(owner_name) = &object.node {
-                    let resolved_owner = self.resolve_builtin_module_alias(owner_name);
-                    if matches!(resolved_owner.as_str(), "Option" | "Result") {
-                        let static_container_name = format!("{}__{}", resolved_owner, field);
-                        if Self::is_contextual_static_container_function_value(
-                            &static_container_name,
-                        ) {
-                            return Some(static_container_name);
-                        }
-                    }
-                    let builtin_name = format!("{}__{}", resolved_owner, field);
-                    if Self::builtin_matches_expected_function_type(
-                        &builtin_name,
-                        &ResolvedType::Unknown,
-                    ) {
-                        return Some(builtin_name);
-                    }
-                }
-                None
-            }
-            _ => None,
-        }
-    }
-
     fn nominal_function_value_type_source(expr: &Expr) -> Option<String> {
         match expr {
             Expr::Ident(name) => Some(name.clone()),
-            Expr::Field { .. } => Some(Self::flatten_field_chain(expr)?.join(".")),
+            Expr::Field { .. } => Some(flatten_field_chain(expr)?.join(".")),
             _ => None,
         }
     }
-
-    fn resolve_class_constructor_function_value_type(
-        &mut self,
-        expr: &Expr,
-        explicit_type_args: Option<&[Type]>,
-        expected: Option<&ResolvedType>,
-        span: Span,
-    ) -> Option<ResolvedType> {
-        let mut type_source = Self::nominal_function_value_type_source(expr)?;
-        if let Some(type_args) = explicit_type_args {
-            type_source = format!(
-                "{}<{}>",
-                type_source,
-                type_args
-                    .iter()
-                    .map(Self::format_ast_type_source)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        } else if let Some(ResolvedType::Function(_, ret)) = expected {
-            if let ResolvedType::Class(expected_class_name) = ret.as_ref() {
-                let resolved_base = self.resolve_nominal_reference_name(&type_source)?;
-                if self.class_base_name(expected_class_name) == self.class_base_name(&resolved_base)
-                {
-                    type_source = expected_class_name.clone();
-                }
-            }
-        }
-
-        let resolved_ctor_type = self.resolve_type_source(&type_source);
-        let scoped_ty = resolved_ctor_type
-            .clone()
-            .map(|resolved| resolved.to_string())
-            .unwrap_or_else(|| self.resolve_type_source_string(&type_source));
-        let (class_name, class_substitutions) = self.instantiated_class_substitutions(&scoped_ty);
-        let class = self.classes.get(&class_name).cloned()?;
-
-        self.validate_class_type_argument_bounds(&scoped_ty, span.clone(), "Constructor");
-        self.check_class_visibility(&class_name, span.clone());
-
-        let ctor_params = class
-            .constructor
-            .as_ref()
-            .map(|params| {
-                params
-                    .iter()
-                    .map(|(_, ty)| Self::substitute_type_vars(ty, &class_substitutions))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        let actual_ty = ResolvedType::Function(
-            ctor_params,
-            Box::new(resolved_ctor_type.unwrap_or_else(|| self.parse_type_string(&scoped_ty))),
-        );
-
-        if let Some(expected_ty) = expected {
-            if self.types_compatible(expected_ty, &actual_ty) {
-                return Some(actual_ty);
-            }
-            self.error(
-                format!(
-                    "Type mismatch: expected {}, got {}",
-                    Self::format_resolved_type_for_diagnostic(expected_ty),
-                    Self::format_resolved_type_for_diagnostic(&actual_ty)
-                ),
-                span,
-            );
-            return Some(ResolvedType::Unknown);
-        }
-
-        Some(actual_ty)
-    }
-
     fn is_contextual_static_container_function_value(name: &str) -> bool {
         matches!(
             name,
@@ -4991,55 +2947,6 @@ impl TypeChecker {
             _ => Self::builtin_function_value_type(name),
         }
     }
-
-    fn resolve_enum_variant_function_value(
-        &self,
-        expr: &Expr,
-    ) -> Option<(String, Vec<ResolvedType>)> {
-        if let Expr::Ident(name) = expr {
-            if let Some((enum_name, variant_name)) = name.rsplit_once("__") {
-                if let Some(enum_info) = self.enums.get(enum_name) {
-                    if let Some(fields) = enum_info.variants.get(variant_name) {
-                        return Some((enum_name.to_string(), fields.clone()));
-                    }
-                }
-            }
-            let (enum_name, variant_name) = self.resolve_import_alias_variant(name)?;
-            let enum_info = self.enums.get(&enum_name)?;
-            let fields = enum_info.variants.get(&variant_name)?.clone();
-            return Some((enum_name, fields));
-        }
-
-        let Expr::Field { object, field } = expr else {
-            return None;
-        };
-
-        if let Some(path_parts) = Self::flatten_field_chain(expr) {
-            if path_parts.len() >= 2 {
-                let owner_source = path_parts[..path_parts.len() - 1].join(".");
-                if let Some(resolved_owner) = self.resolve_nominal_reference_name(&owner_source) {
-                    if let Some(enum_info) = self.enums.get(&resolved_owner) {
-                        let variant_name = path_parts.last()?;
-                        if let Some(fields) = enum_info.variants.get(variant_name) {
-                            return Some((resolved_owner, fields.clone()));
-                        }
-                    }
-                }
-            }
-        }
-
-        let Expr::Ident(owner_name) = &object.node else {
-            return None;
-        };
-        let resolved_owner = self
-            .resolve_import_alias_symbol(owner_name)
-            .or_else(|| self.resolve_nominal_reference_name(owner_name))
-            .or_else(|| self.resolve_enum_name(owner_name))?;
-        let enum_info = self.enums.get(&resolved_owner)?;
-        let fields = enum_info.variants.get(field)?.clone();
-        Some((resolved_owner, fields))
-    }
-
     fn check_enum_variant_function_value_with_expected_type(
         &mut self,
         expr: &Expr,
@@ -5643,7 +3550,7 @@ impl TypeChecker {
                                 format!(
                                     "Unknown variant '{}' for enum '{}'",
                                     variant_name,
-                                    Self::format_diagnostic_class_name(&enum_name)
+                                    format_diagnostic_class_name(&enum_name)
                                 ),
                                 span,
                             );
@@ -5676,7 +3583,7 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Enum variant '{}.{}' does not accept type arguments",
-                                Self::format_diagnostic_class_name(&enum_name),
+                                format_diagnostic_class_name(&enum_name),
                                 variant_name
                             ),
                             span,
@@ -5742,7 +3649,7 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Enum variant '{}.{}' does not accept type arguments",
-                                Self::format_diagnostic_class_name(&enum_name),
+                                format_diagnostic_class_name(&enum_name),
                                 field
                             ),
                             span,
@@ -5764,7 +3671,7 @@ impl TypeChecker {
                             return ResolvedType::Unknown;
                         }
                     }
-                    if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
+                    if let Some(path_parts) = flatten_field_chain(&callee.node) {
                         if path_parts.len() >= 2 {
                             if let Some(candidate) = self.resolve_import_alias_module_candidate(
                                 &path_parts[0],
@@ -5849,7 +3756,7 @@ impl TypeChecker {
                                     format!(
                                         "Unknown field '{}' on class '{}'",
                                         field,
-                                        Self::format_diagnostic_class_name(name)
+                                        format_diagnostic_class_name(name)
                                     ),
                                     span,
                                 );
@@ -5942,7 +3849,7 @@ impl TypeChecker {
             } => self.check_call(&callee.node, args, type_args, span),
 
             Expr::Field { object, field } => {
-                if let Some(path_parts) = Self::flatten_field_chain(expr) {
+                if let Some(path_parts) = flatten_field_chain(expr) {
                     if path_parts.len() >= 2 {
                         let owner_source = path_parts[..path_parts.len() - 1].join(".");
                         if let Some(resolved_owner) =
@@ -5986,7 +3893,7 @@ impl TypeChecker {
                         }
                     }
                 }
-                if let Some(path_parts) = Self::flatten_field_chain(expr) {
+                if let Some(path_parts) = flatten_field_chain(expr) {
                     if path_parts.len() >= 2 {
                         if let Some(candidate) = self
                             .resolve_import_alias_module_candidate(&path_parts[0], &path_parts[1..])
@@ -6144,7 +4051,7 @@ impl TypeChecker {
                             self.error(
                                 format!(
                                     "Enum variant '{}.{}' does not accept type arguments",
-                                    Self::format_diagnostic_class_name(&enum_name),
+                                    format_diagnostic_class_name(&enum_name),
                                     variant_name
                                 ),
                                 span.clone(),
@@ -6207,7 +4114,7 @@ impl TypeChecker {
                         self.error(
                             format!(
                                 "Cannot construct built-in type '{}'",
-                                Self::format_diagnostic_class_name(&scoped_ty)
+                                format_diagnostic_class_name(&scoped_ty)
                             ),
                             span.clone(),
                         );
@@ -6239,7 +4146,7 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Cannot construct interface type '{}'",
-                            Self::format_diagnostic_class_name(&scoped_ty)
+                            format_diagnostic_class_name(&scoped_ty)
                         ),
                         span,
                     );
@@ -6308,10 +4215,7 @@ impl TypeChecker {
                     self.fresh_type_var()
                 } else {
                     self.error(
-                        format!(
-                            "Unknown type: {}",
-                            Self::format_diagnostic_class_name(&scoped_ty)
-                        ),
+                        format!("Unknown type: {}", format_diagnostic_class_name(&scoped_ty)),
                         span,
                     );
                     ResolvedType::Unknown
@@ -6719,7 +4623,7 @@ impl TypeChecker {
                     self.error(
                         format!(
                             "Constructor {} expects optional Integer capacity, got {}",
-                            Self::format_diagnostic_class_name(ty_name),
+                            format_diagnostic_class_name(ty_name),
                             Self::format_resolved_type_for_diagnostic(other)
                         ),
                         span,
@@ -6777,7 +4681,7 @@ impl TypeChecker {
             self.error(
                 format!(
                     "Cannot construct built-in type '{}'",
-                    Self::format_diagnostic_class_name(ty_name)
+                    format_diagnostic_class_name(ty_name)
                 ),
                 span,
             );
@@ -6825,7 +4729,7 @@ impl TypeChecker {
                     && !self.enums.contains_key(base_name)
                 {
                     self.error(
-                        format!("Unknown type: {}", Self::format_diagnostic_class_name(name)),
+                        format!("Unknown type: {}", format_diagnostic_class_name(name)),
                         span,
                     );
                 }
@@ -6980,7 +4884,7 @@ impl TypeChecker {
             if name.ends_with('>') {
                 let base = &name[..open_bracket];
                 let inner = &name[open_bracket + 1..name.len() - 1];
-                let resolved_args = Self::split_generic_args_static(inner)
+                let resolved_args = split_generic_args_static(inner)
                     .into_iter()
                     .map(|arg| {
                         Self::substitute_type_vars_in_class_name(&arg, substitutions).to_string()
@@ -7045,7 +4949,7 @@ impl TypeChecker {
                         "Function '{}' type argument {} does not satisfy bound(s) {}",
                         name,
                         Self::format_resolved_type_for_diagnostic(&resolved),
-                        Self::format_diagnostic_class_name(&bounds)
+                        bounds.replace("__", ".")
                     ),
                     span.clone(),
                 );
@@ -7179,7 +5083,7 @@ impl TypeChecker {
 
         // 2. Method call
         if let Expr::Field { object, field } = callee {
-            if let Some(path_parts) = Self::flatten_field_chain(callee) {
+            if let Some(path_parts) = flatten_field_chain(callee) {
                 if path_parts.len() >= 2 {
                     let full_path = path_parts.join(".");
                     let call_type_source = if type_args.is_empty() {
@@ -8723,7 +6627,7 @@ impl TypeChecker {
                             format!(
                                 "Unknown method '{}' on interface '{}'",
                                 method,
-                                Self::format_diagnostic_class_name(&base_name)
+                                format_diagnostic_class_name(&base_name)
                             ),
                             span,
                         );
@@ -8798,7 +6702,7 @@ impl TypeChecker {
                     }
                     inst_return_type
                 } else {
-                    let diagnostic_class = Self::format_diagnostic_class_name(name);
+                    let diagnostic_class = format_diagnostic_class_name(name);
                     if self.classes.contains_key(&base_name) {
                         self.error(
                             format!(
@@ -8991,7 +6895,7 @@ impl TypeChecker {
                     format!(
                         "Unknown field '{}' on class '{}'",
                         field,
-                        Self::format_diagnostic_class_name(name)
+                        format_diagnostic_class_name(name)
                     ),
                     span,
                 );
@@ -9115,183 +7019,6 @@ impl TypeChecker {
 
     /// Resolve AST type to checked type
     #[allow(clippy::only_used_in_recursion)]
-    fn resolve_type(&self, ty: &Type) -> ResolvedType {
-        match ty {
-            Type::Integer => ResolvedType::Integer,
-            Type::Float => ResolvedType::Float,
-            Type::Boolean => ResolvedType::Boolean,
-            Type::String => ResolvedType::String,
-            Type::Char => ResolvedType::Char,
-            Type::None => ResolvedType::None,
-            Type::Named(name) => {
-                if let Some(bound) = self.current_generic_type_bindings.get(name) {
-                    return bound.clone();
-                }
-                if let Some(resolved_name) = self.resolve_nominal_reference_name(name) {
-                    return ResolvedType::Class(resolved_name);
-                }
-                // Check for built-in types that might be parsed as Named
-                match name.as_str() {
-                    "Range" => ResolvedType::Class("Range".to_string()),
-                    _ => ResolvedType::Class(name.clone()),
-                }
-            }
-            Type::Option(inner) => {
-                let inner = self.resolve_type(inner);
-                self.resolve_user_defined_generic_type("Option", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Option", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Option(Box::new(inner)))
-            }
-            Type::Result(ok, err) => {
-                let ok = self.resolve_type(ok);
-                let err = self.resolve_type(err);
-                self.resolve_user_defined_generic_type("Result", &[ok.clone(), err.clone()])
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Result", &[ok.clone(), err.clone()])
-                    })
-                    .unwrap_or_else(|| ResolvedType::Result(Box::new(ok), Box::new(err)))
-            }
-            Type::List(inner) => {
-                let inner = self.resolve_type(inner);
-                self.resolve_user_defined_generic_type("List", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("List", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::List(Box::new(inner)))
-            }
-            Type::Map(k, v) => {
-                let key = self.resolve_type(k);
-                let value = self.resolve_type(v);
-                self.resolve_user_defined_generic_type("Map", &[key.clone(), value.clone()])
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Map", &[key.clone(), value.clone()])
-                    })
-                    .unwrap_or_else(|| ResolvedType::Map(Box::new(key), Box::new(value)))
-            }
-            Type::Set(inner) => {
-                let inner = self.resolve_type(inner);
-                self.resolve_user_defined_generic_type("Set", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Set", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Set(Box::new(inner)))
-            }
-            Type::Ref(inner) => ResolvedType::Ref(Box::new(self.resolve_type(inner))),
-            Type::MutRef(inner) => ResolvedType::MutRef(Box::new(self.resolve_type(inner))),
-            Type::Box(inner) => {
-                let inner = self.resolve_type(inner);
-                self.resolve_user_defined_generic_type("Box", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Box", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Box(Box::new(inner)))
-            }
-            Type::Rc(inner) => {
-                let inner = self.resolve_type(inner);
-                self.resolve_user_defined_generic_type("Rc", std::slice::from_ref(&inner))
-                    .or_else(|| self.module_scoped_generic_type("Rc", std::slice::from_ref(&inner)))
-                    .unwrap_or_else(|| ResolvedType::Rc(Box::new(inner)))
-            }
-            Type::Arc(inner) => {
-                let inner = self.resolve_type(inner);
-                self.resolve_user_defined_generic_type("Arc", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Arc", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Arc(Box::new(inner)))
-            }
-            Type::Ptr(inner) => {
-                let inner = self.resolve_type(inner);
-                self.resolve_user_defined_generic_type("Ptr", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Ptr", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Ptr(Box::new(inner)))
-            }
-            Type::Task(inner) => {
-                let inner = self.resolve_type(inner);
-                self.resolve_user_defined_generic_type("Task", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Task", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Task(Box::new(inner)))
-            }
-            Type::Range(inner) => {
-                let inner = self.resolve_type(inner);
-                self.resolve_user_defined_generic_type("Range", std::slice::from_ref(&inner))
-                    .or_else(|| {
-                        self.module_scoped_generic_type("Range", std::slice::from_ref(&inner))
-                    })
-                    .unwrap_or_else(|| ResolvedType::Range(Box::new(inner)))
-            }
-            Type::Function(params, ret) => ResolvedType::Function(
-                params.iter().map(|p| self.resolve_type(p)).collect(),
-                Box::new(self.resolve_type(ret)),
-            ),
-            Type::Generic(name, args) => {
-                if let Some(bound) = self.current_generic_type_bindings.get(name) {
-                    return bound.clone();
-                }
-                let resolved_args = args
-                    .iter()
-                    .map(|arg| self.resolve_type(arg))
-                    .collect::<Vec<_>>();
-                if let Some(resolved) = self.resolve_user_defined_generic_type(name, &resolved_args)
-                {
-                    return resolved;
-                }
-                // Handle generic types
-                match name.as_str() {
-                    "Option" if resolved_args.len() == 1 => {
-                        ResolvedType::Option(Box::new(resolved_args[0].clone()))
-                    }
-                    "Result" if resolved_args.len() == 2 => ResolvedType::Result(
-                        Box::new(resolved_args[0].clone()),
-                        Box::new(resolved_args[1].clone()),
-                    ),
-                    "List" if resolved_args.len() == 1 => {
-                        ResolvedType::List(Box::new(resolved_args[0].clone()))
-                    }
-                    "Map" if resolved_args.len() == 2 => ResolvedType::Map(
-                        Box::new(resolved_args[0].clone()),
-                        Box::new(resolved_args[1].clone()),
-                    ),
-                    "Set" if resolved_args.len() == 1 => {
-                        ResolvedType::Set(Box::new(resolved_args[0].clone()))
-                    }
-                    "Box" if resolved_args.len() == 1 => {
-                        ResolvedType::Box(Box::new(resolved_args[0].clone()))
-                    }
-                    "Rc" if resolved_args.len() == 1 => {
-                        ResolvedType::Rc(Box::new(resolved_args[0].clone()))
-                    }
-                    "Arc" if resolved_args.len() == 1 => {
-                        ResolvedType::Arc(Box::new(resolved_args[0].clone()))
-                    }
-                    "Ptr" if resolved_args.len() == 1 => {
-                        ResolvedType::Ptr(Box::new(resolved_args[0].clone()))
-                    }
-                    "Task" if resolved_args.len() == 1 => {
-                        ResolvedType::Task(Box::new(resolved_args[0].clone()))
-                    }
-                    "Range" if resolved_args.len() == 1 => {
-                        ResolvedType::Range(Box::new(resolved_args[0].clone()))
-                    }
-                    _ => {
-                        let args = resolved_args
-                            .iter()
-                            .map(std::string::ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        ResolvedType::Class(format!("{}<{}>", name, args))
-                    }
-                }
-            }
-        }
-    }
-
     /// Get type of a literal
     fn literal_type(&self, lit: &Literal) -> ResolvedType {
         match lit {
@@ -9548,237 +7275,7 @@ impl TypeChecker {
     }
 
     /// Parse a type string like "Integer" or "List<Integer>"
-    fn parse_type_string(&self, s: &str) -> ResolvedType {
-        let s = s.trim();
-        match s {
-            "Integer" => ResolvedType::Integer,
-            "Float" => ResolvedType::Float,
-            "Boolean" => ResolvedType::Boolean,
-            "String" => ResolvedType::String,
-            "Char" => ResolvedType::Char,
-            "None" => ResolvedType::None,
-            _ => {
-                if let Some((params, ret)) = self.parse_function_type_string(s) {
-                    return ResolvedType::Function(
-                        params.iter().map(|p| self.parse_type_string(p)).collect(),
-                        Box::new(self.parse_type_string(&ret)),
-                    );
-                }
-                if let Some(open_bracket) = s.find('<') {
-                    if s.ends_with('>') {
-                        let base = &s[..open_bracket];
-                        let inner_str = &s[open_bracket + 1..s.len() - 1];
-                        let generic_args = self
-                            .split_generic_args(inner_str)
-                            .into_iter()
-                            .map(|part| self.parse_type_string(&part))
-                            .collect::<Vec<_>>();
-
-                        if let Some(resolved) =
-                            self.resolve_user_defined_generic_type(base, &generic_args)
-                        {
-                            return resolved;
-                        }
-
-                        match base {
-                            "List" if generic_args.len() == 1 => {
-                                ResolvedType::List(Box::new(generic_args[0].clone()))
-                            }
-                            "Set" if generic_args.len() == 1 => {
-                                ResolvedType::Set(Box::new(generic_args[0].clone()))
-                            }
-                            "Option" if generic_args.len() == 1 => {
-                                ResolvedType::Option(Box::new(generic_args[0].clone()))
-                            }
-                            "Task" if generic_args.len() == 1 => {
-                                ResolvedType::Task(Box::new(generic_args[0].clone()))
-                            }
-                            "Box" if generic_args.len() == 1 => {
-                                ResolvedType::Box(Box::new(generic_args[0].clone()))
-                            }
-                            "Rc" if generic_args.len() == 1 => {
-                                ResolvedType::Rc(Box::new(generic_args[0].clone()))
-                            }
-                            "Arc" if generic_args.len() == 1 => {
-                                ResolvedType::Arc(Box::new(generic_args[0].clone()))
-                            }
-                            "Ptr" if generic_args.len() == 1 => {
-                                ResolvedType::Ptr(Box::new(generic_args[0].clone()))
-                            }
-                            "Map" => {
-                                if generic_args.len() == 2 {
-                                    ResolvedType::Map(
-                                        Box::new(generic_args[0].clone()),
-                                        Box::new(generic_args[1].clone()),
-                                    )
-                                } else {
-                                    ResolvedType::Unknown
-                                }
-                            }
-                            "Result" => {
-                                if generic_args.len() == 2 {
-                                    ResolvedType::Result(
-                                        Box::new(generic_args[0].clone()),
-                                        Box::new(generic_args[1].clone()),
-                                    )
-                                } else {
-                                    ResolvedType::Unknown
-                                }
-                            }
-                            _ => self
-                                .resolve_nominal_reference_name(s)
-                                .map(ResolvedType::Class)
-                                .unwrap_or_else(|| ResolvedType::Class(s.to_string())),
-                        }
-                    } else {
-                        self.resolve_nominal_reference_name(s)
-                            .map(ResolvedType::Class)
-                            .unwrap_or_else(|| ResolvedType::Class(s.to_string()))
-                    }
-                } else {
-                    self.resolve_nominal_reference_name(s)
-                        .map(ResolvedType::Class)
-                        .unwrap_or_else(|| ResolvedType::Class(s.to_string()))
-                }
-            }
-        }
-    }
-
-    fn resolve_type_source_string(&self, s: &str) -> String {
-        self.resolve_type_source(s)
-            .map(|resolved| resolved.to_string())
-            .unwrap_or_else(|| {
-                self.resolve_nominal_reference_name(s).unwrap_or_else(|| {
-                    self.module_scoped_type_name(s)
-                        .unwrap_or_else(|| s.to_string())
-                })
-            })
-    }
-
-    fn resolve_type_source(&self, s: &str) -> Option<ResolvedType> {
-        parse_type_source(s)
-            .ok()
-            .map(|parsed| self.resolve_type(&parsed))
-    }
-
-    fn parse_function_type_string(&self, s: &str) -> Option<(Vec<String>, String)> {
-        if !s.starts_with('(') {
-            return None;
-        }
-
-        let mut paren_depth = 0usize;
-        let mut angle_depth = 0usize;
-        let mut close_idx = None;
-        for (idx, ch) in s.char_indices() {
-            match ch {
-                '(' => paren_depth += 1,
-                ')' => {
-                    paren_depth = paren_depth.saturating_sub(1);
-                    if paren_depth == 0 && angle_depth == 0 {
-                        close_idx = Some(idx);
-                        break;
-                    }
-                }
-                '<' => angle_depth += 1,
-                '>' => angle_depth = angle_depth.saturating_sub(1),
-                _ => {}
-            }
-        }
-
-        let close_idx = close_idx?;
-        let rest = s[close_idx + 1..].trim();
-        let rest = rest.strip_prefix("->")?.trim();
-        let params_str = &s[1..close_idx];
-        let params = if params_str.trim().is_empty() {
-            Vec::new()
-        } else {
-            self.split_type_list(params_str)
-        };
-        Some((params, rest.to_string()))
-    }
-
-    fn split_type_list(&self, s: &str) -> Vec<String> {
-        let mut parts = Vec::new();
-        let mut current = String::new();
-        let mut angle_depth = 0usize;
-        let mut paren_depth = 0usize;
-
-        for ch in s.chars() {
-            match ch {
-                ',' if angle_depth == 0 && paren_depth == 0 => {
-                    let trimmed = current.trim();
-                    if !trimmed.is_empty() {
-                        parts.push(trimmed.to_string());
-                    }
-                    current.clear();
-                }
-                '<' => {
-                    angle_depth += 1;
-                    current.push(ch);
-                }
-                '>' => {
-                    angle_depth = angle_depth.saturating_sub(1);
-                    current.push(ch);
-                }
-                '(' => {
-                    paren_depth += 1;
-                    current.push(ch);
-                }
-                ')' => {
-                    paren_depth = paren_depth.saturating_sub(1);
-                    current.push(ch);
-                }
-                _ => current.push(ch),
-            }
-        }
-
-        let trimmed = current.trim();
-        if !trimmed.is_empty() {
-            parts.push(trimmed.to_string());
-        }
-        parts
-    }
-
-    fn split_generic_args_static(s: &str) -> Vec<String> {
-        let mut parts = Vec::new();
-        let mut current = String::new();
-        let mut angle_depth = 0usize;
-        let mut paren_depth = 0usize;
-
-        for c in s.chars() {
-            match c {
-                '<' => {
-                    angle_depth += 1;
-                    current.push(c);
-                }
-                '>' => {
-                    angle_depth = angle_depth.saturating_sub(1);
-                    current.push(c);
-                }
-                '(' => {
-                    paren_depth += 1;
-                    current.push(c);
-                }
-                ')' => {
-                    paren_depth = paren_depth.saturating_sub(1);
-                    current.push(c);
-                }
-                ',' if angle_depth == 0 && paren_depth == 0 => {
-                    parts.push(current.trim().to_string());
-                    current = String::new();
-                }
-                _ => current.push(c),
-            }
-        }
-        parts.push(current.trim().to_string());
-        parts
-    }
-
     /// Split generic arguments by comma, respecting nested < >
-    fn split_generic_args(&self, s: &str) -> Vec<String> {
-        Self::split_generic_args_static(s)
-    }
-
     /// Report an error
     fn error(&mut self, message: String, span: Span) {
         self.errors.push(TypeError::new(message, span));
@@ -9791,73 +7288,12 @@ impl TypeChecker {
     }
 }
 
-/// Format type errors with source context
-pub fn format_errors(errors: &[TypeError], source: &str, filename: &str) -> String {
-    use colored::Colorize;
-
-    let lines: Vec<&str> = source.lines().collect();
-    let mut output = String::new();
-
-    for error in errors {
-        // Find line number
-        let mut line_num: usize = 1;
-        let mut col: usize = 1;
-        for (i, ch) in source.char_indices() {
-            if i >= error.span.start {
-                break;
-            }
-            if ch == '\n' {
-                line_num += 1;
-                col = 1;
-            } else {
-                col += 1;
-            }
-        }
-
-        output.push_str(&format!("{}: {}\n", "error".red().bold(), error.message));
-        output.push_str(&format!(
-            "  {} {}:{}:{}\n",
-            "-->".blue().bold(),
-            filename,
-            line_num,
-            col
-        ));
-        output.push_str(&format!("   {}\n", "|".blue().bold()));
-
-        if line_num <= lines.len() {
-            output.push_str(&format!(
-                "{} {}\n",
-                format!("{:3} |", line_num).blue().bold(),
-                lines[line_num - 1]
-            ));
-
-            // Underline
-            let underline_start = col.saturating_sub(1);
-            let underline_len = error.span.end.saturating_sub(error.span.start).max(1);
-            let available = lines[line_num - 1].len().saturating_sub(underline_start);
-            let carets = "^".repeat(underline_len.min(available).max(1));
-            output.push_str(&format!(
-                "   {} {}{}\n",
-                "|".blue().bold(),
-                " ".repeat(underline_start),
-                carets.red().bold()
-            ));
-        }
-
-        if let Some(hint) = &error.hint {
-            output.push_str(&format!(
-                "   {} {}: {}\n",
-                "=".blue().bold(),
-                "help".blue().bold(),
-                hint
-            ));
-        }
-
-        output.push('\n');
-    }
-
-    output
-}
-
+mod check;
+mod collect;
+mod display;
+mod effects;
+mod resolve;
 #[cfg(test)]
 mod tests;
+
+pub(crate) use display::format_errors;

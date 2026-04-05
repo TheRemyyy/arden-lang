@@ -15,8 +15,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::ast::{Block, Decl, Expr, FunctionDecl, Pattern, Program, Stmt};
+use crate::borrowck::{BorrowChecker, BorrowError};
 use crate::lexer;
 use crate::parser::{ParseError, Parser};
+use crate::typeck::{TypeChecker, TypeError};
 
 /// Document state tracked by the LSP server
 #[derive(Debug, Clone)]
@@ -618,7 +620,26 @@ impl Backend {
             Ok(tokens) => {
                 let mut parser = Parser::new(tokens);
                 match parser.parse_program() {
-                    Ok(program) => Some(program),
+                    Ok(program) => {
+                        let mut type_checker = TypeChecker::new();
+                        if let Err(errors) = type_checker.check(&program) {
+                            diagnostics.extend(
+                                errors
+                                    .into_iter()
+                                    .map(|err| self.type_error_to_diagnostic(&text, err)),
+                            );
+                        } else {
+                            let mut borrow_checker = BorrowChecker::new();
+                            if let Err(errors) = borrow_checker.check(&program) {
+                                diagnostics.extend(
+                                    errors
+                                        .into_iter()
+                                        .map(|err| self.borrow_error_to_diagnostic(&text, err)),
+                                );
+                            }
+                        }
+                        Some(program)
+                    }
                     Err(err) => {
                         diagnostics.push(self.parse_error_to_diagnostic(&text, &err));
                         None
@@ -678,6 +699,42 @@ impl Backend {
             code_description: None,
             source: Some("apex-lexer".to_string()),
             message: msg.to_string(),
+            related_information: None,
+            tags: None,
+            data: None,
+        }
+    }
+
+    fn type_error_to_diagnostic(&self, text: &str, err: TypeError) -> Diagnostic {
+        let mut message = err.message;
+        if let Some(hint) = err.hint {
+            message.push_str(&format!("\nhelp: {hint}"));
+        }
+        Diagnostic {
+            range: self.span_to_range(text, err.span),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: None,
+            code_description: None,
+            source: Some("apex-typeck".to_string()),
+            message,
+            related_information: None,
+            tags: None,
+            data: None,
+        }
+    }
+
+    fn borrow_error_to_diagnostic(&self, text: &str, err: BorrowError) -> Diagnostic {
+        let mut message = err.message;
+        if let Some((note, _)) = err.note {
+            message.push_str(&format!("\nnote: {note}"));
+        }
+        Diagnostic {
+            range: self.span_to_range(text, err.span),
+            severity: Some(DiagnosticSeverity::ERROR),
+            code: None,
+            code_description: None,
+            source: Some("apex-borrowck".to_string()),
+            message,
             related_information: None,
             tags: None,
             data: None,
@@ -1145,8 +1202,12 @@ impl Backend {
     }
 
     /// Get completion items for a position
-    fn get_completions(&self, doc: &Document, _pos: Position) -> Vec<CompletionItem> {
+    fn get_completions(&self, doc: &Document, pos: Position) -> Vec<CompletionItem> {
         let mut items = Vec::new();
+        let prefix = self
+            .word_at_position(&doc.text, pos)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
 
         // Keywords
         let keywords = vec![
@@ -1202,20 +1263,51 @@ impl Backend {
             });
         }
 
-        // Functions from AST
+        // Symbols from AST
         if let Some(program) = &doc.parsed {
             for decl in &program.declarations {
-                if let Decl::Function(func) = &decl.node {
-                    items.push(CompletionItem {
+                match &decl.node {
+                    Decl::Function(func) => items.push(CompletionItem {
                         label: func.name.clone(),
                         kind: Some(CompletionItemKind::FUNCTION),
                         detail: Some(format!("function: {}", func.name)),
                         ..Default::default()
-                    });
+                    }),
+                    Decl::Class(class) => items.push(CompletionItem {
+                        label: class.name.clone(),
+                        kind: Some(CompletionItemKind::CLASS),
+                        detail: Some(format!("class: {}", class.name)),
+                        ..Default::default()
+                    }),
+                    Decl::Interface(interface) => items.push(CompletionItem {
+                        label: interface.name.clone(),
+                        kind: Some(CompletionItemKind::INTERFACE),
+                        detail: Some(format!("interface: {}", interface.name)),
+                        ..Default::default()
+                    }),
+                    Decl::Enum(en) => items.push(CompletionItem {
+                        label: en.name.clone(),
+                        kind: Some(CompletionItemKind::ENUM),
+                        detail: Some(format!("enum: {}", en.name)),
+                        ..Default::default()
+                    }),
+                    Decl::Module(module) => items.push(CompletionItem {
+                        label: module.name.clone(),
+                        kind: Some(CompletionItemKind::MODULE),
+                        detail: Some(format!("module: {}", module.name)),
+                        ..Default::default()
+                    }),
+                    Decl::Import(_) => {}
                 }
             }
         }
 
+        items.sort_by(|a, b| a.label.cmp(&b.label));
+        items.dedup_by(|a, b| a.label == b.label && a.kind == b.kind);
+        if prefix.is_empty() {
+            return items;
+        }
+        items.retain(|item| item.label.to_ascii_lowercase().starts_with(&prefix));
         items
     }
 

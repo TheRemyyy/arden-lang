@@ -1477,7 +1477,7 @@ impl<'ctx> Codegen<'ctx> {
     fn template_key_for_callee(callee: &Expr) -> Option<String> {
         match callee {
             Expr::Ident(name) => Some(name.clone()),
-            _ => Self::flatten_field_chain(callee).and_then(|parts| {
+            _ => flatten_field_chain(callee).and_then(|parts| {
                 if parts.len() >= 2 {
                     Some(parts.join("__"))
                 } else {
@@ -1514,7 +1514,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             _ => {
-                if let Some(path_parts) = Self::flatten_field_chain(callee) {
+                if let Some(path_parts) = flatten_field_chain(callee) {
                     if path_parts.len() >= 2 {
                         if let Some(path) = import_aliases.get(&path_parts[0]) {
                             if !path.ends_with(".*") {
@@ -1594,7 +1594,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             _ => {
-                if let Some(path_parts) = Self::flatten_field_chain(callee) {
+                if let Some(path_parts) = flatten_field_chain(callee) {
                     if path_parts.len() >= 2 {
                         if let Some(path) = import_aliases.get(&path_parts[0]) {
                             if !path.ends_with(".*") {
@@ -3260,7 +3260,7 @@ impl<'ctx> Codegen<'ctx> {
                     );
                 }
                 if !type_args.is_empty() {
-                    if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
+                    if let Some(path_parts) = flatten_field_chain(&callee.node) {
                         let full_path = path_parts.join(".");
                         if let Some(resolved_name) = Self::resolve_class_template_name(
                             class_templates,
@@ -3299,7 +3299,7 @@ impl<'ctx> Codegen<'ctx> {
                     Expr::Ident(name) => {
                         Self::resolve_class_template_name(class_templates, import_aliases, name)
                     }
-                    _ => Self::flatten_field_chain(&callee.node)
+                    _ => flatten_field_chain(&callee.node)
                         .map(|parts| parts.join("."))
                         .and_then(|full_path| {
                             Self::resolve_class_template_name(
@@ -6939,7 +6939,7 @@ impl<'ctx> Codegen<'ctx> {
         let Some(path) = self.import_aliases.get(name) else {
             return name.to_string();
         };
-        if let Some(canonical) = Self::builtin_exact_import_alias_canonical(path) {
+        if let Some(canonical) = builtin_exact_import_alias_canonical(path) {
             return canonical.to_string();
         }
         if path.ends_with(".*") {
@@ -7042,16 +7042,6 @@ impl<'ctx> Codegen<'ctx> {
         (matches.len() == 1).then(|| matches[0].clone())
     }
 
-    fn builtin_exact_import_alias_canonical(path: &str) -> Option<&'static str> {
-        match path {
-            "Option.Some" => Some("Option__some"),
-            "Option.None" => Some("Option__none"),
-            "Result.Ok" => Some("Result__ok"),
-            "Result.Error" => Some("Result__error"),
-            _ => None,
-        }
-    }
-
     fn split_generic_args_static(s: &str) -> Vec<String> {
         let mut parts = Vec::new();
         let mut current = String::new();
@@ -7135,7 +7125,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Field { object, field } => {
-                if let Some(path_parts) = Self::flatten_field_chain(expr) {
+                if let Some(path_parts) = flatten_field_chain(expr) {
                     if path_parts.len() >= 2 {
                         if let Some(path) = self.import_aliases.get(&path_parts[0]) {
                             let namespace_path = if path_parts.len() == 2 {
@@ -7216,7 +7206,7 @@ impl<'ctx> Codegen<'ctx> {
     fn nominal_function_value_type_source(expr: &Expr) -> Option<String> {
         match expr {
             Expr::Ident(name) => Some(name.clone()),
-            Expr::Field { .. } => Some(Self::flatten_field_chain(expr)?.join(".")),
+            Expr::Field { .. } => Some(flatten_field_chain(expr)?.join(".")),
             _ => None,
         }
     }
@@ -7249,7 +7239,7 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap_or_else(|| name.clone())
                 }
             }
-            Expr::Field { .. } => Self::flatten_field_chain(expr)?.join("."),
+            Expr::Field { .. } => flatten_field_chain(expr)?.join("."),
             _ => return None,
         };
         if let Some(type_args) = explicit_type_args {
@@ -7698,20 +7688,8 @@ impl<'ctx> Codegen<'ctx> {
         None
     }
 
-    pub(crate) fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
-        match expr {
-            Expr::Ident(name) => Some(vec![name.clone()]),
-            Expr::Field { object, field } => {
-                let mut parts = Self::flatten_field_chain(&object.node)?;
-                parts.push(field.clone());
-                Some(parts)
-            }
-            _ => None,
-        }
-    }
-
     pub(crate) fn resolve_unit_enum_variant_owner(&self, expr: &Expr) -> Option<String> {
-        let path_parts = Self::flatten_field_chain(expr)?;
+        let path_parts = flatten_field_chain(expr)?;
         if path_parts.len() < 2 {
             return None;
         }
@@ -11381,7 +11359,7 @@ impl<'ctx> Codegen<'ctx> {
                     {
                         return Err(err);
                     }
-                    if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
+                    if let Some(path_parts) = flatten_field_chain(&callee.node) {
                         let full_path = path_parts.join(".");
                         if self
                             .resolve_alias_qualified_codegen_type_name(&full_path)
@@ -11835,7 +11813,7 @@ impl<'ctx> Codegen<'ctx> {
             return None;
         };
 
-        if let Some(path_parts) = Self::flatten_field_chain(expr) {
+        if let Some(path_parts) = flatten_field_chain(expr) {
             if path_parts.len() >= 2 {
                 let owner_source = path_parts[..path_parts.len() - 1].join(".");
                 if let Some(resolved_owner) =
@@ -14315,7 +14293,7 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         // Nested module-style calls: A.X.f(...) -> A__X__f(...)
-        if let Some(path_parts) = Self::flatten_field_chain(callee) {
+        if let Some(path_parts) = flatten_field_chain(callee) {
             if path_parts.len() >= 3 {
                 let full_path = path_parts.join(".");
                 if let Some(resolved_type_name) =
@@ -14712,7 +14690,7 @@ impl<'ctx> Codegen<'ctx> {
             else {
                 return None;
             };
-            let path_parts = Self::flatten_field_chain(&callee.node)?;
+            let path_parts = flatten_field_chain(&callee.node)?;
             let full_path = path_parts.join(".");
             if !type_args.is_empty() {
                 let normalized = self
@@ -15550,7 +15528,7 @@ impl<'ctx> Codegen<'ctx> {
             object: Box::new(Spanned::new(object.clone(), Span::default())),
             field: field.to_string(),
         };
-        if let Some(path_parts) = Self::flatten_field_chain(&nested_field_expr) {
+        if let Some(path_parts) = flatten_field_chain(&nested_field_expr) {
             if path_parts.len() >= 2 {
                 let owner_source = path_parts[..path_parts.len() - 1].join(".");
                 let variant_name = path_parts.last().cloned().unwrap_or_default();

@@ -200,7 +200,7 @@ function classify(result: Result<Integer, String>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     type_checker
         .check(&program)
         .expect("Ok/Error Result match should be exhaustive");
@@ -218,7 +218,7 @@ function classify(result: Result<Integer, String>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("Err pattern should be rejected");
@@ -249,7 +249,7 @@ function classify(result: Result<Integer, String>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     type_checker
         .check(&program)
         .expect("alias-based Ok/Error Result match should be exhaustive");
@@ -270,7 +270,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     type_checker
         .check(&program)
         .expect("alias-based Some/None Option match should be exhaustive");
@@ -436,7 +436,7 @@ function classify(flag: Boolean): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("local type mismatch should fail");
@@ -471,7 +471,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("generic arity mismatch should fail");
@@ -503,7 +503,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("constructor-like generic misuse should fail");
@@ -536,7 +536,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("valid-type generic misuse should fail");
@@ -566,7 +566,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("free-function generic misuse should fail");
@@ -601,7 +601,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("chained generic misuse should fail");
@@ -633,7 +633,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("module generic misuse should fail");
@@ -666,7 +666,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("non-generic method type args should fail");
@@ -699,7 +699,7 @@ function classify(value: Option<Integer>, holder: Holder): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("function-valued field type args should fail");
@@ -731,7 +731,7 @@ function classify(value: Option<Integer>, counter: Counter): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("interface method type args should fail");
@@ -764,7 +764,7 @@ function classify(value: Option<Integer>, holder: Holder): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("interface field nested type args should fail");
@@ -804,7 +804,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("nested module generic misuse should fail");
@@ -841,7 +841,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("nested module method generic misuse should fail");
@@ -873,7 +873,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("static path type args should fail");
@@ -913,7 +913,7 @@ function classify(result: Result<Option<Integer>, String>): None {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("local type mismatch should fail");
@@ -956,7 +956,7 @@ function classify(result: Result<Option<Integer>, String>, cond: Boolean): Integ
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("nested alias if-match branch type mismatch should fail");
@@ -987,7 +987,7 @@ function classify(value: Option<Integer>): Integer {
 "#;
 
     let program = parse_program(source);
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("branch type mismatch should fail");
@@ -1710,7 +1710,7 @@ function classify(value: Result<Option<Integer>, String>, cond: Boolean): Intege
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid paired source should fail");
@@ -1840,7 +1840,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid nested tagged source should fail");
@@ -2028,7 +2028,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid repeated-update tagged source should fail");
@@ -2280,7 +2280,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid tagged set pair should fail");
@@ -2617,7 +2617,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid multi-function tagged source should fail");
@@ -2767,7 +2767,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid multi-helper tagged source should fail");
@@ -2907,7 +2907,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid nested tagged value-flow source should fail");
@@ -3064,7 +3064,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid deeper multi-helper tagged source should fail");
@@ -3276,7 +3276,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid scalar-only tagged source should fail");
@@ -3415,7 +3415,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid scalar-only multi-helper tagged source should fail");
@@ -3569,7 +3569,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid three-helper scalar tagged source should fail");
@@ -3724,7 +3724,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid three-helper repeated-update scalar source should fail");
@@ -3869,7 +3869,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid parameterized lookup tagged source should fail");
@@ -4014,7 +4014,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid parameterized multi-key tagged source should fail");
@@ -4159,7 +4159,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid parameterized multi-key scalar source should fail");
@@ -4304,7 +4304,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid fresh multi-key scalar source should fail");
@@ -4452,7 +4452,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid multi-key joined tagged source should fail");
@@ -4668,7 +4668,7 @@ function main(): Integer {
 }
 "#;
     let program = parse_program(invalid);
-    let mut type_checker = TypeChecker::new(invalid.to_string());
+    let mut type_checker = TypeChecker::new();
     let errors = type_checker
         .check(&program)
         .expect_err("invalid scalarized nested tagged source should fail");
