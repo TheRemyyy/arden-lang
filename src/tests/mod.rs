@@ -7,16 +7,15 @@ pub(crate) use crate::{
     compute_rewrite_context_fingerprint_for_unit, dedupe_link_inputs, escape_response_file_arg,
     find_test_files, fix_target, format_targets, lex_file, lint_target, load_cached_fingerprint,
     load_link_manifest_cache, load_object_shard_cache_hit, load_semantic_cached_fingerprint,
-    new_project, object_shard_cache_key, object_shard_cache_paths, parse_file,
-    parse_project_unit, precompute_all_transitive_dependencies, read_cache_blob,
-    reusable_component_fingerprints, run_project, run_tests, save_object_shard_cache_meta,
-    semantic_program_fingerprint, should_skip_final_link, show_project_info,
-    transitive_dependencies_from_precomputed, transitive_dependents,
-    typecheck_summary_cache_from_state, typecheck_summary_cache_matches, DependencyGraphCache,
-    DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig, LinkManifestCache,
-    ObjectShardMemberFingerprint, OutputKind, ParsedFileCacheEntry, ParsedProjectUnit,
-    RewriteFingerprintContext, RewrittenProjectUnit, DEPENDENCY_GRAPH_CACHE_SCHEMA,
-    LINK_MANIFEST_CACHE_SCHEMA,
+    new_project, object_shard_cache_key, object_shard_cache_paths, parse_file, parse_project_unit,
+    precompute_all_transitive_dependencies, read_cache_blob, reusable_component_fingerprints,
+    run_project, run_tests, save_object_shard_cache_meta, semantic_program_fingerprint,
+    should_skip_final_link, show_project_info, transitive_dependencies_from_precomputed,
+    transitive_dependents, typecheck_summary_cache_from_state, typecheck_summary_cache_matches,
+    DependencyGraphCache, DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig,
+    LinkManifestCache, ObjectShardMemberFingerprint, OutputKind, ParsedFileCacheEntry,
+    ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
+    DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
 };
 #[allow(unused_imports)]
 pub(crate) use helpers::{
@@ -25,8 +24,8 @@ pub(crate) use helpers::{
     with_current_dir, write_test_project_config, CwdRestore, ProjectSymbolMaps,
 };
 
-mod helpers;
 mod cli;
 mod compile_source;
+mod helpers;
 mod project;
 mod typeck_frontend;

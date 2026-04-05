@@ -54,3 +54,42 @@ fn lsp_word_lookup_resolves_identifier_at_end_of_file() {
         Some("value")
     );
 }
+
+#[test]
+fn lsp_name_lookup_respects_identifier_boundaries() {
+    let text = "value evaluate value_1 value";
+    let span = 0..text.len();
+
+    assert_eq!(
+        find_nth_name_occurrence_in_span(text, "value", &span, 0),
+        Some(0..5)
+    );
+    assert_eq!(
+        find_nth_name_occurrence_in_span(text, "value", &span, 1),
+        Some(23..28)
+    );
+    assert_eq!(
+        find_nth_name_occurrence_in_span(text, "value", &span, 2),
+        None
+    );
+}
+
+#[test]
+fn lsp_name_lookup_honors_requested_span_window() {
+    let text = "function alpha(): None { alpha(); }\nfunction alpha_beta(): None {}\n";
+    let first_line_end = text.find('\n').expect("newline");
+    let span = 0..first_line_end;
+
+    assert_eq!(
+        find_nth_name_occurrence_in_span(text, "alpha", &span, 0),
+        Some(9..14)
+    );
+    assert_eq!(
+        find_nth_name_occurrence_in_span(text, "alpha", &span, 1),
+        Some(25..30)
+    );
+    assert_eq!(
+        find_nth_name_occurrence_in_span(text, "alpha", &span, 2),
+        None
+    );
+}

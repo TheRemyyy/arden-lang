@@ -20,9 +20,9 @@ mod specialization;
 mod stdlib;
 mod symbol_lookup;
 mod test_runner;
-mod typeck;
 #[cfg(test)]
 mod tests;
+mod typeck;
 
 use clap::{Parser as ClapParser, Subcommand};
 use colored::*;
@@ -952,13 +952,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                         false,
                         function_decl_name,
                     );
-                    collect_decl_names(
-                        &decl.node,
-                        None,
-                        &mut class_names,
-                        false,
-                        class_decl_name,
-                    );
+                    collect_decl_names(&decl.node, None, &mut class_names, false, class_decl_name);
                     collect_decl_names(
                         &decl.node,
                         None,

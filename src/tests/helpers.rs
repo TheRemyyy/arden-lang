@@ -5,8 +5,8 @@ use crate::parser::Parser;
 use crate::typeck::TypeChecker;
 use crate::{
     build_project_symbol_lookup, compute_namespace_api_fingerprints,
-    compute_rewrite_context_fingerprint_for_unit, semantic_program_fingerprint,
-    ParsedProjectUnit, RewriteFingerprintContext,
+    compute_rewrite_context_fingerprint_for_unit, semantic_program_fingerprint, ParsedProjectUnit,
+    RewriteFingerprintContext,
 };
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -292,7 +292,11 @@ pub(crate) fn collect_project_symbol_maps(parsed_files: &[ParsedProjectUnit]) ->
             .push(unit.file.clone());
         for module_name in &unit.module_names {
             namespace_files_map
-                .entry(format!("{}.{}", unit.namespace, module_name.replace("__", ".")))
+                .entry(format!(
+                    "{}.{}",
+                    unit.namespace,
+                    module_name.replace("__", ".")
+                ))
                 .or_insert_with(Vec::new)
                 .push(unit.file.clone());
         }
