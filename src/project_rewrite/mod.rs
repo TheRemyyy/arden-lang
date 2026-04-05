@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
 use crate::ast::{self, Decl, Expr, ImportDecl, Program, Stmt};
+use crate::cache::elapsed_nanos_u64;
 use crate::parser::parse_type_source;
 use crate::stdlib::stdlib_registry;
 
@@ -28,7 +29,7 @@ pub struct RewriteTimingSnapshot {
 }
 
 #[derive(Default)]
-struct RewriteTimingTotals {
+struct RewriteInternalTimingTotals {
     import_map_build_ns: AtomicU64,
     wildcard_match_ns: AtomicU64,
     wildcard_match_calls: AtomicUsize,
@@ -46,7 +47,7 @@ struct RewriteTimingTotals {
     pattern_rewrite_calls: AtomicUsize,
 }
 
-static REWRITE_TIMING_TOTALS: RewriteTimingTotals = RewriteTimingTotals {
+static REWRITE_INTERNAL_TIMING_TOTALS: RewriteInternalTimingTotals = RewriteInternalTimingTotals {
     import_map_build_ns: AtomicU64::new(0),
     wildcard_match_ns: AtomicU64::new(0),
     wildcard_match_calls: AtomicUsize::new(0),
@@ -64,103 +65,99 @@ static REWRITE_TIMING_TOTALS: RewriteTimingTotals = RewriteTimingTotals {
     pattern_rewrite_calls: AtomicUsize::new(0),
 };
 
-fn elapsed_nanos_u64(started_at: Instant) -> u64 {
-    started_at.elapsed().as_nanos() as u64
-}
-
 pub fn reset_rewrite_timings() {
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .import_map_build_ns
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .wildcard_match_ns
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .wildcard_match_calls
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .exact_import_resolve_ns
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .exact_import_resolve_calls
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .block_rewrite_ns
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .block_rewrite_calls
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .stmt_rewrite_ns
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .stmt_rewrite_calls
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .expr_rewrite_ns
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .expr_rewrite_calls
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .type_rewrite_ns
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .type_rewrite_calls
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .pattern_rewrite_ns
         .store(0, Ordering::Relaxed);
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .pattern_rewrite_calls
         .store(0, Ordering::Relaxed);
 }
 
 pub fn snapshot_rewrite_timings() -> RewriteTimingSnapshot {
     RewriteTimingSnapshot {
-        import_map_build_ns: REWRITE_TIMING_TOTALS
+        import_map_build_ns: REWRITE_INTERNAL_TIMING_TOTALS
             .import_map_build_ns
             .load(Ordering::Relaxed),
-        wildcard_match_ns: REWRITE_TIMING_TOTALS
+        wildcard_match_ns: REWRITE_INTERNAL_TIMING_TOTALS
             .wildcard_match_ns
             .load(Ordering::Relaxed),
-        wildcard_match_calls: REWRITE_TIMING_TOTALS
+        wildcard_match_calls: REWRITE_INTERNAL_TIMING_TOTALS
             .wildcard_match_calls
             .load(Ordering::Relaxed),
-        exact_import_resolve_ns: REWRITE_TIMING_TOTALS
+        exact_import_resolve_ns: REWRITE_INTERNAL_TIMING_TOTALS
             .exact_import_resolve_ns
             .load(Ordering::Relaxed),
-        exact_import_resolve_calls: REWRITE_TIMING_TOTALS
+        exact_import_resolve_calls: REWRITE_INTERNAL_TIMING_TOTALS
             .exact_import_resolve_calls
             .load(Ordering::Relaxed),
-        block_rewrite_ns: REWRITE_TIMING_TOTALS
+        block_rewrite_ns: REWRITE_INTERNAL_TIMING_TOTALS
             .block_rewrite_ns
             .load(Ordering::Relaxed),
-        block_rewrite_calls: REWRITE_TIMING_TOTALS
+        block_rewrite_calls: REWRITE_INTERNAL_TIMING_TOTALS
             .block_rewrite_calls
             .load(Ordering::Relaxed),
-        stmt_rewrite_ns: REWRITE_TIMING_TOTALS
+        stmt_rewrite_ns: REWRITE_INTERNAL_TIMING_TOTALS
             .stmt_rewrite_ns
             .load(Ordering::Relaxed),
-        stmt_rewrite_calls: REWRITE_TIMING_TOTALS
+        stmt_rewrite_calls: REWRITE_INTERNAL_TIMING_TOTALS
             .stmt_rewrite_calls
             .load(Ordering::Relaxed),
-        expr_rewrite_ns: REWRITE_TIMING_TOTALS
+        expr_rewrite_ns: REWRITE_INTERNAL_TIMING_TOTALS
             .expr_rewrite_ns
             .load(Ordering::Relaxed),
-        expr_rewrite_calls: REWRITE_TIMING_TOTALS
+        expr_rewrite_calls: REWRITE_INTERNAL_TIMING_TOTALS
             .expr_rewrite_calls
             .load(Ordering::Relaxed),
-        type_rewrite_ns: REWRITE_TIMING_TOTALS
+        type_rewrite_ns: REWRITE_INTERNAL_TIMING_TOTALS
             .type_rewrite_ns
             .load(Ordering::Relaxed),
-        type_rewrite_calls: REWRITE_TIMING_TOTALS
+        type_rewrite_calls: REWRITE_INTERNAL_TIMING_TOTALS
             .type_rewrite_calls
             .load(Ordering::Relaxed),
-        pattern_rewrite_ns: REWRITE_TIMING_TOTALS
+        pattern_rewrite_ns: REWRITE_INTERNAL_TIMING_TOTALS
             .pattern_rewrite_ns
             .load(Ordering::Relaxed),
-        pattern_rewrite_calls: REWRITE_TIMING_TOTALS
+        pattern_rewrite_calls: REWRITE_INTERNAL_TIMING_TOTALS
             .pattern_rewrite_calls
             .load(Ordering::Relaxed),
     }
@@ -191,7 +188,7 @@ fn resolve_exact_imported_symbol_path(
     global_symbol_map: &HashMap<String, String>,
 ) -> Option<(String, String)> {
     let started_at = Instant::now();
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .exact_import_resolve_calls
         .fetch_add(1, Ordering::Relaxed);
     if global_symbol_map
@@ -199,7 +196,7 @@ fn resolve_exact_imported_symbol_path(
         .is_some_and(|owner_ns| owner_ns == namespace_path)
     {
         let result = Some((namespace_path.to_string(), symbol_name.to_string()));
-        REWRITE_TIMING_TOTALS
+        REWRITE_INTERNAL_TIMING_TOTALS
             .exact_import_resolve_ns
             .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
         return result;
@@ -216,7 +213,7 @@ fn resolve_exact_imported_symbol_path(
     matches.sort_unstable();
     matches.dedup();
     let result = (matches.len() == 1).then(|| matches.swap_remove(0));
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .exact_import_resolve_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
     result
@@ -245,7 +242,7 @@ fn direct_wildcard_member_name(
     symbol_name: &str,
 ) -> Option<String> {
     let started_at = Instant::now();
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .wildcard_match_calls
         .fetch_add(1, Ordering::Relaxed);
     let result = if owner_ns == import_path {
@@ -260,7 +257,7 @@ fn direct_wildcard_member_name(
             (!remainder.is_empty() && !remainder.contains("__")).then(|| remainder.to_string())
         }
     };
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .wildcard_match_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
     result
@@ -272,7 +269,7 @@ fn resolve_exact_imported_symbol_from_namespaces(
     namespace_symbols: &HashMap<String, HashSet<String>>,
 ) -> Option<(String, String)> {
     let started_at = Instant::now();
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .exact_import_resolve_calls
         .fetch_add(1, Ordering::Relaxed);
 
@@ -301,7 +298,7 @@ fn resolve_exact_imported_symbol_from_namespaces(
     matches.sort_unstable();
     matches.dedup();
     let result = (matches.len() == 1).then(|| matches.swap_remove(0));
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .exact_import_resolve_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
     result
@@ -328,7 +325,7 @@ fn extend_wildcard_import_map(
                 .map(|rest| format!("{}__", rest.replace('.', "__")))
         };
         for symbol_name in symbols {
-            REWRITE_TIMING_TOTALS
+            REWRITE_INTERNAL_TIMING_TOTALS
                 .wildcard_match_calls
                 .fetch_add(1, Ordering::Relaxed);
             let imported_name = match &module_prefix {
@@ -344,7 +341,7 @@ fn extend_wildcard_import_map(
         }
         current = owner_ns.rsplit_once('.').map(|(parent, _)| parent);
     }
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .wildcard_match_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
 }
@@ -658,7 +655,7 @@ pub fn rewrite_program_for_project(
             }
         }
     }
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .import_map_build_ns
         .fetch_add(elapsed_nanos_u64(import_map_started_at), Ordering::Relaxed);
 
@@ -1905,7 +1902,7 @@ fn mangle_project_function_symbol(namespace: &str, entry_namespace: &str, name: 
 
 fn rewrite_type_for_project_with_ctx(ty: &ast::Type, ctx: &RewriteTypeContext<'_>) -> ast::Type {
     let started_at = Instant::now();
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .type_rewrite_calls
         .fetch_add(1, Ordering::Relaxed);
     fn rewrite_named_type_name_for_project(name: &str, ctx: &RewriteTypeContext<'_>) -> String {
@@ -2147,7 +2144,7 @@ fn rewrite_type_for_project_with_ctx(ty: &ast::Type, ctx: &RewriteTypeContext<'_
         }
         _ => ty.clone(),
     };
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .type_rewrite_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
     rewritten
@@ -2668,7 +2665,7 @@ fn rewrite_pattern_for_project(
     global_enum_map: &HashMap<String, String>,
 ) -> ast::Pattern {
     let started_at = Instant::now();
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .pattern_rewrite_calls
         .fetch_add(1, Ordering::Relaxed);
     let rewritten = match pattern {
@@ -2740,7 +2737,7 @@ fn rewrite_pattern_for_project(
         }
         _ => pattern.clone(),
     };
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .pattern_rewrite_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
     rewritten
@@ -5606,7 +5603,7 @@ fn rewrite_block_calls_for_project(
     scopes: &mut Vec<HashSet<String>>,
 ) -> ast::Block {
     let started_at = Instant::now();
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .block_rewrite_calls
         .fetch_add(1, Ordering::Relaxed);
     let rewritten = block
@@ -5637,7 +5634,7 @@ fn rewrite_block_calls_for_project(
             )
         })
         .collect();
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .block_rewrite_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
     rewritten
@@ -5665,7 +5662,7 @@ fn rewrite_stmt_calls_for_project(
     scopes: &mut Vec<HashSet<String>>,
 ) -> Stmt {
     let started_at = Instant::now();
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .stmt_rewrite_calls
         .fetch_add(1, Ordering::Relaxed);
     let rewritten = match stmt {
@@ -6091,7 +6088,7 @@ fn rewrite_stmt_calls_for_project(
         },
         _ => stmt.clone(),
     };
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .stmt_rewrite_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
     rewritten
@@ -6119,7 +6116,7 @@ fn rewrite_expr_calls_for_project(
     scopes: &mut Vec<HashSet<String>>,
 ) -> Expr {
     let started_at = Instant::now();
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .expr_rewrite_calls
         .fetch_add(1, Ordering::Relaxed);
     let rewritten = match expr {
@@ -8533,7 +8530,7 @@ fn rewrite_expr_calls_for_project(
         }
         _ => expr.clone(),
     };
-    REWRITE_TIMING_TOTALS
+    REWRITE_INTERNAL_TIMING_TOTALS
         .expr_rewrite_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
     rewritten

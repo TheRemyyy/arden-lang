@@ -3,18 +3,25 @@
 mod ast;
 mod bindgen;
 mod borrowck;
+mod cache;
 mod codegen;
+mod dependency;
+mod diagnostics;
 mod formatter;
 mod import_check;
 mod lexer;
+mod linker;
 mod lint;
 mod lsp;
-mod namespace;
 mod parser;
 mod project;
 mod project_rewrite;
+mod specialization;
 mod stdlib;
+mod symbol_lookup;
 mod test_runner;
+#[cfg(test)]
+mod tests;
 mod typeck;
 
 use clap::{Parser as ClapParser, Subcommand};
@@ -32,13 +39,27 @@ use std::time::UNIX_EPOCH;
 
 use crate::ast::{Block, Decl, Expr, ImportDecl, Pattern, Program, Stmt, Type};
 use crate::borrowck::BorrowChecker;
+use crate::cache::*;
 use crate::codegen::Codegen;
+use crate::dependency::*;
+use crate::diagnostics::*;
 use crate::import_check::ImportChecker;
+use crate::linker::*;
 use crate::parser::{parse_type_source, Parser};
 use crate::project::{find_project_root, OutputKind, ProjectConfig};
+use crate::specialization::*;
 use crate::stdlib::stdlib_registry;
+use crate::symbol_lookup::*;
 use crate::test_runner::{discover_tests, generate_test_runner_with_source, print_discovery};
 use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary, TypeChecker};
+
+#[derive(Clone)]
+struct ObjectCodegenShard {
+    member_indices: Vec<usize>,
+    member_files: Vec<PathBuf>,
+    member_fingerprints: Vec<ObjectShardMemberFingerprint>,
+    cache_paths: Option<ObjectShardCachePaths>,
+}
 
 #[derive(ClapParser)]
 #[command(name = "apex")]
@@ -272,20 +293,6 @@ fn current_dir_checked() -> Result<PathBuf, String> {
     })
 }
 
-mod cache;
-mod dependency;
-mod diagnostics;
-mod linker;
-mod specialization;
-mod symbol_lookup;
-
-use crate::cache::*;
-use crate::dependency::*;
-use crate::diagnostics::*;
-use crate::linker::*;
-use crate::specialization::*;
-use crate::symbol_lookup::*;
-
 fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectUnit, String> {
     let filename = file
         .file_name()
@@ -439,109 +446,73 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
     let mut referenced_symbols = HashSet::new();
     let mut qualified_symbol_refs: HashSet<Vec<String>> = HashSet::new();
 
-    fn collect_function_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
-        match decl {
-            Decl::Function(func) => {
-                if let Some(module_name) = module_prefix {
-                    out.push(format!("{}__{}", module_name, func.name));
-                } else {
-                    out.push(func.name.clone());
-                }
-            }
-            Decl::Module(module) => {
-                let next_prefix = if let Some(prefix) = module_prefix {
-                    format!("{}__{}", prefix, module.name)
-                } else {
-                    module.name.clone()
-                };
-                for inner in &module.declarations {
-                    collect_function_names(&inner.node, Some(next_prefix.clone()), out);
-                }
-            }
-            Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
-        }
+    fn nested_decl_name(module_prefix: &Option<String>, name: &str) -> String {
+        module_prefix
+            .as_ref()
+            .map(|module_name| format!("{module_name}__{name}"))
+            .unwrap_or_else(|| name.to_string())
     }
 
-    fn collect_class_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
-        match decl {
-            Decl::Class(class) => {
-                if let Some(module_name) = module_prefix {
-                    out.push(format!("{}__{}", module_name, class.name));
-                } else {
-                    out.push(class.name.clone());
-                }
-            }
-            Decl::Module(module) => {
-                let next_prefix = if let Some(prefix) = module_prefix {
-                    format!("{}__{}", prefix, module.name)
-                } else {
-                    module.name.clone()
-                };
-                for inner in &module.declarations {
-                    collect_class_names(&inner.node, Some(next_prefix.clone()), out);
-                }
-            }
-            Decl::Function(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
-        }
+    fn next_module_prefix(module_prefix: &Option<String>, module_name: &str) -> String {
+        module_prefix
+            .as_ref()
+            .map(|prefix| format!("{prefix}__{module_name}"))
+            .unwrap_or_else(|| module_name.to_string())
     }
 
-    fn collect_enum_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
-        match decl {
-            Decl::Enum(en) => {
-                if let Some(module_name) = module_prefix {
-                    out.push(format!("{}__{}", module_name, en.name));
-                } else {
-                    out.push(en.name.clone());
-                }
-            }
-            Decl::Module(module) => {
-                let next_prefix = if let Some(prefix) = module_prefix {
-                    format!("{}__{}", prefix, module.name)
-                } else {
-                    module.name.clone()
-                };
-                for inner in &module.declarations {
-                    collect_enum_names(&inner.node, Some(next_prefix.clone()), out);
-                }
-            }
-            Decl::Function(_) | Decl::Class(_) | Decl::Interface(_) | Decl::Import(_) => {}
+    fn collect_decl_names(
+        decl: &Decl,
+        module_prefix: Option<String>,
+        out: &mut Vec<String>,
+        include_modules: bool,
+        select_name: fn(&Decl) -> Option<&str>,
+    ) {
+        if let Some(name) = select_name(decl) {
+            out.push(nested_decl_name(&module_prefix, name));
         }
-    }
 
-    fn collect_interface_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
-        match decl {
-            Decl::Interface(interface) => {
-                if let Some(module_name) = module_prefix {
-                    out.push(format!("{}__{}", module_name, interface.name));
-                } else {
-                    out.push(interface.name.clone());
-                }
-            }
-            Decl::Module(module) => {
-                let next_prefix = if let Some(prefix) = module_prefix {
-                    format!("{}__{}", prefix, module.name)
-                } else {
-                    module.name.clone()
-                };
-                for inner in &module.declarations {
-                    collect_interface_names(&inner.node, Some(next_prefix.clone()), out);
-                }
-            }
-            Decl::Function(_) | Decl::Class(_) | Decl::Enum(_) | Decl::Import(_) => {}
-        }
-    }
-
-    fn collect_module_names(decl: &Decl, module_prefix: Option<String>, out: &mut Vec<String>) {
         if let Decl::Module(module) = decl {
-            let full_name = if let Some(prefix) = module_prefix {
-                format!("{}__{}", prefix, module.name)
-            } else {
-                module.name.clone()
-            };
-            out.push(full_name.clone());
-            for inner in &module.declarations {
-                collect_module_names(&inner.node, Some(full_name.clone()), out);
+            let full_name = next_module_prefix(&module_prefix, &module.name);
+            if include_modules {
+                out.push(full_name.clone());
             }
+            for inner in &module.declarations {
+                collect_decl_names(
+                    &inner.node,
+                    Some(full_name.clone()),
+                    out,
+                    include_modules,
+                    select_name,
+                );
+            }
+        }
+    }
+
+    fn function_decl_name(decl: &Decl) -> Option<&str> {
+        match decl {
+            Decl::Function(func) => Some(&func.name),
+            _ => None,
+        }
+    }
+
+    fn class_decl_name(decl: &Decl) -> Option<&str> {
+        match decl {
+            Decl::Class(class) => Some(&class.name),
+            _ => None,
+        }
+    }
+
+    fn interface_decl_name(decl: &Decl) -> Option<&str> {
+        match decl {
+            Decl::Interface(interface) => Some(&interface.name),
+            _ => None,
+        }
+    }
+
+    fn enum_decl_name(decl: &Decl) -> Option<&str> {
+        match decl {
+            Decl::Enum(en) => Some(&en.name),
+            _ => None,
         }
     }
 
@@ -965,13 +936,31 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
     } else {
         for decl in &program.declarations {
             match &decl.node {
-                Decl::Function(_) => collect_function_names(&decl.node, None, &mut function_names),
+                Decl::Function(_) => collect_decl_names(
+                    &decl.node,
+                    None,
+                    &mut function_names,
+                    false,
+                    function_decl_name,
+                ),
                 Decl::Module(_) => {
-                    collect_module_names(&decl.node, None, &mut module_names);
-                    collect_function_names(&decl.node, None, &mut function_names);
-                    collect_class_names(&decl.node, None, &mut class_names);
-                    collect_interface_names(&decl.node, None, &mut interface_names);
-                    collect_enum_names(&decl.node, None, &mut enum_names);
+                    collect_decl_names(&decl.node, None, &mut module_names, true, |_| None);
+                    collect_decl_names(
+                        &decl.node,
+                        None,
+                        &mut function_names,
+                        false,
+                        function_decl_name,
+                    );
+                    collect_decl_names(&decl.node, None, &mut class_names, false, class_decl_name);
+                    collect_decl_names(
+                        &decl.node,
+                        None,
+                        &mut interface_names,
+                        false,
+                        interface_decl_name,
+                    );
+                    collect_decl_names(&decl.node, None, &mut enum_names, false, enum_decl_name);
                 }
                 Decl::Class(class) => class_names.push(class.name.clone()),
                 Decl::Interface(interface) => interface_names.push(interface.name.clone()),
@@ -2229,7 +2218,7 @@ fn build_project(
 
     // Phase 3: Build combined AST with deterministic namespace mangling.
     project_rewrite::reset_rewrite_timings();
-    let rewrite_timing_totals = Arc::new(RewriteTimingTotals::default());
+    let rewrite_timing_totals = Arc::new(PipelineRewriteTimingTotals::default());
     let rewrite_fingerprint_timing_totals = Arc::new(RewriteFingerprintTimingTotals::default());
     let rewritten_results: Vec<Result<RewrittenProjectUnit, String>> =
         build_timings.measure("rewrite", || {
@@ -2965,14 +2954,6 @@ fn build_project(
             .iter()
             .filter(|unit| !unit.active_symbols.is_empty())
             .count();
-        #[derive(Clone)]
-        struct ObjectCodegenShard {
-            member_indices: Vec<usize>,
-            member_files: Vec<PathBuf>,
-            member_fingerprints: Vec<ObjectShardMemberFingerprint>,
-            cache_paths: Option<ObjectShardCachePaths>,
-        }
-
         let active_indices = rewritten_files
             .iter()
             .enumerate()
@@ -5068,362 +5049,4 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
         eprintln!("{} {} binding(s)", "Generated".green().bold(), count);
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        api_program_fingerprint, build_file_dependency_graph_incremental, build_project,
-        build_project_symbol_lookup, build_reverse_dependency_graph, can_reuse_safe_rewrite_cache,
-        check_command, check_file, codegen_program_for_unit, compile_file, compile_source,
-        component_fingerprint, compute_link_fingerprint, compute_namespace_api_fingerprints,
-        compute_rewrite_context_fingerprint_for_unit, dedupe_link_inputs, escape_response_file_arg,
-        find_test_files, fix_target, format_targets, lex_file, lint_target,
-        load_cached_fingerprint, load_link_manifest_cache, load_object_shard_cache_hit,
-        load_semantic_cached_fingerprint, new_project, object_shard_cache_key,
-        object_shard_cache_paths, parse_file, parse_project_unit,
-        precompute_all_transitive_dependencies, read_cache_blob, reusable_component_fingerprints,
-        run_project, run_tests, save_object_shard_cache_meta, semantic_program_fingerprint,
-        should_skip_final_link, show_project_info, transitive_dependencies_from_precomputed,
-        transitive_dependents, typecheck_summary_cache_from_state, typecheck_summary_cache_matches,
-        DependencyGraphCache, DependencyGraphFileEntry, DependencyResolutionContext, LinkConfig,
-        LinkManifestCache, ObjectShardMemberFingerprint, OutputKind, ParsedFileCacheEntry,
-        ParsedProjectUnit, RewriteFingerprintContext, RewrittenProjectUnit,
-        DEPENDENCY_GRAPH_CACHE_SCHEMA, LINK_MANIFEST_CACHE_SCHEMA,
-    };
-    use crate::ast::Program;
-    use crate::borrowck::BorrowChecker;
-    use crate::formatter::format_program_canonical;
-    use crate::parser::Parser;
-    use crate::typeck::TypeChecker;
-    use std::collections::{HashMap, HashSet};
-    use std::fs;
-
-    use std::path::Path;
-    use std::path::PathBuf;
-
-    use std::sync::{Arc, Mutex, OnceLock};
-
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    pub fn parse_program(source: &str) -> Program {
-        let tokens = crate::lexer::tokenize(source).expect("tokenize");
-        let mut parser = Parser::new(tokens);
-        parser.parse_program().expect("parse")
-    }
-
-    pub fn fingerprint_for(source: &str) -> String {
-        let program = parse_program(source);
-        semantic_program_fingerprint(&program)
-    }
-
-    pub fn rewrite_fingerprint_for_test_unit(
-        parsed_files: &[ParsedProjectUnit],
-        target_file: &Path,
-        entry_namespace: &str,
-    ) -> String {
-        let (
-            _namespace_files_map,
-            namespace_function_files,
-            namespace_class_files,
-            namespace_module_files,
-            global_function_map,
-            global_function_file_map,
-            global_class_map,
-            global_class_file_map,
-            global_enum_map,
-            global_enum_file_map,
-            global_module_map,
-            global_module_file_map,
-        ) = collect_project_symbol_maps(parsed_files);
-        let namespace_functions = parsed_files.iter().fold(
-            HashMap::<String, HashSet<String>>::new(),
-            |mut acc, unit| {
-                acc.entry(unit.namespace.clone())
-                    .or_default()
-                    .extend(unit.function_names.iter().cloned());
-                acc
-            },
-        );
-        let namespace_classes = parsed_files.iter().fold(
-            HashMap::<String, HashSet<String>>::new(),
-            |mut acc, unit| {
-                acc.entry(unit.namespace.clone())
-                    .or_default()
-                    .extend(unit.class_names.iter().cloned());
-                acc
-            },
-        );
-        let namespace_modules = parsed_files.iter().fold(
-            HashMap::<String, HashSet<String>>::new(),
-            |mut acc, unit| {
-                acc.entry(unit.namespace.clone())
-                    .or_default()
-                    .extend(unit.module_names.iter().cloned());
-                acc
-            },
-        );
-        let namespace_api_fingerprints = compute_namespace_api_fingerprints(parsed_files);
-        let file_api_fingerprints = parsed_files
-            .iter()
-            .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
-            .collect::<HashMap<_, _>>();
-        let namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-        let global_interface_map: HashMap<String, String> = HashMap::new();
-        let global_interface_file_map: HashMap<String, PathBuf> = HashMap::new();
-        let symbol_lookup = Arc::new(build_project_symbol_lookup(
-            &global_function_map,
-            &global_function_file_map,
-            &global_class_map,
-            &global_class_file_map,
-            &global_interface_map,
-            &global_interface_file_map,
-            &global_enum_map,
-            &global_enum_file_map,
-            &global_module_map,
-            &global_module_file_map,
-        ));
-        let rewrite_ctx = RewriteFingerprintContext {
-            namespace_functions: &namespace_functions,
-            namespace_function_files: &namespace_function_files,
-            global_function_map: &global_function_map,
-            global_function_file_map: &global_function_file_map,
-            namespace_classes: &namespace_classes,
-            namespace_class_files: &namespace_class_files,
-            global_class_map: &global_class_map,
-            global_class_file_map: &global_class_file_map,
-            namespace_interface_files: &namespace_interface_files,
-            global_interface_map: &global_interface_map,
-            global_interface_file_map: &global_interface_file_map,
-            global_enum_map: &global_enum_map,
-            global_enum_file_map: &global_enum_file_map,
-            namespace_modules: &namespace_modules,
-            namespace_module_files: &namespace_module_files,
-            global_module_map: &global_module_map,
-            global_module_file_map: &global_module_file_map,
-            namespace_api_fingerprints: &namespace_api_fingerprints,
-            file_api_fingerprints: &file_api_fingerprints,
-            symbol_lookup: Arc::clone(&symbol_lookup),
-        };
-        let target_unit = parsed_files
-            .iter()
-            .find(|u| u.file == target_file)
-            .expect("target unit");
-        compute_rewrite_context_fingerprint_for_unit(target_unit, entry_namespace, &rewrite_ctx)
-    }
-
-    pub fn assert_frontend_pipeline_ok(source: &str) {
-        let program = parse_program(source);
-
-        let mut type_checker = TypeChecker::new(source.to_string());
-        if let Err(errors) = type_checker.check(&program) {
-            panic!(
-                "type check failed: {}",
-                errors
-                    .into_iter()
-                    .map(|e| e.message)
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
-        }
-
-        let mut borrow_checker = BorrowChecker::new();
-        if let Err(errors) = borrow_checker.check(&program) {
-            panic!(
-                "borrow check failed: {}",
-                errors
-                    .into_iter()
-                    .map(|e| e.message)
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
-        }
-
-        let formatted = format_program_canonical(&program);
-        let reparsed = parse_program(&formatted);
-
-        let mut type_checker = TypeChecker::new(formatted.clone());
-        if let Err(errors) = type_checker.check(&reparsed) {
-            panic!(
-                "type check after format failed: {}",
-                errors
-                    .into_iter()
-                    .map(|e| e.message)
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
-        }
-
-        let mut borrow_checker = BorrowChecker::new();
-        if let Err(errors) = borrow_checker.check(&reparsed) {
-            panic!(
-                "borrow check after format failed: {}",
-                errors
-                    .into_iter()
-                    .map(|e| e.message)
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
-        }
-    }
-
-    pub fn make_temp_project_root(tag: &str) -> PathBuf {
-        let base_temp = std::env::temp_dir()
-            .canonicalize()
-            .unwrap_or_else(|_| std::env::temp_dir());
-        let temp_root = base_temp.join(format!(
-            "apex-project-smoke-{}-{}-{}",
-            tag,
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("time")
-                .as_nanos()
-        ));
-        fs::create_dir_all(temp_root.join("src")).expect("create temp project src dir");
-        temp_root
-    }
-
-    pub fn normalize_output(bytes: &[u8]) -> String {
-        String::from_utf8_lossy(bytes).replace("\r\n", "\n")
-    }
-
-    pub fn cli_test_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
-
-    pub struct CwdRestore {
-        previous: PathBuf,
-    }
-
-    impl Drop for CwdRestore {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.previous);
-        }
-    }
-
-    pub fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
-        let _lock = cli_test_lock()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let previous = std::env::current_dir().expect("current dir");
-        std::env::set_current_dir(dir).expect("set current dir");
-        let _restore = CwdRestore { previous };
-        f()
-    }
-
-    pub fn write_test_project_config(root: &Path, files: &[&str], entry: &str, output: &str) {
-        let files_toml = files
-            .iter()
-            .map(|file| format!("\"{}\"", file))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let config = format!(
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"{}\"\nfiles = [{}]\noutput = \"{}\"\n",
-            entry, files_toml, output
-        );
-        fs::write(root.join("apex.toml"), config).expect("write apex.toml");
-    }
-
-    #[allow(clippy::type_complexity)]
-    pub fn collect_project_symbol_maps(
-        parsed_files: &[ParsedProjectUnit],
-    ) -> (
-        HashMap<String, Vec<PathBuf>>,
-        HashMap<String, HashMap<String, PathBuf>>,
-        HashMap<String, HashMap<String, PathBuf>>,
-        HashMap<String, HashMap<String, PathBuf>>,
-        HashMap<String, String>,
-        HashMap<String, PathBuf>,
-        HashMap<String, String>,
-        HashMap<String, PathBuf>,
-        HashMap<String, String>,
-        HashMap<String, PathBuf>,
-        HashMap<String, String>,
-        HashMap<String, PathBuf>,
-    ) {
-        let mut namespace_files_map = HashMap::new();
-        let mut namespace_function_files = HashMap::new();
-        let mut namespace_class_files = HashMap::new();
-        let mut namespace_module_files = HashMap::new();
-        let mut global_function_map = HashMap::new();
-        let mut global_function_file_map = HashMap::new();
-        let mut global_class_map = HashMap::new();
-        let mut global_class_file_map = HashMap::new();
-        let mut global_enum_map = HashMap::new();
-        let mut global_enum_file_map = HashMap::new();
-        let mut global_module_map = HashMap::new();
-        let mut global_module_file_map = HashMap::new();
-
-        for unit in parsed_files {
-            namespace_files_map
-                .entry(unit.namespace.clone())
-                .or_insert_with(Vec::new)
-                .push(unit.file.clone());
-            for module_name in &unit.module_names {
-                namespace_files_map
-                    .entry(format!(
-                        "{}.{}",
-                        unit.namespace,
-                        module_name.replace("__", ".")
-                    ))
-                    .or_insert_with(Vec::new)
-                    .push(unit.file.clone());
-            }
-            for name in &unit.function_names {
-                namespace_function_files
-                    .entry(unit.namespace.clone())
-                    .or_insert_with(HashMap::new)
-                    .insert(name.clone(), unit.file.clone());
-                global_function_map.insert(name.clone(), unit.namespace.clone());
-                global_function_file_map.insert(name.clone(), unit.file.clone());
-            }
-            for name in &unit.class_names {
-                namespace_class_files
-                    .entry(unit.namespace.clone())
-                    .or_insert_with(HashMap::new)
-                    .insert(name.clone(), unit.file.clone());
-                global_class_map.insert(name.clone(), unit.namespace.clone());
-                global_class_file_map.insert(name.clone(), unit.file.clone());
-            }
-            for name in &unit.enum_names {
-                global_enum_map.insert(name.clone(), unit.namespace.clone());
-                global_enum_file_map.insert(name.clone(), unit.file.clone());
-            }
-            for name in &unit.module_names {
-                namespace_module_files
-                    .entry(unit.namespace.clone())
-                    .or_insert_with(HashMap::new)
-                    .insert(name.clone(), unit.file.clone());
-                global_module_map.insert(name.clone(), unit.namespace.clone());
-                global_module_file_map.insert(name.clone(), unit.file.clone());
-            }
-        }
-
-        for files in namespace_files_map.values_mut() {
-            files.sort();
-            files.dedup();
-        }
-
-        (
-            namespace_files_map,
-            namespace_function_files,
-            namespace_class_files,
-            namespace_module_files,
-            global_function_map,
-            global_function_file_map,
-            global_class_map,
-            global_class_file_map,
-            global_enum_map,
-            global_enum_file_map,
-            global_module_map,
-            global_module_file_map,
-        )
-    }
-
-    mod cli;
-    mod compile_source;
-    mod project;
-    mod typeck_frontend;
 }

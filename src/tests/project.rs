@@ -1,75 +1,5 @@
 #[allow(unused_imports)]
-use super::{
-    api_program_fingerprint,
-    assert_frontend_pipeline_ok,
-    build_file_dependency_graph_incremental,
-    build_project,
-    build_project_symbol_lookup,
-    build_reverse_dependency_graph,
-    can_reuse_safe_rewrite_cache,
-    check_command,
-    check_file,
-    cli_test_lock,
-    codegen_program_for_unit,
-    collect_project_symbol_maps,
-    compile_file,
-    compile_source,
-    component_fingerprint,
-    compute_link_fingerprint,
-    compute_namespace_api_fingerprints,
-    compute_rewrite_context_fingerprint_for_unit,
-    dedupe_link_inputs,
-    escape_response_file_arg,
-    find_test_files,
-    fingerprint_for,
-    fix_target,
-    format_targets,
-    lex_file,
-    lint_target,
-    load_cached_fingerprint,
-    load_link_manifest_cache,
-    load_object_shard_cache_hit,
-    load_semantic_cached_fingerprint,
-    make_temp_project_root,
-    new_project,
-    normalize_output,
-    object_shard_cache_key,
-    object_shard_cache_paths,
-    parse_file,
-    // Test helpers
-    parse_program,
-    parse_project_unit,
-    precompute_all_transitive_dependencies,
-    read_cache_blob,
-    reusable_component_fingerprints,
-    rewrite_fingerprint_for_test_unit,
-    run_project,
-    run_tests,
-    save_object_shard_cache_meta,
-    semantic_program_fingerprint,
-    should_skip_final_link,
-    show_project_info,
-    transitive_dependencies_from_precomputed,
-    transitive_dependents,
-    typecheck_summary_cache_from_state,
-    typecheck_summary_cache_matches,
-    with_current_dir,
-    write_test_project_config,
-    CwdRestore,
-    DependencyGraphCache,
-    DependencyGraphFileEntry,
-    DependencyResolutionContext,
-    LinkConfig,
-    LinkManifestCache,
-    ObjectShardMemberFingerprint,
-    OutputKind,
-    ParsedFileCacheEntry,
-    ParsedProjectUnit,
-    RewriteFingerprintContext,
-    RewrittenProjectUnit,
-    DEPENDENCY_GRAPH_CACHE_SCHEMA,
-    LINK_MANIFEST_CACHE_SCHEMA,
-};
+use super::*;
 use crate::ast::{
     Decl, Expr, FunctionDecl, ImportDecl, Literal, Program, Spanned, Stmt, Type, Visibility,
 };
@@ -5566,20 +5496,7 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         parse_project_unit(&temp_root, &main_file).expect("parse main before"),
         parse_project_unit(&temp_root, &helper_file).expect("parse helper before"),
     ];
-    let (
-        _namespace_files_map_before,
-        namespace_function_files_before,
-        namespace_class_files_before,
-        namespace_module_files_before,
-        global_function_map_before,
-        global_function_file_map_before,
-        global_class_map_before,
-        global_class_file_map_before,
-        global_enum_map_before,
-        global_enum_file_map_before,
-        global_module_map_before,
-        global_module_file_map_before,
-    ) = collect_project_symbol_maps(&parsed_before);
+    let symbol_maps_before = collect_project_symbol_maps(&parsed_before);
     let namespace_functions_before = parsed_before.iter().fold(
         HashMap::<String, HashSet<String>>::new(),
         |mut acc, unit| {
@@ -5614,35 +5531,35 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         .collect::<HashMap<_, _>>();
     let rewrite_ctx_before = RewriteFingerprintContext {
         namespace_functions: &namespace_functions_before,
-        namespace_function_files: &namespace_function_files_before,
-        global_function_map: &global_function_map_before,
-        global_function_file_map: &global_function_file_map_before,
+        namespace_function_files: &symbol_maps_before.namespace_function_files,
+        global_function_map: &symbol_maps_before.global_function_map,
+        global_function_file_map: &symbol_maps_before.global_function_file_map,
         namespace_classes: &namespace_classes_before,
-        namespace_class_files: &namespace_class_files_before,
+        namespace_class_files: &symbol_maps_before.namespace_class_files,
         namespace_interface_files: empty_namespace_interface_files(),
-        global_class_map: &global_class_map_before,
-        global_class_file_map: &global_class_file_map_before,
+        global_class_map: &symbol_maps_before.global_class_map,
+        global_class_file_map: &symbol_maps_before.global_class_file_map,
         global_interface_map: empty_global_interface_map(),
         global_interface_file_map: empty_global_interface_file_map(),
-        global_enum_map: &global_enum_map_before,
-        global_enum_file_map: &global_enum_file_map_before,
+        global_enum_map: &symbol_maps_before.global_enum_map,
+        global_enum_file_map: &symbol_maps_before.global_enum_file_map,
         namespace_modules: &namespace_modules_before,
-        namespace_module_files: &namespace_module_files_before,
-        global_module_map: &global_module_map_before,
-        global_module_file_map: &global_module_file_map_before,
+        namespace_module_files: &symbol_maps_before.namespace_module_files,
+        global_module_map: &symbol_maps_before.global_module_map,
+        global_module_file_map: &symbol_maps_before.global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints_before,
         file_api_fingerprints: &file_api_fingerprints_before,
         symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &global_function_map_before,
-            &global_function_file_map_before,
-            &global_class_map_before,
-            &global_class_file_map_before,
+            &symbol_maps_before.global_function_map,
+            &symbol_maps_before.global_function_file_map,
+            &symbol_maps_before.global_class_map,
+            &symbol_maps_before.global_class_file_map,
             empty_global_interface_map(),
             empty_global_interface_file_map(),
-            &global_enum_map_before,
-            &global_enum_file_map_before,
-            &global_module_map_before,
-            &global_module_file_map_before,
+            &symbol_maps_before.global_enum_map,
+            &symbol_maps_before.global_enum_file_map,
+            &symbol_maps_before.global_module_map,
+            &symbol_maps_before.global_module_file_map,
         )),
     };
     let main_before = parsed_before
@@ -5676,7 +5593,7 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         global_enum_file_map,
         global_module_map,
         global_module_file_map,
-    ) = collect_project_symbol_maps(&parsed_files);
+    ) = collect_project_symbol_maps(&parsed_files).into_parts();
     let namespace_functions = parsed_files.iter().fold(
         HashMap::<String, HashSet<String>>::new(),
         |mut acc, unit| {
@@ -5794,7 +5711,7 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         global_enum_file_map_before,
         global_module_map_before,
         global_module_file_map_before,
-    ) = collect_project_symbol_maps(&parsed_before);
+    ) = collect_project_symbol_maps(&parsed_before).into_parts();
     let namespace_functions_before = parsed_before.iter().fold(
         HashMap::<String, HashSet<String>>::new(),
         |mut acc, unit| {
@@ -5878,20 +5795,7 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         parse_project_unit(&temp_root, &main_file).expect("parse main"),
         parse_project_unit(&temp_root, &helper_file).expect("parse helper"),
     ];
-    let (
-        _namespace_files_map,
-        namespace_function_files,
-        namespace_class_files,
-        namespace_module_files,
-        global_function_map,
-        global_function_file_map,
-        global_class_map,
-        global_class_file_map,
-        global_enum_map,
-        global_enum_file_map,
-        global_module_map,
-        global_module_file_map,
-    ) = collect_project_symbol_maps(&parsed_files);
+    let symbol_maps = collect_project_symbol_maps(&parsed_files);
     let namespace_functions = parsed_files.iter().fold(
         HashMap::<String, HashSet<String>>::new(),
         |mut acc, unit| {
@@ -5926,35 +5830,35 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         .collect::<HashMap<_, _>>();
     let rewrite_ctx = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
-        namespace_function_files: &namespace_function_files,
-        global_function_map: &global_function_map,
-        global_function_file_map: &global_function_file_map,
+        namespace_function_files: &symbol_maps.namespace_function_files,
+        global_function_map: &symbol_maps.global_function_map,
+        global_function_file_map: &symbol_maps.global_function_file_map,
         namespace_classes: &namespace_classes,
-        namespace_class_files: &namespace_class_files,
+        namespace_class_files: &symbol_maps.namespace_class_files,
         namespace_interface_files: empty_namespace_interface_files(),
-        global_class_map: &global_class_map,
-        global_class_file_map: &global_class_file_map,
+        global_class_map: &symbol_maps.global_class_map,
+        global_class_file_map: &symbol_maps.global_class_file_map,
         global_interface_map: empty_global_interface_map(),
         global_interface_file_map: empty_global_interface_file_map(),
-        global_enum_map: &global_enum_map,
-        global_enum_file_map: &global_enum_file_map,
+        global_enum_map: &symbol_maps.global_enum_map,
+        global_enum_file_map: &symbol_maps.global_enum_file_map,
         namespace_modules: &namespace_modules,
-        namespace_module_files: &namespace_module_files,
-        global_module_map: &global_module_map,
-        global_module_file_map: &global_module_file_map,
+        namespace_module_files: &symbol_maps.namespace_module_files,
+        global_module_map: &symbol_maps.global_module_map,
+        global_module_file_map: &symbol_maps.global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
         file_api_fingerprints: &file_api_fingerprints,
         symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &global_function_map,
-            &global_function_file_map,
-            &global_class_map,
-            &global_class_file_map,
+            &symbol_maps.global_function_map,
+            &symbol_maps.global_function_file_map,
+            &symbol_maps.global_class_map,
+            &symbol_maps.global_class_file_map,
             empty_global_interface_map(),
             empty_global_interface_file_map(),
-            &global_enum_map,
-            &global_enum_file_map,
-            &global_module_map,
-            &global_module_file_map,
+            &symbol_maps.global_enum_map,
+            &symbol_maps.global_enum_file_map,
+            &symbol_maps.global_module_map,
+            &symbol_maps.global_module_file_map,
         )),
     };
     let main_unit = parsed_files
@@ -6314,7 +6218,7 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
         global_enum_file_map_before,
         global_module_map_before,
         global_module_file_map_before,
-    ) = collect_project_symbol_maps(&parsed_before);
+    ) = collect_project_symbol_maps(&parsed_before).into_parts();
     let namespace_functions_before = parsed_before.iter().fold(
         HashMap::<String, HashSet<String>>::new(),
         |mut acc, unit| {
@@ -6408,7 +6312,7 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
         global_enum_file_map_after,
         global_module_map_after,
         global_module_file_map_after,
-    ) = collect_project_symbol_maps(&parsed_after);
+    ) = collect_project_symbol_maps(&parsed_after).into_parts();
     let namespace_functions_after = parsed_after.iter().fold(
         HashMap::<String, HashSet<String>>::new(),
         |mut acc, unit| {
@@ -6678,7 +6582,7 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_enum_file_map_before,
             global_module_map_before,
             global_module_file_map_before,
-        ) = collect_project_symbol_maps(&parsed_before);
+        ) = collect_project_symbol_maps(&parsed_before).into_parts();
         let namespace_functions_before = parsed_before.iter().fold(
             HashMap::<String, HashSet<String>>::new(),
             |mut acc, unit| {
@@ -6769,7 +6673,7 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_enum_file_map_after,
             global_module_map_after,
             global_module_file_map_after,
-        ) = collect_project_symbol_maps(&parsed_after);
+        ) = collect_project_symbol_maps(&parsed_after).into_parts();
         let namespace_functions_after = parsed_after.iter().fold(
             HashMap::<String, HashSet<String>>::new(),
             |mut acc, unit| {
@@ -6885,7 +6789,7 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_enum_file_map_before,
             global_module_map_before,
             global_module_file_map_before,
-        ) = collect_project_symbol_maps(&parsed_before);
+        ) = collect_project_symbol_maps(&parsed_before).into_parts();
         let namespace_functions_before = parsed_before.iter().fold(
             HashMap::<String, HashSet<String>>::new(),
             |mut acc, unit| {
@@ -6976,7 +6880,7 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_enum_file_map_after,
             global_module_map_after,
             global_module_file_map_after,
-        ) = collect_project_symbol_maps(&parsed_after);
+        ) = collect_project_symbol_maps(&parsed_after).into_parts();
         let namespace_functions_after = parsed_after.iter().fold(
             HashMap::<String, HashSet<String>>::new(),
             |mut acc, unit| {
@@ -7718,7 +7622,7 @@ fn parsed_dependency_graph_tracks_nested_module_wildcard_import_owner_files() {
         global_enum_file_map,
         global_module_map,
         global_module_file_map,
-    ) = collect_project_symbol_maps(&parsed_files);
+    ) = collect_project_symbol_maps(&parsed_files).into_parts();
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
         namespace_function_files: &namespace_function_files,
