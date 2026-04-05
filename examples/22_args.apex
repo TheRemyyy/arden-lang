@@ -2,6 +2,7 @@
 // Tests: Args.count, Args.get
 
 import std.io.*;
+import std.args.*;
 
 function main(): None {
     println("=== Command Line Arguments Test ===");

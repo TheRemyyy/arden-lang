@@ -735,17 +735,11 @@ impl BorrowChecker {
                 // Borrows created to satisfy receiver/argument modes are
                 // temporary for this call expression.
                 self.enter_scope();
-                if let Some(behavior) = self.resolve_call_receiver_behavior(&callee.node) {
-                    if let Expr::Field { object, .. } = &callee.node {
-                        self.apply_receiver_mode(
-                            &object.node,
-                            behavior.mode,
-                            behavior.require_mutable_binding,
-                            callee.span.clone(),
-                        );
-                    }
-                }
 
+                // Arguments are evaluated before the call itself, so check them
+                // before applying the receiver borrow. This allows patterns like
+                // `xs.set(i, xs.get(j))` where argument borrows are released
+                // before the mutable receiver borrow for the outer call takes effect.
                 let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
 
                 for (i, arg) in args.iter().enumerate() {
@@ -768,6 +762,19 @@ impl BorrowChecker {
                         }
                     }
                 }
+
+                // Apply receiver borrow after arguments have been evaluated.
+                if let Some(behavior) = self.resolve_call_receiver_behavior(&callee.node) {
+                    if let Expr::Field { object, .. } = &callee.node {
+                        self.apply_receiver_mode(
+                            &object.node,
+                            behavior.mode,
+                            behavior.require_mutable_binding,
+                            callee.span.clone(),
+                        );
+                    }
+                }
+
                 self.exit_scope();
             }
 

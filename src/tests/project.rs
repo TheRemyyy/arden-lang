@@ -74,7 +74,6 @@ use crate::ast::{
 };
 use std::collections::{HashMap, HashSet};
 use std::fs;
-#[cfg(not(windows))]
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
