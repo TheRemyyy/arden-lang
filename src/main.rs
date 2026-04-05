@@ -3081,6 +3081,18 @@ fn build_project(
                         let mut batch_active_symbols = HashSet::new();
                         let mut batch_declaration_symbols = HashSet::new();
                         let mut batch_closure_files = HashSet::new();
+                        let global_maps = GlobalSymbolMaps {
+                            function_map: &global_function_map,
+                            function_file_map: &global_function_file_map,
+                            class_map: &global_class_map,
+                            class_file_map: &global_class_file_map,
+                            interface_map: &global_interface_map,
+                            interface_file_map: &global_interface_file_map,
+                            enum_map: &global_enum_map,
+                            enum_file_map: &global_enum_file_map,
+                            module_map: &global_module_map,
+                            module_file_map: &global_module_file_map,
+                        };
                         for index in &shard.member_indices {
                             let unit = &rewritten_files[*index];
                             let declaration_closure = declaration_symbols_for_unit(
@@ -3090,16 +3102,7 @@ fn build_project(
                                 &codegen_reference_metadata,
                                 &entry_namespace,
                                 &project_symbol_lookup,
-                                &global_function_map,
-                                &global_function_file_map,
-                                &global_class_map,
-                                &global_class_file_map,
-                                &global_interface_map,
-                                &global_interface_file_map,
-                                &global_enum_map,
-                                &global_enum_file_map,
-                                &global_module_map,
-                                &global_module_file_map,
+                                &global_maps,
                                 Some(declaration_closure_timing_totals.as_ref()),
                             );
                             batch_active_symbols.extend(unit.active_symbols.iter().cloned());
@@ -4613,26 +4616,31 @@ fn format_parse_error(error: &parser::ParseError, source: &str, filename: &str) 
     }
 
     let mut output = String::new();
-    output.push_str(&format!("\x1b[1;31merror\x1b[0m: {}\n", error.message));
+    output.push_str(&format!("{}: {}\n", "error".red().bold(), error.message));
     output.push_str(&format!(
-        "  \x1b[1;34m-->\x1b[0m {}:{}:{}\n",
-        filename, line_num, col
+        "  {} {}:{}:{}\n",
+        "-->".blue().bold(),
+        filename,
+        line_num,
+        col
     ));
-    output.push_str("   \x1b[1;34m|\x1b[0m\n");
+    output.push_str(&format!("   {}\n", "|".blue().bold()));
 
     if line_num <= lines.len() {
         output.push_str(&format!(
-            "\x1b[1;34m{:3} |\x1b[0m {}\n",
-            line_num,
+            "{} {}\n",
+            format!("{:3} |", line_num).blue().bold(),
             lines[line_num - 1]
         ));
 
         let underline_start = col.saturating_sub(1);
         let underline_len = (error.span.end - error.span.start).max(1);
+        let carets = "^".repeat(underline_len.min(50));
         output.push_str(&format!(
-            "   \x1b[1;34m|\x1b[0m {}\x1b[1;31m{}\x1b[0m\n",
+            "   {} {}{}\n",
+            "|".blue().bold(),
             " ".repeat(underline_start),
-            "^".repeat(underline_len.min(50))
+            carets.red().bold()
         ));
     }
 
