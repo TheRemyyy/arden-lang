@@ -19292,7 +19292,8 @@ impl<'ctx> Codegen<'ctx> {
                 let path = self.compile_expr(&args[0].node)?;
                 let fopen = self.get_or_declare_fopen();
                 let fclose = self.get_or_declare_fclose();
-                let fseek = self.get_or_declare_fseek();
+                let fread = self.get_or_declare_fread();
+                let ferror = self.get_or_declare_ferror();
 
                 let mode = self.context.const_string(b"rb", true);
                 let mode_global = self.module.add_global(mode.get_type(), None, "mode_r");
@@ -19317,48 +19318,54 @@ impl<'ctx> Codegen<'ctx> {
                 self.builder
                     .build_store(alloca_exists_slot, self.context.bool_type().const_zero())
                     .unwrap();
-                let exists = self.builder.build_not(is_null, "exists").unwrap();
 
-                // Close if opened
                 let current_fn = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("File.exists used outside function"))?;
-                let close_block = self.context.append_basic_block(current_fn, "exists.close");
+                let probe_block = self.context.append_basic_block(current_fn, "exists.probe");
                 let end_block = self.context.append_basic_block(current_fn, "exists.end");
 
                 self.builder
-                    .build_conditional_branch(exists, close_block, end_block)
+                    .build_conditional_branch(is_null, end_block, probe_block)
                     .unwrap();
 
-                self.builder.position_at_end(close_block);
-                let seek_end = self.context.i32_type().const_int(2, false);
-                let seek_result = self
+                self.builder.position_at_end(probe_block);
+                let buf_slot = self
                     .builder
+                    .build_alloca(self.context.i8_type(), "exists_buf")
+                    .unwrap();
+                let one_i64 = self.context.i64_type().const_int(1, false);
+                self.builder
                     .build_call(
-                        fseek,
+                        fread,
                         &[
+                            buf_slot.into(),
+                            one_i64.into(),
+                            one_i64.into(),
                             file_ptr.into(),
-                            self.context.i64_type().const_zero().into(),
-                            seek_end.into(),
                         ],
-                        "exists_seek_result",
+                        "",
                     )
                     .unwrap();
-                let seek_code = self.extract_call_value(seek_result)?.into_int_value();
+                let err_call = self
+                    .builder
+                    .build_call(ferror, &[file_ptr.into()], "exists_err")
+                    .unwrap();
+                let err_code = self.extract_call_value(err_call)?.into_int_value();
                 self.builder
                     .build_call(fclose, &[file_ptr.into()], "")
                     .unwrap();
-                let seek_ok = self
+                let is_regular = self
                     .builder
                     .build_int_compare(
                         IntPredicate::EQ,
-                        seek_code,
+                        err_code,
                         self.context.i32_type().const_zero(),
-                        "exists_seek_ok",
+                        "exists_is_regular",
                     )
                     .unwrap();
                 self.builder
-                    .build_store(alloca_exists_slot, seek_ok)
+                    .build_store(alloca_exists_slot, is_regular)
                     .unwrap();
                 self.builder.build_unconditional_branch(end_block).unwrap();
 
@@ -19385,7 +19392,8 @@ impl<'ctx> Codegen<'ctx> {
                 let path = self.compile_expr(&args[0].node)?;
                 let fopen = self.get_or_declare_fopen();
                 let fclose = self.get_or_declare_fclose();
-                let fseek = self.get_or_declare_fseek();
+                let fread = self.get_or_declare_fread();
+                let ferror = self.get_or_declare_ferror();
                 let remove = self.get_or_declare_remove();
 
                 let mode = self.context.const_string(b"rb", true);
@@ -19410,9 +19418,6 @@ impl<'ctx> Codegen<'ctx> {
                 let probe_open_bb = self
                     .context
                     .append_basic_block(current_fn, "file_delete_probe_open");
-                let probe_closed_bb = self
-                    .context
-                    .append_basic_block(current_fn, "file_delete_probe_closed");
                 let delete_remove_bb = self
                     .context
                     .append_basic_block(current_fn, "file_delete_remove");
@@ -19435,43 +19440,46 @@ impl<'ctx> Codegen<'ctx> {
                     .build_is_null(file_ptr, "delete_probe_is_null")
                     .unwrap();
                 self.builder
-                    .build_conditional_branch(probe_is_null, probe_closed_bb, probe_open_bb)
+                    .build_conditional_branch(probe_is_null, delete_fail_bb, probe_open_bb)
                     .unwrap();
 
                 self.builder.position_at_end(probe_open_bb);
-                let seek_end = self.context.i32_type().const_int(2, false);
-                let seek_result = self
+                let buf_slot = self
                     .builder
+                    .build_alloca(self.context.i8_type(), "delete_probe_buf")
+                    .unwrap();
+                let one_i64 = self.context.i64_type().const_int(1, false);
+                self.builder
                     .build_call(
-                        fseek,
+                        fread,
                         &[
+                            buf_slot.into(),
+                            one_i64.into(),
+                            one_i64.into(),
                             file_ptr.into(),
-                            self.context.i64_type().const_zero().into(),
-                            seek_end.into(),
                         ],
-                        "delete_probe_seek",
+                        "",
                     )
                     .unwrap();
-                let seek_code = self.extract_call_value(seek_result)?.into_int_value();
+                let err_call = self
+                    .builder
+                    .build_call(ferror, &[file_ptr.into()], "delete_probe_err")
+                    .unwrap();
+                let err_code = self.extract_call_value(err_call)?.into_int_value();
                 self.builder
                     .build_call(fclose, &[file_ptr.into()], "delete_probe_close")
                     .unwrap();
-                let seek_ok = self
+                let probe_is_regular = self
                     .builder
                     .build_int_compare(
                         IntPredicate::EQ,
-                        seek_code,
+                        err_code,
                         self.context.i32_type().const_zero(),
-                        "delete_probe_seek_ok",
+                        "delete_probe_is_regular",
                     )
                     .unwrap();
                 self.builder
-                    .build_conditional_branch(seek_ok, delete_remove_bb, delete_fail_bb)
-                    .unwrap();
-
-                self.builder.position_at_end(probe_closed_bb);
-                self.builder
-                    .build_unconditional_branch(delete_remove_bb)
+                    .build_conditional_branch(probe_is_regular, delete_remove_bb, delete_fail_bb)
                     .unwrap();
 
                 self.builder.position_at_end(delete_remove_bb);

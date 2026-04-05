@@ -1,9 +1,11 @@
-use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use crate::ast::{self, Block, Decl, Expr, Program, Spanned, Stmt, Type};
 use crate::cache::*;
-use crate::parser::parse_type_source;
 use crate::formatter;
+use crate::parser::parse_type_source;
+use std::collections::{HashMap, HashSet};
+#[cfg(test)]
+use std::path::Path;
+use std::path::PathBuf;
 pub(crate) fn empty_block() -> Block {
     Vec::new()
 }
@@ -732,7 +734,11 @@ pub(crate) fn combined_program_for_files(rewritten_files: &[RewrittenProjectUnit
     program
 }
 
-pub(crate) fn mangle_project_symbol_for_codegen(namespace: &str, entry_namespace: &str, name: &str) -> String {
+pub(crate) fn mangle_project_symbol_for_codegen(
+    namespace: &str,
+    entry_namespace: &str,
+    name: &str,
+) -> String {
     if name == "main" && namespace == entry_namespace {
         "main".to_string()
     } else {
@@ -743,4 +749,3 @@ pub(crate) fn mangle_project_symbol_for_codegen(namespace: &str, entry_namespace
 pub(crate) fn mangle_project_nominal_symbol_for_codegen(namespace: &str, name: &str) -> String {
     format!("{}__{}", namespace.replace('.', "__"), name)
 }
-

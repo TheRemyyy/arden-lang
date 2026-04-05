@@ -1,3 +1,9 @@
+use crate::ast::{Decl, ImportDecl, Program, Spanned};
+use crate::dependency::*;
+use crate::formatter;
+use crate::linker::*;
+use crate::project::ProjectConfig;
+use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary};
 use colored::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -11,12 +17,6 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::time::UNIX_EPOCH;
 use twox_hash::XxHash64;
-use crate::ast::{Decl, ImportDecl, Program, Spanned};
-use crate::formatter;
-use crate::project::ProjectConfig;
-use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary};
-use crate::dependency::*;
-use crate::linker::*;
 pub(crate) fn project_cache_file(project_root: &Path) -> PathBuf {
     project_root.join(".apexcache").join("build_fingerprint")
 }
@@ -48,7 +48,10 @@ pub(crate) fn read_cache_blob_raw(path: &Path, label: &str) -> Result<Option<Vec
     Ok(Some(raw))
 }
 
-pub(crate) fn read_cache_blob<T: DeserializeOwned>(path: &Path, label: &str) -> Result<Option<T>, String> {
+pub(crate) fn read_cache_blob<T: DeserializeOwned>(
+    path: &Path,
+    label: &str,
+) -> Result<Option<T>, String> {
     let Some(raw) = read_cache_blob_raw(path, label)? else {
         return Ok(None);
     };
@@ -94,7 +97,11 @@ pub(crate) fn read_cache_blob_with_timing<T: DeserializeOwned>(
     Ok(Some(value))
 }
 
-pub(crate) fn write_cache_blob<T: Serialize>(path: &Path, label: &str, value: &T) -> Result<(), String> {
+pub(crate) fn write_cache_blob<T: Serialize>(
+    path: &Path,
+    label: &str,
+    value: &T,
+) -> Result<(), String> {
     let bytes = bincode::serialize(value).map_err(|e| {
         format!(
             "{}: Failed to serialize {} '{}': {}",
@@ -235,7 +242,9 @@ pub(crate) fn load_cached_fingerprint(project_root: &Path) -> Result<Option<Stri
     Ok(Some(fingerprint))
 }
 
-pub(crate) fn load_semantic_cached_fingerprint(project_root: &Path) -> Result<Option<String>, String> {
+pub(crate) fn load_semantic_cached_fingerprint(
+    project_root: &Path,
+) -> Result<Option<String>, String> {
     let cache_file = semantic_project_cache_file(project_root);
     if !cache_file.exists() {
         return Ok(None);
@@ -256,7 +265,10 @@ pub(crate) fn load_semantic_cached_fingerprint(project_root: &Path) -> Result<Op
     Ok(Some(fingerprint))
 }
 
-pub(crate) fn save_cached_fingerprint(project_root: &Path, fingerprint: &str) -> Result<(), String> {
+pub(crate) fn save_cached_fingerprint(
+    project_root: &Path,
+    fingerprint: &str,
+) -> Result<(), String> {
     let cache_file = project_cache_file(project_root);
     if let Some(parent) = cache_file.parent() {
         fs::create_dir_all(parent).map_err(|e| {
@@ -278,7 +290,10 @@ pub(crate) fn save_cached_fingerprint(project_root: &Path, fingerprint: &str) ->
     })
 }
 
-pub(crate) fn save_semantic_cached_fingerprint(project_root: &Path, fingerprint: &str) -> Result<(), String> {
+pub(crate) fn save_semantic_cached_fingerprint(
+    project_root: &Path,
+    fingerprint: &str,
+) -> Result<(), String> {
     let cache_file = semantic_project_cache_file(project_root);
     if let Some(parent) = cache_file.parent() {
         fs::create_dir_all(parent).map_err(|e| {
@@ -434,7 +449,8 @@ pub(crate) struct SymbolLookupResolution {
 
 pub(crate) type SharedSymbolLookupResolution = Arc<SymbolLookupResolution>;
 pub(crate) type ExactSymbolLookup = HashMap<String, Option<SharedSymbolLookupResolution>>;
-pub(crate) type WildcardMemberLookup = HashMap<String, HashMap<String, Option<SharedSymbolLookupResolution>>>;
+pub(crate) type WildcardMemberLookup =
+    HashMap<String, HashMap<String, Option<SharedSymbolLookupResolution>>>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProjectSymbolLookup {
@@ -1692,7 +1708,10 @@ pub(crate) fn normalized_object_shard_members(
     normalized
 }
 
-pub(crate) fn object_shard_cache_paths(project_root: &Path, files: &[PathBuf]) -> ObjectShardCachePaths {
+pub(crate) fn object_shard_cache_paths(
+    project_root: &Path,
+    files: &[PathBuf],
+) -> ObjectShardCachePaths {
     let key = object_shard_cache_key(files);
     ObjectShardCachePaths {
         object_path: project_root
@@ -1746,7 +1765,9 @@ pub(crate) fn dedupe_link_inputs(link_inputs: Vec<PathBuf>) -> Vec<PathBuf> {
     deduped
 }
 
-pub(crate) fn load_link_manifest_cache(project_root: &Path) -> Result<Option<LinkManifestCache>, String> {
+pub(crate) fn load_link_manifest_cache(
+    project_root: &Path,
+) -> Result<Option<LinkManifestCache>, String> {
     let path = link_manifest_cache_path(project_root);
     let cache: LinkManifestCache = match read_cache_blob(&path, "link manifest cache")? {
         Some(cache) => cache,
@@ -1760,7 +1781,10 @@ pub(crate) fn load_link_manifest_cache(project_root: &Path) -> Result<Option<Lin
     Ok(Some(cache))
 }
 
-pub(crate) fn save_link_manifest_cache(project_root: &Path, cache: &LinkManifestCache) -> Result<(), String> {
+pub(crate) fn save_link_manifest_cache(
+    project_root: &Path,
+    cache: &LinkManifestCache,
+) -> Result<(), String> {
     let path = link_manifest_cache_path(project_root);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
@@ -2009,7 +2033,9 @@ pub(crate) fn compute_namespace_api_fingerprints(
     result
 }
 
-pub(crate) fn collect_known_namespace_paths_for_units(parsed_files: &[ParsedProjectUnit]) -> HashSet<String> {
+pub(crate) fn collect_known_namespace_paths_for_units(
+    parsed_files: &[ParsedProjectUnit],
+) -> HashSet<String> {
     let mut paths = HashSet::new();
     fn collect_enum_variant_paths(
         paths: &mut HashSet<String>,
@@ -2101,4 +2127,3 @@ pub(crate) fn hash_file_api_fingerprint(
         fingerprint.hash(hasher);
     }
 }
-
