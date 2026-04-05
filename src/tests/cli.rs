@@ -1,0 +1,1249 @@
+#[allow(unused_imports)]
+use super::{
+    api_program_fingerprint,
+    assert_frontend_pipeline_ok,
+    build_file_dependency_graph_incremental,
+    build_project,
+    build_project_symbol_lookup,
+    build_reverse_dependency_graph,
+    can_reuse_safe_rewrite_cache,
+    check_command,
+    check_file,
+    cli_test_lock,
+    codegen_program_for_unit,
+    collect_project_symbol_maps,
+    compile_file,
+    compile_source,
+    component_fingerprint,
+    compute_link_fingerprint,
+    compute_namespace_api_fingerprints,
+    compute_rewrite_context_fingerprint_for_unit,
+    dedupe_link_inputs,
+    escape_response_file_arg,
+    find_test_files,
+    fingerprint_for,
+    fix_target,
+    format_targets,
+    lex_file,
+    lint_target,
+    load_cached_fingerprint,
+    load_link_manifest_cache,
+    load_object_shard_cache_hit,
+    load_semantic_cached_fingerprint,
+    make_temp_project_root,
+    new_project,
+    object_shard_cache_key,
+    object_shard_cache_paths,
+    parse_file,
+    // Test helpers
+    parse_program,
+    parse_project_unit,
+    precompute_all_transitive_dependencies,
+    read_cache_blob,
+    reusable_component_fingerprints,
+    rewrite_fingerprint_for_test_unit,
+    run_project,
+    run_tests,
+    save_object_shard_cache_meta,
+    semantic_program_fingerprint,
+    should_skip_final_link,
+    show_project_info,
+    transitive_dependencies_from_precomputed,
+    transitive_dependents,
+    typecheck_summary_cache_from_state,
+    typecheck_summary_cache_matches,
+    with_current_dir,
+    write_test_project_config,
+    CwdRestore,
+    DependencyGraphCache,
+    DependencyGraphFileEntry,
+    DependencyResolutionContext,
+    LinkConfig,
+    LinkManifestCache,
+    ObjectShardMemberFingerprint,
+    OutputKind,
+    ParsedFileCacheEntry,
+    ParsedProjectUnit,
+    RewriteFingerprintContext,
+    RewrittenProjectUnit,
+    DEPENDENCY_GRAPH_CACHE_SCHEMA,
+    LINK_MANIFEST_CACHE_SCHEMA,
+};
+use crate::collect_apex_files;
+use std::fs;
+#[cfg(not(windows))]
+use std::path::Path;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[test]
+fn cli_check_command_succeeds_for_temp_project() {
+    let temp_root = make_temp_project_root("cli-check");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/helper.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nfunction main(): None { value: Integer = helper(); return None; }\n",
+    )
+    .expect("write main");
+    fs::write(
+        src_dir.join("helper.apex"),
+        "package app;\nfunction helper(): Integer { return 1; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        check_command(None, false).expect("project check should pass");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_format_targets_checks_and_formats_project_files() {
+    let temp_root = make_temp_project_root("cli-fmt");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    let main_file = src_dir.join("main.apex");
+    fs::write(
+        &main_file,
+        "function main(): None {println(\"hi\");return None;}\n",
+    )
+    .expect("write unformatted file");
+
+    with_current_dir(&temp_root, || {
+        let err = format_targets(None, true).expect_err("format check should fail before fmt");
+        assert!(err.contains("format check failed"), "{err}");
+        format_targets(None, false).expect("format should succeed");
+        format_targets(None, true).expect("format check should pass after fmt");
+    });
+
+    let formatted = fs::read_to_string(&main_file).expect("read formatted file");
+    assert!(
+        formatted.contains("function main(): None {\n"),
+        "{formatted}"
+    );
+    assert!(formatted.contains("    println(\"hi\");\n"), "{formatted}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_lists_filtered_tests_in_directory() {
+    let temp_root = make_temp_project_root("cli-test-list");
+    let test_file = temp_root.join("smoke_test.apex");
+    fs::write(
+        &test_file,
+        r#"
+                @Test
+                function smokeAlpha(): None { return None; }
+
+                @Test
+                function otherBeta(): None { return None; }
+            "#,
+    )
+    .expect("write test file");
+
+    run_tests(Some(&temp_root), true, Some("smoke")).expect("test listing should succeed");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_recurses_into_nested_test_directories() {
+    let temp_root = make_temp_project_root("cli-test-nested");
+    let nested_dir = temp_root.join("tests").join("unit");
+    fs::create_dir_all(&nested_dir).expect("create nested test dir");
+    let nested_test = nested_dir.join("math_spec.apex");
+    fs::write(
+        &nested_test,
+        r#"
+                @Test
+                function nestedSpec(): None { return None; }
+            "#,
+    )
+    .expect("write nested test file");
+
+    run_tests(Some(&temp_root.join("tests")), true, Some("nested"))
+        .expect("nested directory test listing should succeed");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_discovers_mixed_case_test_filenames() {
+    let temp_root = make_temp_project_root("cli-test-mixed-case");
+    let test_file = temp_root.join("MathTest.apex");
+    fs::write(
+        &test_file,
+        r#"
+                @Test
+                function mixedCase(): None { return None; }
+            "#,
+    )
+    .expect("write mixed-case test file");
+
+    run_tests(Some(&temp_root), true, Some("mixedCase"))
+        .expect("mixed-case test discovery should succeed");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_errors_for_missing_directory() {
+    let temp_root = make_temp_project_root("cli-test-missing-dir");
+    let missing_dir = temp_root.join("missing-tests");
+
+    let err =
+        run_tests(Some(&missing_dir), true, None).expect_err("missing test directory should error");
+    assert!(
+        err.contains("does not exist"),
+        "expected missing directory error, got: {err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_rejects_non_apex_file_paths() {
+    let temp_root = make_temp_project_root("cli-test-non-apex");
+    let text_file = temp_root.join("notes.txt");
+    fs::write(
+        &text_file,
+        "@Test\nfunction nope(): None { return None; }\n",
+    )
+    .expect("write non-apex file");
+
+    let err = run_tests(Some(&text_file), true, None).expect_err("non-apex file path should fail");
+    assert!(
+        err.contains("is not an .apex file"),
+        "expected non-apex file error, got: {err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_reports_source_context_for_parse_errors() {
+    let temp_root = make_temp_project_root("cli-test-parse-source-context");
+    let test_file = temp_root.join("broken_test.apex");
+    fs::write(
+        &test_file,
+        "@Test\nfunction broken(: None { return None; }\n",
+    )
+    .expect("write malformed test source");
+
+    let err = run_tests(Some(&test_file), true, None)
+        .expect_err("test command should report parse source context");
+    assert!(err.contains("broken_test.apex:2:"), "{err}");
+    assert!(err.contains("-->"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_without_path_uses_project_file_list_only() {
+    let temp_root = make_temp_project_root("cli-test-project-default");
+    let src_dir = temp_root.join("src");
+    let examples_dir = temp_root.join("examples");
+    fs::create_dir_all(&examples_dir).expect("create examples dir");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/math_test.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nfunction main(): None { return None; }\n",
+    )
+    .expect("write main");
+    fs::write(
+        src_dir.join("math_test.apex"),
+        "@Test\nfunction listedTest(): None { return None; }\n",
+    )
+    .expect("write listed test");
+    fs::write(
+        examples_dir.join("broken_test.apex"),
+        "@Test\nfunction broken(: None { return None; }\n",
+    )
+    .expect("write stray broken test");
+
+    with_current_dir(&temp_root, || {
+        run_tests(None, true, Some("listedTest"))
+            .expect("default project test discovery should ignore non-project files");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_without_path_executes_tests_in_non_test_named_project_files() {
+    let temp_root = make_temp_project_root("cli-test-project-non-test-filename");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    fs::write(
+            src_dir.join("main.apex"),
+            "@Test\nfunction smokeFromMain(): None { assert_eq(2 + 2, 4); return None; }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main with test");
+
+    with_current_dir(&temp_root, || {
+        run_tests(None, false, Some("smokeFromMain")).expect(
+            "project default test discovery should execute tests from non-test-named files",
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_does_not_delete_existing_test_runner_neighbor_files() {
+    let temp_root = make_temp_project_root("cli-test-runner-neighbor-files");
+    let test_file = temp_root.join("smoke_test.apex");
+    let existing_runner = temp_root.join("smoke_test.test_runner.apex");
+    let existing_exe = temp_root.join("smoke_test.test_runner.exe");
+    fs::write(
+        &test_file,
+        r#"
+                @Test
+                function smoke(): None { return None; }
+            "#,
+    )
+    .expect("write test file");
+    fs::write(&existing_runner, "keep me\n").expect("write neighboring runner file");
+    fs::write(&existing_exe, "keep me too\n").expect("write neighboring exe file");
+
+    run_tests(Some(&test_file), false, Some("smoke"))
+        .expect("test execution should succeed without touching neighboring files");
+
+    assert_eq!(
+        fs::read_to_string(&existing_runner).expect("read neighboring runner"),
+        "keep me\n"
+    );
+    assert_eq!(
+        fs::read_to_string(&existing_exe).expect("read neighboring exe"),
+        "keep me too\n"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_executes_project_local_alias_import_tests() {
+    let temp_root = make_temp_project_root("cli-test-project-alias-imports");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex", "src/math_spec.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nfunction main(): Integer { return 0; }\n",
+    )
+    .expect("write main");
+    fs::write(
+            src_dir.join("lib.apex"),
+            "package lib;\nmodule Math {\n    class Box<T> { value: T; constructor(value: T) { this.value = value; } function get(): T { return this.value; } }\n}\n",
+        )
+        .expect("write lib");
+    fs::write(
+            src_dir.join("math_spec.apex"),
+            "package tests;\nimport lib as l;\n@Test\nfunction aliasImportTest(): None { value: Integer = l.Math.Box<Integer>(3).get(); assert_eq(value, 3); return None; }\n",
+        )
+        .expect("write test");
+
+    with_current_dir(&temp_root, || {
+        run_tests(None, false, Some("aliasImportTest"))
+            .expect("project-local alias imports in tests should run successfully");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_build_reports_import_check_errors_only_once() {
+    let _lock = cli_test_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let temp_root = make_temp_project_root("cli-build-import-check-single-print");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/helper.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+            temp_root.join("src/main.apex"),
+            "package app;\nimport app as root;\nfunction main(): Integer { value: root.M.Box = root.M.Box(7); return value.value; }\n",
+        )
+        .expect("write main");
+    fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { class Box { value: Integer; constructor(value: Integer) { this.value = value; } } }\n",
+        )
+        .expect("write helper");
+
+    let status = Command::new("cargo")
+        .arg("run")
+        .arg("--quiet")
+        .arg("--manifest-path")
+        .arg(env!("CARGO_MANIFEST_DIR").to_string() + "/Cargo.toml")
+        .arg("--")
+        .arg("build")
+        .current_dir(&temp_root)
+        .status()
+        .expect("run initial project build");
+    assert!(status.success(), "initial build should succeed");
+
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    fs::write(
+            temp_root.join("src/helper.apex"),
+            "package app;\nmodule M { class Other { value: Integer; constructor(value: Integer) { this.value = value; } } }\n",
+        )
+        .expect("rewrite helper without imported constructor symbol");
+
+    let output = Command::new("cargo")
+        .arg("run")
+        .arg("--quiet")
+        .arg("--manifest-path")
+        .arg(env!("CARGO_MANIFEST_DIR").to_string() + "/Cargo.toml")
+        .arg("--")
+        .arg("build")
+        .current_dir(&temp_root)
+        .output()
+        .expect("run stale-import build");
+    assert!(
+        !output.status.success(),
+        "stale import build should fail: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Imported namespace alias 'root' has no member 'M.Box'"),
+        "{stderr}"
+    );
+    assert_eq!(
+        stderr
+            .matches("Imported namespace alias 'root' has no member 'M.Box'")
+            .count(),
+        1,
+        "{stderr}"
+    );
+    assert_eq!(stderr.matches("Import check failed").count(), 1, "{stderr}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_accepts_relative_project_file_path() {
+    let temp_root = make_temp_project_root("cli-test-relative-project-file");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    fs::write(
+            src_dir.join("main.apex"),
+            "package app;\n@Test\nfunction smoke(): None { assert_eq(1, 1); return None; }\nfunction main(): Integer { return 0; }\n",
+        )
+        .expect("write main test file");
+
+    with_current_dir(&temp_root, || {
+        run_tests(Some(Path::new("src/main.apex")), false, Some("smoke"))
+            .expect("relative project file path should execute tests");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_accepts_relative_single_file_path_in_current_directory() {
+    let temp_root = make_temp_project_root("cli-test-relative-single-file");
+    let test_file = temp_root.join("smoke_test.apex");
+    fs::write(
+        &test_file,
+        "@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .expect("write test file");
+
+    with_current_dir(&temp_root, || {
+        run_tests(Some(Path::new("smoke_test.apex")), false, Some("smoke"))
+            .expect("relative single-file path should execute tests");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_skips_before_hooks_for_ignored_tests() {
+    let temp_root = make_temp_project_root("cli-test-ignore-skips-before");
+    let test_file = temp_root.join("ignored_before_test.apex");
+    fs::write(
+        &test_file,
+        r#"
+                @Before
+                function setup(): None { fail("before hook should not run for ignored test"); }
+
+                @Test
+                @Ignore("later")
+                function skipped(): None { return None; }
+            "#,
+    )
+    .expect("write ignored before test");
+
+    run_tests(Some(&test_file), false, Some("skipped"))
+        .expect("ignored test should skip before hook execution");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_skips_after_hooks_for_ignored_tests() {
+    let temp_root = make_temp_project_root("cli-test-ignore-skips-after");
+    let test_file = temp_root.join("ignored_after_test.apex");
+    fs::write(
+        &test_file,
+        r#"
+                @After
+                function teardown(): None { fail("after hook should not run for ignored test"); }
+
+                @Test
+                @Ignore("later")
+                function skipped(): None { return None; }
+            "#,
+    )
+    .expect("write ignored after test");
+
+    run_tests(Some(&test_file), false, Some("skipped"))
+        .expect("ignored test should skip after hook execution");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_run_tests_accepts_ignore_reasons_with_literal_braces() {
+    let temp_root = make_temp_project_root("cli-test-ignore-reason-braces");
+    let test_file = temp_root.join("ignored_braces_test.apex");
+    fs::write(
+        &test_file,
+        "@Test\n@Ignore(\"\\{danger\\}\")\nfunction skipped(): None { return None; }\n",
+    )
+    .expect("write ignored braces test");
+
+    run_tests(Some(&test_file), false, Some("skipped"))
+        .expect("ignored test reason with literal braces should execute cleanly");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_run_tests_skips_symlinked_directories() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = make_temp_project_root("cli-test-symlink-dir");
+    let tests_dir = temp_root.join("tests");
+    let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
+        "apex-outside-tests-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tests_dir).expect("create tests dir");
+    fs::create_dir_all(&outside_dir).expect("create outside dir");
+    fs::write(
+        outside_dir.join("escape_test.apex"),
+        "@Test\nfunction escaped(): None { return None; }\n",
+    )
+    .expect("write outside test");
+    symlink(&outside_dir, tests_dir.join("linked-outside")).expect("create dir symlink");
+
+    let files =
+        find_test_files(&tests_dir).expect("test discovery should skip symlink directories");
+    assert!(
+        files.is_empty(),
+        "symlinked outside directory should not be traversed: {files:?}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+    let _ = fs::remove_dir_all(outside_dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_run_tests_rejects_symlinked_file_paths_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = make_temp_project_root("cli-test-symlink-file");
+    let outside_file = temp_root.parent().expect("temp root parent").join(format!(
+        "apex-outside-test-file-{}-{}.apex",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    let linked_file = temp_root.join("linked_test.apex");
+    fs::write(
+        &outside_file,
+        "@Test\nfunction escaped(): None { return None; }\n",
+    )
+    .expect("write outside test file");
+    symlink(&outside_file, &linked_file).expect("create file symlink");
+
+    let err = run_tests(Some(&linked_file), true, None)
+        .expect_err("test command should reject symlinked files escaping the root");
+    assert!(
+        err.contains("resolves outside the requested directory tree"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+    let _ = fs::remove_file(outside_file);
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_run_tests_accepts_symlinked_file_paths_inside_root() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = make_temp_project_root("cli-test-safe-symlink-file");
+    let real_file = temp_root.join("real_test.apex");
+    let linked_file = temp_root.join("linked_test.apex");
+    fs::write(
+        &real_file,
+        "@Test\nfunction smoke(): None { return None; }\n",
+    )
+    .expect("write real test file");
+    symlink(&real_file, &linked_file).expect("create file symlink");
+
+    run_tests(Some(&linked_file), true, Some("smoke"))
+        .expect("safe in-tree symlinked test file should be accepted");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_run_tests_rejects_paths_through_symlinked_directories() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = make_temp_project_root("cli-test-symlink-ancestor");
+    let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
+        "apex-outside-test-dir-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    let linked_dir = temp_root.join("linked-tests");
+    let linked_file = linked_dir.join("escape_test.apex");
+    fs::create_dir_all(&outside_dir).expect("create outside dir");
+    fs::write(
+        outside_dir.join("escape_test.apex"),
+        "@Test\nfunction escaped(): None { return None; }\n",
+    )
+    .expect("write outside test");
+    symlink(&outside_dir, &linked_dir).expect("create dir symlink");
+
+    let err = run_tests(Some(&linked_file), true, None)
+        .expect_err("test command should reject symlinked ancestor directories");
+    assert!(
+        err.contains("must not traverse symlinked directories"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+    let _ = fs::remove_dir_all(outside_dir);
+}
+
+#[test]
+fn cli_format_targets_rejects_project_files_outside_root() {
+    let temp_root = make_temp_project_root("cli-fmt-outside-root");
+    let outside_file = temp_root.parent().expect("temp root parent").join(format!(
+        "apex-outside-format-{}-{}.apex",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::write(&outside_file, "function stray(): None { return None; }\n")
+        .expect("write outside file");
+    let rel_outside = format!(
+        "../{}",
+        outside_file
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("outside file name")
+    );
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", &rel_outside],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "package app;\nfunction main(): None { return None; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        let err = format_targets(None, true)
+            .expect_err("fmt should reject project files outside the root");
+        assert!(
+            err.contains("resolves outside the project root"),
+            "expected outside-root validation error, got: {err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+    let _ = fs::remove_file(outside_file);
+}
+
+#[cfg(unix)]
+#[test]
+fn collect_apex_files_skips_symlinked_directories() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = make_temp_project_root("collect-apex-symlink-dir");
+    let real_dir = temp_root.join("real");
+    let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
+        "apex-outside-dir-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&real_dir).expect("create real dir");
+    fs::create_dir_all(&outside_dir).expect("create outside dir");
+    let inside_file = real_dir.join("inside.apex");
+    let outside_file = outside_dir.join("outside.apex");
+    fs::write(&inside_file, "function inside(): None { return None; }\n")
+        .expect("write inside file");
+    fs::write(&outside_file, "function outside(): None { return None; }\n")
+        .expect("write outside file");
+    symlink(&outside_dir, temp_root.join("linked-outside")).expect("create dir symlink");
+
+    let files =
+        collect_apex_files(&temp_root).expect("collect_apex_files should skip symlink dirs");
+    assert!(
+        files.contains(&inside_file),
+        "expected real apex file to be discovered: {files:?}"
+    );
+    assert!(
+        !files.contains(&outside_file),
+        "symlinked outside directory should not be traversed: {files:?}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+    let _ = fs::remove_dir_all(outside_dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn collect_apex_files_rejects_symlinked_file_paths_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = make_temp_project_root("collect-apex-symlink-file");
+    let outside_file = temp_root.parent().expect("temp root parent").join(format!(
+        "apex-outside-format-file-{}-{}.apex",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    let linked_file = temp_root.join("linked_format.apex");
+    fs::write(&outside_file, "function escaped(): None { return None; }\n")
+        .expect("write outside file");
+    symlink(&outside_file, &linked_file).expect("create file symlink");
+
+    let err = collect_apex_files(&linked_file)
+        .expect_err("fmt file collection should reject symlinked files escaping the root");
+    assert!(
+        err.contains("resolves outside the requested directory tree"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+    let _ = fs::remove_file(outside_file);
+}
+
+#[cfg(unix)]
+#[test]
+fn collect_apex_files_accepts_symlinked_file_paths_inside_root() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = make_temp_project_root("collect-apex-safe-symlink-file");
+    let real_file = temp_root.join("real.apex");
+    let linked_file = temp_root.join("linked.apex");
+    fs::write(&real_file, "function smoke(): None { return None; }\n")
+        .expect("write real apex file");
+    symlink(&real_file, &linked_file).expect("create file symlink");
+
+    let files = collect_apex_files(&linked_file)
+        .expect("safe in-tree symlinked apex file should be accepted");
+    assert_eq!(files, vec![linked_file]);
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn collect_apex_files_rejects_paths_through_symlinked_directories() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = make_temp_project_root("collect-apex-symlink-ancestor");
+    let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
+        "apex-outside-format-dir-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    let linked_dir = temp_root.join("linked-format");
+    let linked_file = linked_dir.join("escape.apex");
+    fs::create_dir_all(&outside_dir).expect("create outside dir");
+    fs::write(
+        outside_dir.join("escape.apex"),
+        "function escaped(): None { return None; }\n",
+    )
+    .expect("write outside file");
+    symlink(&outside_dir, &linked_dir).expect("create dir symlink");
+
+    let err = collect_apex_files(&linked_file)
+        .expect_err("fmt file collection should reject symlinked ancestor directories");
+    assert!(
+        err.contains("must not traverse symlinked directories"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+    let _ = fs::remove_dir_all(outside_dir);
+}
+
+#[test]
+fn cli_lint_target_rejects_entry_outside_root() {
+    let temp_root = make_temp_project_root("cli-lint-outside-root");
+    let outside_file = temp_root.parent().expect("temp root parent").join(format!(
+        "apex-outside-lint-{}-{}.apex",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::write(&outside_file, "function stray(): None { return None; }\n")
+        .expect("write outside file");
+    let rel_outside = format!(
+        "../{}",
+        outside_file
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("outside file name")
+    );
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", &rel_outside],
+        &rel_outside,
+        "smoke",
+    );
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "package app;\nfunction helper(): None { return None; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        let err = lint_target(None).expect_err("lint should reject entry outside the root");
+        assert!(
+            err.contains("resolves outside the project root"),
+            "expected outside-root validation error, got: {err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+    let _ = fs::remove_file(outside_file);
+}
+
+#[test]
+fn cli_lint_target_rejects_directory_paths() {
+    let temp_root = make_temp_project_root("cli-lint-dir-path");
+
+    let err = lint_target(Some(&temp_root)).expect_err("lint should reject directory paths");
+    assert!(
+        err.contains("is not a file"),
+        "expected directory path validation error, got: {err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_info_rejects_invalid_project_opt_level() {
+    let temp_root = make_temp_project_root("cli-info-invalid-opt-level");
+    fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\nopt_level = \"turbo\"\n",
+        )
+        .expect("write apex.toml");
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "function main(): None { return None; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        let err = show_project_info().expect_err("info should reject invalid opt level");
+        assert!(err.contains("Invalid optimization level"), "{err}");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_info_rejects_non_apex_entry_path() {
+    let temp_root = make_temp_project_root("cli-info-non-apex-entry");
+    fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.txt\"\nfiles = [\"src/main.txt\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+    fs::write(temp_root.join("src/main.txt"), "not apex\n").expect("write main");
+
+    with_current_dir(&temp_root, || {
+        let err = show_project_info().expect_err("info should reject non-apex entry");
+        assert!(
+            err.contains("must resolve to an .apex source file")
+                || err.contains("is not an .apex file"),
+            "{err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_info_rejects_directory_entry_path() {
+    let temp_root = make_temp_project_root("cli-info-directory-entry");
+    fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "function main(): None { return None; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        let err = show_project_info().expect_err("info should reject directory entry path");
+        assert!(
+            err.contains("must resolve to a file") || err.contains("is not a file"),
+            "{err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_info_rejects_non_apex_secondary_file_path() {
+    let temp_root = make_temp_project_root("cli-info-non-apex-secondary-file");
+    fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.txt\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "function main(): None { return None; }\n",
+    )
+    .expect("write main");
+    fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        let err = show_project_info().expect_err("info should reject non-apex secondary file");
+        assert!(
+            err.contains("must resolve to an .apex source file")
+                || err.contains("is not an .apex file"),
+            "{err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_fix_target_rejects_non_apex_file_paths() {
+    let temp_root = make_temp_project_root("cli-fix-non-apex");
+    let text_file = temp_root.join("notes.txt");
+    fs::write(&text_file, "not apex\n").expect("write text file");
+
+    let err = fix_target(Some(&text_file)).expect_err("fix should reject non-apex files");
+    assert!(
+        err.contains("is not an .apex file"),
+        "expected non-apex validation error, got: {err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_lex_file_rejects_directory_paths() {
+    let temp_root = make_temp_project_root("cli-lex-dir-path");
+
+    let err = lex_file(&temp_root).expect_err("lex should reject directory paths");
+    assert!(
+        err.contains("is not a file"),
+        "expected directory path validation error, got: {err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_parse_file_rejects_directory_paths() {
+    let temp_root = make_temp_project_root("cli-parse-dir-path");
+
+    let err = parse_file(&temp_root).expect_err("parse should reject directory paths");
+    assert!(
+        err.contains("is not a file"),
+        "expected directory path validation error, got: {err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_parse_file_reports_source_context_for_parse_errors() {
+    let temp_root = make_temp_project_root("cli-parse-source-context");
+    let source_file = temp_root.join("broken.apex");
+    fs::write(&source_file, "function main(: None { return None; }\n")
+        .expect("write malformed source");
+
+    let err = parse_file(&source_file).expect_err("parse should report syntax error");
+    assert!(err.contains("broken.apex:1:"), "{err}");
+    assert!(err.contains("-->"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_compile_file_rejects_non_apex_paths() {
+    let temp_root = make_temp_project_root("cli-compile-non-apex");
+    let text_file = temp_root.join("notes.txt");
+    fs::write(&text_file, "not apex\n").expect("write text file");
+
+    let err = compile_file(&text_file, None, false, true, None, None)
+        .expect_err("compile should reject non-apex files");
+    assert!(
+        err.contains("is not an .apex file"),
+        "expected non-apex validation error, got: {err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_commands_consistently_reject_invalid_files_before_output_processing() {
+    let temp_root = make_temp_project_root("cli-invalid-file-before-output");
+    let text_file = temp_root.join("notes.txt");
+    let output_path = temp_root.join("nested/bin/app");
+    fs::write(&text_file, "not apex\n").expect("write text file");
+
+    let err = compile_file(&text_file, Some(&output_path), false, true, None, None)
+        .expect_err("compile should reject invalid source before touching output path");
+    assert!(err.contains("is not an .apex file"), "{err}");
+    assert!(
+        !output_path.exists(),
+        "output path should not be created on source validation failure"
+    );
+    assert!(
+        !output_path.parent().expect("parent").exists(),
+        "output parent should not be created on source validation failure"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_project_commands_consistently_report_invalid_file_list_entries() {
+    let temp_root = make_temp_project_root("cli-project-invalid-files-list-order");
+    fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/helper.txt\", \"src/main.apex\"]\noutput = \"smoke\"\n",
+        )
+        .expect("write apex.toml");
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "function main(): None { return None; }\n",
+    )
+    .expect("write main");
+    fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        let info_err =
+            show_project_info().expect_err("info should reject invalid files list entry");
+        let check_err = check_file(None).expect_err("check should reject invalid files list entry");
+        let lint_err = lint_target(None).expect_err("lint should reject invalid files list entry");
+        let build_err = build_project(false, false, true, true, false)
+            .expect_err("build should reject invalid files list entry");
+
+        for err in [info_err, check_err, lint_err, build_err] {
+            assert!(
+                err.contains("src/helper.txt") || err.contains("is not an .apex file"),
+                "{err}"
+            );
+        }
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_compile_creates_missing_output_parent_directory() {
+    let temp_root = make_temp_project_root("cli-compile-create-parent");
+    let source_file = temp_root.join("main.apex");
+    let output_path = temp_root.join("nested/bin/app");
+    fs::write(&source_file, "function main(): None { return None; }\n").expect("write source");
+
+    compile_file(&source_file, Some(&output_path), true, true, None, None)
+        .expect("compile should create missing output directories");
+
+    assert!(output_path.with_extension("ll").exists());
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_check_file_rejects_directory_paths() {
+    let temp_root = make_temp_project_root("cli-check-dir-path");
+
+    let err = check_file(Some(&temp_root)).expect_err("check should reject directory paths");
+    assert!(
+        err.contains("is not a file"),
+        "expected directory path validation error, got: {err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_check_file_rejects_non_apex_paths() {
+    let temp_root = make_temp_project_root("cli-check-non-apex");
+    let text_file = temp_root.join("notes.txt");
+    fs::write(&text_file, "not apex\n").expect("write text file");
+
+    let err = check_file(Some(&text_file)).expect_err("check should reject non-apex files");
+    assert!(
+        err.contains("is not an .apex file"),
+        "expected non-apex validation error, got: {err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_check_command_reports_cross_file_type_errors() {
+    let temp_root = make_temp_project_root("cli-check-type-error");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/helper.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nfunction main(): None { value: Integer = helper(); return None; }\n",
+    )
+    .expect("write main");
+    fs::write(
+        src_dir.join("helper.apex"),
+        "package app;\nfunction helper(): String { return \"oops\"; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        let err = check_command(None, false).expect_err("project check should fail");
+        assert!(
+            err.contains("Type mismatch")
+                || err.contains("expected Integer")
+                || err.contains("Expected Integer"),
+            "{err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_info_rejects_output_path_matching_project_config() {
+    let temp_root = make_temp_project_root("cli-info-output-config-collision");
+    fs::write(
+            temp_root.join("apex.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"apex.toml\"\n",
+        )
+        .expect("write apex.toml");
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "function main(): None { return None; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        let err = show_project_info()
+            .expect_err("info should reject output path matching project config");
+        assert!(err.contains("project config"), "{err}");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_check_command_reports_cross_file_borrow_errors() {
+    let temp_root = make_temp_project_root("cli-check-borrow-error");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/helper.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+            src_dir.join("main.apex"),
+            "package app;\nfunction main(): None { s: String = \"hello\"; consume(s); t: String = s; return None; }\n",
+        )
+        .expect("write main");
+    fs::write(
+        src_dir.join("helper.apex"),
+        "package app;\nfunction consume(owned s: String): None { return None; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        let err = check_command(None, false).expect_err("project check should fail");
+        assert!(
+            err.contains("Use of moved value 's'") || err.contains("moved value 's'"),
+            "{err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
