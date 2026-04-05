@@ -8686,15 +8686,14 @@ impl<'ctx> Codegen<'ctx> {
             .ok_or_else(|| CodegenError::new("failed to capture atomic load instruction"))?;
         inst.set_atomic_ordering(ordering)
             .map_err(|e| CodegenError::new(format!("failed to set atomic load ordering: {e}")))?;
-        Ok(self
-            .builder
+        self.builder
             .build_int_compare(
                 IntPredicate::NE,
                 raw,
                 self.context.i8_type().const_zero(),
                 &format!("{name}_bool"),
             )
-            .map_err(|e| CodegenError::new(format!("failed to compare atomic bool load: {e}")))?)
+            .map_err(|e| CodegenError::new(format!("failed to compare atomic bool load: {e}")))
     }
 
     fn build_atomic_bool_store(
@@ -8941,16 +8940,13 @@ impl<'ctx> Codegen<'ctx> {
             .build_store(thread_field, thread_val)
             .map_err(|e| CodegenError::new(format!("failed to store Task thread handle: {e}")))?;
 
-        Ok(self
-            .builder
+        self.builder
             .build_pointer_cast(
                 task_ptr,
                 self.context.ptr_type(AddressSpace::default()),
                 "task_raw",
             )
-            .map_err(|e| {
-                CodegenError::new(format!("failed to cast Task pointer for return: {e}"))
-            })?)
+            .map_err(|e| CodegenError::new(format!("failed to cast Task pointer for return: {e}")))
     }
 
     fn await_task(
