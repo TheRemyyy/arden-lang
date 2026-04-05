@@ -32,6 +32,7 @@ use super::{
     load_semantic_cached_fingerprint,
     make_temp_project_root,
     new_project,
+    normalize_output,
     object_shard_cache_key,
     object_shard_cache_paths,
     parse_file,
@@ -11438,7 +11439,7 @@ fn compile_source_runs_inline_mixed_numeric_if_interpolation_runtime() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -11471,7 +11472,7 @@ fn compile_source_runs_inline_mixed_numeric_match_interpolation_runtime() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -11537,7 +11538,7 @@ fn compile_source_runs_imported_unit_enum_variant_alias_match_expression_runtime
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -11571,7 +11572,7 @@ fn compile_source_runs_imported_unit_enum_variant_alias_patterns_runtime() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=2\n");
+    assert_eq!(normalize_output(&output.stdout), "value=2\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -12390,7 +12391,7 @@ fn compile_source_runs_if_expression_builtin_function_value_runtime() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -12426,7 +12427,7 @@ fn compile_source_runs_match_expression_builtin_function_value_runtime() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -12461,7 +12462,7 @@ fn compile_source_runs_option_some_builtin_function_value_runtime() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -12498,7 +12499,7 @@ fn compile_source_runs_if_expression_option_some_builtin_function_value_runtime(
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -12539,7 +12540,7 @@ fn compile_source_runs_match_expression_option_some_builtin_function_value_runti
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -12574,7 +12575,7 @@ fn compile_source_runs_result_ok_builtin_function_value_runtime() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -12613,7 +12614,7 @@ fn compile_source_runs_result_error_builtin_function_value_runtime() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "value=1.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "value=1.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }
