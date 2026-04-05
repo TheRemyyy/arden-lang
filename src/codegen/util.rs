@@ -2226,7 +2226,7 @@ impl<'ctx> Codegen<'ctx> {
                     self.infer_builtin_call_type(&callee.node, args)
                 }
                 Expr::Field { object, field } => {
-                    if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
+                    if let Some(path_parts) = crate::ast::flatten_field_chain(&callee.node) {
                         let full_path = path_parts.join(".");
                         if !type_args.is_empty() {
                             let normalized = self
@@ -3334,7 +3334,7 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
                 _ => {
-                    if let Some(path_parts) = Self::flatten_field_chain(&callee.node) {
+                    if let Some(path_parts) = crate::ast::flatten_field_chain(&callee.node) {
                         let full_path = path_parts.join(".");
                         if !type_args.is_empty() {
                             let normalized = self

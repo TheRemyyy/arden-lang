@@ -1258,16 +1258,8 @@ pub(crate) fn compute_rewrite_context_fingerprint_for_unit_impl(
             .fetch_add(elapsed_nanos_u64(local_refs_started_at), Ordering::Relaxed);
     }
     let empty_namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
-    let empty_namespace_function_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let empty_namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let empty_namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let empty_namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let dependency_ctx = DependencyResolutionContext {
         namespace_files_map: &empty_namespace_files_map,
-        namespace_function_files: &empty_namespace_function_files,
-        namespace_class_files: &empty_namespace_class_files,
-        namespace_interface_files: &empty_namespace_interface_files,
-        namespace_module_files: &empty_namespace_module_files,
         global_function_map: ctx.global_function_map,
         global_function_file_map: ctx.global_function_file_map,
         global_class_map: ctx.global_class_map,

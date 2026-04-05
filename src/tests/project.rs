@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 #[allow(unused_imports)]
 use super::*;
 use crate::ast::{
@@ -405,10 +407,6 @@ fn project_multi_file_import_graph_tracks_real_parsed_owner_file() {
     ));
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &namespace_function_files,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
-        namespace_module_files: &namespace_module_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         global_class_map: &global_class_map,
@@ -530,10 +528,6 @@ fn project_multi_file_dependency_graph_tracks_same_namespace_enum_reference_owne
     ));
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &namespace_function_files,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: &namespace_interface_files,
-        namespace_module_files: &namespace_module_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         global_class_map: &global_class_map,
@@ -5535,12 +5529,9 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         .collect::<HashMap<_, _>>();
     let rewrite_ctx_before = RewriteFingerprintContext {
         namespace_functions: &namespace_functions_before,
-        namespace_function_files: &symbol_maps_before.namespace_function_files,
         global_function_map: &symbol_maps_before.global_function_map,
         global_function_file_map: &symbol_maps_before.global_function_file_map,
         namespace_classes: &namespace_classes_before,
-        namespace_class_files: &symbol_maps_before.namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &symbol_maps_before.global_class_map,
         global_class_file_map: &symbol_maps_before.global_class_file_map,
         global_interface_map: empty_global_interface_map(),
@@ -5548,7 +5539,6 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         global_enum_map: &symbol_maps_before.global_enum_map,
         global_enum_file_map: &symbol_maps_before.global_enum_file_map,
         namespace_modules: &namespace_modules_before,
-        namespace_module_files: &symbol_maps_before.namespace_module_files,
         global_module_map: &symbol_maps_before.global_module_map,
         global_module_file_map: &symbol_maps_before.global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints_before,
@@ -5634,12 +5624,9 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         .collect::<HashMap<_, _>>();
     let rewrite_ctx = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
-        namespace_function_files: &namespace_function_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         namespace_classes: &namespace_classes,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
         global_interface_map: empty_global_interface_map(),
@@ -5647,7 +5634,6 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         global_enum_map: &global_enum_map,
         global_enum_file_map: &global_enum_file_map,
         namespace_modules: &namespace_modules,
-        namespace_module_files: &namespace_module_files,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
@@ -5754,12 +5740,9 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         .collect::<HashMap<_, _>>();
     let rewrite_ctx_before = RewriteFingerprintContext {
         namespace_functions: &namespace_functions_before,
-        namespace_function_files: &namespace_function_files_before,
         global_function_map: &global_function_map_before,
         global_function_file_map: &global_function_file_map_before,
         namespace_classes: &namespace_classes_before,
-        namespace_class_files: &namespace_class_files_before,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &global_class_map_before,
         global_class_file_map: &global_class_file_map_before,
         global_interface_map: empty_global_interface_map(),
@@ -5767,7 +5750,6 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         global_enum_map: &global_enum_map_before,
         global_enum_file_map: &global_enum_file_map_before,
         namespace_modules: &namespace_modules_before,
-        namespace_module_files: &namespace_module_files_before,
         global_module_map: &global_module_map_before,
         global_module_file_map: &global_module_file_map_before,
         namespace_api_fingerprints: &namespace_api_fingerprints_before,
@@ -5840,12 +5822,9 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         .collect::<HashMap<_, _>>();
     let rewrite_ctx = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
-        namespace_function_files: &symbol_maps.namespace_function_files,
         global_function_map: &symbol_maps.global_function_map,
         global_function_file_map: &symbol_maps.global_function_file_map,
         namespace_classes: &namespace_classes,
-        namespace_class_files: &symbol_maps.namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &symbol_maps.global_class_map,
         global_class_file_map: &symbol_maps.global_class_file_map,
         global_interface_map: empty_global_interface_map(),
@@ -5853,7 +5832,6 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         global_enum_map: &symbol_maps.global_enum_map,
         global_enum_file_map: &symbol_maps.global_enum_file_map,
         namespace_modules: &namespace_modules,
-        namespace_module_files: &symbol_maps.namespace_module_files,
         global_module_map: &symbol_maps.global_module_map,
         global_module_file_map: &symbol_maps.global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
@@ -6006,12 +5984,9 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
         .collect::<HashMap<_, _>>();
     let rewrite_ctx_before = RewriteFingerprintContext {
         namespace_functions: &namespace_functions_before,
-        namespace_function_files: &namespace_function_files_before,
         global_function_map: &global_function_map_before,
         global_function_file_map: &global_function_file_map_before,
         namespace_classes: &namespace_classes_before,
-        namespace_class_files: &namespace_class_files_before,
-        namespace_interface_files: &namespace_interface_files_before,
         global_class_map: &global_class_map_before,
         global_class_file_map: &global_class_file_map_before,
         global_interface_map: &global_interface_map_before,
@@ -6019,7 +5994,6 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
         global_enum_map: &global_enum_map_before,
         global_enum_file_map: &global_enum_file_map_before,
         namespace_modules: &namespace_modules_before,
-        namespace_module_files: &namespace_module_files_before,
         global_module_map: &global_module_map_before,
         global_module_file_map: &global_module_file_map_before,
         namespace_api_fingerprints: &namespace_api_fingerprints_before,
@@ -6149,12 +6123,9 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
         .collect::<HashMap<_, _>>();
     let rewrite_ctx_after = RewriteFingerprintContext {
         namespace_functions: &namespace_functions_after,
-        namespace_function_files: &namespace_function_files_after,
         global_function_map: &global_function_map_after,
         global_function_file_map: &global_function_file_map_after,
         namespace_classes: &namespace_classes_after,
-        namespace_class_files: &namespace_class_files_after,
-        namespace_interface_files: &namespace_interface_files_after,
         global_class_map: &global_class_map_after,
         global_class_file_map: &global_class_file_map_after,
         global_interface_map: &global_interface_map_after,
@@ -6162,7 +6133,6 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
         global_enum_map: &global_enum_map_after,
         global_enum_file_map: &global_enum_file_map_after,
         namespace_modules: &namespace_modules_after,
-        namespace_module_files: &namespace_module_files_after,
         global_module_map: &global_module_map_after,
         global_module_file_map: &global_module_file_map_after,
         namespace_api_fingerprints: &namespace_api_fingerprints_after,
@@ -6269,12 +6239,9 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
         .collect::<HashMap<_, _>>();
     let rewrite_ctx_before = RewriteFingerprintContext {
         namespace_functions: &namespace_functions_before,
-        namespace_function_files: &namespace_function_files_before,
         global_function_map: &global_function_map_before,
         global_function_file_map: &global_function_file_map_before,
         namespace_classes: &namespace_classes_before,
-        namespace_class_files: &namespace_class_files_before,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &global_class_map_before,
         global_class_file_map: &global_class_file_map_before,
         global_interface_map: empty_global_interface_map(),
@@ -6282,7 +6249,6 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
         global_enum_map: &global_enum_map_before,
         global_enum_file_map: &global_enum_file_map_before,
         namespace_modules: &namespace_modules_before,
-        namespace_module_files: &namespace_module_files_before,
         global_module_map: &global_module_map_before,
         global_module_file_map: &global_module_file_map_before,
         namespace_api_fingerprints: &namespace_api_fingerprints_before,
@@ -6365,12 +6331,9 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
         .collect::<HashMap<_, _>>();
     let rewrite_ctx_after = RewriteFingerprintContext {
         namespace_functions: &namespace_functions_after,
-        namespace_function_files: &namespace_function_files_after,
         global_function_map: &global_function_map_after,
         global_function_file_map: &global_function_file_map_after,
         namespace_classes: &namespace_classes_after,
-        namespace_class_files: &namespace_class_files_after,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &global_class_map_after,
         global_class_file_map: &global_class_file_map_after,
         global_interface_map: empty_global_interface_map(),
@@ -6378,7 +6341,6 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
         global_enum_map: &global_enum_map_after,
         global_enum_file_map: &global_enum_file_map_after,
         namespace_modules: &namespace_modules_after,
-        namespace_module_files: &namespace_module_files_after,
         global_module_map: &global_module_map_after,
         global_module_file_map: &global_module_file_map_after,
         namespace_api_fingerprints: &namespace_api_fingerprints_after,
@@ -6637,12 +6599,9 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             .collect::<HashMap<_, _>>();
         let rewrite_ctx_before = RewriteFingerprintContext {
             namespace_functions: &namespace_functions_before,
-            namespace_function_files: &namespace_function_files_before,
             global_function_map: &global_function_map_before,
             global_function_file_map: &global_function_file_map_before,
             namespace_classes: &namespace_classes_before,
-            namespace_class_files: &namespace_class_files_before,
-            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map_before,
             global_class_file_map: &global_class_file_map_before,
             global_interface_map: empty_global_interface_map(),
@@ -6650,7 +6609,6 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_enum_map: &global_enum_map_before,
             global_enum_file_map: &global_enum_file_map_before,
             namespace_modules: &namespace_modules_before,
-            namespace_module_files: &namespace_module_files_before,
             global_module_map: &global_module_map_before,
             global_module_file_map: &global_module_file_map_before,
             namespace_api_fingerprints: &namespace_api_fingerprints_before,
@@ -6730,12 +6688,9 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             .collect::<HashMap<_, _>>();
         let rewrite_ctx_after = RewriteFingerprintContext {
             namespace_functions: &namespace_functions_after,
-            namespace_function_files: &namespace_function_files_after,
             global_function_map: &global_function_map_after,
             global_function_file_map: &global_function_file_map_after,
             namespace_classes: &namespace_classes_after,
-            namespace_class_files: &namespace_class_files_after,
-            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map_after,
             global_class_file_map: &global_class_file_map_after,
             global_interface_map: empty_global_interface_map(),
@@ -6743,7 +6698,6 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_enum_map: &global_enum_map_after,
             global_enum_file_map: &global_enum_file_map_after,
             namespace_modules: &namespace_modules_after,
-            namespace_module_files: &namespace_module_files_after,
             global_module_map: &global_module_map_after,
             global_module_file_map: &global_module_file_map_after,
             namespace_api_fingerprints: &namespace_api_fingerprints_after,
@@ -6848,12 +6802,9 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             .collect::<HashMap<_, _>>();
         let rewrite_ctx_before = RewriteFingerprintContext {
             namespace_functions: &namespace_functions_before,
-            namespace_function_files: &namespace_function_files_before,
             global_function_map: &global_function_map_before,
             global_function_file_map: &global_function_file_map_before,
             namespace_classes: &namespace_classes_before,
-            namespace_class_files: &namespace_class_files_before,
-            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map_before,
             global_class_file_map: &global_class_file_map_before,
             global_interface_map: empty_global_interface_map(),
@@ -6861,7 +6812,6 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_enum_map: &global_enum_map_before,
             global_enum_file_map: &global_enum_file_map_before,
             namespace_modules: &namespace_modules_before,
-            namespace_module_files: &namespace_module_files_before,
             global_module_map: &global_module_map_before,
             global_module_file_map: &global_module_file_map_before,
             namespace_api_fingerprints: &namespace_api_fingerprints_before,
@@ -6941,12 +6891,9 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             .collect::<HashMap<_, _>>();
         let rewrite_ctx_after = RewriteFingerprintContext {
             namespace_functions: &namespace_functions_after,
-            namespace_function_files: &namespace_function_files_after,
             global_function_map: &global_function_map_after,
             global_function_file_map: &global_function_file_map_after,
             namespace_classes: &namespace_classes_after,
-            namespace_class_files: &namespace_class_files_after,
-            namespace_interface_files: empty_namespace_interface_files(),
             global_class_map: &global_class_map_after,
             global_class_file_map: &global_class_file_map_after,
             global_interface_map: empty_global_interface_map(),
@@ -6954,7 +6901,6 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_enum_map: &global_enum_map_after,
             global_enum_file_map: &global_enum_file_map_after,
             namespace_modules: &namespace_modules_after,
-            namespace_module_files: &namespace_module_files_after,
             global_module_map: &global_module_map_after,
             global_module_file_map: &global_module_file_map_after,
             namespace_api_fingerprints: &namespace_api_fingerprints_after,
@@ -7016,11 +6962,6 @@ fn make_unit(file: &str, namespace: &str, imports: &[&str]) -> ParsedProjectUnit
     }
 }
 
-fn empty_namespace_interface_files() -> &'static HashMap<String, HashMap<String, PathBuf>> {
-    static EMPTY: OnceLock<HashMap<String, HashMap<String, PathBuf>>> = OnceLock::new();
-    EMPTY.get_or_init(HashMap::new)
-}
-
 fn empty_global_interface_map() -> &'static HashMap<String, String> {
     static EMPTY: OnceLock<HashMap<String, String>> = OnceLock::new();
     EMPTY.get_or_init(HashMap::new)
@@ -7055,13 +6996,13 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
         ]),
     )]);
     let namespace_classes = HashMap::new();
-    let namespace_class_files = HashMap::new();
+    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_class_map = HashMap::new();
     let global_class_file_map = HashMap::new();
     let global_enum_map = HashMap::new();
     let global_enum_file_map = HashMap::new();
     let namespace_modules = HashMap::new();
-    let namespace_module_files = HashMap::new();
+    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_module_map = HashMap::new();
     let global_module_file_map = HashMap::new();
     let namespace_api_fingerprints = HashMap::from([("lib".to_string(), "ns-v1".to_string())]);
@@ -7071,12 +7012,9 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
     ]);
     let ctx_a = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
-        namespace_function_files: &namespace_function_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         namespace_classes: &namespace_classes,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
         global_interface_map: empty_global_interface_map(),
@@ -7084,7 +7022,6 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
         global_enum_map: &global_enum_map,
         global_enum_file_map: &global_enum_file_map,
         namespace_modules: &namespace_modules,
-        namespace_module_files: &namespace_module_files,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
@@ -7113,12 +7050,9 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
     ]);
     let ctx_b = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
-        namespace_function_files: &namespace_function_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         namespace_classes: &namespace_classes,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
         global_interface_map: empty_global_interface_map(),
@@ -7126,7 +7060,6 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
         global_enum_map: &global_enum_map,
         global_enum_file_map: &global_enum_file_map,
         namespace_modules: &namespace_modules,
-        namespace_module_files: &namespace_module_files,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints_b,
@@ -7175,24 +7108,21 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
         ]),
     )]);
     let namespace_classes = HashMap::new();
-    let namespace_class_files = HashMap::new();
+    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_class_map = HashMap::new();
     let global_class_file_map = HashMap::new();
     let global_enum_map = HashMap::new();
     let global_enum_file_map = HashMap::new();
     let namespace_modules = HashMap::new();
-    let namespace_module_files = HashMap::new();
+    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_module_map = HashMap::new();
     let global_module_file_map = HashMap::new();
     let namespace_api_fingerprints_a = HashMap::from([("lib".to_string(), "ns-v1".to_string())]);
     let ctx_a = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
-        namespace_function_files: &namespace_function_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         namespace_classes: &namespace_classes,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
         global_interface_map: empty_global_interface_map(),
@@ -7200,7 +7130,6 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
         global_enum_map: &global_enum_map,
         global_enum_file_map: &global_enum_file_map,
         namespace_modules: &namespace_modules,
-        namespace_module_files: &namespace_module_files,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints_a,
@@ -7224,12 +7153,9 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
     let namespace_api_fingerprints_b = HashMap::from([("lib".to_string(), "ns-v2".to_string())]);
     let ctx_b = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
-        namespace_function_files: &namespace_function_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         namespace_classes: &namespace_classes,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
         global_interface_map: empty_global_interface_map(),
@@ -7237,7 +7163,6 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
         global_enum_map: &global_enum_map,
         global_enum_file_map: &global_enum_file_map,
         namespace_modules: &namespace_modules,
-        namespace_module_files: &namespace_module_files,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints_b,
@@ -7300,14 +7225,10 @@ fn dependency_graph_tracks_specific_symbol_owner_file_only() {
             ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
         ]),
     )]);
-    let namespace_class_files = HashMap::new();
-    let namespace_module_files = HashMap::new();
+    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &namespace_function_files,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
-        namespace_module_files: &namespace_module_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         global_class_map: &global_class_map,
@@ -7359,8 +7280,8 @@ fn dependency_graph_tracks_same_namespace_symbol_references() {
         "app".to_string(),
         HashMap::from([("helper".to_string(), PathBuf::from("src/helper.apex"))]),
     )]);
-    let namespace_class_files = HashMap::new();
-    let namespace_module_files = HashMap::new();
+    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_function_map = HashMap::from([("helper".to_string(), "app".to_string())]);
     let global_function_file_map =
         HashMap::from([("helper".to_string(), PathBuf::from("src/helper.apex"))]);
@@ -7372,10 +7293,6 @@ fn dependency_graph_tracks_same_namespace_symbol_references() {
     let global_module_file_map = HashMap::new();
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &namespace_function_files,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
-        namespace_module_files: &namespace_module_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         global_class_map: &global_class_map,
@@ -7443,10 +7360,6 @@ fn dependency_graph_limits_wildcard_imports_to_used_owner_files() {
     )]);
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &namespace_function_files,
-        namespace_class_files: &HashMap::new(),
-        namespace_interface_files: empty_namespace_interface_files(),
-        namespace_module_files: &HashMap::new(),
         global_function_map: &HashMap::from([
             ("foo".to_string(), "lib".to_string()),
             ("bar".to_string(), "lib".to_string()),
@@ -7520,10 +7433,6 @@ fn dependency_graph_keeps_wildcard_namespace_dependencies_when_symbol_disappears
     )]);
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &namespace_function_files,
-        namespace_class_files: &HashMap::new(),
-        namespace_interface_files: empty_namespace_interface_files(),
-        namespace_module_files: &HashMap::new(),
         global_function_map: &HashMap::from([
             ("other".to_string(), "lib".to_string()),
             ("bar".to_string(), "lib".to_string()),
@@ -7598,10 +7507,6 @@ fn dependency_graph_keeps_nested_module_wildcard_namespace_dependencies_when_sym
         HashMap::from([("U".to_string(), PathBuf::from("src/helper.apex"))]);
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &HashMap::new(),
-        namespace_class_files: &HashMap::new(),
-        namespace_interface_files: empty_namespace_interface_files(),
-        namespace_module_files: &namespace_module_files,
         global_function_map: &HashMap::new(),
         global_function_file_map: &HashMap::new(),
         global_class_map: &HashMap::new(),
@@ -7671,10 +7576,6 @@ fn parsed_dependency_graph_tracks_nested_module_wildcard_import_owner_files() {
     ) = collect_project_symbol_maps(&parsed_files).into_parts();
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &namespace_function_files,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: empty_namespace_interface_files(),
-        namespace_module_files: &namespace_module_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         global_class_map: &global_class_map,
@@ -8585,10 +8486,6 @@ fn dependency_graph_recomputes_direct_neighbors_after_api_change() {
     )]);
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &namespace_function_files,
-        namespace_class_files: &HashMap::new(),
-        namespace_interface_files: empty_namespace_interface_files(),
-        namespace_module_files: &HashMap::new(),
         global_function_map: &HashMap::from([("foo".to_string(), "lib".to_string())]),
         global_function_file_map: &HashMap::from([(
             "foo".to_string(),

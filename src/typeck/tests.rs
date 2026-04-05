@@ -6,7 +6,7 @@ fn check_source(source: &str) -> Result<(), Vec<TypeError>> {
     let tokens = tokenize(source).expect("tokenize");
     let mut parser = Parser::new(tokens);
     let program = parser.parse_program().expect("parse");
-    let mut checker = TypeChecker::new(source.to_string());
+    let mut checker = TypeChecker::new();
     checker.check(&program)
 }
 
@@ -22,7 +22,7 @@ fn empty_interface() -> InterfaceInfo {
 
 #[test]
 fn resolves_nested_namespace_aliased_function_type_source_inside_generic_container() {
-    let mut checker = TypeChecker::new(String::new());
+    let mut checker = TypeChecker::new();
     checker
         .import_aliases
         .insert("root".to_string(), "app".to_string());
@@ -45,7 +45,7 @@ fn resolves_nested_namespace_aliased_function_type_source_inside_generic_contain
 
 #[test]
 fn parses_nested_namespace_aliased_function_type_string_inside_generic_container() {
-    let mut checker = TypeChecker::new(String::new());
+    let mut checker = TypeChecker::new();
     checker
         .import_aliases
         .insert("root".to_string(), "app".to_string());
@@ -3113,7 +3113,7 @@ fn seeded_check_supports_interface_extending_namespace_aliased_interface() {
     let program = parser
         .parse_program()
         .expect("parse seeded alias interface source");
-    let mut type_checker = TypeChecker::new(src.to_string());
+    let mut type_checker = TypeChecker::new();
     type_checker
         .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
         .expect("seeded check should support aliased parent interface");
@@ -3148,7 +3148,7 @@ fn seeded_check_supports_interface_extending_nested_namespace_aliased_interface(
     let program = parser
         .parse_program()
         .expect("parse seeded nested alias source");
-    let mut type_checker = TypeChecker::new(src.to_string());
+    let mut type_checker = TypeChecker::new();
     type_checker
         .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
         .expect("seeded check should support nested aliased parent interface");
@@ -3182,7 +3182,7 @@ fn seeded_check_supports_interface_extending_multiple_namespace_aliased_interfac
     let program = parser
         .parse_program()
         .expect("parse seeded multi alias interface source");
-    let mut type_checker = TypeChecker::new(src.to_string());
+    let mut type_checker = TypeChecker::new();
     type_checker
         .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
         .expect("seeded check should support multiple aliased parent interfaces");
@@ -3218,7 +3218,7 @@ fn seeded_check_supports_interface_extending_multiple_nested_namespace_aliased_i
     let program = parser
         .parse_program()
         .expect("parse seeded multi nested alias interface source");
-    let mut type_checker = TypeChecker::new(src.to_string());
+    let mut type_checker = TypeChecker::new();
     type_checker
         .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
         .expect("seeded check should support multiple nested aliased parent interfaces");

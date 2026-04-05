@@ -302,20 +302,16 @@ pub(crate) fn import_path_owner_file<'a>(
 #[allow(dead_code)]
 pub(crate) struct RewriteFingerprintContext<'a> {
     pub(crate) namespace_functions: &'a HashMap<String, HashSet<String>>,
-    pub(crate) namespace_function_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     pub(crate) global_function_map: &'a HashMap<String, String>,
     pub(crate) global_function_file_map: &'a HashMap<String, PathBuf>,
     pub(crate) namespace_classes: &'a HashMap<String, HashSet<String>>,
-    pub(crate) namespace_class_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     pub(crate) global_class_map: &'a HashMap<String, String>,
     pub(crate) global_class_file_map: &'a HashMap<String, PathBuf>,
-    pub(crate) namespace_interface_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     pub(crate) global_interface_map: &'a HashMap<String, String>,
     pub(crate) global_interface_file_map: &'a HashMap<String, PathBuf>,
     pub(crate) global_enum_map: &'a HashMap<String, String>,
     pub(crate) global_enum_file_map: &'a HashMap<String, PathBuf>,
     pub(crate) namespace_modules: &'a HashMap<String, HashSet<String>>,
-    pub(crate) namespace_module_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     pub(crate) global_module_map: &'a HashMap<String, String>,
     pub(crate) global_module_file_map: &'a HashMap<String, PathBuf>,
     pub(crate) namespace_api_fingerprints: &'a HashMap<String, String>,
@@ -326,10 +322,6 @@ pub(crate) struct RewriteFingerprintContext<'a> {
 #[allow(dead_code)]
 pub(crate) struct DependencyResolutionContext<'a> {
     pub(crate) namespace_files_map: &'a HashMap<String, Vec<PathBuf>>,
-    pub(crate) namespace_function_files: &'a HashMap<String, HashMap<String, PathBuf>>,
-    pub(crate) namespace_class_files: &'a HashMap<String, HashMap<String, PathBuf>>,
-    pub(crate) namespace_interface_files: &'a HashMap<String, HashMap<String, PathBuf>>,
-    pub(crate) namespace_module_files: &'a HashMap<String, HashMap<String, PathBuf>>,
     pub(crate) global_function_map: &'a HashMap<String, String>,
     pub(crate) global_function_file_map: &'a HashMap<String, PathBuf>,
     pub(crate) global_class_map: &'a HashMap<String, String>,

@@ -279,8 +279,6 @@ fn main() {
         eprintln!("{}", e);
         std::process::exit(1);
     }
-
-    std::process::exit(0);
 }
 
 fn current_dir_checked() -> Result<PathBuf, String> {
@@ -291,6 +289,16 @@ fn current_dir_checked() -> Result<PathBuf, String> {
             e
         )
     })
+}
+
+struct CwdRestore {
+    previous: PathBuf,
+}
+
+impl Drop for CwdRestore {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.previous);
+    }
 }
 
 /// Parsed data extracted from a source file, used internally by [`parse_project_unit`].
@@ -478,18 +486,6 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         }
     }
 
-    fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
-        match expr {
-            Expr::Ident(name) => Some(vec![name.clone()]),
-            Expr::Field { object, field } => {
-                let mut parts = flatten_field_chain(&object.node)?;
-                parts.push(field.clone());
-                Some(parts)
-            }
-            _ => None,
-        }
-    }
-
     fn collect_qualified_name_ref(
         name: &str,
         out: &mut HashSet<String>,
@@ -621,7 +617,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
             } => {
                 if let Expr::Ident(name) = &callee.node {
                     out.insert(name.clone());
-                } else if let Some(parts) = flatten_field_chain(&callee.node) {
+                } else if let Some(parts) = crate::ast::flatten_field_chain(&callee.node) {
                     if let Some(root) = parts.first() {
                         out.insert(root.clone());
                     }
@@ -641,7 +637,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                 }
             }
             Expr::Field { object, .. } => {
-                if let Some(parts) = flatten_field_chain(expr) {
+                if let Some(parts) = crate::ast::flatten_field_chain(expr) {
                     if let Some(root) = parts.first() {
                         out.insert(root.clone());
                     }
@@ -1172,7 +1168,7 @@ fn validate_new_project_name(name: &str) -> Result<(), String> {
 
 /// Build the current project with proper namespace checking
 fn build_project(
-    _release: bool,
+    release: bool,
     emit_llvm: bool,
     do_check: bool,
     check_only: bool,
@@ -1188,7 +1184,10 @@ fn build_project(
             "error".red().bold()))?;
 
     let config_path = project_root.join("apex.toml");
-    let config = ProjectConfig::load(&config_path)?;
+    let mut config = ProjectConfig::load(&config_path)?;
+    if release {
+        config.opt_level = "3".to_string();
+    }
 
     build_timings.measure("project config validation", || {
         config.validate(&project_root)
@@ -1538,10 +1537,6 @@ fn build_project(
     })?;
     let mut namespace_files_map: HashMap<String, Vec<PathBuf>> = HashMap::new();
     namespace_files_map.reserve(parsed_files.len() + total_module_names);
-    let namespace_function_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let mut dependency_lookup_base_namespace_ns = 0_u64;
     let mut dependency_lookup_module_namespace_ns = 0_u64;
     let mut dependency_lookup_sort_dedup_ns = 0_u64;
@@ -1597,10 +1592,6 @@ fn build_project(
 
     let dependency_resolution_ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
-        namespace_function_files: &namespace_function_files,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: &namespace_interface_files,
-        namespace_module_files: &namespace_module_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         global_class_map: &global_class_map,
@@ -1991,12 +1982,9 @@ fn build_project(
         });
     let rewrite_fingerprint_ctx = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
-        namespace_function_files: &namespace_function_files,
         global_function_map: &global_function_map,
         global_function_file_map: &global_function_file_map,
         namespace_classes: &namespace_class_map,
-        namespace_class_files: &namespace_class_files,
-        namespace_interface_files: &namespace_interface_files,
         global_class_map: &global_class_map,
         global_class_file_map: &global_class_file_map,
         global_interface_map: &global_interface_map,
@@ -2004,7 +1992,6 @@ fn build_project(
         global_enum_map: &global_enum_map,
         global_enum_file_map: &global_enum_file_map,
         namespace_modules: &namespace_module_map,
-        namespace_module_files: &namespace_module_files,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
@@ -2729,19 +2716,27 @@ fn build_project(
                             .map(|component| {
                                 let component_files: HashSet<PathBuf> =
                                     component.iter().cloned().collect();
+                                let component_sources = component
+                                    .iter()
+                                    .filter_map(|file| {
+                                        fs::read_to_string(file)
+                                            .ok()
+                                            .map(|source| (file.clone(), source))
+                                    })
+                                    .collect::<Vec<_>>();
                                 let semantic_program = semantic_program_for_component(
                                     &rewritten_files,
                                     &component_files,
                                     &semantic_full_files,
                                 );
 
-                                let mut type_checker = TypeChecker::new(String::new());
+                                let mut type_checker = TypeChecker::new();
                                 if let Err(errors) = type_checker.check_with_effect_seeds(
                                     &semantic_program,
                                     &seeded_function_effects,
                                     &seeded_class_method_effects,
                                 ) {
-                                    return Err(render_type_errors(errors));
+                                    return Err(render_type_errors(errors, &component_sources));
                                 }
 
                                 let mut borrow_checker = BorrowChecker::new();
@@ -2751,7 +2746,7 @@ fn build_project(
                                         &seeded_class_mutating_methods,
                                     )
                                 {
-                                    return Err(render_borrow_errors(errors));
+                                    return Err(render_borrow_errors(errors, &component_sources));
                                 }
 
                                 let (function_effects, class_method_effects) =
@@ -3820,20 +3815,7 @@ fn run_project(
     println!("{} {}", "Running".cyan().bold(), output_path.display());
     println!();
 
-    let status = Command::new(&output_path)
-        .args(args)
-        .status()
-        .map_err(|e| format!("{}: Failed to run: {}", "error".red().bold(), e))?;
-
-    if !status.success() {
-        return Err(format!(
-            "{}: process exited with code {}",
-            "error".red().bold(),
-            status.code().unwrap_or(-1)
-        ));
-    }
-
-    Ok(())
+    run_binary(&output_path, args)
 }
 
 fn ensure_project_is_runnable(output_kind: &OutputKind) -> Result<(), String> {
@@ -3852,7 +3834,7 @@ fn ensure_project_is_runnable(output_kind: &OutputKind) -> Result<(), String> {
 fn run_single_file(
     file: &Path,
     args: &[String],
-    _release: bool,
+    release: bool,
     do_check: bool,
 ) -> Result<(), String> {
     #[cfg(windows)]
@@ -3860,37 +3842,74 @@ fn run_single_file(
     #[cfg(not(windows))]
     let output = file.with_extension("run");
 
-    compile_file(file, Some(&output), false, do_check, None, None)?;
+    compile_file(
+        file,
+        Some(&output),
+        false,
+        do_check,
+        release.then_some("3"),
+        None,
+    )?;
 
     println!("{} {}", "Running".cyan().bold(), output.display());
     println!();
 
-    let status = Command::new(&output)
-        .args(args)
-        .status()
-        .map_err(|e| format!("{}: Failed to run: {}", "error".red().bold(), e))?;
-
+    let result = run_binary(&output, args);
     let _ = fs::remove_file(&output);
-
-    if !status.success() {
-        return Err(format!(
-            "{}: process exited with code {}",
-            "error".red().bold(),
-            status.code().unwrap_or(-1)
-        ));
-    }
-
-    Ok(())
+    result
 }
 
 fn check_command(file: Option<&Path>, show_timings: bool) -> Result<(), String> {
-    if file.is_none() {
-        if let Some(cwd_project_root) = find_project_root(&current_dir_checked()?) {
-            let _ = cwd_project_root;
-            return build_project(false, false, true, true, show_timings);
-        }
+    if file.is_none() && find_project_root(&current_dir_checked()?).is_some() {
+        return build_project(false, false, true, true, show_timings);
     }
     check_file(file)
+}
+
+fn parse_program_from_source(source: &str, filename: &str) -> Result<Program, String> {
+    let tokens = lexer::tokenize(source)
+        .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
+    let mut parser = Parser::new(tokens);
+    parser
+        .parse_program()
+        .map_err(|e| format_parse_error(&e, source, filename))
+}
+
+fn run_single_file_semantic_checks(
+    source: &str,
+    filename: &str,
+    program: &Program,
+) -> Result<(), String> {
+    let namespace = extract_namespace(program);
+    let imports = extract_imports(program);
+    let function_namespaces = import_check::extract_function_namespaces(program, &namespace);
+    let known_namespace_paths = import_check::extract_known_namespace_paths(program, &namespace);
+    let mut import_checker = ImportChecker::new(
+        Arc::new(function_namespaces),
+        Arc::new(known_namespace_paths),
+        namespace,
+        imports,
+        stdlib_registry(),
+    );
+    if let Err(errors) = import_checker.check_program(program) {
+        let mut rendered = format!("{} Import errors:\n", "error".red().bold());
+        for err in errors {
+            rendered.push_str(&format!("  → {}\n", err.format()));
+        }
+        return Err(format!("Import check failed\n{rendered}"));
+    }
+
+    let mut type_checker = TypeChecker::new();
+    if let Err(errors) = type_checker.check(program) {
+        return Err(typeck::format_errors(&errors, source, filename));
+    }
+
+    let mut borrow_checker = BorrowChecker::new();
+    if let Err(errors) = borrow_checker.check(program) {
+        return Err(borrowck::format_borrow_errors(&errors, source, filename));
+    }
+
+    Ok(())
 }
 
 /// Compile a single file (legacy mode)
@@ -3935,12 +3954,7 @@ fn compile_file(
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("input.apex");
-        let tokens = lexer::tokenize(&source)
-            .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
-        let mut parser = Parser::new(tokens);
-        let program = parser
-            .parse_program()
-            .map_err(|e| format_parse_error(&e, &source, filename))?;
+        let program = parse_program_from_source(&source, filename)?;
         validate_entry_main_signature(&program, &source, filename)?;
     }
 
@@ -3976,47 +3990,11 @@ fn compile_source(
         .unwrap_or("input.apex");
 
     // Tokenize
-    let tokens = lexer::tokenize(source)
-        .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
-
-    // Parse
-    let mut parser = Parser::new(tokens);
-    let program = parser
-        .parse_program()
-        .map_err(|e| format_parse_error(&e, source, filename))?;
+    let program = parse_program_from_source(source, filename)?;
 
     // Type check
     if do_check {
-        // Import check
-        let namespace = extract_namespace(&program);
-        let imports = extract_imports(&program);
-        let function_namespaces = import_check::extract_function_namespaces(&program, &namespace);
-        let known_namespace_paths =
-            import_check::extract_known_namespace_paths(&program, &namespace);
-        let mut import_checker = ImportChecker::new(
-            Arc::new(function_namespaces),
-            Arc::new(known_namespace_paths),
-            namespace,
-            imports,
-            stdlib_registry(),
-        );
-        if let Err(errors) = import_checker.check_program(&program) {
-            let mut rendered = format!("{} Import errors:\n", "error".red().bold());
-            for err in errors {
-                rendered.push_str(&format!("  → {}\n", err.format()));
-            }
-            return Err(format!("Import check failed\n{rendered}"));
-        }
-
-        let mut type_checker = TypeChecker::new(source.to_string());
-        if let Err(errors) = type_checker.check(&program) {
-            return Err(typeck::format_errors(&errors, source, filename));
-        }
-
-        let mut borrow_checker = BorrowChecker::new();
-        if let Err(errors) = borrow_checker.check(&program) {
-            return Err(borrowck::format_borrow_errors(&errors, source, filename));
-        }
+        run_single_file_semantic_checks(source, filename, &program)?;
     }
 
     // Codegen
@@ -4086,43 +4064,8 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
         .and_then(|s| s.to_str())
         .unwrap_or("input.apex");
 
-    let tokens = lexer::tokenize(&source)
-        .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
-
-    let mut parser = Parser::new(tokens);
-    let program = parser
-        .parse_program()
-        .map_err(|e| format_parse_error(&e, &source, filename))?;
-
-    // Run import checker
-    let namespace = extract_namespace(&program);
-    let imports = extract_imports(&program);
-    let function_namespaces = import_check::extract_function_namespaces(&program, &namespace);
-    let known_namespace_paths = import_check::extract_known_namespace_paths(&program, &namespace);
-    let mut import_checker = ImportChecker::new(
-        Arc::new(function_namespaces),
-        Arc::new(known_namespace_paths),
-        namespace,
-        imports,
-        stdlib_registry(),
-    );
-    if let Err(errors) = import_checker.check_program(&program) {
-        let mut rendered = format!("{} Import errors:\n", "error".red().bold());
-        for err in errors {
-            rendered.push_str(&format!("  → {}\n", err.format()));
-        }
-        return Err(format!("Import check failed\n{rendered}"));
-    }
-
-    let mut type_checker = TypeChecker::new(source.clone());
-    if let Err(errors) = type_checker.check(&program) {
-        return Err(typeck::format_errors(&errors, &source, filename));
-    }
-
-    let mut borrow_checker = BorrowChecker::new();
-    if let Err(errors) = borrow_checker.check(&program) {
-        return Err(borrowck::format_borrow_errors(&errors, &source, filename));
-    }
+    let program = parse_program_from_source(&source, filename)?;
+    run_single_file_semantic_checks(&source, filename, &program)?;
 
     println!("{} {}", "Check passed".green().bold(), file_path.display());
     Ok(())
@@ -4351,6 +4294,28 @@ fn resolve_default_file(path: Option<&Path>) -> Result<PathBuf, String> {
     Err("No file specified and no apex.toml found in the current directory".to_string())
 }
 
+fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, String> {
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        if dir.as_os_str().is_empty() {
+            break;
+        }
+        let metadata = fs::symlink_metadata(dir).map_err(|e| {
+            format!(
+                "{}: Failed to inspect path ancestor '{}': {}",
+                "error".red().bold(),
+                dir.display(),
+                e
+            )
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Ok(true);
+        }
+        current = dir.parent();
+    }
+    Ok(false)
+}
+
 fn validate_source_file_path(path: &Path) -> Result<(), String> {
     if !path.exists() {
         return Err(format!("Path '{}' does not exist", path.display()));
@@ -4362,14 +4327,6 @@ fn validate_source_file_path(path: &Path) -> Result<(), String> {
         return Err(format!("Path '{}' is not an .apex file", path.display()));
     }
 
-    let metadata = fs::symlink_metadata(path).map_err(|e| {
-        format!(
-            "{}: Failed to inspect path '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
     let parent_dir = path.parent().unwrap_or(Path::new("."));
     let normalized_parent = if parent_dir.as_os_str().is_empty() {
         Path::new(".")
@@ -4384,43 +4341,25 @@ fn validate_source_file_path(path: &Path) -> Result<(), String> {
             e
         )
     })?;
-    if metadata.file_type().is_symlink() {
-        let canonical_path = path.canonicalize().map_err(|e| {
-            format!(
-                "{}: Failed to resolve path '{}': {}",
-                "error".red().bold(),
-                path.display(),
-                e
-            )
-        })?;
-        if !canonical_path.starts_with(&canonical_parent) {
-            return Err(format!(
-                "Path '{}' resolves outside the requested directory tree",
-                path.display()
-            ));
-        }
+    let canonical_path = path.canonicalize().map_err(|e| {
+        format!(
+            "{}: Failed to resolve path '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            e
+        )
+    })?;
+    if !canonical_path.starts_with(&canonical_parent) {
+        return Err(format!(
+            "Path '{}' resolves outside the requested directory tree",
+            path.display()
+        ));
     }
-
-    let mut current = path.parent();
-    while let Some(dir) = current {
-        if dir.as_os_str().is_empty() {
-            break;
-        }
-        let ancestor_metadata = fs::symlink_metadata(dir).map_err(|e| {
-            format!(
-                "{}: Failed to inspect path ancestor '{}': {}",
-                "error".red().bold(),
-                dir.display(),
-                e
-            )
-        })?;
-        if ancestor_metadata.file_type().is_symlink() {
-            return Err(format!(
-                "Path '{}' must not traverse symlinked directories",
-                path.display()
-            ));
-        }
-        current = dir.parent();
+    if path_traverses_symlinked_directories(path)? {
+        return Err(format!(
+            "Path '{}' must not traverse symlinked directories",
+            path.display()
+        ));
     }
 
     Ok(())
@@ -4480,6 +4419,12 @@ fn collect_apex_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     if !path.is_dir() {
         return Err(format!("Path '{}' does not exist", path.display()));
     }
+    if path_traverses_symlinked_directories(path)? {
+        return Err(format!(
+            "Path '{}' must not traverse symlinked directories",
+            path.display()
+        ));
+    }
 
     let mut files = Vec::new();
     collect_apex_files_recursive(path, &mut files)?;
@@ -4517,20 +4462,66 @@ fn collect_apex_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<
     Ok(())
 }
 
+fn run_binary(exe_path: &Path, args: &[String]) -> Result<(), String> {
+    let status = Command::new(exe_path)
+        .args(args)
+        .status()
+        .map_err(|e| format!("{}: Failed to run: {}", "error".red().bold(), e))?;
+    if !status.success() {
+        return Err(format!(
+            "{}: process exited with code {}",
+            "error".red().bold(),
+            status.code().unwrap_or(-1)
+        ));
+    }
+    Ok(())
+}
+
+fn prepare_bench_binary(
+    file: Option<&Path>,
+    release: bool,
+) -> Result<(PathBuf, Option<PathBuf>, Vec<String>), String> {
+    if let Some(file) = file {
+        #[cfg(windows)]
+        let output = file.with_extension("bench.exe");
+        #[cfg(not(windows))]
+        let output = file.with_extension("bench");
+        compile_file(
+            file,
+            Some(&output),
+            false,
+            true,
+            release.then_some("3"),
+            None,
+        )?;
+        return Ok((output.clone(), Some(output), Vec::new()));
+    }
+
+    let cwd = current_dir_checked()?;
+    let project_root = find_project_root(&cwd)
+        .ok_or_else(|| format!("{}: No apex.toml found", "error".red().bold()))?;
+    let config_path = project_root.join("apex.toml");
+    let config = ProjectConfig::load(&config_path)?;
+    config.validate(&project_root)?;
+    ensure_project_is_runnable(&config.output_kind)?;
+    build_project(release, false, true, false, false)?;
+    Ok((project_root.join(&config.output), None, Vec::new()))
+}
+
 fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(), String> {
     if iterations == 0 {
         return Err("Iterations must be greater than zero.".to_string());
     }
 
+    let (exe_path, cleanup_path, args) = prepare_bench_binary(file, false)?;
     let mut samples_ms = Vec::with_capacity(iterations);
     for _ in 0..iterations {
         let start = Instant::now();
-        if let Some(file) = file {
-            run_single_file(file, &[], false, true)?;
-        } else {
-            run_project(&[], false, true, false)?;
-        }
+        run_binary(&exe_path, &args)?;
         samples_ms.push(start.elapsed().as_secs_f64() * 1000.0);
+    }
+    if let Some(cleanup_path) = cleanup_path {
+        let _ = fs::remove_file(cleanup_path);
     }
 
     let min = samples_ms
@@ -4552,17 +4543,23 @@ fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(), String> {
 }
 
 fn profile_target(file: Option<&Path>) -> Result<(), String> {
-    let start = Instant::now();
-    if let Some(file) = file {
-        run_single_file(file, &[], false, true)?;
-    } else {
-        run_project(&[], false, true, false)?;
+    let build_started = Instant::now();
+    let (exe_path, cleanup_path, args) = prepare_bench_binary(file, false)?;
+    let build_elapsed = build_started.elapsed();
+    let run_started = Instant::now();
+    run_binary(&exe_path, &args)?;
+    let run_elapsed = run_started.elapsed();
+    if let Some(cleanup_path) = cleanup_path {
+        let _ = fs::remove_file(cleanup_path);
     }
-    let elapsed = start.elapsed();
 
-    println!("{}", "Profile".cyan().bold());
-    println!("  wall time: {:.3} ms", elapsed.as_secs_f64() * 1000.0);
-    println!("  metrics: wall time only");
+    println!("{}", "Timing profile".cyan().bold());
+    println!("  build: {:.3} ms", build_elapsed.as_secs_f64() * 1000.0);
+    println!("  run:   {:.3} ms", run_elapsed.as_secs_f64() * 1000.0);
+    println!(
+        "  total: {:.3} ms",
+        (build_elapsed + run_elapsed).as_secs_f64() * 1000.0
+    );
     Ok(())
 }
 
@@ -4769,8 +4766,10 @@ fn run_tests(
                 let previous_dir = current_dir_checked()?;
                 std::env::set_current_dir(&temp_dir)
                     .map_err(|e| format!("Failed to enter test runner workspace: {}", e))?;
+                let _cwd_restore = CwdRestore {
+                    previous: previous_dir,
+                };
                 let build_result = build_project(false, false, true, false, false);
-                let _ = std::env::set_current_dir(&previous_dir);
                 let result = build_result.and_then(|_| run_test_executable(&exe_path));
                 let _ = fs::remove_dir_all(&temp_dir);
                 result?;

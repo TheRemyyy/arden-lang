@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use crate::ast::Program;
 use crate::borrowck::BorrowChecker;
 use crate::formatter::format_program_canonical;
@@ -132,20 +134,16 @@ pub(crate) fn rewrite_fingerprint_for_test_unit(
     ));
     let rewrite_ctx = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
-        namespace_function_files: &symbol_maps.namespace_function_files,
         global_function_map: &symbol_maps.global_function_map,
         global_function_file_map: &symbol_maps.global_function_file_map,
         namespace_classes: &namespace_classes,
-        namespace_class_files: &symbol_maps.namespace_class_files,
         global_class_map: &symbol_maps.global_class_map,
         global_class_file_map: &symbol_maps.global_class_file_map,
-        namespace_interface_files: &namespace_interface_files,
         global_interface_map: &global_interface_map,
         global_interface_file_map: &global_interface_file_map,
         global_enum_map: &symbol_maps.global_enum_map,
         global_enum_file_map: &symbol_maps.global_enum_file_map,
         namespace_modules: &namespace_modules,
-        namespace_module_files: &symbol_maps.namespace_module_files,
         global_module_map: &symbol_maps.global_module_map,
         global_module_file_map: &symbol_maps.global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
@@ -162,7 +160,7 @@ pub(crate) fn rewrite_fingerprint_for_test_unit(
 pub(crate) fn assert_frontend_pipeline_ok(source: &str) {
     let program = parse_program(source);
 
-    let mut type_checker = TypeChecker::new(source.to_string());
+    let mut type_checker = TypeChecker::new();
     assert_diagnostics_ok(type_checker.check(&program), "type check failed", |error| {
         error.message
     });
@@ -177,7 +175,7 @@ pub(crate) fn assert_frontend_pipeline_ok(source: &str) {
     let formatted = format_program_canonical(&program);
     let reparsed = parse_program(&formatted);
 
-    let mut type_checker = TypeChecker::new(formatted.clone());
+    let mut type_checker = TypeChecker::new();
     assert_diagnostics_ok(
         type_checker.check(&reparsed),
         "type check after format failed",

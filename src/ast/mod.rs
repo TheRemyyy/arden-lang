@@ -262,6 +262,28 @@ impl Type {
     }
 }
 
+pub(crate) fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
+    match expr {
+        Expr::Ident(name) => Some(vec![name.clone()]),
+        Expr::Field { object, field } => {
+            let mut parts = flatten_field_chain(&object.node)?;
+            parts.push(field.clone());
+            Some(parts)
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn builtin_exact_import_alias_canonical(path: &str) -> Option<&'static str> {
+    match path {
+        "Option.Some" => Some("Option__some"),
+        "Option.None" => Some("Option__none"),
+        "Result.Ok" => Some("Result__ok"),
+        "Result.Error" => Some("Result__error"),
+        _ => None,
+    }
+}
+
 /// Block of statements
 pub type Block = Vec<Spanned<Stmt>>;
 
