@@ -914,7 +914,7 @@ impl<'ctx> Codegen<'ctx> {
                     "stdin",
                 )
                 .unwrap();
-            return Ok(self.extract_call_value(call)?.into_pointer_value());
+            Ok(self.extract_call_value(call)?.into_pointer_value())
         }
 
         #[cfg(not(windows))]
