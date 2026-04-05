@@ -1,8 +1,8 @@
+use crate::project::OutputKind;
 use colored::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use crate::project::OutputKind;
 pub(crate) fn validate_opt_level(opt_level: Option<&str>) -> Result<(), String> {
     let Some(raw) = opt_level else {
         return Ok(());
@@ -174,7 +174,11 @@ pub(crate) fn write_link_response_file(path: &Path, objects: &[PathBuf]) -> Resu
 }
 
 /// Compile LLVM IR using clang
-pub(crate) fn compile_ir(ir_path: &Path, output_path: &Path, link: &LinkConfig<'_>) -> Result<(), String> {
+pub(crate) fn compile_ir(
+    ir_path: &Path,
+    output_path: &Path,
+    link: &LinkConfig<'_>,
+) -> Result<(), String> {
     let linker = detect_linker_flavor()?;
     let opt_flag = resolve_clang_opt_flag(link.opt_level);
     let run_clang = |march_native: bool, mtune_native: bool| {
@@ -399,4 +403,3 @@ pub(crate) fn link_objects(
         }
     }
 }
-

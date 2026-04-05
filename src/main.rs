@@ -272,20 +272,19 @@ fn current_dir_checked() -> Result<PathBuf, String> {
     })
 }
 
-
 mod cache;
 mod dependency;
-mod symbol_lookup;
-mod specialization;
 mod diagnostics;
 mod linker;
+mod specialization;
+mod symbol_lookup;
 
 use crate::cache::*;
 use crate::dependency::*;
-use crate::symbol_lookup::*;
-use crate::specialization::*;
 use crate::diagnostics::*;
 use crate::linker::*;
+use crate::specialization::*;
+use crate::symbol_lookup::*;
 
 fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectUnit, String> {
     let filename = file

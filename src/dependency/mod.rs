@@ -1,12 +1,12 @@
+use crate::ast::{ImportDecl, Program};
+use crate::cache::*;
+use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Instant;
-use crate::ast::{ImportDecl, Program};
-use crate::cache::*;
-use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary};
 pub(crate) fn namespace_prefixes(namespace: &str) -> Vec<String> {
     let mut prefixes = Vec::new();
     let mut current = namespace.trim();
@@ -43,7 +43,10 @@ pub(crate) fn qualified_symbol_path(namespace: &str, symbol_name: &str) -> Strin
     path
 }
 
-pub(crate) fn qualified_symbol_path_for_parts(namespace: &str, member_parts: &[String]) -> Option<String> {
+pub(crate) fn qualified_symbol_path_for_parts(
+    namespace: &str,
+    member_parts: &[String],
+) -> Option<String> {
     if member_parts.is_empty() {
         return None;
     }
@@ -55,7 +58,10 @@ pub(crate) fn qualified_symbol_path_for_parts(namespace: &str, member_parts: &[S
     })
 }
 
-pub(crate) fn wildcard_member_import_path(owner_namespace: &str, symbol_name: &str) -> (String, String) {
+pub(crate) fn wildcard_member_import_path(
+    owner_namespace: &str,
+    symbol_name: &str,
+) -> (String, String) {
     let Some(last_separator) = symbol_name.rfind("__") else {
         return (owner_namespace.to_string(), symbol_name.to_string());
     };
@@ -1349,4 +1355,3 @@ pub(crate) fn semantic_program_for_component(
 
     program
 }
-

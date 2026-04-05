@@ -1255,7 +1255,6 @@ impl Backend {
     }
 }
 
-
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
@@ -1447,7 +1446,6 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 }
-
 
 /// Run the LSP server
 pub async fn run_lsp_server() {

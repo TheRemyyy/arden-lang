@@ -1,11 +1,12 @@
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
-use std::time::Instant;
 use crate::ast::ImportDecl;
 use crate::cache::*;
 use crate::dependency::*;
 use crate::specialization::*;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
+use std::time::Instant;
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn insert_declaration_symbol_for_owner(
     symbol: &str,
     owner_ns: &str,
@@ -676,4 +677,3 @@ pub(crate) fn closure_body_symbols_for_unit(
         .cloned()
         .collect()
 }
-
