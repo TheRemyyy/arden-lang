@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+use crate::cache::elapsed_nanos_u64;
 use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
@@ -146,10 +147,6 @@ static CODEGEN_PHASE_TIMING_TOTALS: CodegenPhaseTimingTotals = CodegenPhaseTimin
     compiled_class_count: AtomicUsize::new(0),
     compiled_module_count: AtomicUsize::new(0),
 };
-
-fn elapsed_nanos_u64(started_at: Instant) -> u64 {
-    started_at.elapsed().as_nanos() as u64
-}
 
 pub fn reset_codegen_phase_timings() {
     CODEGEN_PHASE_TIMING_TOTALS
