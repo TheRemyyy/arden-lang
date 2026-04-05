@@ -32,6 +32,7 @@ use super::{
     load_semantic_cached_fingerprint,
     make_temp_project_root,
     new_project,
+    normalize_output,
     object_shard_cache_key,
     object_shard_cache_paths,
     parse_file,
@@ -4571,7 +4572,7 @@ function main(): Integer {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "score=20.000000\n");
+    assert_eq!(normalize_output(&output.stdout), "score=20.000000\n");
 
     let _ = fs::remove_dir_all(temp_root);
 }

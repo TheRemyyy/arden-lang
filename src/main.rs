@@ -5284,6 +5284,10 @@ mod tests {
         temp_root
     }
 
+    pub fn normalize_output(bytes: &[u8]) -> String {
+        String::from_utf8_lossy(bytes).replace("\r\n", "\n")
+    }
+
     pub fn cli_test_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
