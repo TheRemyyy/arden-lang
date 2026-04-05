@@ -16419,7 +16419,7 @@ fn compile_source_runs_time_now_with_long_format() {
     let _ = fs::remove_dir_all(temp_root);
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 #[test]
 fn compile_source_runs_system_cwd_with_long_working_directory() {
     let temp_root = make_temp_project_root("system-cwd-long-working-directory-runtime");

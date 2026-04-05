@@ -69,9 +69,9 @@ use super::{
     DEPENDENCY_GRAPH_CACHE_SCHEMA,
     LINK_MANIFEST_CACHE_SCHEMA,
 };
+#[cfg(unix)]
 use crate::collect_apex_files;
 use std::fs;
-#[cfg(not(windows))]
 use std::path::Path;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
