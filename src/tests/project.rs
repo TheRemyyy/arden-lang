@@ -7464,22 +7464,24 @@ fn dependency_graph_limits_wildcard_imports_to_used_owner_files() {
         global_module_map: &HashMap::new(),
         global_module_file_map: &HashMap::new(),
         symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &HashMap::from([
-                ("foo".to_string(), "lib".to_string()),
-                ("bar".to_string(), "lib".to_string()),
-            ]),
-            &HashMap::from([
-                ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-                ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
-            ]),
-            &HashMap::new(),
-            &HashMap::new(),
-            empty_global_interface_map(),
-            empty_global_interface_file_map(),
-            &HashMap::new(),
-            &HashMap::new(),
-            &HashMap::new(),
-            &HashMap::new(),
+            &crate::dependency::ProjectSymbolMaps {
+                function_map: &HashMap::from([
+                    ("foo".to_string(), "lib".to_string()),
+                    ("bar".to_string(), "lib".to_string()),
+                ]),
+                function_file_map: &HashMap::from([
+                    ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
+                    ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+                ]),
+                class_map: &HashMap::new(),
+                class_file_map: &HashMap::new(),
+                interface_map: empty_global_interface_map(),
+                interface_file_map: empty_global_interface_file_map(),
+                enum_map: &HashMap::new(),
+                enum_file_map: &HashMap::new(),
+                module_map: &HashMap::new(),
+                module_file_map: &HashMap::new(),
+            },
         )),
     };
 
@@ -7539,22 +7541,24 @@ fn dependency_graph_keeps_wildcard_namespace_dependencies_when_symbol_disappears
         global_module_map: &HashMap::new(),
         global_module_file_map: &HashMap::new(),
         symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &HashMap::from([
-                ("other".to_string(), "lib".to_string()),
-                ("bar".to_string(), "lib".to_string()),
-            ]),
-            &HashMap::from([
-                ("other".to_string(), PathBuf::from("src/lib_foo.apex")),
-                ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
-            ]),
-            &HashMap::new(),
-            &HashMap::new(),
-            empty_global_interface_map(),
-            empty_global_interface_file_map(),
-            &HashMap::new(),
-            &HashMap::new(),
-            &HashMap::new(),
-            &HashMap::new(),
+            &crate::dependency::ProjectSymbolMaps {
+                function_map: &HashMap::from([
+                    ("other".to_string(), "lib".to_string()),
+                    ("bar".to_string(), "lib".to_string()),
+                ]),
+                function_file_map: &HashMap::from([
+                    ("other".to_string(), PathBuf::from("src/lib_foo.apex")),
+                    ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+                ]),
+                class_map: &HashMap::new(),
+                class_file_map: &HashMap::new(),
+                interface_map: empty_global_interface_map(),
+                interface_file_map: empty_global_interface_file_map(),
+                enum_map: &HashMap::new(),
+                enum_file_map: &HashMap::new(),
+                module_map: &HashMap::new(),
+                module_file_map: &HashMap::new(),
+            },
         )),
     };
 
