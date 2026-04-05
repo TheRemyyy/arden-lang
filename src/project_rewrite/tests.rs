@@ -21,19 +21,68 @@ fn rewrite_program_for_project(
 ) -> Program {
     super::rewrite_program_for_project(
         program,
-        current_namespace,
-        entry_namespace,
-        namespace_functions,
-        global_function_map,
-        namespace_classes,
-        global_class_map,
-        namespace_modules,
-        global_module_map,
-        namespace_enums,
-        global_enum_map,
-        namespace_modules,
-        global_module_map,
-        imports,
+        &super::ProjectRewriteContext {
+            current_namespace,
+            entry_namespace,
+            namespace_functions,
+            global_function_map,
+            namespace_classes,
+            global_class_map,
+            namespace_interfaces: namespace_modules,
+            global_interface_map: global_module_map,
+            namespace_enums,
+            global_enum_map,
+            namespace_modules,
+            global_module_map,
+            imports,
+        },
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fix_module_local_expr(
+    expr: &Expr,
+    current_namespace: &str,
+    entry_namespace: &str,
+    module_prefix: &str,
+    local_functions: &HashSet<String>,
+    local_classes: &HashSet<String>,
+    local_interfaces: &HashSet<String>,
+    local_enums: &HashSet<String>,
+    local_modules: &HashSet<String>,
+    imported_classes: &HashMap<String, (String, String)>,
+    global_class_map: &HashMap<String, String>,
+    imported_enums: &HashMap<String, (String, String)>,
+    global_enum_map: &HashMap<String, String>,
+    imported_modules: &HashMap<String, (String, String)>,
+    global_interface_map: &HashMap<String, String>,
+) -> Expr {
+    super::fix_module_local_expr(
+        expr,
+        super::ModuleRewriteContext {
+            module_prefix,
+            call_ctx: super::CallRewriteContext {
+                local_functions,
+                local_modules,
+                imported_map: &HashMap::new(),
+                global_function_map: &HashMap::new(),
+                global_module_map: &HashMap::new(),
+                type_ctx: super::RewriteTypeContext {
+                    current_namespace,
+                    local_classes,
+                    imported_classes,
+                    global_class_map,
+                    local_interfaces,
+                    imported_interfaces: &HashMap::new(),
+                    global_interface_map,
+                    local_enums,
+                    imported_enums,
+                    global_enum_map,
+                    imported_modules,
+                    entry_namespace,
+                },
+            },
+        },
     )
 }
 

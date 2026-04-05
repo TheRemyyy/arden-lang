@@ -117,16 +117,18 @@ pub(crate) fn rewrite_fingerprint_for_test_unit(
     let global_interface_map: HashMap<String, String> = HashMap::new();
     let global_interface_file_map: HashMap<String, PathBuf> = HashMap::new();
     let symbol_lookup = Arc::new(build_project_symbol_lookup(
-        &symbol_maps.global_function_map,
-        &symbol_maps.global_function_file_map,
-        &symbol_maps.global_class_map,
-        &symbol_maps.global_class_file_map,
-        &global_interface_map,
-        &global_interface_file_map,
-        &symbol_maps.global_enum_map,
-        &symbol_maps.global_enum_file_map,
-        &symbol_maps.global_module_map,
-        &symbol_maps.global_module_file_map,
+        &crate::dependency::ProjectSymbolMaps {
+            function_map: &symbol_maps.global_function_map,
+            function_file_map: &symbol_maps.global_function_file_map,
+            class_map: &symbol_maps.global_class_map,
+            class_file_map: &symbol_maps.global_class_file_map,
+            interface_map: &global_interface_map,
+            interface_file_map: &global_interface_file_map,
+            enum_map: &symbol_maps.global_enum_map,
+            enum_file_map: &symbol_maps.global_enum_file_map,
+            module_map: &symbol_maps.global_module_map,
+            module_file_map: &symbol_maps.global_module_file_map,
+        },
     ));
     let rewrite_ctx = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
