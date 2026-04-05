@@ -6,28 +6,51 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Instant;
-#[allow(clippy::too_many_arguments)]
+
+/// A view of the five global symbol lookup tables (function, class, interface, enum, module).
+///
+/// Each kind has a *namespace* map (`symbol_name → owning_namespace`) and a *file* map
+/// (`symbol_name → owner_file`).  Bundling them here avoids repeating ten identical
+/// parameters in every closure/declaration-resolution helper.
+pub(crate) struct GlobalSymbolMaps<'a> {
+    pub(crate) function_map: &'a HashMap<String, String>,
+    pub(crate) function_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) class_map: &'a HashMap<String, String>,
+    pub(crate) class_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) interface_map: &'a HashMap<String, String>,
+    pub(crate) interface_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) enum_map: &'a HashMap<String, String>,
+    pub(crate) enum_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) module_map: &'a HashMap<String, String>,
+    pub(crate) module_file_map: &'a HashMap<String, PathBuf>,
+}
+
+impl<'a> GlobalSymbolMaps<'a> {
+    /// Returns the first file-map entry that owns `symbol`, scanning all five symbol kinds.
+    pub(crate) fn any_owner_file(&self, symbol: &str) -> Option<&'a PathBuf> {
+        self.function_file_map
+            .get(symbol)
+            .or_else(|| self.class_file_map.get(symbol))
+            .or_else(|| self.interface_file_map.get(symbol))
+            .or_else(|| self.enum_file_map.get(symbol))
+            .or_else(|| self.module_file_map.get(symbol))
+    }
+}
+
 pub(crate) fn insert_declaration_symbol_for_owner(
     symbol: &str,
     owner_ns: &str,
     owner_file: &Path,
     entry_namespace: &str,
     declaration_symbols: &mut HashSet<String>,
-    global_function_map: &HashMap<String, String>,
-    global_function_file_map: &HashMap<String, PathBuf>,
-    global_class_map: &HashMap<String, String>,
-    global_class_file_map: &HashMap<String, PathBuf>,
-    global_interface_map: &HashMap<String, String>,
-    global_interface_file_map: &HashMap<String, PathBuf>,
-    global_enum_map: &HashMap<String, String>,
-    global_enum_file_map: &HashMap<String, PathBuf>,
-    global_module_map: &HashMap<String, String>,
-    global_module_file_map: &HashMap<String, PathBuf>,
+    maps: &GlobalSymbolMaps<'_>,
 ) {
-    let is_function_owner = global_function_map
+    let is_function_owner = maps
+        .function_map
         .get(symbol)
         .is_some_and(|ns| ns == owner_ns)
-        && global_function_file_map
+        && maps
+            .function_file_map
             .get(symbol)
             .is_some_and(|path| path == owner_file);
     if is_function_owner {
@@ -39,26 +62,26 @@ pub(crate) fn insert_declaration_symbol_for_owner(
     }
 
     let is_nominal_owner = [
-        global_class_map
-            .get(symbol)
-            .is_some_and(|ns| ns == owner_ns)
-            && global_class_file_map
+        maps.class_map.get(symbol).is_some_and(|ns| ns == owner_ns)
+            && maps
+                .class_file_map
                 .get(symbol)
                 .is_some_and(|path| path == owner_file),
-        global_interface_map
+        maps.interface_map
             .get(symbol)
             .is_some_and(|ns| ns == owner_ns)
-            && global_interface_file_map
+            && maps
+                .interface_file_map
                 .get(symbol)
                 .is_some_and(|path| path == owner_file),
-        global_enum_map.get(symbol).is_some_and(|ns| ns == owner_ns)
-            && global_enum_file_map
+        maps.enum_map.get(symbol).is_some_and(|ns| ns == owner_ns)
+            && maps
+                .enum_file_map
                 .get(symbol)
                 .is_some_and(|path| path == owner_file),
-        global_module_map
-            .get(symbol)
-            .is_some_and(|ns| ns == owner_ns)
-            && global_module_file_map
+        maps.module_map.get(symbol).is_some_and(|ns| ns == owner_ns)
+            && maps
+                .module_file_map
                 .get(symbol)
                 .is_some_and(|path| path == owner_file),
     ]
@@ -87,16 +110,7 @@ pub(crate) fn extend_declaration_symbols_for_reference(
     declaration_symbols: &mut HashSet<String>,
     stack: &mut Vec<PathBuf>,
     closure_files: &HashSet<PathBuf>,
-    global_function_map: &HashMap<String, String>,
-    global_function_file_map: &HashMap<String, PathBuf>,
-    global_class_map: &HashMap<String, String>,
-    global_class_file_map: &HashMap<String, PathBuf>,
-    global_interface_map: &HashMap<String, String>,
-    global_interface_file_map: &HashMap<String, PathBuf>,
-    global_enum_map: &HashMap<String, String>,
-    global_enum_file_map: &HashMap<String, PathBuf>,
-    global_module_map: &HashMap<String, String>,
-    global_module_file_map: &HashMap<String, PathBuf>,
+    maps: &GlobalSymbolMaps<'_>,
 ) {
     let mut push_owner = |owner_ns: &str, owner_file: &Path| {
         if closure_files.contains(owner_file) {
@@ -106,56 +120,46 @@ pub(crate) fn extend_declaration_symbols_for_reference(
                 owner_file,
                 entry_namespace,
                 declaration_symbols,
-                global_function_map,
-                global_function_file_map,
-                global_class_map,
-                global_class_file_map,
-                global_interface_map,
-                global_interface_file_map,
-                global_enum_map,
-                global_enum_file_map,
-                global_module_map,
-                global_module_file_map,
+                maps,
             );
             stack.push(owner_file.to_path_buf());
         }
     };
 
     if prefer_local_owner
-        && global_function_file_map
+        && maps
+            .function_file_map
             .get(symbol)
             .is_none_or(|owner_file| owner_file != current_file)
     {
-        if let (Some(owner_ns), Some(owner_file)) = (
-            global_class_map.get(symbol),
-            global_class_file_map.get(symbol),
-        ) {
+        if let (Some(owner_ns), Some(owner_file)) =
+            (maps.class_map.get(symbol), maps.class_file_map.get(symbol))
+        {
             if owner_file == current_file {
                 push_owner(owner_ns, owner_file);
                 return;
             }
         }
         if let (Some(owner_ns), Some(owner_file)) = (
-            global_interface_map.get(symbol),
-            global_interface_file_map.get(symbol),
+            maps.interface_map.get(symbol),
+            maps.interface_file_map.get(symbol),
         ) {
             if owner_file == current_file {
                 push_owner(owner_ns, owner_file);
                 return;
             }
         }
-        if let (Some(owner_ns), Some(owner_file)) = (
-            global_enum_map.get(symbol),
-            global_enum_file_map.get(symbol),
-        ) {
+        if let (Some(owner_ns), Some(owner_file)) =
+            (maps.enum_map.get(symbol), maps.enum_file_map.get(symbol))
+        {
             if owner_file == current_file {
                 push_owner(owner_ns, owner_file);
                 return;
             }
         }
         if let (Some(owner_ns), Some(owner_file)) = (
-            global_module_map.get(symbol),
-            global_module_file_map.get(symbol),
+            maps.module_map.get(symbol),
+            maps.module_file_map.get(symbol),
         ) {
             if owner_file == current_file {
                 push_owner(owner_ns, owner_file);
@@ -166,8 +170,8 @@ pub(crate) fn extend_declaration_symbols_for_reference(
 
     if let Some((owner_symbol, _member)) = symbol.rsplit_once("__") {
         if let (Some(owner_ns), Some(owner_file)) = (
-            global_class_map.get(owner_symbol),
-            global_class_file_map.get(owner_symbol),
+            maps.class_map.get(owner_symbol),
+            maps.class_file_map.get(owner_symbol),
         ) {
             push_owner(owner_ns, owner_file);
         }
@@ -177,14 +181,14 @@ pub(crate) fn extend_declaration_symbols_for_reference(
             parts.pop();
             let parent = parts.join("__");
             if let (Some(owner_ns), Some(owner_file)) = (
-                global_class_map.get(&parent),
-                global_class_file_map.get(&parent),
+                maps.class_map.get(&parent),
+                maps.class_file_map.get(&parent),
             ) {
                 push_owner(owner_ns, owner_file);
             }
             if let (Some(owner_ns), Some(owner_file)) = (
-                global_module_map.get(&parent),
-                global_module_file_map.get(&parent),
+                maps.module_map.get(&parent),
+                maps.module_file_map.get(&parent),
             ) {
                 push_owner(owner_ns, owner_file);
             }
@@ -192,32 +196,30 @@ pub(crate) fn extend_declaration_symbols_for_reference(
     }
 
     if let (Some(owner_ns), Some(owner_file)) = (
-        global_function_map.get(symbol),
-        global_function_file_map.get(symbol),
+        maps.function_map.get(symbol),
+        maps.function_file_map.get(symbol),
+    ) {
+        push_owner(owner_ns, owner_file);
+    }
+    if let (Some(owner_ns), Some(owner_file)) =
+        (maps.class_map.get(symbol), maps.class_file_map.get(symbol))
+    {
+        push_owner(owner_ns, owner_file);
+    }
+    if let (Some(owner_ns), Some(owner_file)) =
+        (maps.enum_map.get(symbol), maps.enum_file_map.get(symbol))
+    {
+        push_owner(owner_ns, owner_file);
+    }
+    if let (Some(owner_ns), Some(owner_file)) = (
+        maps.interface_map.get(symbol),
+        maps.interface_file_map.get(symbol),
     ) {
         push_owner(owner_ns, owner_file);
     }
     if let (Some(owner_ns), Some(owner_file)) = (
-        global_class_map.get(symbol),
-        global_class_file_map.get(symbol),
-    ) {
-        push_owner(owner_ns, owner_file);
-    }
-    if let (Some(owner_ns), Some(owner_file)) = (
-        global_enum_map.get(symbol),
-        global_enum_file_map.get(symbol),
-    ) {
-        push_owner(owner_ns, owner_file);
-    }
-    if let (Some(owner_ns), Some(owner_file)) = (
-        global_interface_map.get(symbol),
-        global_interface_file_map.get(symbol),
-    ) {
-        push_owner(owner_ns, owner_file);
-    }
-    if let (Some(owner_ns), Some(owner_file)) = (
-        global_module_map.get(symbol),
-        global_module_file_map.get(symbol),
+        maps.module_map.get(symbol),
+        maps.module_file_map.get(symbol),
     ) {
         push_owner(owner_ns, owner_file);
     }
@@ -238,7 +240,6 @@ pub(crate) fn resolve_exact_imported_symbol_file<'a>(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn resolve_exact_imported_symbol_owner<'a>(
     namespace_path: &str,
     symbol_name: &str,
@@ -247,7 +248,6 @@ pub(crate) fn resolve_exact_imported_symbol_owner<'a>(
     resolve_exact_imported_symbol_file(namespace_path, symbol_name, symbol_lookup)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn extend_declaration_symbols_for_exact_import(
     import: &ImportDecl,
     entry_namespace: &str,
@@ -255,16 +255,7 @@ pub(crate) fn extend_declaration_symbols_for_exact_import(
     stack: &mut Vec<PathBuf>,
     closure_files: &HashSet<PathBuf>,
     symbol_lookup: &ProjectSymbolLookup,
-    global_function_map: &HashMap<String, String>,
-    global_function_file_map: &HashMap<String, PathBuf>,
-    global_class_map: &HashMap<String, String>,
-    global_class_file_map: &HashMap<String, PathBuf>,
-    global_interface_map: &HashMap<String, String>,
-    global_interface_file_map: &HashMap<String, PathBuf>,
-    global_enum_map: &HashMap<String, String>,
-    global_enum_file_map: &HashMap<String, PathBuf>,
-    global_module_map: &HashMap<String, String>,
-    global_module_file_map: &HashMap<String, PathBuf>,
+    maps: &GlobalSymbolMaps<'_>,
 ) {
     let Some((namespace, symbol)) = import.path.rsplit_once('.') else {
         return;
@@ -280,16 +271,7 @@ pub(crate) fn extend_declaration_symbols_for_exact_import(
                 owner_file,
                 entry_namespace,
                 declaration_symbols,
-                global_function_map,
-                global_function_file_map,
-                global_class_map,
-                global_class_file_map,
-                global_interface_map,
-                global_interface_file_map,
-                global_enum_map,
-                global_enum_file_map,
-                global_module_map,
-                global_module_file_map,
+                maps,
             );
             stack.push(owner_file.clone());
         }
@@ -319,48 +301,37 @@ pub(crate) fn extend_declaration_symbols_for_exact_import(
                 owner_file,
                 entry_namespace,
                 declaration_symbols,
-                global_function_map,
-                global_function_file_map,
-                global_class_map,
-                global_class_file_map,
-                global_interface_map,
-                global_interface_file_map,
-                global_enum_map,
-                global_enum_file_map,
-                global_module_map,
-                global_module_file_map,
+                maps,
             );
             stack.push(owner_file.to_path_buf());
         }
     };
 
     if let (Some(owner_ns), Some(owner_file)) = (
-        global_function_map.get(symbol),
-        global_function_file_map.get(symbol),
+        maps.function_map.get(symbol),
+        maps.function_file_map.get(symbol),
     ) {
         push_owner(owner_ns, owner_file);
     }
-    if let (Some(owner_ns), Some(owner_file)) = (
-        global_class_map.get(symbol),
-        global_class_file_map.get(symbol),
-    ) {
+    if let (Some(owner_ns), Some(owner_file)) =
+        (maps.class_map.get(symbol), maps.class_file_map.get(symbol))
+    {
         push_owner(owner_ns, owner_file);
     }
     if let (Some(owner_ns), Some(owner_file)) = (
-        global_interface_map.get(symbol),
-        global_interface_file_map.get(symbol),
+        maps.interface_map.get(symbol),
+        maps.interface_file_map.get(symbol),
     ) {
         push_owner(owner_ns, owner_file);
     }
-    if let (Some(owner_ns), Some(owner_file)) = (
-        global_enum_map.get(symbol),
-        global_enum_file_map.get(symbol),
-    ) {
+    if let (Some(owner_ns), Some(owner_file)) =
+        (maps.enum_map.get(symbol), maps.enum_file_map.get(symbol))
+    {
         push_owner(owner_ns, owner_file);
     }
     if let (Some(owner_ns), Some(owner_file)) = (
-        global_module_map.get(symbol),
-        global_module_file_map.get(symbol),
+        maps.module_map.get(symbol),
+        maps.module_file_map.get(symbol),
     ) {
         push_owner(owner_ns, owner_file);
     }
@@ -380,16 +351,7 @@ pub(crate) fn declaration_symbols_for_unit(
     reference_metadata: &HashMap<PathBuf, CodegenReferenceMetadata>,
     entry_namespace: &str,
     symbol_lookup: &ProjectSymbolLookup,
-    global_function_map: &HashMap<String, String>,
-    global_function_file_map: &HashMap<String, PathBuf>,
-    global_class_map: &HashMap<String, String>,
-    global_class_file_map: &HashMap<String, PathBuf>,
-    global_interface_map: &HashMap<String, String>,
-    global_interface_file_map: &HashMap<String, PathBuf>,
-    global_enum_map: &HashMap<String, String>,
-    global_enum_file_map: &HashMap<String, PathBuf>,
-    global_module_map: &HashMap<String, String>,
-    global_module_file_map: &HashMap<String, PathBuf>,
+    maps: &GlobalSymbolMaps<'_>,
     timings: Option<&DeclarationClosureTimingTotals>,
 ) -> DeclarationClosure {
     let closure_seed_started_at = Instant::now();
@@ -452,12 +414,7 @@ pub(crate) fn declaration_symbols_for_unit(
                         std::slice::from_ref(symbol),
                         symbol_lookup,
                     ) {
-                        let owner_file = global_function_file_map
-                            .get(&candidate)
-                            .or_else(|| global_class_file_map.get(&candidate))
-                            .or_else(|| global_interface_file_map.get(&candidate))
-                            .or_else(|| global_enum_file_map.get(&candidate))
-                            .or_else(|| global_module_file_map.get(&candidate));
+                        let owner_file = maps.any_owner_file(&candidate);
                         if let Some(owner_file) = owner_file {
                             if closure_files.contains(owner_file) {
                                 insert_declaration_symbol_for_owner(
@@ -466,16 +423,7 @@ pub(crate) fn declaration_symbols_for_unit(
                                     owner_file,
                                     entry_namespace,
                                     &mut declaration_symbols,
-                                    global_function_map,
-                                    global_function_file_map,
-                                    global_class_map,
-                                    global_class_file_map,
-                                    global_interface_map,
-                                    global_interface_file_map,
-                                    global_enum_map,
-                                    global_enum_file_map,
-                                    global_module_map,
-                                    global_module_file_map,
+                                    maps,
                                 );
                                 stack.push(owner_file.to_path_buf());
                             }
@@ -501,16 +449,7 @@ pub(crate) fn declaration_symbols_for_unit(
                 &mut stack,
                 &closure_files,
                 symbol_lookup,
-                global_function_map,
-                global_function_file_map,
-                global_class_map,
-                global_class_file_map,
-                global_interface_map,
-                global_interface_file_map,
-                global_enum_map,
-                global_enum_file_map,
-                global_module_map,
-                global_module_file_map,
+                maps,
             );
             if let Some(timings) = timings {
                 timings
@@ -529,12 +468,7 @@ pub(crate) fn declaration_symbols_for_unit(
                     if let Some((owner_ns, candidate)) =
                         resolve_symbol_in_namespace_path(&import.path, rest, symbol_lookup)
                     {
-                        let owner_file = global_function_file_map
-                            .get(&candidate)
-                            .or_else(|| global_class_file_map.get(&candidate))
-                            .or_else(|| global_interface_file_map.get(&candidate))
-                            .or_else(|| global_enum_file_map.get(&candidate))
-                            .or_else(|| global_module_file_map.get(&candidate));
+                        let owner_file = maps.any_owner_file(&candidate);
                         if let Some(owner_file) = owner_file {
                             if closure_files.contains(owner_file) {
                                 insert_declaration_symbol_for_owner(
@@ -543,16 +477,7 @@ pub(crate) fn declaration_symbols_for_unit(
                                     owner_file,
                                     entry_namespace,
                                     &mut declaration_symbols,
-                                    global_function_map,
-                                    global_function_file_map,
-                                    global_class_map,
-                                    global_class_file_map,
-                                    global_interface_map,
-                                    global_interface_file_map,
-                                    global_enum_map,
-                                    global_enum_file_map,
-                                    global_module_map,
-                                    global_module_file_map,
+                                    maps,
                                 );
                                 stack.push(owner_file.to_path_buf());
                             }
@@ -587,16 +512,7 @@ pub(crate) fn declaration_symbols_for_unit(
                 &mut declaration_symbols,
                 &mut stack,
                 &closure_files,
-                global_function_map,
-                global_function_file_map,
-                global_class_map,
-                global_class_file_map,
-                global_interface_map,
-                global_interface_file_map,
-                global_enum_map,
-                global_enum_file_map,
-                global_module_map,
-                global_module_file_map,
+                maps,
             );
         }
         if let Some(timings) = timings {

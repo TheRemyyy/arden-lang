@@ -9791,12 +9791,10 @@ impl TypeChecker {
     }
 }
 
-#[cfg(test)]
-#[allow(clippy::items_after_test_module)]
-mod tests;
-
 /// Format type errors with source context
 pub fn format_errors(errors: &[TypeError], source: &str, filename: &str) -> String {
+    use colored::Colorize;
+
     let lines: Vec<&str> = source.lines().collect();
     let mut output = String::new();
 
@@ -9816,17 +9814,20 @@ pub fn format_errors(errors: &[TypeError], source: &str, filename: &str) -> Stri
             }
         }
 
-        output.push_str(&format!("\x1b[1;31merror\x1b[0m: {}\n", error.message));
+        output.push_str(&format!("{}: {}\n", "error".red().bold(), error.message));
         output.push_str(&format!(
-            "  \x1b[1;34m-->\x1b[0m {}:{}:{}\n",
-            filename, line_num, col
+            "  {} {}:{}:{}\n",
+            "-->".blue().bold(),
+            filename,
+            line_num,
+            col
         ));
-        output.push_str("   \x1b[1;34m|\x1b[0m\n");
+        output.push_str(&format!("   {}\n", "|".blue().bold()));
 
         if line_num <= lines.len() {
             output.push_str(&format!(
-                "\x1b[1;34m{:3} |\x1b[0m {}\n",
-                line_num,
+                "{} {}\n",
+                format!("{:3} |", line_num).blue().bold(),
                 lines[line_num - 1]
             ));
 
@@ -9834,15 +9835,22 @@ pub fn format_errors(errors: &[TypeError], source: &str, filename: &str) -> Stri
             let underline_start = col.saturating_sub(1);
             let underline_len = error.span.end.saturating_sub(error.span.start).max(1);
             let available = lines[line_num - 1].len().saturating_sub(underline_start);
+            let carets = "^".repeat(underline_len.min(available).max(1));
             output.push_str(&format!(
-                "   \x1b[1;34m|\x1b[0m {}\x1b[1;31m{}\x1b[0m\n",
+                "   {} {}{}\n",
+                "|".blue().bold(),
                 " ".repeat(underline_start),
-                "^".repeat(underline_len.min(available).max(1))
+                carets.red().bold()
             ));
         }
 
         if let Some(hint) = &error.hint {
-            output.push_str(&format!("   \x1b[1;34m= help\x1b[0m: {}\n", hint));
+            output.push_str(&format!(
+                "   {} {}: {}\n",
+                "=".blue().bold(),
+                "help".blue().bold(),
+                hint
+            ));
         }
 
         output.push('\n');
@@ -9850,3 +9858,6 @@ pub fn format_errors(errors: &[TypeError], source: &str, filename: &str) -> Stri
 
     output
 }
+
+#[cfg(test)]
+mod tests;

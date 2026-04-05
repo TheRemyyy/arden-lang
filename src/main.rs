@@ -293,6 +293,66 @@ fn current_dir_checked() -> Result<PathBuf, String> {
     })
 }
 
+/// Parsed data extracted from a source file, used internally by [`parse_project_unit`].
+struct SourceParseResult {
+    namespace: String,
+    program: crate::ast::Program,
+    imports: Vec<ImportDecl>,
+    api_fingerprint: String,
+    semantic_fingerprint: String,
+    /// `Some(fp)` when the file was freshly parsed; `None` when loaded from cache.
+    source_fingerprint_for_cache: Option<String>,
+    from_parse_cache: bool,
+}
+
+/// Parse source text and extract the constituent parts of a [`ParsedProjectUnit`].
+fn parse_source_text(
+    source: &str,
+    source_fp: String,
+    filename: &str,
+) -> Result<SourceParseResult, String> {
+    let tokens = lexer::tokenize(source).map_err(|e| {
+        format!(
+            "{}: Lexer error in {}: {}",
+            "error".red().bold(),
+            filename,
+            e
+        )
+    })?;
+    let mut parser = Parser::new(tokens);
+    let program = parser.parse_program().map_err(|e| {
+        format!(
+            "{}: Parse error in {}: {}",
+            "error".red().bold(),
+            filename,
+            e.message
+        )
+    })?;
+    let namespace = program
+        .package
+        .clone()
+        .unwrap_or_else(|| "global".to_string());
+    let imports: Vec<ImportDecl> = program
+        .declarations
+        .iter()
+        .filter_map(|d| match &d.node {
+            Decl::Import(import) => Some(import.clone()),
+            _ => None,
+        })
+        .collect();
+    let api_fingerprint = api_program_fingerprint(&program);
+    let semantic_fingerprint = semantic_program_fingerprint(&program);
+    Ok(SourceParseResult {
+        namespace,
+        program,
+        imports,
+        api_fingerprint,
+        semantic_fingerprint,
+        source_fingerprint_for_cache: Some(source_fp),
+        from_parse_cache: false,
+    })
+}
+
 fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectUnit, String> {
     let filename = file
         .file_name()
@@ -300,7 +360,17 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         .unwrap_or("unknown.apex");
     let file_metadata = current_file_metadata_stamp(file)?;
     let cached_entry = load_parsed_file_cache_entry(project_root, file)?;
-    let (
+    let read_source = |f: &Path| {
+        fs::read_to_string(f).map_err(|e| {
+            format!(
+                "{}: Failed to read '{}': {}",
+                "error".red().bold(),
+                f.display(),
+                e
+            )
+        })
+    };
+    let SourceParseResult {
         namespace,
         program,
         imports,
@@ -308,134 +378,26 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         semantic_fingerprint,
         source_fingerprint_for_cache,
         from_parse_cache,
-    ) = if let Some(cache) = cached_entry.as_ref() {
-        let source = fs::read_to_string(file).map_err(|e| {
-            format!(
-                "{}: Failed to read '{}': {}",
-                "error".red().bold(),
-                file.display(),
-                e
-            )
-        })?;
+    } = if let Some(cache) = cached_entry.as_ref() {
+        let source = read_source(file)?;
         let source_fp = source_fingerprint(&source);
-        if cache.file_metadata == file_metadata && cache.source_fingerprint == source_fp {
-            (
-                cache.namespace.clone(),
-                cache.program.clone(),
-                cache.imports.clone(),
-                cache.api_fingerprint.clone(),
-                cache.semantic_fingerprint.clone(),
-                None,
-                true,
-            )
-        } else {
-            if cache.source_fingerprint == source_fp {
-                (
-                    cache.namespace.clone(),
-                    cache.program.clone(),
-                    cache.imports.clone(),
-                    cache.api_fingerprint.clone(),
-                    cache.semantic_fingerprint.clone(),
-                    None,
-                    true,
-                )
-            } else {
-                let tokens = lexer::tokenize(&source).map_err(|e| {
-                    format!(
-                        "{}: Lexer error in {}: {}",
-                        "error".red().bold(),
-                        filename,
-                        e
-                    )
-                })?;
-                let mut parser = Parser::new(tokens);
-                let program = parser.parse_program().map_err(|e| {
-                    format!(
-                        "{}: Parse error in {}: {}",
-                        "error".red().bold(),
-                        filename,
-                        e.message
-                    )
-                })?;
-
-                let namespace = program
-                    .package
-                    .clone()
-                    .unwrap_or_else(|| "global".to_string());
-                let imports: Vec<ImportDecl> = program
-                    .declarations
-                    .iter()
-                    .filter_map(|d| match &d.node {
-                        Decl::Import(import) => Some(import.clone()),
-                        _ => None,
-                    })
-                    .collect();
-                let api_fingerprint = api_program_fingerprint(&program);
-                let semantic_fingerprint = semantic_program_fingerprint(&program);
-
-                (
-                    namespace,
-                    program,
-                    imports,
-                    api_fingerprint,
-                    semantic_fingerprint,
-                    Some(source_fp),
-                    false,
-                )
+        if cache.source_fingerprint == source_fp {
+            SourceParseResult {
+                namespace: cache.namespace.clone(),
+                program: cache.program.clone(),
+                imports: cache.imports.clone(),
+                api_fingerprint: cache.api_fingerprint.clone(),
+                semantic_fingerprint: cache.semantic_fingerprint.clone(),
+                source_fingerprint_for_cache: None,
+                from_parse_cache: true,
             }
+        } else {
+            parse_source_text(&source, source_fp, filename)?
         }
     } else {
-        let source = fs::read_to_string(file).map_err(|e| {
-            format!(
-                "{}: Failed to read '{}': {}",
-                "error".red().bold(),
-                file.display(),
-                e
-            )
-        })?;
+        let source = read_source(file)?;
         let source_fp = source_fingerprint(&source);
-        let tokens = lexer::tokenize(&source).map_err(|e| {
-            format!(
-                "{}: Lexer error in {}: {}",
-                "error".red().bold(),
-                filename,
-                e
-            )
-        })?;
-        let mut parser = Parser::new(tokens);
-        let program = parser.parse_program().map_err(|e| {
-            format!(
-                "{}: Parse error in {}: {}",
-                "error".red().bold(),
-                filename,
-                e.message
-            )
-        })?;
-
-        let namespace = program
-            .package
-            .clone()
-            .unwrap_or_else(|| "global".to_string());
-        let imports: Vec<ImportDecl> = program
-            .declarations
-            .iter()
-            .filter_map(|d| match &d.node {
-                Decl::Import(import) => Some(import.clone()),
-                _ => None,
-            })
-            .collect();
-        let api_fingerprint = api_program_fingerprint(&program);
-        let semantic_fingerprint = semantic_program_fingerprint(&program);
-
-        (
-            namespace,
-            program,
-            imports,
-            api_fingerprint,
-            semantic_fingerprint,
-            Some(source_fp),
-            false,
-        )
+        parse_source_text(&source, source_fp, filename)?
     };
 
     let mut function_names = Vec::new();
@@ -3119,6 +3081,18 @@ fn build_project(
                         let mut batch_active_symbols = HashSet::new();
                         let mut batch_declaration_symbols = HashSet::new();
                         let mut batch_closure_files = HashSet::new();
+                        let global_maps = GlobalSymbolMaps {
+                            function_map: &global_function_map,
+                            function_file_map: &global_function_file_map,
+                            class_map: &global_class_map,
+                            class_file_map: &global_class_file_map,
+                            interface_map: &global_interface_map,
+                            interface_file_map: &global_interface_file_map,
+                            enum_map: &global_enum_map,
+                            enum_file_map: &global_enum_file_map,
+                            module_map: &global_module_map,
+                            module_file_map: &global_module_file_map,
+                        };
                         for index in &shard.member_indices {
                             let unit = &rewritten_files[*index];
                             let declaration_closure = declaration_symbols_for_unit(
@@ -3128,16 +3102,7 @@ fn build_project(
                                 &codegen_reference_metadata,
                                 &entry_namespace,
                                 &project_symbol_lookup,
-                                &global_function_map,
-                                &global_function_file_map,
-                                &global_class_map,
-                                &global_class_file_map,
-                                &global_interface_map,
-                                &global_interface_file_map,
-                                &global_enum_map,
-                                &global_enum_file_map,
-                                &global_module_map,
-                                &global_module_file_map,
+                                &global_maps,
                                 Some(declaration_closure_timing_totals.as_ref()),
                             );
                             batch_active_symbols.extend(unit.active_symbols.iter().cloned());
@@ -4651,26 +4616,31 @@ fn format_parse_error(error: &parser::ParseError, source: &str, filename: &str) 
     }
 
     let mut output = String::new();
-    output.push_str(&format!("\x1b[1;31merror\x1b[0m: {}\n", error.message));
+    output.push_str(&format!("{}: {}\n", "error".red().bold(), error.message));
     output.push_str(&format!(
-        "  \x1b[1;34m-->\x1b[0m {}:{}:{}\n",
-        filename, line_num, col
+        "  {} {}:{}:{}\n",
+        "-->".blue().bold(),
+        filename,
+        line_num,
+        col
     ));
-    output.push_str("   \x1b[1;34m|\x1b[0m\n");
+    output.push_str(&format!("   {}\n", "|".blue().bold()));
 
     if line_num <= lines.len() {
         output.push_str(&format!(
-            "\x1b[1;34m{:3} |\x1b[0m {}\n",
-            line_num,
+            "{} {}\n",
+            format!("{:3} |", line_num).blue().bold(),
             lines[line_num - 1]
         ));
 
         let underline_start = col.saturating_sub(1);
         let underline_len = (error.span.end - error.span.start).max(1);
+        let carets = "^".repeat(underline_len.min(50));
         output.push_str(&format!(
-            "   \x1b[1;34m|\x1b[0m {}\x1b[1;31m{}\x1b[0m\n",
+            "   {} {}{}\n",
+            "|".blue().bold(),
             " ".repeat(underline_start),
-            "^".repeat(underline_len.min(50))
+            carets.red().bold()
         ));
     }
 

@@ -2605,6 +2605,8 @@ impl BorrowChecker {
 
 /// Format borrow errors with source context
 pub fn format_borrow_errors(errors: &[BorrowError], source: &str, filename: &str) -> String {
+    use colored::Colorize;
+
     let lines: Vec<&str> = source.lines().collect();
     let mut output = String::new();
 
@@ -2612,37 +2614,46 @@ pub fn format_borrow_errors(errors: &[BorrowError], source: &str, filename: &str
         let (line_num, col) = span_to_location(&error.span, source);
 
         output.push_str(&format!(
-            "\x1b[1;31merror[E0505]\x1b[0m: {}\n",
+            "{}: {}\n",
+            "error[E0505]".red().bold(),
             error.message
         ));
         output.push_str(&format!(
-            "  \x1b[1;34m-->\x1b[0m {}:{}:{}\n",
-            filename, line_num, col
+            "  {} {}:{}:{}\n",
+            "-->".blue().bold(),
+            filename,
+            line_num,
+            col
         ));
-        output.push_str("   \x1b[1;34m|\x1b[0m\n");
+        output.push_str(&format!("   {}\n", "|".blue().bold()));
 
         if line_num <= lines.len() {
             output.push_str(&format!(
-                "\x1b[1;34m{:3} |\x1b[0m {}\n",
-                line_num,
+                "{} {}\n",
+                format!("{:3} |", line_num).blue().bold(),
                 lines[line_num - 1]
             ));
 
             let underline_start = col.saturating_sub(1);
             let underline_len = error.span.end.saturating_sub(error.span.start).max(1);
+            let carets = "^".repeat(underline_len.min(50));
             output.push_str(&format!(
-                "   \x1b[1;34m|\x1b[0m {}\x1b[1;31m{}\x1b[0m\n",
+                "   {} {}{}\n",
+                "|".blue().bold(),
                 " ".repeat(underline_start),
-                "^".repeat(underline_len.min(50))
+                carets.red().bold()
             ));
         }
 
         if let Some((note_msg, note_span)) = &error.note {
             let (note_line, _) = span_to_location(note_span, source);
-            output.push_str("   \x1b[1;34m|\x1b[0m\n");
+            output.push_str(&format!("   {}\n", "|".blue().bold()));
             output.push_str(&format!(
-                "   \x1b[1;34m= note\x1b[0m: {} (at line {})\n",
-                note_msg, note_line
+                "   {} {}: {} (at line {})\n",
+                "=".blue().bold(),
+                "note".blue().bold(),
+                note_msg,
+                note_line
             ));
         }
 

@@ -4,6 +4,7 @@
 use crate::ast::{
     BinOp, Expr, Literal, MatchArm, Parameter, Pattern, Spanned, Stmt, StringPart, Type, UnaryOp,
 };
+use crate::cache::elapsed_nanos_u64;
 use crate::parser::parse_type_source;
 use crate::project::OutputKind;
 
@@ -97,10 +98,6 @@ static OBJECT_WRITE_TIMING_TOTALS: ObjectWriteTimingTotals = ObjectWriteTimingTo
     emit_object_call_count: AtomicUsize::new(0),
     write_object_call_count: AtomicUsize::new(0),
 };
-
-fn elapsed_nanos_u64(started_at: Instant) -> u64 {
-    started_at.elapsed().as_nanos() as u64
-}
 
 pub fn reset_object_write_timings() {
     OBJECT_WRITE_TIMING_TOTALS
