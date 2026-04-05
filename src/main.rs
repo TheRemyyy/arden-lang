@@ -1334,12 +1334,14 @@ fn build_project(
                     func_name,
                     &unit.namespace,
                     &unit.file,
-                    &mut global_function_map,
-                    &mut global_function_file_map,
-                    &mut function_collisions,
-                    &mut project_symbol_lookup_exact,
-                    &mut project_symbol_lookup_wildcard_members,
-                    needs_project_symbol_lookup,
+                    &mut GlobalSymbolRegistrationContext {
+                        global_map: &mut global_function_map,
+                        global_file_map: &mut global_function_file_map,
+                        collisions: &mut function_collisions,
+                        exact_lookup: &mut project_symbol_lookup_exact,
+                        wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
+                        build_symbol_lookup: needs_project_symbol_lookup,
+                    },
                 );
                 parse_index_function_register_ns += elapsed_nanos_u64(started_at);
             }
@@ -1356,12 +1358,14 @@ fn build_project(
                         class_name,
                         &unit.namespace,
                         &unit.file,
-                        &mut global_class_map,
-                        &mut global_class_file_map,
-                        &mut class_collisions,
-                        &mut project_symbol_lookup_exact,
-                        &mut project_symbol_lookup_wildcard_members,
-                        needs_project_symbol_lookup,
+                        &mut GlobalSymbolRegistrationContext {
+                            global_map: &mut global_class_map,
+                            global_file_map: &mut global_class_file_map,
+                            collisions: &mut class_collisions,
+                            exact_lookup: &mut project_symbol_lookup_exact,
+                            wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
+                            build_symbol_lookup: needs_project_symbol_lookup,
+                        },
                     );
                     parse_index_class_register_ns += elapsed_nanos_u64(started_at);
                 }
@@ -1379,12 +1383,14 @@ fn build_project(
                         interface_name,
                         &unit.namespace,
                         &unit.file,
-                        &mut global_interface_map,
-                        &mut global_interface_file_map,
-                        &mut interface_collisions,
-                        &mut project_symbol_lookup_exact,
-                        &mut project_symbol_lookup_wildcard_members,
-                        needs_project_symbol_lookup,
+                        &mut GlobalSymbolRegistrationContext {
+                            global_map: &mut global_interface_map,
+                            global_file_map: &mut global_interface_file_map,
+                            collisions: &mut interface_collisions,
+                            exact_lookup: &mut project_symbol_lookup_exact,
+                            wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
+                            build_symbol_lookup: needs_project_symbol_lookup,
+                        },
                     );
                     parse_index_interface_register_ns += elapsed_nanos_u64(started_at);
                 }
@@ -1402,12 +1408,14 @@ fn build_project(
                         enum_name,
                         &unit.namespace,
                         &unit.file,
-                        &mut global_enum_map,
-                        &mut global_enum_file_map,
-                        &mut enum_collisions,
-                        &mut project_symbol_lookup_exact,
-                        &mut project_symbol_lookup_wildcard_members,
-                        needs_project_symbol_lookup,
+                        &mut GlobalSymbolRegistrationContext {
+                            global_map: &mut global_enum_map,
+                            global_file_map: &mut global_enum_file_map,
+                            collisions: &mut enum_collisions,
+                            exact_lookup: &mut project_symbol_lookup_exact,
+                            wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
+                            build_symbol_lookup: needs_project_symbol_lookup,
+                        },
                     );
                     parse_index_enum_register_ns += elapsed_nanos_u64(started_at);
                 }
@@ -1425,12 +1433,14 @@ fn build_project(
                         module_name,
                         &unit.namespace,
                         &unit.file,
-                        &mut global_module_map,
-                        &mut global_module_file_map,
-                        &mut module_collisions,
-                        &mut project_symbol_lookup_exact,
-                        &mut project_symbol_lookup_wildcard_members,
-                        needs_project_symbol_lookup,
+                        &mut GlobalSymbolRegistrationContext {
+                            global_map: &mut global_module_map,
+                            global_file_map: &mut global_module_file_map,
+                            collisions: &mut module_collisions,
+                            exact_lookup: &mut project_symbol_lookup_exact,
+                            wildcard_lookup: &mut project_symbol_lookup_wildcard_members,
+                            build_symbol_lookup: needs_project_symbol_lookup,
+                        },
                     );
                     parse_index_module_register_ns += elapsed_nanos_u64(started_at);
                 }
@@ -2271,19 +2281,21 @@ fn build_project(
                         let rewrite_program_started_at = Instant::now();
                         let rewritten = project_rewrite::rewrite_program_for_project(
                             &unit.program,
-                            &unit.namespace,
-                            &entry_namespace,
-                            &namespace_functions,
-                            &global_function_map,
-                            &namespace_class_map,
-                            &global_class_map,
-                            &namespace_interface_map,
-                            &global_interface_map,
-                            &namespace_enum_map,
-                            &global_enum_map,
-                            &namespace_module_map,
-                            &global_module_map,
-                            &unit.imports,
+                            &project_rewrite::ProjectRewriteContext {
+                                current_namespace: &unit.namespace,
+                                entry_namespace: &entry_namespace,
+                                namespace_functions: &namespace_functions,
+                                global_function_map: &global_function_map,
+                                namespace_classes: &namespace_class_map,
+                                global_class_map: &global_class_map,
+                                namespace_interfaces: &namespace_interface_map,
+                                global_interface_map: &global_interface_map,
+                                namespace_enums: &namespace_enum_map,
+                                global_enum_map: &global_enum_map,
+                                namespace_modules: &namespace_module_map,
+                                global_module_map: &global_module_map,
+                                imports: &unit.imports,
+                            },
                         );
                         rewrite_timing_totals.rewrite_program_ns.fetch_add(
                             elapsed_nanos_u64(rewrite_program_started_at),

@@ -21,19 +21,21 @@ fn rewrite_program_for_project(
 ) -> Program {
     super::rewrite_program_for_project(
         program,
-        current_namespace,
-        entry_namespace,
-        namespace_functions,
-        global_function_map,
-        namespace_classes,
-        global_class_map,
-        namespace_modules,
-        global_module_map,
-        namespace_enums,
-        global_enum_map,
-        namespace_modules,
-        global_module_map,
-        imports,
+        &super::ProjectRewriteContext {
+            current_namespace,
+            entry_namespace,
+            namespace_functions,
+            global_function_map,
+            namespace_classes,
+            global_class_map,
+            namespace_interfaces: namespace_modules,
+            global_interface_map: global_module_map,
+            namespace_enums,
+            global_enum_map,
+            namespace_modules,
+            global_module_map,
+            imports,
+        },
     )
 }
 

@@ -135,26 +135,30 @@ pub(crate) fn insert_symbol_lookup_entry(
     );
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(crate) struct GlobalSymbolRegistrationContext<'a> {
+    pub(crate) global_map: &'a mut HashMap<String, String>,
+    pub(crate) global_file_map: &'a mut HashMap<String, PathBuf>,
+    pub(crate) collisions: &'a mut Vec<(String, String, String)>,
+    pub(crate) exact_lookup: &'a mut ExactSymbolLookup,
+    pub(crate) wildcard_lookup: &'a mut WildcardMemberLookup,
+    pub(crate) build_symbol_lookup: bool,
+}
+
 pub(crate) fn register_global_symbol(
     symbol_name: &str,
     owner_namespace: &str,
     owner_file: &Path,
-    global_map: &mut HashMap<String, String>,
-    global_file_map: &mut HashMap<String, PathBuf>,
-    collisions: &mut Vec<(String, String, String)>,
-    exact_lookup: &mut ExactSymbolLookup,
-    wildcard_lookup: &mut WildcardMemberLookup,
-    build_symbol_lookup: bool,
+    ctx: &mut GlobalSymbolRegistrationContext<'_>,
 ) {
-    match global_map.entry(symbol_name.to_string()) {
+    match ctx.global_map.entry(symbol_name.to_string()) {
         std::collections::hash_map::Entry::Vacant(entry) => {
             entry.insert(owner_namespace.to_string());
-            global_file_map.insert(symbol_name.to_string(), owner_file.to_path_buf());
-            if build_symbol_lookup {
+            ctx.global_file_map
+                .insert(symbol_name.to_string(), owner_file.to_path_buf());
+            if ctx.build_symbol_lookup {
                 insert_symbol_lookup_entry(
-                    exact_lookup,
-                    wildcard_lookup,
+                    ctx.exact_lookup,
+                    ctx.wildcard_lookup,
                     owner_namespace,
                     symbol_name,
                     owner_file,
@@ -163,7 +167,7 @@ pub(crate) fn register_global_symbol(
         }
         std::collections::hash_map::Entry::Occupied(entry) => {
             if entry.get() != owner_namespace {
-                collisions.push((
+                ctx.collisions.push((
                     symbol_name.to_string(),
                     entry.get().clone(),
                     owner_namespace.to_string(),
@@ -174,29 +178,31 @@ pub(crate) fn register_global_symbol(
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn build_project_symbol_lookup(
-    global_function_map: &HashMap<String, String>,
-    global_function_file_map: &HashMap<String, PathBuf>,
-    global_class_map: &HashMap<String, String>,
-    global_class_file_map: &HashMap<String, PathBuf>,
-    global_interface_map: &HashMap<String, String>,
-    global_interface_file_map: &HashMap<String, PathBuf>,
-    global_enum_map: &HashMap<String, String>,
-    global_enum_file_map: &HashMap<String, PathBuf>,
-    global_module_map: &HashMap<String, String>,
-    global_module_file_map: &HashMap<String, PathBuf>,
-) -> ProjectSymbolLookup {
-    let symbol_count = global_function_map.len()
-        + global_class_map.len()
-        + global_interface_map.len()
-        + global_enum_map.len()
-        + global_module_map.len();
+pub(crate) struct ProjectSymbolMaps<'a> {
+    pub(crate) function_map: &'a HashMap<String, String>,
+    pub(crate) function_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) class_map: &'a HashMap<String, String>,
+    pub(crate) class_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) interface_map: &'a HashMap<String, String>,
+    pub(crate) interface_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) enum_map: &'a HashMap<String, String>,
+    pub(crate) enum_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) module_map: &'a HashMap<String, String>,
+    pub(crate) module_file_map: &'a HashMap<String, PathBuf>,
+}
+
+#[cfg(test)]
+pub(crate) fn build_project_symbol_lookup(maps: &ProjectSymbolMaps<'_>) -> ProjectSymbolLookup {
+    let symbol_count = maps.function_map.len()
+        + maps.class_map.len()
+        + maps.interface_map.len()
+        + maps.enum_map.len()
+        + maps.module_map.len();
     let mut exact = HashMap::with_capacity(symbol_count);
     let mut wildcard_members = HashMap::with_capacity(symbol_count);
 
-    for (symbol_name, owner_namespace) in global_function_map {
-        if let Some(owner_file) = global_function_file_map.get(symbol_name) {
+    for (symbol_name, owner_namespace) in maps.function_map {
+        if let Some(owner_file) = maps.function_file_map.get(symbol_name) {
             insert_symbol_lookup_entry(
                 &mut exact,
                 &mut wildcard_members,
@@ -206,8 +212,8 @@ pub(crate) fn build_project_symbol_lookup(
             );
         }
     }
-    for (symbol_name, owner_namespace) in global_class_map {
-        if let Some(owner_file) = global_class_file_map.get(symbol_name) {
+    for (symbol_name, owner_namespace) in maps.class_map {
+        if let Some(owner_file) = maps.class_file_map.get(symbol_name) {
             insert_symbol_lookup_entry(
                 &mut exact,
                 &mut wildcard_members,
@@ -217,8 +223,8 @@ pub(crate) fn build_project_symbol_lookup(
             );
         }
     }
-    for (symbol_name, owner_namespace) in global_interface_map {
-        if let Some(owner_file) = global_interface_file_map.get(symbol_name) {
+    for (symbol_name, owner_namespace) in maps.interface_map {
+        if let Some(owner_file) = maps.interface_file_map.get(symbol_name) {
             insert_symbol_lookup_entry(
                 &mut exact,
                 &mut wildcard_members,
@@ -228,8 +234,8 @@ pub(crate) fn build_project_symbol_lookup(
             );
         }
     }
-    for (symbol_name, owner_namespace) in global_enum_map {
-        if let Some(owner_file) = global_enum_file_map.get(symbol_name) {
+    for (symbol_name, owner_namespace) in maps.enum_map {
+        if let Some(owner_file) = maps.enum_file_map.get(symbol_name) {
             insert_symbol_lookup_entry(
                 &mut exact,
                 &mut wildcard_members,
@@ -239,8 +245,8 @@ pub(crate) fn build_project_symbol_lookup(
             );
         }
     }
-    for (symbol_name, owner_namespace) in global_module_map {
-        if let Some(owner_file) = global_module_file_map.get(symbol_name) {
+    for (symbol_name, owner_namespace) in maps.module_map {
+        if let Some(owner_file) = maps.module_file_map.get(symbol_name) {
             insert_symbol_lookup_entry(
                 &mut exact,
                 &mut wildcard_members,
@@ -276,7 +282,6 @@ pub(crate) fn wildcard_symbol_resolution<'a>(
         .and_then(Option::as_deref)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn import_path_owner_file<'a>(
     path: &str,
     symbol_lookup: &'a ProjectSymbolLookup,
@@ -425,7 +430,6 @@ pub(crate) fn resolve_symbol_in_namespace_path(
     None
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn resolve_owner_file_in_namespace_path(
     namespace_path: &str,
     member_parts: &[String],
