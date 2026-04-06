@@ -173,6 +173,19 @@ fn direct_wildcard_member_name(
     (!remainder.is_empty() && !remainder.contains("__")).then(|| remainder.to_string())
 }
 
+fn direct_stdlib_wildcard_member_name(import_path: &str, owner_ns: &str, symbol_name: &str) -> Option<String> {
+    if owner_ns != import_path {
+        return None;
+    }
+    Some(
+        symbol_name
+            .split_once("__")
+            .map(|(_, member)| member)
+            .unwrap_or(symbol_name)
+            .to_string(),
+    )
+}
+
 /// Tracks which functions are defined in which files/namespaces
 pub struct ImportChecker<'a> {
     /// function_name -> namespace (e.g., "factorial" -> "utils.math")
@@ -290,8 +303,10 @@ impl<'a> ImportChecker<'a> {
             }
 
             for (func, func_ns) in self.stdlib.get_functions() {
-                if func_ns == ns {
-                    self.imported_functions.insert(func.clone());
+                if let Some(imported_name) =
+                    direct_stdlib_wildcard_member_name(ns, func_ns, func)
+                {
+                    self.imported_functions.insert(imported_name);
                 }
             }
         } else if path.contains('.') {
@@ -669,6 +684,20 @@ impl<'a> ImportChecker<'a> {
         found
     }
 
+    fn resolve_direct_stdlib_member_namespace(&self, member: &str) -> Option<String> {
+        let suffix = format!("__{}", member);
+        let mut found: Option<String> = None;
+        for (func, ns) in self.stdlib.get_functions() {
+            if func == member || func.ends_with(&suffix) {
+                if found.as_deref().is_some_and(|existing| existing != ns) {
+                    return None;
+                }
+                found = Some(ns.clone());
+            }
+        }
+        found
+    }
+
     fn resolve_user_call_in_namespace(&self, namespace: &str, field: &str) -> Option<String> {
         let mut found: Option<String> = None;
         for (func, ns) in self.function_namespaces.iter() {
@@ -1024,20 +1053,25 @@ impl<'a> ImportChecker<'a> {
         }
 
         // Check if it's a stdlib function that needs to be imported
-        if let Some(ns) = self.stdlib.get_namespace(name) {
+        if let Some(ns) = self
+            .stdlib
+            .get_namespace(name)
+            .cloned()
+            .or_else(|| self.resolve_direct_stdlib_member_namespace(name))
+        {
             // "builtin" namespace means no import needed
             if ns == "builtin" {
                 return;
             }
 
             // Check if imported (either specific or wildcard)
-            if !self.imported_functions.contains(name) && !self.wildcard_imports.contains(ns) {
+            if !self.imported_functions.contains(name) && !self.wildcard_imports.contains(&ns) {
                 // Try to find a similar function name
                 let suggestion = did_you_mean(name, &self.available_functions);
 
                 self.errors.push(ImportError {
                     function_name: name.to_string(),
-                    defined_in: ns.clone(),
+                    defined_in: ns,
                     used_in: self.current_namespace.clone(),
                     span: span.clone(),
                     suggestion,

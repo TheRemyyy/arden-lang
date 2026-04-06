@@ -54,6 +54,40 @@ return math.abs(-1.0);
 }
 
 #[test]
+fn module_local_wildcard_import_does_not_leak_to_top_level_import_check() {
+    let source = r#"
+module Inner {
+import std.math.*;
+
+function keep(): Float {
+    return abs(-1.0);
+}
+}
+
+function main(): Float {
+return abs(-1.0);
+}
+"#;
+    let errors = check_import_errors(source);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].function_name, "abs");
+    assert_eq!(errors[0].defined_in, "std.math");
+}
+
+#[test]
+fn stdlib_wildcard_import_allows_direct_member_calls() {
+    let source = r#"
+import std.math.*;
+
+function main(): Float {
+    return abs(-1.0);
+}
+"#;
+    let errors = check_import_errors(source);
+    assert!(errors.is_empty(), "{errors:?}");
+}
+
+#[test]
 fn local_function_can_shadow_stdlib_name() {
     let source = r#"
 function print(owned s: String): None { return None; }

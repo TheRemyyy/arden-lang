@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed import-check handling for direct stdlib wildcard members and module-local wildcard scope leaks:
+  - `import std.math.*`, `import std.string.*`, and similar stdlib wildcard imports now register user-facing direct member names such as `abs`, `len`, and `cwd` instead of only their internal canonical symbols, and missing direct wildcard members now report proper import errors instead of silently bypassing import checking
+  - this also fixes cases such as `module Inner { import std.math.*; function keep(): Float { return abs(-1.0); } }` followed by top-level `abs(-1.0)`, which previously passed import checking because the top-level direct stdlib member was never recognized as an import-checked symbol
 - Fixed unchecked codegen leaking module-local import aliases into outer scopes:
   - codegen import alias lookup and wildcard import resolution now honor the active module prefix chain while compiling nested modules instead of flattening every alias into one file-global namespace
   - this fixes unchecked cases such as `module Inner { import std.math as math; function keep(): Float { return math.abs(-1.0); } }` followed by top-level `math.abs(...)`, which previously resolved the nested alias during codegen and fell through to invalid LLVM/Clang backend failures instead of reporting an undefined name

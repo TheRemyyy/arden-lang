@@ -5190,6 +5190,35 @@ fn project_build_supports_module_local_exact_import_aliases() {
 }
 
 #[test]
+fn project_build_no_check_rejects_module_local_wildcard_import_leaking_to_top_level() {
+    let temp_root = make_temp_project_root("module-local-wildcard-import-leak-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nmodule Inner { import std.math.*; function keep(): Float { return abs(-1.0); } }\nfunction main(): Float { return abs(-1.0); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        let err = build_project(false, false, true, false, false)
+            .expect_err("project build should reject top-level use of module-local wildcard import");
+        assert!(
+            err.contains("Function 'abs' is defined in 'std.math' but not imported in 'app'")
+                || err.contains("Import check failed"),
+            "{err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
     let temp_root = make_temp_project_root("project-check-invalid-files-list-fix");
     fs::write(
