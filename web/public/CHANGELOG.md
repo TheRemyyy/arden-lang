@@ -41,6 +41,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed specialized generic type names leaking through builtin function-value mismatches:
   - builtin function-value mismatch diagnostics now use the same user-facing type formatter for the expected function type instead of the raw internal type formatter
   - this fixes cases such as `f: () -> Option<Box<Integer>> = Option.some`, which previously reported internal names like `Option<Box__spec__I64>` instead of `Option<Box<Integer>>`
+- Fixed specialized generic type names leaking through constructor and unknown-type diagnostics:
+  - unchecked constructor builtin errors and unknown-type errors now use the user-facing diagnostic type formatter instead of raw internal specialization names
+  - this fixes cases such as `Option<Box<Integer>>(1)`, `List<Box<Integer>>(Box<Integer>(1))`, and `Missing<Box<Integer>>()`, which previously leaked names like `Box__spec__I64`
+- Fixed unchecked Boolean returns falling through to invalid LLVM/Clang failures:
+  - return lowering now verifies that the compiled value still matches the declared function return type after unchecked expected-type compilation instead of blindly emitting a return for any LLVM value kind
+  - this fixes cases such as `function main(): Integer { return true; }`, `function f(): Integer { return true; }`, and unchecked mixed-compare returns, which previously reached backend failures like invalid `trunc i1 to i32` or `ret i1` mismatches instead of reporting `Type mismatch: expected Integer, got Boolean`
+- Fixed unchecked return validation regressing generic function bodies:
+  - the new unchecked return-type LLVM guard now skips comparisons when either the declared return type or the inferred returned expression still contains active generic placeholders, so valid generic flows like `function id<T>(value: T): T { return value; }` and `function main(): Integer { return id(7); }` no longer fail with bogus diagnostics such as `Type mismatch: expected Integer, got T`
+- Fixed module-qualified and wildcard-imported function calls skipping expected argument lowering:
+  - codegen now lowers arguments for `Module.fn(...)` and wildcard-imported module calls through the same expected-type path as normal direct calls, so integer-to-float coercions and unchecked argument validation no longer depend on which import syntax was used
+- Fixed nested module-qualified and wildcard-imported nested module calls skipping expected argument lowering:
+  - nested paths such as `A.B.fn(...)` and wildcard-imported nested module calls now use the same expected-type argument lowering as direct calls instead of bypassing coercion/validation on those specialized lookup paths
+- Fixed indirect function calls on expression-valued callees skipping expected argument lowering:
+  - closure/expression call sites such as `(if (cond) { f } else { g })(...)` now lower arguments through the callee signature instead of bypassing coercion and unchecked validation whenever the callee is not a plain identifier
+- Fixed direct identifier calls using inferred callee types instead of resolved function signatures:
+  - plain function and import-alias calls now prefer the concrete lookup signature from the resolved function table, which keeps argument lowering aligned with specialized/aliased functions instead of trusting stale inferred placeholder signatures
 - Fixed unchecked multi-bound generic interface dispatch:
   - method calls and bound-method values on generic receivers now match against the full union of resolved interface bounds instead of only the first bound
   - this fixes cases such as `function read_b<T extends A, B>(value: T): Integer { return value.b(); }` and `value.b`, which previously failed with diagnostics like `Unknown method 'b' for interface 'A'` or `Unknown class: T`

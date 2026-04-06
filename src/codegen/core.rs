@@ -880,6 +880,14 @@ impl<'ctx> Codegen<'ctx> {
         ))
     }
 
+    fn type_mismatch_error(expected_ty: &Type, actual_ty: &Type) -> CodegenError {
+        CodegenError::new(format!(
+            "Type mismatch: expected {}, got {}",
+            Self::format_diagnostic_type(expected_ty),
+            Self::format_diagnostic_type(actual_ty)
+        ))
+    }
+
     fn has_known_codegen_type(&self, name: &str) -> bool {
         self.classes.contains_key(name)
             || self.enums.contains_key(name)
@@ -1114,6 +1122,47 @@ impl<'ctx> Codegen<'ctx> {
             | Type::Rc(inner)
             | Type::Arc(inner) => self.resolved_generic_bound_interfaces(&inner),
             _ => Vec::new(),
+        }
+    }
+
+    fn type_contains_active_generic_placeholder(&self, ty: &Type) -> bool {
+        match self.normalize_codegen_type(ty) {
+            Type::Named(name) => {
+                self.current_generic_bounds.contains_key(&name)
+                    || (!self.classes.contains_key(&name)
+                        && !self.enums.contains_key(&name)
+                        && !self.interfaces.contains_key(&name))
+            }
+            Type::Generic(_, args) => args
+                .iter()
+                .any(|arg| self.type_contains_active_generic_placeholder(arg)),
+            Type::Function(params, ret) => {
+                params
+                    .iter()
+                    .any(|param| self.type_contains_active_generic_placeholder(param))
+                    || self.type_contains_active_generic_placeholder(&ret)
+            }
+            Type::Option(inner)
+            | Type::List(inner)
+            | Type::Set(inner)
+            | Type::Ref(inner)
+            | Type::MutRef(inner)
+            | Type::Box(inner)
+            | Type::Rc(inner)
+            | Type::Arc(inner)
+            | Type::Ptr(inner)
+            | Type::Task(inner)
+            | Type::Range(inner) => self.type_contains_active_generic_placeholder(&inner),
+            Type::Result(ok, err) | Type::Map(ok, err) => {
+                self.type_contains_active_generic_placeholder(&ok)
+                    || self.type_contains_active_generic_placeholder(&err)
+            }
+            Type::Integer
+            | Type::Float
+            | Type::Boolean
+            | Type::String
+            | Type::Char
+            | Type::None => false,
         }
     }
 
@@ -10315,7 +10364,17 @@ impl<'ctx> Codegen<'ctx> {
                             }
                         } else {
                             let val = if let Some(ret_ty) = self.current_return_type.clone() {
-                                self.compile_expr_with_expected_type(&expr.node, &ret_ty)?
+                                let inferred_expr_ty = self.infer_expr_type(&expr.node, &[]);
+                                let compiled =
+                                    self.compile_expr_with_expected_type(&expr.node, &ret_ty)?;
+                                if !self.type_contains_active_generic_placeholder(&ret_ty)
+                                    && !self
+                                        .type_contains_active_generic_placeholder(&inferred_expr_ty)
+                                    && compiled.get_type() != self.llvm_type(&ret_ty)
+                                {
+                                    return Err(Self::type_mismatch_error(&ret_ty, &inferred_expr_ty));
+                                }
+                                compiled
                             } else {
                                 self.compile_expr(&expr.node)?
                             };
@@ -14981,8 +15040,15 @@ impl<'ctx> Codegen<'ctx> {
                         .ptr_type(AddressSpace::default())
                         .const_null()
                         .into()];
-                    for a in args {
-                        compiled_args.push(self.compile_expr(&a.node)?);
+                    if let Type::Function(params, _) = &func_ty {
+                        for (arg, param_ty) in args.iter().zip(params.iter()) {
+                            compiled_args
+                                .push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+                        }
+                    } else {
+                        for arg in args {
+                            compiled_args.push(self.compile_expr(&arg.node)?);
+                        }
                     }
                     let args_meta: Vec<BasicMetadataValueEnum> =
                         compiled_args.iter().map(|a| (*a).into()).collect();
@@ -15009,8 +15075,16 @@ impl<'ctx> Codegen<'ctx> {
                             .ptr_type(AddressSpace::default())
                             .const_null()
                             .into()];
-                        for a in args {
-                            compiled_args.push(self.compile_expr(&a.node)?);
+                        if let Type::Function(params, _) = &func_ty {
+                            for (arg, param_ty) in args.iter().zip(params.iter()) {
+                                compiled_args.push(
+                                    self.compile_expr_with_expected_type(&arg.node, param_ty)?,
+                                );
+                            }
+                        } else {
+                            for arg in args {
+                                compiled_args.push(self.compile_expr(&arg.node)?);
+                            }
                         }
                         let args_meta: Vec<BasicMetadataValueEnum> =
                             compiled_args.iter().map(|a| (*a).into()).collect();
@@ -15075,8 +15149,15 @@ impl<'ctx> Codegen<'ctx> {
                         .ptr_type(AddressSpace::default())
                         .const_null()
                         .into()];
-                    for a in args {
-                        compiled_args.push(self.compile_expr(&a.node)?);
+                    if let Type::Function(params, _) = &func_ty {
+                        for (arg, param_ty) in args.iter().zip(params.iter()) {
+                            compiled_args
+                                .push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+                        }
+                    } else {
+                        for arg in args {
+                            compiled_args.push(self.compile_expr(&arg.node)?);
+                        }
                     }
                     let args_meta: Vec<BasicMetadataValueEnum> =
                         compiled_args.iter().map(|a| (*a).into()).collect();
@@ -15103,8 +15184,16 @@ impl<'ctx> Codegen<'ctx> {
                             .ptr_type(AddressSpace::default())
                             .const_null()
                             .into()];
-                        for a in args {
-                            compiled_args.push(self.compile_expr(&a.node)?);
+                        if let Type::Function(params, _) = &func_ty {
+                            for (arg, param_ty) in args.iter().zip(params.iter()) {
+                                compiled_args.push(
+                                    self.compile_expr_with_expected_type(&arg.node, param_ty)?,
+                                );
+                            }
+                        } else {
+                            for arg in args {
+                                compiled_args.push(self.compile_expr(&arg.node)?);
+                            }
                         }
                         let args_meta: Vec<BasicMetadataValueEnum> =
                             compiled_args.iter().map(|a| (*a).into()).collect();
@@ -15276,8 +15365,8 @@ impl<'ctx> Codegen<'ctx> {
                 }
 
                 let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
-                for a in args {
-                    compiled_args.push(self.compile_expr(&a.node)?);
+                for (arg, param_ty) in args.iter().zip(param_types.iter()) {
+                    compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
                 }
 
                 let args_meta: Vec<BasicMetadataValueEnum> =
@@ -15306,7 +15395,7 @@ impl<'ctx> Codegen<'ctx> {
         } else {
             None
         };
-        let func = match callee {
+        let (func, resolved_func_ty) = match callee {
             Expr::Ident(name) => {
                 // First check if it's a function pointer/local variable
                 if let Some(var) = self.variables.get(name) {
@@ -15387,9 +15476,9 @@ impl<'ctx> Codegen<'ctx> {
 
                 // Fall back to global function lookup
                 if let Some((f, _)) = self.functions.get(looked_up_name) {
-                    *f
+                    (*f, self.functions.get(looked_up_name).map(|(_, ty)| ty.clone()))
                 } else if let Some(f) = self.module.get_function(looked_up_name) {
-                    f
+                    (f, None)
                 } else {
                     return Err(Self::undefined_function_error(looked_up_name));
                 }
@@ -15413,7 +15502,7 @@ impl<'ctx> Codegen<'ctx> {
             );
         }
 
-        let callee_ty = self.infer_expr_type(callee, &[]);
+        let callee_ty = resolved_func_ty.unwrap_or_else(|| self.infer_expr_type(callee, &[]));
         let expected_param_types = match &callee_ty {
             Type::Function(param_types, _) => Some(param_types.as_slice()),
             _ => None,
@@ -18154,7 +18243,7 @@ impl<'ctx> Codegen<'ctx> {
                 if args.len() > 1 {
                     return Err(CodegenError::new(format!(
                         "Constructor {} expects 0 or 1 arguments, got {}",
-                        Self::format_type_string(&normalized_ty),
+                        Self::format_diagnostic_type(&normalized_ty),
                         args.len()
                     )));
                 }
@@ -18171,8 +18260,8 @@ impl<'ctx> Codegen<'ctx> {
                     if !capacity.is_int_value() {
                         return Err(CodegenError::new(format!(
                             "Constructor {} expects optional Integer capacity, got {}",
-                            Self::format_type_string(&normalized_ty),
-                            Self::format_type_string(&self.infer_expr_type(&args[0].node, &[]))
+                            Self::format_diagnostic_type(&normalized_ty),
+                            Self::format_diagnostic_type(&self.infer_expr_type(&args[0].node, &[]))
                         )));
                     }
                     return self.create_list_with_capacity_value(
@@ -18186,7 +18275,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !args.is_empty() {
                     return Err(CodegenError::new(format!(
                         "Constructor {} expects 0 arguments, got {}",
-                        Self::format_type_string(&normalized_ty),
+                        Self::format_diagnostic_type(&normalized_ty),
                         args.len()
                     )));
                 }
@@ -18196,7 +18285,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !args.is_empty() {
                     return Err(CodegenError::new(format!(
                         "Constructor {} expects 0 arguments, got {}",
-                        Self::format_type_string(&normalized_ty),
+                        Self::format_diagnostic_type(&normalized_ty),
                         args.len()
                     )));
                 }
@@ -18206,7 +18295,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !args.is_empty() {
                     return Err(CodegenError::new(format!(
                         "Constructor {} expects 0 arguments, got {}",
-                        Self::format_type_string(&normalized_ty),
+                        Self::format_diagnostic_type(&normalized_ty),
                         args.len()
                     )));
                 }
@@ -18216,7 +18305,7 @@ impl<'ctx> Codegen<'ctx> {
                 if !args.is_empty() {
                     return Err(CodegenError::new(format!(
                         "Constructor {} expects 0 arguments, got {}",
-                        Self::format_type_string(&normalized_ty),
+                        Self::format_diagnostic_type(&normalized_ty),
                         args.len()
                     )));
                 }
@@ -18226,7 +18315,7 @@ impl<'ctx> Codegen<'ctx> {
                 if args.len() > 1 {
                     return Err(CodegenError::new(format!(
                         "Constructor {} expects 0 or 1 arguments, got {}",
-                        Self::format_type_string(&normalized_ty),
+                        Self::format_diagnostic_type(&normalized_ty),
                         args.len()
                     )));
                 }
@@ -18241,7 +18330,7 @@ impl<'ctx> Codegen<'ctx> {
                 if args.len() > 1 {
                     return Err(CodegenError::new(format!(
                         "Constructor {} expects 0 or 1 arguments, got {}",
-                        Self::format_type_string(&normalized_ty),
+                        Self::format_diagnostic_type(&normalized_ty),
                         args.len()
                     )));
                 }
@@ -18256,7 +18345,7 @@ impl<'ctx> Codegen<'ctx> {
                 if args.len() > 1 {
                     return Err(CodegenError::new(format!(
                         "Constructor {} expects 0 or 1 arguments, got {}",
-                        Self::format_type_string(&normalized_ty),
+                        Self::format_diagnostic_type(&normalized_ty),
                         args.len()
                     )));
                 }
@@ -18283,7 +18372,7 @@ impl<'ctx> Codegen<'ctx> {
             .ok_or_else(|| {
                 CodegenError::new(format!(
                     "Unknown type: {}",
-                    Self::format_type_string(&normalized_ty)
+                    Self::format_diagnostic_type(&normalized_ty)
                 ))
             })?
             .clone();

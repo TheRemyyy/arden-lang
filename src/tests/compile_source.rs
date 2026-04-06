@@ -4516,6 +4516,100 @@ fn compile_source_runs_integer_argument_to_float_function_value_runtime() {
 }
 
 #[test]
+fn compile_source_runs_integer_argument_to_float_module_local_function_call_runtime() {
+    let temp_root = make_temp_project_root("int-to-float-module-local-function-call-runtime");
+    let source_path = temp_root.join("int_to_float_module_local_function_call_runtime.apex");
+    let output_path = temp_root.join("int_to_float_module_local_function_call_runtime");
+    let source = r#"
+            module Mathy {
+                function scale(value: Float): Float {
+                    return value * 2.0;
+                }
+            }
+
+            function main(): Integer {
+                result: Float = Mathy.scale(3);
+                return if (result == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("integer argument to Float module-local function call should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled int-to-float module-local function call binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_integer_argument_to_float_nested_module_function_call_runtime() {
+    let temp_root = make_temp_project_root("int-to-float-nested-module-function-call-runtime");
+    let source_path = temp_root.join("int_to_float_nested_module_function_call_runtime.apex");
+    let output_path = temp_root.join("int_to_float_nested_module_function_call_runtime");
+    let source = r#"
+            module Mathy {
+                module Ops {
+                    function scale(value: Float): Float {
+                        return value * 2.0;
+                    }
+                }
+            }
+
+            function main(): Integer {
+                result: Float = Mathy.Ops.scale(3);
+                return if (result == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("integer argument to Float nested-module function call should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled int-to-float nested-module function call binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_integer_argument_to_float_exact_import_alias_call_runtime() {
+    let temp_root = make_temp_project_root("int-to-float-exact-import-alias-call-runtime");
+    let source_path = temp_root.join("int_to_float_exact_import_alias_call_runtime.apex");
+    let output_path = temp_root.join("int_to_float_exact_import_alias_call_runtime");
+    let source = r#"
+            module Mathy {
+                function scale(value: Float): Float {
+                    return value * 2.0;
+                }
+            }
+
+            import Mathy.scale as scalef;
+
+            function main(): Integer {
+                result: Float = scalef(3);
+                return if (result == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("integer argument to Float exact-import alias call should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled int-to-float exact-import alias call binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_integer_argument_to_float_container_methods_runtime() {
     let temp_root = make_temp_project_root("int-to-float-container-methods-runtime");
     let source_path = temp_root.join("int_to_float_container_methods_runtime.apex");
@@ -13313,6 +13407,37 @@ fn compile_source_runs_match_expression_builtin_function_value_runtime() {
 }
 
 #[test]
+fn compile_source_runs_if_expression_float_function_value_with_integer_argument_runtime() {
+    let temp_root =
+        make_temp_project_root("if-expression-float-function-value-integer-argument-runtime");
+    let source_path =
+        temp_root.join("if_expression_float_function_value_integer_argument_runtime.apex");
+    let output_path =
+        temp_root.join("if_expression_float_function_value_integer_argument_runtime");
+    let source = r#"
+            function scale(value: Float): Float {
+                return value * 2.0;
+            }
+
+            function main(): Integer {
+                result: Float = (if (true) { scale } else { scale })(3);
+                return if (result == 6.0) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("if-expression Float function value should lower Integer arguments through expected types");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled if-expression Float function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_option_some_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("option-some-builtin-function-value-runtime");
     let source_path = temp_root.join("option_some_builtin_function_value_runtime.apex");
@@ -15090,6 +15215,64 @@ fn compile_source_no_check_formats_specialized_builtin_function_value_signature_
         err.contains("Type mismatch: expected () -> Option<Box<Integer>>, got (unknown) -> Option<unknown>"),
         "{err}"
     );
+    assert!(!err.contains("Box__spec__I64"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_formats_specialized_constructor_builtin_diagnostics() {
+    let temp_root =
+        make_temp_project_root("no-check-specialized-constructor-builtin-diagnostics");
+    let source_path =
+        temp_root.join("no_check_specialized_constructor_builtin_diagnostics.apex");
+    let output_path =
+        temp_root.join("no_check_specialized_constructor_builtin_diagnostics");
+    let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                value: Option<Box<Integer>> = Option<Box<Integer>>(1);
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("specialized constructor builtin diagnostic should fail in codegen");
+    assert!(
+        err.contains("Constructor Option<Box<Integer>> expects 0 arguments, got 1"),
+        "{err}"
+    );
+    assert!(!err.contains("Box__spec__I64"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_formats_specialized_unknown_type_diagnostic() {
+    let temp_root = make_temp_project_root("no-check-specialized-unknown-type-diagnostic");
+    let source_path = temp_root.join("no_check_specialized_unknown_type_diagnostic.apex");
+    let output_path = temp_root.join("no_check_specialized_unknown_type_diagnostic");
+    let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                value: Missing<Box<Integer>> = Missing<Box<Integer>>();
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("specialized unknown type diagnostic should fail in codegen");
+    assert!(err.contains("Unknown type: Missing<Box<Integer>>"), "{err}");
     assert!(!err.contains("Box__spec__I64"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17214,6 +17397,49 @@ fn compile_file_no_check_rejects_main_with_string_return_type_cleanly() {
     let err = compile_file(&source_path, None, false, false, None, None)
         .expect_err("unchecked main string return type should fail before codegen");
     assert!(err.contains("main() must return None or Integer"), "{err}");
+    assert!(!err.contains("Clang failed"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_file_no_check_rejects_main_with_boolean_return_type_cleanly() {
+    let temp_root = make_temp_project_root("main-boolean-return-type-nocheck");
+    let source_path = temp_root.join("main_boolean_return_type_nocheck.apex");
+    let source = r#"
+            function main(): Integer {
+                return true;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_file(&source_path, None, false, false, None, None)
+        .expect_err("unchecked main boolean return type should fail before codegen");
+    assert!(err.contains("Type mismatch: expected Integer, got Boolean"), "{err}");
+    assert!(!err.contains("Clang failed"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_function_with_boolean_return_type_cleanly() {
+    let temp_root = make_temp_project_root("function-boolean-return-type-nocheck");
+    let source_path = temp_root.join("function_boolean_return_type_nocheck.apex");
+    let output_path = temp_root.join("function_boolean_return_type_nocheck");
+    let source = r#"
+            function f(): Integer {
+                return true;
+            }
+
+            function main(): Integer {
+                return f();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unchecked function boolean return type should fail before codegen");
+    assert!(err.contains("Type mismatch: expected Integer, got Boolean"), "{err}");
     assert!(!err.contains("Clang failed"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);

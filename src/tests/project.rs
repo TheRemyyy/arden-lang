@@ -814,6 +814,78 @@ fn project_build_supports_module_wildcard_import_explicit_generic_function_value
 }
 
 #[test]
+fn project_build_supports_module_wildcard_import_integer_to_float_calls() {
+    let temp_root = make_temp_project_root("module-wildcard-import-int-to-float-call-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/util.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("util.apex"),
+        "package app;\nmodule U { function scale(value: Float): Float { return value * 2.0; } }\n",
+    )
+    .expect("write util");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport app.U.*;\nfunction main(): Integer { value: Float = scale(3); return if (value == 6.0) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support wildcard imported int-to-float calls");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled wildcard-import int-to-float call binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_wildcard_imported_nested_module_integer_to_float_calls() {
+    let temp_root =
+        make_temp_project_root("wildcard-import-nested-module-int-to-float-call-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/util.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("util.apex"),
+        "package app;\nmodule U { module Math { function scale(value: Float): Float { return value * 2.0; } } }\n",
+    )
+    .expect("write util");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport app.U.*;\nfunction main(): Integer { value: Float = Math.scale(3); return if (value == 6.0) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support wildcard imported nested-module int-to-float calls",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled wildcard-import nested-module int-to-float call binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_prefers_shadowed_local_over_namespace_alias_for_nested_field_chain_calls() {
     let temp_root = make_temp_project_root("shadowed-local-over-namespace-alias-project");
     let src_dir = temp_root.join("src");
