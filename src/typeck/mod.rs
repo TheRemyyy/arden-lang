@@ -6455,7 +6455,11 @@ impl TypeChecker {
                 "push" => {
                     self.check_arg_count(method, args, 1, span.clone());
                     if !args.is_empty() {
-                        let arg_type = self.check_expr(&args[0].node, args[0].span.clone());
+                        let arg_type = self.check_expr_with_expected_type(
+                            &args[0].node,
+                            args[0].span.clone(),
+                            Some(inner),
+                        );
                         if !self.types_compatible(inner, &arg_type) {
                             self.error(
                                 format!(
@@ -6498,7 +6502,11 @@ impl TypeChecker {
                     self.check_arg_count(method, args, 2, span.clone());
                     if args.len() >= 2 {
                         let idx_type = self.check_expr(&args[0].node, args[0].span.clone());
-                        let val_type = self.check_expr(&args[1].node, args[1].span.clone());
+                        let val_type = self.check_expr_with_expected_type(
+                            &args[1].node,
+                            args[1].span.clone(),
+                            Some(inner),
+                        );
                         if !matches!(idx_type, ResolvedType::Unknown)
                             && !matches!(idx_type, ResolvedType::Integer)
                         {
@@ -6543,8 +6551,16 @@ impl TypeChecker {
                 "insert" | "set" => {
                     self.check_arg_count(method, args, 2, span.clone());
                     if args.len() >= 2 {
-                        let k = self.check_expr(&args[0].node, args[0].span.clone());
-                        let v = self.check_expr(&args[1].node, args[1].span.clone());
+                        let k = self.check_expr_with_expected_type(
+                            &args[0].node,
+                            args[0].span.clone(),
+                            Some(key_type),
+                        );
+                        let v = self.check_expr_with_expected_type(
+                            &args[1].node,
+                            args[1].span.clone(),
+                            Some(val_type),
+                        );
                         if !self.types_compatible(key_type, &k) {
                             self.error("Map key type mismatch".to_string(), args[0].span.clone());
                         }
@@ -6557,7 +6573,11 @@ impl TypeChecker {
                 "get" => {
                     self.check_arg_count(method, args, 1, span.clone());
                     if !args.is_empty() {
-                        let k = self.check_expr(&args[0].node, args[0].span.clone());
+                        let k = self.check_expr_with_expected_type(
+                            &args[0].node,
+                            args[0].span.clone(),
+                            Some(key_type),
+                        );
                         if !self.types_compatible(key_type, &k) {
                             self.error("Map key type mismatch".to_string(), args[0].span.clone());
                         }
@@ -6567,7 +6587,11 @@ impl TypeChecker {
                 "contains" => {
                     self.check_arg_count(method, args, 1, span.clone());
                     if !args.is_empty() {
-                        let k = self.check_expr(&args[0].node, args[0].span.clone());
+                        let k = self.check_expr_with_expected_type(
+                            &args[0].node,
+                            args[0].span.clone(),
+                            Some(key_type),
+                        );
                         if !self.types_compatible(key_type, &k) {
                             self.error("Map key type mismatch".to_string(), args[0].span.clone());
                         }
@@ -6587,7 +6611,11 @@ impl TypeChecker {
                 "add" | "contains" | "remove" => {
                     self.check_arg_count(method, args, 1, span.clone());
                     if !args.is_empty() {
-                        let arg_type = self.check_expr(&args[0].node, args[0].span.clone());
+                        let arg_type = self.check_expr_with_expected_type(
+                            &args[0].node,
+                            args[0].span.clone(),
+                            Some(inner),
+                        );
                         if !self.types_compatible(inner, &arg_type) {
                             self.error(
                                 format!(
