@@ -69,6 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - generic parameter bounds on recursively nested functions, classes, methods, and enums now rewrite file-scope aliases just like top-level module declarations, so bounds such as `T extends NamedAlias` continue to resolve after project symbol mangling
 - Fixed nested-module interface generic bounds skipping project rewrite:
   - generic parameter bounds on recursively nested interfaces now rewrite file-scope aliases the same way as top-level interfaces, so bounds such as `interface Reader<T extends NamedAlias>` keep resolving after project symbol mangling
+- Fixed module-local generic base classes skipping project rewrite:
+  - `extends` clauses inside module and nested-module classes now rewrite generic nominal parents such as `Base<Payload>` through the same module-local type path as other declaration types, so project builds no longer fall through to `Unknown base class` for module-local generic parents
 - Fixed unchecked multi-bound generic interface dispatch:
   - method calls and bound-method values on generic receivers now match against the full union of resolved interface bounds instead of only the first bound
   - this fixes cases such as `function read_b<T extends A, B>(value: T): Integer { return value.b(); }` and `value.b`, which previously failed with diagnostics like `Unknown method 'b' for interface 'A'` or `Unknown class: T`

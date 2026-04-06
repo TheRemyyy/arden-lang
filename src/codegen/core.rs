@@ -5888,6 +5888,17 @@ impl<'ctx> Codegen<'ctx> {
                     .iter()
                     .map(|param| param.name.clone())
                     .collect::<HashSet<_>>();
+                if let Some(parent) = &class.extends {
+                    if let Ok(parsed_parent) = parse_type_source(parent) {
+                        Self::collect_generic_class_instantiation_from_type(
+                            &parsed_parent,
+                            class_templates,
+                            import_aliases,
+                            &generic_names,
+                            discovered,
+                        );
+                    }
+                }
                 for field in &class.fields {
                     Self::collect_generic_class_instantiation_from_type(
                         &field.ty,
@@ -6033,6 +6044,15 @@ impl<'ctx> Codegen<'ctx> {
             Decl::Class(class) => {
                 let mut class = class.clone();
                 if let Some(module_prefix) = module_prefix {
+                    class.extends = class.extends.as_ref().and_then(|parent| {
+                        parse_type_source(parent).ok().map(|parsed| {
+                            Self::format_type_string(&Self::rewrite_type_for_local_module_classes(
+                                &parsed,
+                                module_prefix,
+                                class_templates,
+                            ))
+                        })
+                    });
                     class.fields = class
                         .fields
                         .iter()
@@ -6121,6 +6141,14 @@ impl<'ctx> Codegen<'ctx> {
                         })
                         .collect();
                 }
+                class.extends = class.extends.as_ref().and_then(|parent| {
+                    parse_type_source(parent).ok().map(|parsed| {
+                        Self::format_type_string(&Self::rewrite_specialized_class_type(
+                            &parsed,
+                            emitted_classes,
+                        ))
+                    })
+                });
                 class.fields = class
                     .fields
                     .iter()
@@ -6274,6 +6302,11 @@ impl<'ctx> Codegen<'ctx> {
                 let mut spec_class = template.class.clone();
                 spec_class.name = spec_name.clone();
                 spec_class.generic_params.clear();
+                spec_class.extends = spec_class.extends.as_ref().and_then(|parent| {
+                    parse_type_source(parent).ok().map(|parsed| {
+                        Self::format_type_string(&Self::substitute_type(&parsed, &bindings))
+                    })
+                });
                 spec_class.fields = spec_class
                     .fields
                     .iter()
@@ -7369,13 +7402,24 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Decl::Enum(_) => {}
                 Decl::Interface(_) => {} // Interfaces don't generate code
-                Decl::Module(module) => {
-                    let declare_started_at = Instant::now();
-                    self.declare_module(module)?;
-                    decl_pass_module_work_ns += elapsed_nanos_u64(declare_started_at);
-                    declared_module_count += 1;
-                }
+                Decl::Module(_) => {}
                 Decl::Import(_) => {} // Handled at file level
+            }
+        }
+        for decl in &program.declarations {
+            let decl_filter_started_at = Instant::now();
+            let should_declare = declaration_symbols
+                .map(|symbols| self.should_compile_decl(&decl.node, symbols))
+                .unwrap_or(true);
+            decl_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
+            if !should_declare {
+                continue;
+            }
+            if let Decl::Module(module) = &decl.node {
+                let declare_started_at = Instant::now();
+                self.declare_module(module)?;
+                decl_pass_module_work_ns += elapsed_nanos_u64(declare_started_at);
+                declared_module_count += 1;
             }
         }
         CODEGEN_PHASE_TIMING_TOTALS
@@ -7441,17 +7485,29 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Decl::Enum(_) => {}
                 Decl::Interface(_) => {} // Interfaces don't generate code
-                Decl::Module(module) => {
-                    let compile_started_at = Instant::now();
-                    if let Some(symbols) = specialized_active_symbols.as_ref() {
-                        self.compile_module_filtered(module, symbols)?;
-                    } else {
-                        self.compile_module(module)?;
-                    }
-                    body_pass_module_work_ns += elapsed_nanos_u64(compile_started_at);
-                    compiled_module_count += 1;
-                }
+                Decl::Module(_) => {}
                 Decl::Import(_) => {} // Handled at file level
+            }
+        }
+        for decl in &program.declarations {
+            let decl_filter_started_at = Instant::now();
+            let should_compile = specialized_active_symbols
+                .as_ref()
+                .map(|symbols| self.should_emit_decl_body(&decl.node, symbols))
+                .unwrap_or(true);
+            body_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
+            if !should_compile {
+                continue;
+            }
+            if let Decl::Module(module) = &decl.node {
+                let compile_started_at = Instant::now();
+                if let Some(symbols) = specialized_active_symbols.as_ref() {
+                    self.compile_module_filtered(module, symbols)?;
+                } else {
+                    self.compile_module(module)?;
+                }
+                body_pass_module_work_ns += elapsed_nanos_u64(compile_started_at);
+                compiled_module_count += 1;
             }
         }
         CODEGEN_PHASE_TIMING_TOTALS

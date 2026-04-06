@@ -524,6 +524,15 @@ fn rewrite_construct_type_name_for_project(ty: &str, ctx: RewriteTypeContext<'_>
     }
 }
 
+fn rewrite_nominal_type_source_for_module(ty: &str, ctx: ModuleRewriteContext<'_>) -> String {
+    match parse_type_source(ty) {
+        Ok(parsed @ ast::Type::Named(_)) | Ok(parsed @ ast::Type::Generic(_, _)) => {
+            format_type_string(&self::rewrite_module_local_type(&parsed, ctx))
+        }
+        Ok(_) | Err(_) => ty.to_string(),
+    }
+}
+
 pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContext<'_>) -> Program {
     let import_map_started_at = Instant::now();
     let current_namespace = ctx.current_namespace;
@@ -1122,13 +1131,10 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                             },
                                         );
                                         c.extends = class.extends.as_ref().map(|extends| {
-                                            match self::rewrite_module_local_type(
-                                                &ast::Type::Named(extends.clone()),
+                                            rewrite_nominal_type_source_for_module(
+                                                extends,
                                                 module_rewrite_ctx,
-                                            ) {
-                                                ast::Type::Named(rewritten) => rewritten,
-                                                _ => extends.clone(),
-                                            }
+                                            )
                                         });
                                         c.implements = class
                                             .implements
@@ -2598,25 +2604,7 @@ fn rewrite_nested_module_decl_for_project(
                 )
             });
             c.extends = class.extends.as_ref().map(|extends| {
-                match rewrite_module_local_type(
-                    &ast::Type::Named(extends.clone()),
-                    module_prefix,
-                    current_namespace,
-                    entry_namespace,
-                    module_local_classes,
-                    module_local_interfaces,
-                    module_local_enums,
-                    module_local_modules,
-                    imported_classes,
-                    global_class_map,
-                    imported_enums,
-                    global_enum_map,
-                    imported_modules,
-                    global_interface_map,
-                ) {
-                    ast::Type::Named(rewritten) => rewritten,
-                    _ => extends.clone(),
-                }
+                rewrite_nominal_type_source_for_module(extends, module_rewrite_ctx)
             });
             c.implements = class
                 .implements
