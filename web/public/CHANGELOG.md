@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed unchecked codegen leaking module-local import aliases into outer scopes:
+  - codegen import alias lookup and wildcard import resolution now honor the active module prefix chain while compiling nested modules instead of flattening every alias into one file-global namespace
+  - this fixes unchecked cases such as `module Inner { import std.math as math; function keep(): Float { return math.abs(-1.0); } }` followed by top-level `math.abs(...)`, which previously resolved the nested alias during codegen and fell through to invalid LLVM/Clang backend failures instead of reporting an undefined name
 - Fixed import-check namespace aliases leaking out of module-local scopes:
   - import checking now initializes only from top-level imports and pushes direct module imports while recursively visiting nested module declarations instead of flattening all imports into one file-global import environment
   - this fixes cases such as `module Inner { import std.math as math; }` followed by top-level `math.abs(...)`, which previously passed import checking even though the alias should only exist inside `Inner`

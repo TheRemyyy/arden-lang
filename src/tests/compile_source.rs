@@ -6548,6 +6548,35 @@ fn compile_source_no_check_reports_undefined_variable_for_unknown_method_receive
 }
 
 #[test]
+fn compile_source_no_check_rejects_module_local_import_alias_leaking_to_top_level() {
+    let temp_root = make_temp_project_root("no-check-module-local-import-alias-leak");
+    let source_path = temp_root.join("no_check_module_local_import_alias_leak.apex");
+    let output_path = temp_root.join("no_check_module_local_import_alias_leak");
+    let source = r#"
+            module Inner {
+                import std.math as math;
+                function keep(): Float {
+                    return math.abs(-1.0);
+                }
+            }
+
+            function main(): Float {
+                return math.abs(-1.0);
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("module-local alias should not resolve at top level in no-check mode");
+    assert!(
+        err.contains("Undefined variable: math") || err.contains("Unknown type: math"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_reports_undefined_variable_for_unknown_field_root() {
     let temp_root = make_temp_project_root("no-check-unknown-field-root-primary-error");
     let source_path = temp_root.join("no_check_unknown_field_root_primary_error.apex");

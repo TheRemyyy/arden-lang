@@ -432,12 +432,54 @@ pub struct Codegen<'ctx> {
     async_counter: u32,
     async_functions: HashMap<String, AsyncFunctionPlan<'ctx>>,
     extern_functions: HashSet<String>,
-    import_aliases: HashMap<String, String>,
+    import_aliases: HashMap<String, Vec<(Option<String>, String)>>,
     current_package: String,
+    current_module_prefix: Option<String>,
     pub(crate) current_generic_bounds: HashMap<String, Vec<String>>,
 }
 
 impl<'ctx> Codegen<'ctx> {
+    fn current_import_scope_prefixes(&self) -> Vec<Option<&str>> {
+        let mut scopes = Vec::new();
+        let mut current = self.current_module_prefix.as_deref();
+        while let Some(prefix) = current {
+            scopes.push(Some(prefix));
+            current = prefix.rsplit_once("__").map(|(parent, _)| parent);
+        }
+        scopes.push(None);
+        scopes
+    }
+
+    fn lookup_import_alias_path(&self, alias_ident: &str) -> Option<&str> {
+        let scoped_paths = self.import_aliases.get(alias_ident)?;
+        for scope_prefix in self.current_import_scope_prefixes() {
+            if let Some((_, path)) = scoped_paths
+                .iter()
+                .rev()
+                .find(|(scope, _)| scope.as_deref() == scope_prefix)
+            {
+                return Some(path.as_str());
+            }
+        }
+        None
+    }
+
+    fn visible_wildcard_import_paths(&self) -> Vec<&str> {
+        let mut paths = Vec::new();
+        for scope_prefix in self.current_import_scope_prefixes() {
+            for scoped_paths in self.import_aliases.values() {
+                for (scope, path) in scoped_paths {
+                    if scope.as_deref() == scope_prefix && path.ends_with(".*") {
+                        paths.push(path.as_str());
+                    }
+                }
+            }
+        }
+        paths.sort_unstable();
+        paths.dedup();
+        paths
+    }
+
     fn format_diagnostic_name(name: &str) -> String {
         name.replace("__", ".")
     }
@@ -1305,8 +1347,8 @@ impl<'ctx> Codegen<'ctx> {
 
         if !name.contains('.') {
             let mut wildcard_matches = self
-                .import_aliases
-                .values()
+                .visible_wildcard_import_paths()
+                .into_iter()
                 .filter_map(|path| path.strip_suffix(".*"))
                 .filter_map(|module_path| {
                     self.canonical_or_current_package_type_name(&format!(
@@ -1323,7 +1365,7 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         if let Some((alias, rest)) = name.split_once('.') {
-            if let Some(path) = self.import_aliases.get(alias) {
+            if let Some(path) = self.lookup_import_alias_path(alias) {
                 let candidate = format!("{}.{}", path, rest);
                 if let Some(canonical) = self.canonical_or_current_package_type_name(&candidate) {
                     return Some(canonical);
@@ -1331,7 +1373,7 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        let path = self.import_aliases.get(name)?;
+        let path = self.lookup_import_alias_path(name)?;
         if path.ends_with(".*") {
             return None;
         }
@@ -6935,6 +6977,7 @@ impl<'ctx> Codegen<'ctx> {
             extern_functions: HashSet::new(),
             import_aliases: HashMap::new(),
             current_package: String::new(),
+            current_module_prefix: None,
             current_generic_bounds: HashMap::new(),
         }
     }
@@ -7311,25 +7354,38 @@ impl<'ctx> Codegen<'ctx> {
         self.interface_implementors.clear();
         fn collect_codegen_import_aliases(
             declarations: &[Spanned<Decl>],
-            import_aliases: &mut HashMap<String, String>,
+            import_aliases: &mut HashMap<String, Vec<(Option<String>, String)>>,
             import_alias_count: &mut usize,
+            module_prefix: Option<&str>,
         ) {
             for decl in declarations {
                 match &decl.node {
                     Decl::Import(import) => {
                         if let Some(alias) = &import.alias {
-                            import_aliases.insert(alias.clone(), import.path.clone());
+                            import_aliases.entry(alias.clone()).or_default().push((
+                                module_prefix.map(str::to_string),
+                                import.path.clone(),
+                            ));
                             *import_alias_count += 1;
                         } else if import.path.ends_with(".*") {
-                            import_aliases.insert(import.path.clone(), import.path.clone());
+                            import_aliases.entry(import.path.clone()).or_default().push((
+                                module_prefix.map(str::to_string),
+                                import.path.clone(),
+                            ));
                             *import_alias_count += 1;
                         }
                     }
                     Decl::Module(module) => {
+                        let next_prefix = if let Some(prefix) = module_prefix {
+                            format!("{}__{}", prefix, module.name)
+                        } else {
+                            module.name.clone()
+                        };
                         collect_codegen_import_aliases(
                             &module.declarations,
                             import_aliases,
                             import_alias_count,
+                            Some(&next_prefix),
                         );
                     }
                     _ => {}
@@ -7340,6 +7396,7 @@ impl<'ctx> Codegen<'ctx> {
             &program.declarations,
             &mut self.import_aliases,
             &mut import_alias_count,
+            None,
         );
         for decl in &program.declarations {
             Self::collect_interface_methods_from_decl(
@@ -7776,7 +7833,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub(crate) fn resolve_module_alias(&self, name: &str) -> String {
-        if let Some(path) = self.import_aliases.get(name) {
+        if let Some(path) = self.lookup_import_alias_path(name) {
             if !path.ends_with(".*") {
                 let exact_module = self
                     .current_package_relative_path(path)
@@ -7822,7 +7879,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub(crate) fn resolve_function_alias(&self, name: &str) -> String {
-        let Some(path) = self.import_aliases.get(name) else {
+        let Some(path) = self.lookup_import_alias_path(name) else {
             return name.to_string();
         };
         if let Some(canonical) = builtin_exact_import_alias_canonical(path) {
@@ -7865,7 +7922,7 @@ impl<'ctx> Codegen<'ctx> {
         if self.variables.contains_key(alias_ident) {
             return None;
         }
-        let path = self.import_aliases.get(alias_ident)?;
+        let path = self.lookup_import_alias_path(alias_ident)?;
         if path.ends_with(".*") {
             return None;
         }
@@ -7910,8 +7967,8 @@ impl<'ctx> Codegen<'ctx> {
             return None;
         }
         let mut matches = self
-            .import_aliases
-            .values()
+            .visible_wildcard_import_paths()
+            .into_iter()
             .filter_map(|path| path.strip_suffix(".*"))
             .map(|namespace| {
                 format!(
@@ -8013,9 +8070,9 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Field { object, field } => {
                 if let Some(path_parts) = flatten_field_chain(expr) {
                     if path_parts.len() >= 2 {
-                        if let Some(path) = self.import_aliases.get(&path_parts[0]) {
+                        if let Some(path) = self.lookup_import_alias_path(&path_parts[0]) {
                             let namespace_path = if path_parts.len() == 2 {
-                                path.clone()
+                                path.to_string()
                             } else {
                                 format!(
                                     "{}.{}",
@@ -8113,9 +8170,9 @@ impl<'ctx> Codegen<'ctx> {
         }
         let mut type_source = match expr {
             Expr::Ident(name) => {
-                if let Some(path) = self.import_aliases.get(name) {
+                if let Some(path) = self.lookup_import_alias_path(name) {
                     if !path.ends_with(".*") && self.canonical_codegen_type_name(path).is_some() {
-                        path.clone()
+                        path.to_string()
                     } else {
                         self.resolve_alias_qualified_codegen_type_name(name)
                             .unwrap_or_else(|| name.clone())
@@ -8589,9 +8646,9 @@ impl<'ctx> Codegen<'ctx> {
             return None;
         }
 
-        let owner_path = if let Some(alias_path) = self.import_aliases.get(&path_parts[0]) {
+        let owner_path = if let Some(alias_path) = self.lookup_import_alias_path(&path_parts[0]) {
             if path_parts.len() == 2 {
-                alias_path.clone()
+                alias_path.to_string()
             } else {
                 format!(
                     "{}.{}",
@@ -8735,26 +8792,38 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn compile_module_with_prefix(&mut self, module: &ModuleDecl, prefix: &str) -> Result<()> {
+        let saved_module_prefix = self.current_module_prefix.clone();
+        self.current_module_prefix = Some(prefix.to_string());
         for decl in &module.declarations {
             match &decl.node {
                 Decl::Function(func) => {
                     let mut prefixed_func = func.clone();
                     prefixed_func.name = format!("{}__{}", prefix, func.name);
-                    self.compile_function(&prefixed_func)?;
+                    if let Err(err) = self.compile_function(&prefixed_func) {
+                        self.current_module_prefix = saved_module_prefix;
+                        return Err(err);
+                    }
                 }
                 Decl::Class(class) => {
                     let mut prefixed_class = class.clone();
                     prefixed_class.name = format!("{}__{}", prefix, class.name);
-                    self.compile_class(&prefixed_class)?;
+                    if let Err(err) = self.compile_class(&prefixed_class) {
+                        self.current_module_prefix = saved_module_prefix;
+                        return Err(err);
+                    }
                 }
                 Decl::Enum(_) => {}
                 Decl::Module(nested) => {
                     let nested_prefix = format!("{}__{}", prefix, nested.name);
-                    self.compile_module_with_prefix(nested, &nested_prefix)?;
+                    if let Err(err) = self.compile_module_with_prefix(nested, &nested_prefix) {
+                        self.current_module_prefix = saved_module_prefix;
+                        return Err(err);
+                    }
                 }
                 Decl::Interface(_) | Decl::Import(_) => {}
             }
         }
+        self.current_module_prefix = saved_module_prefix;
         Ok(())
     }
 
@@ -8778,6 +8847,8 @@ impl<'ctx> Codegen<'ctx> {
             return self.compile_module_with_prefix(module, prefix);
         }
 
+        let saved_module_prefix = self.current_module_prefix.clone();
+        self.current_module_prefix = Some(prefix.to_string());
         for decl in &module.declarations {
             match &decl.node {
                 Decl::Function(func) => {
@@ -8785,7 +8856,10 @@ impl<'ctx> Codegen<'ctx> {
                     if active_symbols.contains(&prefixed) || prefixed.contains("__spec__") {
                         let mut prefixed_func = func.clone();
                         prefixed_func.name = prefixed;
-                        self.compile_function(&prefixed_func)?;
+                        if let Err(err) = self.compile_function(&prefixed_func) {
+                            self.current_module_prefix = saved_module_prefix;
+                            return Err(err);
+                        }
                     }
                 }
                 Decl::Class(class) => {
@@ -8796,21 +8870,30 @@ impl<'ctx> Codegen<'ctx> {
                     {
                         let mut prefixed_class = class.clone();
                         prefixed_class.name = prefixed;
-                        self.compile_class_filtered(&prefixed_class, active_symbols)?;
+                        if let Err(err) =
+                            self.compile_class_filtered(&prefixed_class, active_symbols)
+                        {
+                            self.current_module_prefix = saved_module_prefix;
+                            return Err(err);
+                        }
                     }
                 }
                 Decl::Enum(_) => {}
                 Decl::Module(nested) => {
                     let nested_prefix = format!("{}__{}", prefix, nested.name);
-                    self.compile_module_filtered_with_prefix(
+                    if let Err(err) = self.compile_module_filtered_with_prefix(
                         nested,
                         &nested_prefix,
                         active_symbols,
-                    )?;
+                    ) {
+                        self.current_module_prefix = saved_module_prefix;
+                        return Err(err);
+                    }
                 }
                 Decl::Interface(_) | Decl::Import(_) => {}
             }
         }
+        self.current_module_prefix = saved_module_prefix;
         Ok(())
     }
 
