@@ -5451,7 +5451,7 @@ impl TypeChecker {
                             "some" => {
                                 self.check_arg_count("Option.some", args, 1, span.clone());
                                 let inner = if let Some(arg) = args.first() {
-                                    self.check_expr(&arg.node, arg.span.clone())
+                                    self.check_builtin_argument_expr(&arg.node, arg.span.clone())
                                 } else {
                                     ResolvedType::Unknown
                                 };
@@ -5476,7 +5476,7 @@ impl TypeChecker {
                             "ok" => {
                                 self.check_arg_count("Result.ok", args, 1, span.clone());
                                 let ok_ty = if let Some(arg) = args.first() {
-                                    self.check_expr(&arg.node, arg.span.clone())
+                                    self.check_builtin_argument_expr(&arg.node, arg.span.clone())
                                 } else {
                                     ResolvedType::Unknown
                                 };
@@ -5488,7 +5488,7 @@ impl TypeChecker {
                             "error" => {
                                 self.check_arg_count("Result.error", args, 1, span.clone());
                                 let err_ty = if let Some(arg) = args.first() {
-                                    self.check_expr(&arg.node, arg.span.clone())
+                                    self.check_builtin_argument_expr(&arg.node, arg.span.clone())
                                 } else {
                                     ResolvedType::Unknown
                                 };

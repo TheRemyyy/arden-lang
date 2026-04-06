@@ -15364,7 +15364,8 @@ impl<'ctx> Codegen<'ctx> {
                                 self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
                             return self.create_option_some_typed(val, inner_ty);
                         }
-                        let val = self.compile_expr(&args[0].node)?;
+                        let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                        let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                         return self.create_option_some(val);
                     }
                     ("Option", "none") => {
@@ -15389,7 +15390,8 @@ impl<'ctx> Codegen<'ctx> {
                             let val = self.compile_expr_with_expected_type(&args[0].node, ok_ty)?;
                             return self.create_result_ok_typed(val, ok_ty, err_ty);
                         }
-                        let val = self.compile_expr(&args[0].node)?;
+                        let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                        let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                         return self.create_result_ok(val);
                     }
                     ("Result", "error") => {
@@ -15403,7 +15405,8 @@ impl<'ctx> Codegen<'ctx> {
                                 self.compile_expr_with_expected_type(&args[0].node, err_ty)?;
                             return self.create_result_error_typed(val, ok_ty, err_ty);
                         }
-                        let val = self.compile_expr(&args[0].node)?;
+                        let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                        let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                         return self.create_result_error(val);
                     }
                     _ => {}
@@ -18589,7 +18592,8 @@ impl<'ctx> Codegen<'ctx> {
                                 "Option.some() requires exactly 1 argument",
                             ));
                         }
-                        let value = self.compile_expr(&args[0].node)?;
+                        let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                        let value = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                         return self.create_option_some(value);
                     }
                     "Option__none" => {
@@ -18607,7 +18611,8 @@ impl<'ctx> Codegen<'ctx> {
                                 "Result.ok() requires exactly 1 argument",
                             ));
                         }
-                        let value = self.compile_expr(&args[0].node)?;
+                        let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                        let value = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                         return self.create_result_ok(value);
                     }
                     "Result__error" => {
@@ -18616,7 +18621,8 @@ impl<'ctx> Codegen<'ctx> {
                                 "Result.error() requires exactly 1 argument",
                             ));
                         }
-                        let value = self.compile_expr(&args[0].node)?;
+                        let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                        let value = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                         return self.create_result_error(value);
                     }
                     _ => {}

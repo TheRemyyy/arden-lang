@@ -1642,6 +1642,66 @@ fn project_build_supports_zero_arg_exact_import_values_in_task_await_timeout() {
 }
 
 #[test]
+fn project_build_supports_zero_arg_exact_import_values_in_option_some() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-value-option-some-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { value: Option<Integer> = Option.some(ArgCount); return if (value.unwrap() == 1) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support zero-arg exact import values in Option.some");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import Option.some binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_zero_arg_exact_import_values_in_result_ok() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-value-result-ok-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Result<Float, String> = Result.ok(Pi); return if (value.unwrap() > 3.14 && value.unwrap() < 3.15) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support zero-arg exact import values in Result.ok");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import Result.ok binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_builtin_option_some_alias_calls() {
     let temp_root = make_temp_project_root("builtin-option-some-alias-project");
     let src_dir = temp_root.join("src");
