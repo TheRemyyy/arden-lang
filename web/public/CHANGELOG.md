@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed zero-argument stdlib exact import aliases in typed value contexts:
+  - type checking and codegen now coerce exact zero-argument stdlib aliases such as `import std.math.pi as Pi;` and `import std.math.e as E;` into plain `Float` values when they are used in non-function typed contexts instead of only treating them as first-class function values
+  - this fixes valid project builds such as `value: Float = Pi;`, which previously rewrote the alias to `Math__pi` and then failed with `Undefined variable: Math__pi`
 - Fixed exact `Option.None` builtin aliases in typed argument value contexts:
   - type checking and codegen now coerce the canonical zero-argument builtin `Option__none` function into an `Option<T>` value when an exact alias such as `import Option.None as Empty;` is passed into a typed non-function context like `take(Empty)` with `take(value: Option<Integer>)`
   - this fixes valid project builds that previously left `Empty` as the raw canonical builtin symbol in argument positions and then failed with `Undefined variable: Option__none`

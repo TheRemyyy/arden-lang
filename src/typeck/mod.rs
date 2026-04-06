@@ -2986,6 +2986,7 @@ impl TypeChecker {
     ) -> Option<ResolvedType> {
         match (name, expected) {
             ("Option__none", ResolvedType::Option(_)) => Some(expected.clone()),
+            ("Math__pi" | "Math__e", ResolvedType::Float) => Some(ResolvedType::Float),
             _ => None,
         }
     }

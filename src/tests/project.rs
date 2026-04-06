@@ -1006,6 +1006,36 @@ fn project_build_supports_stdlib_exact_import_function_values() {
 }
 
 #[test]
+fn project_build_supports_stdlib_zero_arg_exact_import_values() {
+    let temp_root = make_temp_project_root("stdlib-zero-arg-exact-import-value-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = Pi; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support zero-arg stdlib exact import values");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg stdlib exact import value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_builtin_option_some_alias_calls() {
     let temp_root = make_temp_project_root("builtin-option-some-alias-project");
     let src_dir = temp_root.join("src");
@@ -1060,6 +1090,36 @@ fn project_build_supports_builtin_result_ok_alias_function_values() {
     let status = std::process::Command::new(&output_path)
         .status()
         .expect("run compiled builtin Result.Ok alias function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_builtin_result_error_alias_function_values() {
+    let temp_root = make_temp_project_root("builtin-result-error-alias-fn-value-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport Result.Error as Failure;\nfunction main(): Integer { f: (String) -> Result<Integer, String> = Failure; value: Result<Integer, String> = f(\"boom\"); return if (value.is_error()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support builtin Result.Error alias function values");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled builtin Result.Error alias function value binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);

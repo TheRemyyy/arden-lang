@@ -13296,6 +13296,9 @@ impl<'ctx> Codegen<'ctx> {
             ("Option__none", Type::Option(inner_ty)) => {
                 Ok(Some(self.create_option_none_typed(inner_ty.as_ref())?))
             }
+            ("Math__pi", Type::Float) | ("Math__e", Type::Float) => {
+                self.compile_stdlib_function(name, &[])
+            }
             _ => Ok(None),
         }
     }
