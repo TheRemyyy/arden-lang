@@ -219,6 +219,7 @@ struct CallRewriteContext<'a> {
     imported_map: &'a ImportedMap,
     global_function_map: &'a HashMap<String, String>,
     global_module_map: &'a HashMap<String, String>,
+    expected_return_type: Option<&'a ast::Type>,
 }
 
 #[derive(Clone, Copy)]
@@ -266,6 +267,16 @@ impl<'a> ResolvedRewriteContext<'a> {
             imported_map: self.imported_map,
             global_function_map: self.global_function_map,
             global_module_map: self.global_module_map,
+            expected_return_type: None,
+        }
+    }
+}
+
+impl<'a> CallRewriteContext<'a> {
+    fn with_expected_return_type(self, expected_return_type: &'a ast::Type) -> Self {
+        Self {
+            expected_return_type: Some(expected_return_type),
+            ..self
         }
     }
 }
@@ -930,9 +941,11 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                             &f.return_type,
                             type_ctx,
                         );
+                        let function_call_ctx =
+                            call_ctx.with_expected_return_type(&f.return_type);
                         f.body = self::rewrite_block_calls_for_project(
                             &f.body,
-                            call_ctx,
+                            function_call_ctx,
                             &mut scopes,
                         );
                         f.name = mangle_project_function_symbol(
@@ -1055,9 +1068,11 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                     &nm.return_type,
                                     type_ctx,
                                 );
+                                let method_call_ctx =
+                                    call_ctx.with_expected_return_type(&nm.return_type);
                                 nm.body = rewrite_block_calls_for_project(
                                     &nm.body,
-                                    call_ctx,
+                                    method_call_ctx,
                                     &mut scopes,
                                 );
                                 nm
@@ -1657,13 +1672,15 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                     &new_method.return_type,
                                     type_ctx,
                                 );
+                                let method_call_ctx =
+                                    call_ctx.with_expected_return_type(&new_method.return_type);
                                 new_method.default_impl =
                                     method.default_impl.as_ref().map(|block| {
                                         rewrite_block_calls_for_project(
                                             block,
-                                                call_ctx,
-                                                &mut scopes,
-                                            )
+                                            method_call_ctx,
+                                            &mut scopes,
+                                        )
                                     });
                                 new_method
                             })
@@ -4347,11 +4364,13 @@ fn rewrite_stmt_calls_for_project(
     let local_modules = ctx.local_modules;
     let imported_modules = ctx.type_ctx.imported_modules;
     let global_module_map = ctx.global_module_map;
+    let expected_return_type = ctx.expected_return_type;
     let _ = (
         local_functions,
         imported_map,
         global_function_map,
         global_module_map,
+        expected_return_type,
     );
     let rewrite_type_for_project_with_interfaces =
         |ty: &ast::Type,
@@ -4444,10 +4463,23 @@ fn rewrite_stmt_calls_for_project(
             self::rewrite_expr_calls_for_project(&expr.node, ctx, scopes),
             expr.span.clone(),
         )),
-        Stmt::Return(Some(expr)) => Stmt::Return(Some(ast::Spanned::new(
-            self::rewrite_expr_calls_for_project(&expr.node, ctx, scopes),
-            expr.span.clone(),
-        ))),
+        Stmt::Return(Some(expr)) => {
+            let rewritten_expr = self::rewrite_expr_calls_for_project(&expr.node, ctx, scopes);
+            let rewritten_expr = expected_return_type
+                .and_then(|ty| {
+                    materialize_builtin_exact_import_value_for_type(
+                        &expr.node,
+                        ty,
+                        imported_map,
+                        scopes,
+                    )
+                })
+                .unwrap_or(rewritten_expr);
+            Stmt::Return(Some(ast::Spanned::new(
+                rewritten_expr,
+                expr.span.clone(),
+            )))
+        }
         Stmt::If {
             condition,
             then_block,

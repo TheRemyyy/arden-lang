@@ -67,6 +67,7 @@ fn fix_module_local_expr(
                 imported_map: &HashMap::new(),
                 global_function_map: &HashMap::new(),
                 global_module_map: &HashMap::new(),
+                expected_return_type: None,
                 type_ctx: super::RewriteTypeContext {
                     current_namespace,
                     local_classes,

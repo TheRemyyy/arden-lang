@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project rewrite for exact `Option.None` builtin alias return values:
+  - combined project builds now materialize exact aliases of the zero-argument builtin `Option.None` constructor such as `import Option.None as Empty;` inside typed `return` statements when the enclosing function returns `Option<T>`, while still preserving callable function-value uses in `() -> Option<T>` contexts
+  - this fixes valid project builds such as `function make(): Option<Integer> { return Empty; }`, which previously regressed after the function-value fix and failed during project builds with `Undefined variable: Option__none`
 - Fixed project rewrite for exact `Option.None` builtin alias function values:
   - combined project builds now preserve exact aliases of the zero-argument builtin `Option.None` constructor such as `import Option.None as Empty;` as callable function values when the surrounding typed `let` expects `() -> Option<T>`, while still materializing plain `Option.none()` values for non-function `let` bindings
   - this fixes valid project builds such as `f: () -> Option<Integer> = Empty; value: Option<Integer> = f();`, which previously regressed by eagerly rewriting `Empty` into `Option.none()` and then failing type checking with `cannot assign Option<?T0> to variable of type () -> Option<Integer>`
