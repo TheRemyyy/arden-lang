@@ -2950,6 +2950,26 @@ fn rewrite_nested_module_decl_for_project(
         }
         Decl::Interface(interface) => {
             let mut rewritten = interface.clone();
+            rewritten.generic_params =
+                rewrite_generic_params_for_project(&rewritten.generic_params, |bound| {
+                    rewrite_interface_reference_for_module(
+                        bound,
+                        module_prefix,
+                        current_namespace,
+                        entry_namespace,
+                        module_local_classes,
+                        module_local_interfaces,
+                        module_local_enums,
+                        module_local_modules,
+                        imported_classes,
+                        imported_interfaces,
+                        imported_enums,
+                        imported_modules,
+                        global_class_map,
+                        global_interface_map,
+                        global_enum_map,
+                    )
+                });
             rewritten.extends = interface
                 .extends
                 .iter()

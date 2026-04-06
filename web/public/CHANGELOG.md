@@ -67,6 +67,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - destructors on classes inside recursively nested modules now rewrite import aliases and qualified calls the same way as constructors and methods, so file-scope aliases like `import util.add1 as inc;` keep working inside nested-module destructor bodies
 - Fixed nested-module generic bounds skipping project rewrite:
   - generic parameter bounds on recursively nested functions, classes, methods, and enums now rewrite file-scope aliases just like top-level module declarations, so bounds such as `T extends NamedAlias` continue to resolve after project symbol mangling
+- Fixed nested-module interface generic bounds skipping project rewrite:
+  - generic parameter bounds on recursively nested interfaces now rewrite file-scope aliases the same way as top-level interfaces, so bounds such as `interface Reader<T extends NamedAlias>` keep resolving after project symbol mangling
 - Fixed unchecked multi-bound generic interface dispatch:
   - method calls and bound-method values on generic receivers now match against the full union of resolved interface bounds instead of only the first bound
   - this fixes cases such as `function read_b<T extends A, B>(value: T): Integer { return value.b(); }` and `value.b`, which previously failed with diagnostics like `Unknown method 'b' for interface 'A'` or `Unknown class: T`

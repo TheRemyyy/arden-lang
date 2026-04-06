@@ -4993,6 +4993,42 @@ fn project_build_supports_nested_module_generic_bounds_through_file_scope_aliase
 }
 
 #[test]
+fn project_build_supports_nested_module_interface_generic_bounds_through_file_scope_aliases() {
+    let temp_root = make_temp_project_root("nested-module-interface-generic-bound-alias-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package app;\ninterface Named { function name(): Integer; }\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport app.Named as NamedAlias;\nmodule M { module N { interface Reader<T extends NamedAlias> { function read(value: T): Integer; } class Box implements Reader<Item> { constructor() {} function read(value: Item): Integer { return value.name(); } } } }\nclass Item implements NamedAlias { function name(): Integer { return 7; } }\nfunction main(): Integer { reader: M.N.Reader<Item> = M.N.Box(); return reader.read(Item()); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support nested-module interface generic bounds through file-scope aliases",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run nested-module interface generic bound alias binary");
+    assert_eq!(status.code(), Some(7));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
     let temp_root = make_temp_project_root("project-check-invalid-files-list-fix");
     fs::write(
