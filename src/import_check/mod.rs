@@ -188,6 +188,8 @@ pub struct ImportChecker<'a> {
     wildcard_imports: Vec<String>, // e.g., ["utils.math", "utils.strings"]
     /// Namespace aliases from imports (`import std.io as io`)
     namespace_aliases: HashMap<String, String>,
+    /// Alias identifiers declared by any import in the checked program.
+    declared_namespace_aliases: HashSet<String>,
     /// Aliases that were declared but do not resolve to a known namespace.
     invalid_namespace_aliases: HashSet<String>,
     /// Standard library registry
@@ -203,6 +205,143 @@ pub struct ImportChecker<'a> {
 }
 
 impl<'a> ImportChecker<'a> {
+    fn known_namespaces(&self) -> HashSet<String> {
+        self.function_namespaces
+            .values()
+            .cloned()
+            .chain(self.stdlib.get_functions().values().cloned())
+            .chain(self.known_namespace_paths.iter().cloned())
+            .collect()
+    }
+
+    fn apply_import_decl(&mut self, import: &ImportDecl) {
+        let known_namespaces = self.known_namespaces();
+        let path = import.path.clone();
+        let alias = import.alias.clone();
+
+        if let Some(alias_name) = alias {
+            self.declared_namespace_aliases.insert(alias_name.clone());
+            if known_namespaces.contains(&path) {
+                self.namespace_aliases.insert(alias_name, path.clone());
+            } else if path.contains('.') {
+                let mut parts = path.split('.').collect::<Vec<_>>();
+                let symbol = parts.pop().unwrap_or_default();
+                let symbol_ns = parts.join(".");
+                let current_qualified_symbol_ns = if self.current_namespace.is_empty() {
+                    symbol_ns.clone()
+                } else {
+                    format!("{}.{}", self.current_namespace, symbol_ns)
+                };
+                let is_known_symbol_alias = self
+                    .function_namespaces
+                    .get(symbol)
+                    .is_some_and(|ns| ns == &symbol_ns)
+                    || builtin_exact_import_alias_canonical(&path).is_some()
+                    || known_namespaces.contains(&symbol_ns)
+                    || known_namespaces.contains(&current_qualified_symbol_ns)
+                    || Self::path_has_known_namespace_prefix(&self.known_namespace_paths, &path)
+                    || self
+                        .stdlib
+                        .get_namespace(symbol)
+                        .is_some_and(|ns| ns == &symbol_ns)
+                    || Self::path_resolves_to_user_module(
+                        &self.function_namespaces,
+                        &self.known_namespace_paths,
+                        &path,
+                    );
+                if is_known_symbol_alias {
+                    self.namespace_aliases.insert(alias_name, path.clone());
+                } else {
+                    self.invalid_namespace_aliases.insert(alias_name);
+                }
+            } else {
+                let current_qualified_path = if self.current_namespace.is_empty() {
+                    path.clone()
+                } else {
+                    format!("{}.{}", self.current_namespace, path)
+                };
+                let is_current_namespace_symbol_alias = self
+                    .function_namespaces
+                    .get(&path)
+                    .is_some_and(|ns| ns == &self.current_namespace)
+                    || self
+                        .stdlib
+                        .get_namespace(&path)
+                        .is_some_and(|ns| ns == &self.current_namespace);
+                if known_namespaces.contains(&current_qualified_path)
+                    || is_current_namespace_symbol_alias
+                {
+                    self.namespace_aliases.insert(alias_name, current_qualified_path);
+                } else {
+                    self.invalid_namespace_aliases.insert(alias_name);
+                }
+            }
+            return;
+        }
+
+        if path.ends_with(".*") {
+            let ns = path.trim_end_matches(".*");
+            self.wildcard_imports.push(ns.to_string());
+
+            for (func, func_ns) in self.function_namespaces.iter() {
+                if let Some(imported_name) = direct_wildcard_member_name(ns, func_ns, func) {
+                    self.imported_functions.insert(imported_name);
+                }
+            }
+
+            for (func, func_ns) in self.stdlib.get_functions() {
+                if func_ns == ns {
+                    self.imported_functions.insert(func.clone());
+                }
+            }
+        } else if path.contains('.') {
+            let parts: Vec<&str> = path.split('.').collect();
+            if let Some(func_name) = parts.last() {
+                self.imported_functions.insert(func_name.to_string());
+            }
+        }
+    }
+
+    fn push_module_import_scope(
+        &mut self,
+        module: &ModuleDecl,
+    ) -> (
+        HashSet<String>,
+        Vec<String>,
+        HashMap<String, String>,
+        HashSet<String>,
+    ) {
+        let saved = (
+            self.imported_functions.clone(),
+            self.wildcard_imports.clone(),
+            self.namespace_aliases.clone(),
+            self.invalid_namespace_aliases.clone(),
+        );
+        for decl in &module.declarations {
+            if let Decl::Import(import) = &decl.node {
+                self.apply_import_decl(import);
+            }
+        }
+        saved
+    }
+
+    fn pop_module_import_scope(
+        &mut self,
+        saved: (
+            HashSet<String>,
+            Vec<String>,
+            HashMap<String, String>,
+            HashSet<String>,
+        ),
+    ) {
+        (
+            self.imported_functions,
+            self.wildcard_imports,
+            self.namespace_aliases,
+            self.invalid_namespace_aliases,
+        ) = saved;
+    }
+
     pub fn new(
         function_namespaces: Arc<HashMap<String, String>>,
         known_namespace_paths: Arc<HashSet<String>>,
@@ -210,124 +349,28 @@ impl<'a> ImportChecker<'a> {
         imports: Vec<ImportDecl>,
         stdlib: &'a StdLib,
     ) -> Self {
-        let mut imported_functions = HashSet::new();
-        let mut wildcard_imports = Vec::new();
-        let mut namespace_aliases = HashMap::new();
-        let mut invalid_namespace_aliases = HashSet::new();
-        let known_namespaces: HashSet<String> = function_namespaces
-            .values()
-            .cloned()
-            .chain(stdlib.get_functions().values().cloned())
-            .chain(known_namespace_paths.iter().cloned())
-            .collect();
-
-        for import in imports {
-            let path = import.path;
-            let alias = import.alias;
-
-            if let Some(alias_name) = alias {
-                // Alias only namespaces (e.g. import std.math as math).
-                // Function aliasing is parser-accepted syntax but import checking currently
-                // remains conservative and does not auto-import by alias identifier.
-                if known_namespaces.contains(&path) {
-                    namespace_aliases.insert(alias_name, path.clone());
-                } else if path.contains('.') {
-                    let mut parts = path.split('.').collect::<Vec<_>>();
-                    let symbol = parts.pop().unwrap_or_default();
-                    let symbol_ns = parts.join(".");
-                    let current_qualified_symbol_ns = if current_namespace.is_empty() {
-                        symbol_ns.clone()
-                    } else {
-                        format!("{}.{}", current_namespace, symbol_ns)
-                    };
-                    let is_known_symbol_alias = function_namespaces
-                        .get(symbol)
-                        .is_some_and(|ns| ns == &symbol_ns)
-                        || builtin_exact_import_alias_canonical(&path).is_some()
-                        || known_namespaces.contains(&symbol_ns)
-                        || known_namespaces.contains(&current_qualified_symbol_ns)
-                        || Self::path_has_known_namespace_prefix(&known_namespace_paths, &path)
-                        || stdlib
-                            .get_namespace(symbol)
-                            .is_some_and(|ns| ns == &symbol_ns)
-                        || Self::path_resolves_to_user_module(
-                            &function_namespaces,
-                            &known_namespace_paths,
-                            &path,
-                        );
-                    if is_known_symbol_alias {
-                        namespace_aliases.insert(alias_name, path.clone());
-                    } else {
-                        invalid_namespace_aliases.insert(alias_name);
-                    }
-                } else {
-                    let current_qualified_path = if current_namespace.is_empty() {
-                        path.clone()
-                    } else {
-                        format!("{}.{}", current_namespace, path)
-                    };
-                    let is_current_namespace_symbol_alias = function_namespaces
-                        .get(&path)
-                        .is_some_and(|ns| ns == &current_namespace)
-                        || stdlib
-                            .get_namespace(&path)
-                            .is_some_and(|ns| ns == &current_namespace);
-                    if known_namespaces.contains(&current_qualified_path)
-                        || is_current_namespace_symbol_alias
-                    {
-                        namespace_aliases.insert(alias_name, current_qualified_path);
-                    } else {
-                        invalid_namespace_aliases.insert(alias_name);
-                    }
-                }
-                continue;
-            }
-
-            if path.ends_with(".*") {
-                // Wildcard import: utils.math.*
-                let ns = path.trim_end_matches(".*");
-                wildcard_imports.push(ns.to_string());
-
-                // Add all functions from this namespace (user-defined)
-                for (func, func_ns) in function_namespaces.iter() {
-                    if let Some(imported_name) = direct_wildcard_member_name(ns, func_ns, func) {
-                        imported_functions.insert(imported_name);
-                    }
-                }
-
-                // Add all stdlib functions from this namespace
-                for (func, func_ns) in stdlib.get_functions() {
-                    if func_ns == ns {
-                        imported_functions.insert(func.clone());
-                    }
-                }
-            } else if path.contains('.') {
-                // Specific import: utils.math.factorial
-                let parts: Vec<&str> = path.split('.').collect();
-                if let Some(func_name) = parts.last() {
-                    imported_functions.insert(func_name.to_string());
-                }
-            }
-        }
-
         // Collect available function names for suggestions
         let mut available_functions: Vec<String> = function_namespaces.keys().cloned().collect();
         available_functions.extend(stdlib.get_functions().keys().cloned());
-
-        Self {
+        let mut checker = Self {
             function_namespaces,
             known_namespace_paths,
             current_namespace,
-            imported_functions,
-            wildcard_imports,
-            namespace_aliases,
-            invalid_namespace_aliases,
+            imported_functions: HashSet::new(),
+            wildcard_imports: Vec::new(),
+            namespace_aliases: HashMap::new(),
+            declared_namespace_aliases: HashSet::new(),
+            invalid_namespace_aliases: HashSet::new(),
             stdlib,
             available_functions,
             local_functions: HashSet::new(),
             local_scopes: Vec::new(),
             errors: Vec::new(),
+        };
+        for import in imports {
+            checker.apply_import_decl(&import);
         }
+        checker
     }
 
     fn enter_scope(&mut self) {
@@ -836,6 +879,31 @@ impl<'a> ImportChecker<'a> {
         true
     }
 
+    fn report_unknown_namespace_alias_usage(
+        &mut self,
+        alias: &str,
+        member: &str,
+        span: Span,
+    ) -> bool {
+        if self.is_local_value(alias)
+            || !self.declared_namespace_aliases.contains(alias)
+            || !alias
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_lowercase() || ch == '_')
+        {
+            return false;
+        }
+        self.errors.push(ImportError {
+            function_name: format!("{}.{}", alias, member),
+            defined_in: "<unknown namespace alias>".to_string(),
+            used_in: self.current_namespace.clone(),
+            span,
+            suggestion: None,
+        });
+        true
+    }
+
     fn exact_import_alias_resolves(&self, path: &str) -> bool {
         if builtin_exact_import_alias_canonical(path).is_some() {
             return true;
@@ -1062,9 +1130,19 @@ impl<'a> ImportChecker<'a> {
                                 } else if let Some(ns) = self.stdlib.get_namespace(field) {
                                     if Self::namespace_matches_module_hint(ns, module_or_type) {
                                         self.check_function_call(field, callee.span.clone());
+                                    } else if self.report_unknown_namespace_alias_usage(
+                                        module_or_type,
+                                        field,
+                                        callee.span.clone(),
+                                    ) {
                                     } else {
                                         self.check_expr(&callee.node);
                                     }
+                                } else if self.report_unknown_namespace_alias_usage(
+                                    module_or_type,
+                                    field,
+                                    callee.span.clone(),
+                                ) {
                                 } else {
                                     self.check_expr(&callee.node);
                                 }
@@ -1209,9 +1287,19 @@ impl<'a> ImportChecker<'a> {
                                 } else if let Some(ns) = self.stdlib.get_namespace(field) {
                                     if Self::namespace_matches_module_hint(ns, module_or_type) {
                                         self.check_function_call(field, callee.span.clone());
+                                    } else if self.report_unknown_namespace_alias_usage(
+                                        module_or_type,
+                                        field,
+                                        callee.span.clone(),
+                                    ) {
                                     } else {
                                         self.check_expr(&callee.node);
                                     }
+                                } else if self.report_unknown_namespace_alias_usage(
+                                    module_or_type,
+                                    field,
+                                    callee.span.clone(),
+                                ) {
                                 } else {
                                     self.check_expr(&callee.node);
                                 }
@@ -1431,9 +1519,11 @@ impl<'a> ImportChecker<'a> {
                     }
                 }
                 Decl::Module(module) => {
+                    let saved_import_scope = checker.push_module_import_scope(module);
                     for inner in &module.declarations {
                         check_decl(checker, &inner.node);
                     }
+                    checker.pop_module_import_scope(saved_import_scope);
                 }
                 Decl::Interface(interface) => {
                     checker.check_generic_param_bounds(&interface.generic_params);

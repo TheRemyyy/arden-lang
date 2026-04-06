@@ -33,6 +33,27 @@ fn check_import_errors(source: &str) -> Vec<ImportError> {
 }
 
 #[test]
+fn module_local_namespace_alias_does_not_leak_to_top_level_import_check() {
+    let source = r#"
+module Inner {
+import std.math as math;
+
+function keep(): Float {
+    return math.abs(-1.0);
+}
+}
+
+function main(): Float {
+return math.abs(-1.0);
+}
+"#;
+    let errors = check_import_errors(source);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert_eq!(errors[0].function_name, "math.abs");
+    assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+}
+
+#[test]
 fn local_function_can_shadow_stdlib_name() {
     let source = r#"
 function print(owned s: String): None { return None; }

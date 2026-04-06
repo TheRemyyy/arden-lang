@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed import-check namespace aliases leaking out of module-local scopes:
+  - import checking now initializes only from top-level imports and pushes direct module imports while recursively visiting nested module declarations instead of flattening all imports into one file-global import environment
+  - this fixes cases such as `module Inner { import std.math as math; }` followed by top-level `math.abs(...)`, which previously passed import checking even though the alias should only exist inside `Inner`
 - Fixed module-local import aliases leaking into outer typechecking scopes:
   - type resolution now picks import aliases from the current module scope chain instead of flattening every nested module import into one global alias table for the entire file
   - this fixes cases such as `module Inner { import std.math as math; }` followed by top-level `math.abs(...)`, which previously compiled even though the alias should only exist inside `Inner`

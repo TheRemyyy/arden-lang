@@ -2060,7 +2060,7 @@ fn build_project(
                                 Arc::clone(&shared_function_map),
                                 Arc::clone(&shared_known_namespace_paths),
                                 unit.namespace.clone(),
-                                unit.imports.clone(),
+                                extract_top_level_imports(&unit.program),
                                 stdlib_registry(),
                             );
                             import_check_timing_totals.checker_init_ns.fetch_add(
@@ -3874,7 +3874,7 @@ fn run_single_file_semantic_checks(
     program: &Program,
 ) -> Result<(), String> {
     let namespace = extract_namespace(program);
-    let imports = extract_imports(program);
+    let imports = extract_top_level_imports(program);
     let function_namespaces = import_check::extract_function_namespaces(program, &namespace);
     let known_namespace_paths = import_check::extract_known_namespace_paths(program, &namespace);
     let mut import_checker = ImportChecker::new(
@@ -4149,6 +4149,17 @@ fn extract_imports(program: &ast::Program) -> Vec<ast::ImportDecl> {
     let mut imports = Vec::new();
     collect_imports(&program.declarations, &mut imports);
     imports
+}
+
+fn extract_top_level_imports(program: &ast::Program) -> Vec<ast::ImportDecl> {
+    program
+        .declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            ast::Decl::Import(import) => Some(import.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Show project information
