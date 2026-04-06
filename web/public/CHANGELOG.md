@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed exact `Option.None` builtin aliases in typed argument value contexts:
+  - type checking and codegen now coerce the canonical zero-argument builtin `Option__none` function into an `Option<T>` value when an exact alias such as `import Option.None as Empty;` is passed into a typed non-function context like `take(Empty)` with `take(value: Option<Integer>)`
+  - this fixes valid project builds that previously left `Empty` as the raw canonical builtin symbol in argument positions and then failed with `Undefined variable: Option__none`
 - Fixed project rewrite for exact `Option.None` builtin alias return values:
   - combined project builds now materialize exact aliases of the zero-argument builtin `Option.None` constructor such as `import Option.None as Empty;` inside typed `return` statements when the enclosing function returns `Option<T>`, while still preserving callable function-value uses in `() -> Option<T>` contexts
   - this fixes valid project builds such as `function make(): Option<Integer> { return Empty; }`, which previously regressed after the function-value fix and failed during project builds with `Undefined variable: Option__none`

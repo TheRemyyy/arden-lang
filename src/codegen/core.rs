@@ -12878,6 +12878,15 @@ impl<'ctx> Codegen<'ctx> {
                 return self.compile_lambda(params, body, Some(expected_ty));
             }
         }
+        if !matches!(expected_ty, Type::Function(_, _)) {
+            if let Some(name) = self.resolve_contextual_function_value_name(expr) {
+                if let Some(value) =
+                    self.compile_builtin_zero_arg_value_with_expected_type(&name, expected_ty)?
+                {
+                    return Ok(value);
+                }
+            }
+        }
         if matches!(expected_ty, Type::Function(_, _)) {
             if let Some(name) = self.resolve_contextual_function_value_name(expr) {
                 if let Some(actual_ty) = self.functions.get(&name).map(|(_, ty)| ty.clone()) {
@@ -13276,6 +13285,19 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         self.compile_function_value_adapter_from_closure(actual_closure, &actual_ty, expected_ty)
+    }
+
+    fn compile_builtin_zero_arg_value_with_expected_type(
+        &mut self,
+        name: &str,
+        expected_ty: &Type,
+    ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        match (name, expected_ty) {
+            ("Option__none", Type::Option(inner_ty)) => {
+                Ok(Some(self.create_option_none_typed(inner_ty.as_ref())?))
+            }
+            _ => Ok(None),
+        }
     }
 
     fn builtin_function_value_diagnostic_signature(name: &str) -> &'static str {

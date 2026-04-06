@@ -1246,6 +1246,36 @@ fn project_build_supports_builtin_option_none_alias_return_values() {
 }
 
 #[test]
+fn project_build_supports_builtin_option_none_alias_argument_values() {
+    let temp_root = make_temp_project_root("builtin-option-none-alias-arg-value-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport Option.None as Empty;\nfunction take(value: Option<Integer>): Integer { return if (value.is_none()) { 0 } else { 1 }; }\nfunction main(): Integer { return take(Empty); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support builtin Option.None alias argument values");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled builtin Option.None alias argument value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_preserves_default_extern_link_names() {
     let temp_root = make_temp_project_root("project-extern-default-link-name");
     let src_dir = temp_root.join("src");
