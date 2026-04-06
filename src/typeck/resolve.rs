@@ -1,6 +1,47 @@
 use super::*;
 
 impl TypeChecker {
+    fn current_import_scope_prefixes(&self) -> Vec<Option<&str>> {
+        let mut scopes = Vec::new();
+        let mut current = self.current_module_prefix.as_deref();
+        while let Some(prefix) = current {
+            scopes.push(Some(prefix));
+            current = prefix.rsplit_once("__").map(|(parent, _)| parent);
+        }
+        scopes.push(None);
+        scopes
+    }
+
+    fn lookup_import_alias_path(&self, alias_ident: &str) -> Option<&str> {
+        let scoped_paths = self.import_aliases.get(alias_ident)?;
+        for scope_prefix in self.current_import_scope_prefixes() {
+            if let Some((_, path)) = scoped_paths
+                .iter()
+                .rev()
+                .find(|(scope, _)| scope.as_deref() == scope_prefix)
+            {
+                return Some(path.as_str());
+            }
+        }
+        None
+    }
+
+    fn visible_wildcard_import_paths(&self) -> Vec<&str> {
+        let mut paths = Vec::new();
+        for scope_prefix in self.current_import_scope_prefixes() {
+            for scoped_paths in self.import_aliases.values() {
+                for (scope, path) in scoped_paths {
+                    if scope.as_deref() == scope_prefix && path.ends_with(".*") {
+                        paths.push(path.as_str());
+                    }
+                }
+            }
+        }
+        paths.sort_unstable();
+        paths.dedup();
+        paths
+    }
+
     pub(crate) fn resolve_stdlib_alias_call_name(
         &self,
         alias_ident: &str,
@@ -10,7 +51,7 @@ impl TypeChecker {
         if self.lookup_variable(alias_ident).is_some() {
             return None;
         }
-        let namespace_path = self.import_aliases.get(alias_ident)?;
+        let namespace_path = self.lookup_import_alias_path(alias_ident)?;
         stdlib_registry().resolve_alias_call(namespace_path, member)
     }
 
@@ -19,7 +60,7 @@ impl TypeChecker {
         if self.lookup_variable(alias_ident).is_some() {
             return None;
         }
-        let path = self.import_aliases.get(alias_ident)?;
+        let path = self.lookup_import_alias_path(alias_ident)?;
         if let Some(canonical) = crate::ast::builtin_exact_import_alias_canonical(path) {
             return Some(canonical.to_string());
         }
@@ -52,7 +93,7 @@ impl TypeChecker {
         if self.lookup_variable(alias_ident).is_some() {
             return None;
         }
-        let path = self.import_aliases.get(alias_ident)?;
+        let path = self.lookup_import_alias_path(alias_ident)?;
         if path.ends_with(".*") {
             return None;
         }
@@ -128,7 +169,7 @@ impl TypeChecker {
         if self.resolve_import_alias_symbol(alias_ident).is_some() {
             return None;
         }
-        let path = self.import_aliases.get(alias_ident)?;
+        let path = self.lookup_import_alias_path(alias_ident)?;
         if path.ends_with(".*") {
             return None;
         }
@@ -148,8 +189,8 @@ impl TypeChecker {
             return None;
         }
         let mut matches = self
-            .import_aliases
-            .values()
+            .visible_wildcard_import_paths()
+            .into_iter()
             .filter_map(|path| path.strip_suffix(".*"))
             .map(|namespace| {
                 format!(
@@ -282,8 +323,8 @@ impl TypeChecker {
 
         if !name.contains('.') {
             let mut wildcard_matches = self
-                .import_aliases
-                .values()
+                .visible_wildcard_import_paths()
+                .into_iter()
                 .filter_map(|path| path.strip_suffix(".*"))
                 .filter_map(|module_path| {
                     self.resolve_known_type_name(&format!("{}.{}", module_path, name))
@@ -296,7 +337,7 @@ impl TypeChecker {
             }
         }
 
-        if let Some(path) = self.import_aliases.get(name) {
+        if let Some(path) = self.lookup_import_alias_path(name) {
             if !path.ends_with(".*") {
                 if let Some(resolved) = self.resolve_known_type_name(path) {
                     return Some(resolved);
@@ -772,7 +813,7 @@ impl TypeChecker {
     }
 
     pub(crate) fn resolve_builtin_module_alias(&self, name: &str) -> String {
-        let Some(path) = self.import_aliases.get(name) else {
+        let Some(path) = self.lookup_import_alias_path(name) else {
             return name.to_string();
         };
         let mut owner: Option<String> = None;
@@ -805,9 +846,9 @@ impl TypeChecker {
             Expr::Field { object, field } => {
                 if let Some(path_parts) = flatten_field_chain(expr) {
                     if path_parts.len() >= 2 {
-                        if let Some(path) = self.import_aliases.get(&path_parts[0]) {
+                        if let Some(path) = self.lookup_import_alias_path(&path_parts[0]) {
                             let namespace_path = if path_parts.len() == 2 {
-                                path.clone()
+                                path.to_string()
                             } else {
                                 format!(
                                     "{}.{}",

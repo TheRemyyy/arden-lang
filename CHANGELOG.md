@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed module-local import aliases leaking into outer typechecking scopes:
+  - type resolution now picks import aliases from the current module scope chain instead of flattening every nested module import into one global alias table for the entire file
+  - this fixes cases such as `module Inner { import std.math as math; }` followed by top-level `math.abs(...)`, which previously compiled even though the alias should only exist inside `Inner`
 - Fixed `apex fix` hoisting module-local imports to file scope:
   - the safe import autofix now only rewrites the top-level import prelude before the first real declaration body instead of textually extracting every later `import ...;` line in the file
   - this fixes cases such as `module M { import util.helper; ... }`, which previously got rewritten with `import util.helper;` moved to file scope and silently changed program semantics

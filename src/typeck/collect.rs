@@ -92,26 +92,32 @@ impl TypeChecker {
     }
 
     pub(crate) fn normalize_inheritance_references(&mut self) {
-        let class_updates = self
+        let class_inputs = self
             .classes
             .iter()
-            .map(|(name, info)| {
-                (
-                    name.clone(),
-                    info.extends.as_ref().map(|parent| {
-                        self.resolve_nominal_reference_name(parent)
-                            .unwrap_or_else(|| parent.clone())
-                    }),
-                    info.implements
-                        .iter()
-                        .map(|interface_name| {
-                            self.resolve_nominal_reference_name(interface_name)
-                                .unwrap_or_else(|| interface_name.clone())
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
+            .map(|(name, info)| (name.clone(), info.extends.clone(), info.implements.clone()))
             .collect::<Vec<_>>();
+        let mut class_updates = Vec::new();
+        for (name, extends, implements) in class_inputs {
+            self.current_module_prefix = name
+                .rsplit_once("__")
+                .map(|(prefix, _)| prefix.to_string());
+            class_updates.push((
+                name,
+                extends.as_ref().map(|parent| {
+                    self.resolve_nominal_reference_name(parent)
+                        .unwrap_or_else(|| parent.clone())
+                }),
+                implements
+                    .iter()
+                    .map(|interface_name| {
+                        self.resolve_nominal_reference_name(interface_name)
+                            .unwrap_or_else(|| interface_name.clone())
+                    })
+                    .collect::<Vec<_>>(),
+            ));
+        }
+        self.current_module_prefix = None;
         for (name, extends, implements) in class_updates {
             if let Some(class) = self.classes.get_mut(&name) {
                 class.extends = extends;
@@ -119,22 +125,28 @@ impl TypeChecker {
             }
         }
 
-        let interface_updates = self
+        let interface_inputs = self
             .interfaces
             .iter()
-            .map(|(name, info)| {
-                (
-                    name.clone(),
-                    info.extends
-                        .iter()
-                        .map(|parent| {
-                            self.resolve_nominal_reference_name(parent)
-                                .unwrap_or_else(|| parent.clone())
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
+            .map(|(name, info)| (name.clone(), info.extends.clone()))
             .collect::<Vec<_>>();
+        let mut interface_updates = Vec::new();
+        for (name, extends) in interface_inputs {
+            self.current_module_prefix = name
+                .rsplit_once("__")
+                .map(|(prefix, _)| prefix.to_string());
+            interface_updates.push((
+                name,
+                extends
+                    .iter()
+                    .map(|parent| {
+                        self.resolve_nominal_reference_name(parent)
+                            .unwrap_or_else(|| parent.clone())
+                    })
+                    .collect::<Vec<_>>(),
+            ));
+        }
+        self.current_module_prefix = None;
         for (name, extends) in interface_updates {
             if let Some(interface) = self.interfaces.get_mut(&name) {
                 interface.extends = extends;

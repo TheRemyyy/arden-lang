@@ -306,8 +306,8 @@ pub struct TypeChecker {
     current_async_return_type: Option<ResolvedType>,
     /// Current class context (for visibility checks)
     current_class: Option<String>,
-    /// Import aliases (alias -> path)
-    import_aliases: HashMap<String, String>,
+    /// Import aliases (alias -> scoped import paths)
+    import_aliases: HashMap<String, Vec<(Option<String>, String)>>,
     /// Current function declared effects
     current_effects: Vec<String>,
     /// Whether current function is declared pure
@@ -644,20 +644,36 @@ impl TypeChecker {
     }
     fn populate_import_aliases(&mut self, program: &Program) {
         fn collect_import_aliases(
-            import_aliases: &mut HashMap<String, String>,
+            import_aliases: &mut HashMap<String, Vec<(Option<String>, String)>>,
             declarations: &[Spanned<Decl>],
+            module_prefix: Option<&str>,
         ) {
             for decl in declarations {
                 match &decl.node {
                     Decl::Import(import) => {
                         if let Some(alias) = &import.alias {
-                            import_aliases.insert(alias.clone(), import.path.clone());
+                            import_aliases
+                                .entry(alias.clone())
+                                .or_default()
+                                .push((module_prefix.map(str::to_string), import.path.clone()));
                         } else if import.path.ends_with(".*") {
-                            import_aliases.insert(import.path.clone(), import.path.clone());
+                            import_aliases
+                                .entry(import.path.clone())
+                                .or_default()
+                                .push((module_prefix.map(str::to_string), import.path.clone()));
                         }
                     }
                     Decl::Module(module) => {
-                        collect_import_aliases(import_aliases, &module.declarations);
+                        let next_prefix = if let Some(prefix) = module_prefix {
+                            format!("{}__{}", prefix, module.name)
+                        } else {
+                            module.name.clone()
+                        };
+                        collect_import_aliases(
+                            import_aliases,
+                            &module.declarations,
+                            Some(&next_prefix),
+                        );
                     }
                     _ => {}
                 }
@@ -665,7 +681,7 @@ impl TypeChecker {
         }
 
         self.import_aliases.clear();
-        collect_import_aliases(&mut self.import_aliases, &program.declarations);
+        collect_import_aliases(&mut self.import_aliases, &program.declarations, None);
     }
 
     fn is_same_or_subclass_of(&self, class_name: &str, ancestor: &str) -> bool {

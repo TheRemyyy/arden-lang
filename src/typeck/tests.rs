@@ -25,7 +25,7 @@ fn resolves_nested_namespace_aliased_function_type_source_inside_generic_contain
     let mut checker = TypeChecker::new();
     checker
         .import_aliases
-        .insert("root".to_string(), "app".to_string());
+        .insert("root".to_string(), vec![(None, "app".to_string())]);
     checker
         .interfaces
         .insert("app__M__Api__Named".to_string(), empty_interface());
@@ -48,7 +48,7 @@ fn parses_nested_namespace_aliased_function_type_string_inside_generic_container
     let mut checker = TypeChecker::new();
     checker
         .import_aliases
-        .insert("root".to_string(), "app".to_string());
+        .insert("root".to_string(), vec![(None, "app".to_string())]);
     checker
         .interfaces
         .insert("app__M__Api__Named".to_string(), empty_interface());
@@ -69,10 +69,13 @@ fn resolves_generic_exact_import_alias_nominal_reference_names() {
     let mut checker = TypeChecker::new();
     checker
         .import_aliases
-        .insert("BaseAlias".to_string(), "lib.Base".to_string());
+        .insert("BaseAlias".to_string(), vec![(None, "lib.Base".to_string())]);
     checker
         .import_aliases
-        .insert("PayloadAlias".to_string(), "lib.Payload".to_string());
+        .insert(
+            "PayloadAlias".to_string(),
+            vec![(None, "lib.Payload".to_string())],
+        );
     checker.classes.insert(
         "lib__Base".to_string(),
         ClassInfo {

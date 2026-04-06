@@ -40,6 +40,43 @@ fn compile_source_runs_unique_interface_method_dispatch_runtime() {
 }
 
 #[test]
+fn compile_source_rejects_module_local_import_alias_leaking_to_top_level() {
+    let temp_root = make_temp_project_root("module-local-import-alias-leak-top-level");
+    let source_path = temp_root.join("module_local_import_alias_leak_top_level.apex");
+    let output_path = temp_root.join("module_local_import_alias_leak_top_level");
+    let source = r#"
+            import std.io.*;
+
+            module Inner {
+                import std.math as math;
+
+                function keep(): None {
+                    println(to_string(math.abs(-1.0)));
+                    return None;
+                }
+            }
+
+            function main(): None {
+                value: Float = math.abs(-1.0);
+                println(to_string(value));
+                return None;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect_err("module-local alias should not resolve at top level");
+    assert!(
+        err.contains("Unknown type: math")
+            || err.contains("Undefined variable: math")
+            || err.contains("Unknown namespace alias usage 'math.abs'"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_unique_interface_bound_method_value_runtime() {
     let temp_root = make_temp_project_root("interface-bound-method-value-runtime");
     let source_path = temp_root.join("interface_bound_method_value_runtime.apex");
