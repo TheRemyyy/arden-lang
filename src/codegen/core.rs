@@ -14799,11 +14799,31 @@ impl<'ctx> Codegen<'ctx> {
         expr: &Expr,
         diagnostic: impl Into<String>,
     ) -> Result<PointerValue<'ctx>> {
-        let expr_ty = self.infer_expr_type(expr, &[]);
+        let expr_ty = self.infer_builtin_argument_type(expr);
         if !matches!(expr_ty, Type::String) {
             return Err(CodegenError::new(diagnostic.into()));
         }
-        Ok(self.compile_expr(expr)?.into_pointer_value())
+        Ok(self
+            .compile_expr_with_expected_type(expr, &expr_ty)?
+            .into_pointer_value())
+    }
+
+    fn concrete_zero_arg_builtin_value_type(name: &str) -> Option<Type> {
+        match name {
+            "read_line" | "System__cwd" | "System__os" => Some(Type::String),
+            "Time__unix" | "Args__count" => Some(Type::Integer),
+            "Math__pi" | "Math__e" | "Math__random" => Some(Type::Float),
+            _ => None,
+        }
+    }
+
+    fn infer_builtin_argument_type(&self, expr: &Expr) -> Type {
+        if let Some(name) = self.resolve_contextual_function_value_name(expr) {
+            if let Some(ty) = Self::concrete_zero_arg_builtin_value_type(&name) {
+                return ty;
+            }
+        }
+        self.infer_expr_type(expr, &[])
     }
 
     pub fn compile_literal(&mut self, lit: &Literal) -> Result<BasicValueEnum<'ctx>> {
@@ -19110,7 +19130,8 @@ impl<'ctx> Codegen<'ctx> {
             // Math functions
             "Math__abs" => {
                 self.validate_numeric_stdlib_arg("Math.abs", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 if val.is_int_value() {
                     let v = val.into_int_value();
                     let current_fn = self
@@ -19156,8 +19177,10 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__min" => {
                 self.validate_numeric_stdlib_pair("Math.min", &args[0].node, &args[1].node)?;
-                let a = self.compile_expr(&args[0].node)?;
-                let b = self.compile_expr(&args[1].node)?;
+                let a_ty = self.infer_builtin_argument_type(&args[0].node);
+                let b_ty = self.infer_builtin_argument_type(&args[1].node);
+                let a = self.compile_expr_with_expected_type(&args[0].node, &a_ty)?;
+                let b = self.compile_expr_with_expected_type(&args[1].node, &b_ty)?;
                 if a.is_float_value() || b.is_float_value() {
                     let fmin = self.get_or_declare_math_func2("fmin");
                     let av = if a.is_float_value() {
@@ -19202,8 +19225,10 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__max" => {
                 self.validate_numeric_stdlib_pair("Math.max", &args[0].node, &args[1].node)?;
-                let a = self.compile_expr(&args[0].node)?;
-                let b = self.compile_expr(&args[1].node)?;
+                let a_ty = self.infer_builtin_argument_type(&args[0].node);
+                let b_ty = self.infer_builtin_argument_type(&args[1].node);
+                let a = self.compile_expr_with_expected_type(&args[0].node, &a_ty)?;
+                let b = self.compile_expr_with_expected_type(&args[1].node, &b_ty)?;
                 if a.is_float_value() || b.is_float_value() {
                     let fmax = self.get_or_declare_math_func2("fmax");
                     let av = if a.is_float_value() {
@@ -19248,7 +19273,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__sqrt" => {
                 self.validate_numeric_stdlib_arg("Math.sqrt", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let sqrt = self.get_or_declare_math_func("sqrt", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19270,8 +19296,10 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__pow" => {
                 self.validate_numeric_stdlib_pair("Math.pow", &args[0].node, &args[1].node)?;
-                let base = self.compile_expr(&args[0].node)?;
-                let exp = self.compile_expr(&args[1].node)?;
+                let base_ty = self.infer_builtin_argument_type(&args[0].node);
+                let exp_ty = self.infer_builtin_argument_type(&args[1].node);
+                let base = self.compile_expr_with_expected_type(&args[0].node, &base_ty)?;
+                let exp = self.compile_expr_with_expected_type(&args[1].node, &exp_ty)?;
                 let pow_fn = self.get_or_declare_math_func2("pow");
                 let fbase = if base.is_int_value() {
                     self.builder
@@ -19305,7 +19333,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__sin" => {
                 self.validate_numeric_stdlib_arg("Math.sin", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let sin_fn = self.get_or_declare_math_func("sin", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19327,7 +19356,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__cos" => {
                 self.validate_numeric_stdlib_arg("Math.cos", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let cos_fn = self.get_or_declare_math_func("cos", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19349,7 +19379,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__tan" => {
                 self.validate_numeric_stdlib_arg("Math.tan", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let tan_fn = self.get_or_declare_math_func("tan", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19371,7 +19402,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__floor" => {
                 self.validate_numeric_stdlib_arg("Math.floor", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let floor_fn = self.get_or_declare_math_func("floor", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19393,7 +19425,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__ceil" => {
                 self.validate_numeric_stdlib_arg("Math.ceil", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let ceil_fn = self.get_or_declare_math_func("ceil", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19415,7 +19448,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__round" => {
                 self.validate_numeric_stdlib_arg("Math.round", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let round_fn = self.get_or_declare_math_func("round", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19437,7 +19471,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__log" => {
                 self.validate_numeric_stdlib_arg("Math.log", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let log_fn = self.get_or_declare_math_func("log", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19459,7 +19494,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__log10" => {
                 self.validate_numeric_stdlib_arg("Math.log10", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let log10_fn = self.get_or_declare_math_func("log10", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19481,7 +19517,8 @@ impl<'ctx> Codegen<'ctx> {
             }
             "Math__exp" => {
                 self.validate_numeric_stdlib_arg("Math.exp", &args[0].node)?;
-                let val = self.compile_expr(&args[0].node)?;
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 let exp_fn = self.get_or_declare_math_func("exp", true);
                 let fval = if val.is_int_value() {
                     self.builder
@@ -19530,14 +19567,14 @@ impl<'ctx> Codegen<'ctx> {
 
             // Type conversion functions
             "to_float" => {
-                let arg_ty = self.infer_expr_type(&args[0].node, &[]);
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !matches!(arg_ty, Type::Integer | Type::Float) {
                     return Err(CodegenError::new(format!(
                         "to_float() requires Integer or Float, got {}",
                         Self::format_diagnostic_type(&arg_ty)
                     )));
                 }
-                let val = self.compile_expr(&args[0].node)?;
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 if val.is_int_value() {
                     let result = self
                         .builder
@@ -19553,14 +19590,14 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             "to_int" => {
-                let arg_ty = self.infer_expr_type(&args[0].node, &[]);
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !matches!(arg_ty, Type::Integer | Type::Float | Type::String) {
                     return Err(CodegenError::new(format!(
                         "to_int() requires Integer, Float, or String, got {}",
                         Self::format_diagnostic_type(&arg_ty)
                     )));
                 }
-                let val = self.compile_expr(&args[0].node)?;
+                let val = self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
                 if val.is_float_value() {
                     let result = self
                         .builder
@@ -19598,7 +19635,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             "to_string" => {
-                let arg_ty = self.infer_expr_type(&args[0].node, &[]);
+                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !Self::supports_display_expr(&args[0].node, &arg_ty) {
                     return Err(CodegenError::new(format!(
                         "to_string() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
@@ -19612,15 +19649,16 @@ impl<'ctx> Codegen<'ctx> {
 
             // String functions
             "Str__len" => {
-                let s_ty = self.infer_expr_type(&args[0].node, &[]);
+                let s_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !matches!(s_ty, Type::String) {
                     return Err(CodegenError::new(format!(
                         "Str.len() requires String, got {}",
                         Self::format_diagnostic_type(&s_ty)
                     )));
                 }
-                let s = self.compile_expr(&args[0].node)?;
-                self.compile_utf8_string_length_runtime(s.into_pointer_value())
+                let s =
+                    self.compile_string_argument_expr(&args[0].node, "Str.len() requires String")?;
+                self.compile_utf8_string_length_runtime(s)
                     .map(Some)
             }
             "Str__compare" => {
@@ -20262,11 +20300,11 @@ impl<'ctx> Codegen<'ctx> {
                 Ok(Some(final_buffer))
             }
             "System__exit" | "exit" => {
-                let code_ty = self.infer_expr_type(&args[0].node, &[]);
+                let code_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !matches!(code_ty, Type::Integer) {
                     return Err(CodegenError::new("exit() requires Integer code"));
                 }
-                let code = self.compile_expr(&args[0].node)?;
+                let code = self.compile_expr_with_expected_type(&args[0].node, &code_ty)?;
                 let exit_fn = self.get_or_declare_exit();
                 let code_i32 = self
                     .builder
@@ -20282,7 +20320,7 @@ impl<'ctx> Codegen<'ctx> {
                 // Returns a Range struct { start, end, step, current }
                 let arg_types = args
                     .iter()
-                    .map(|arg| self.infer_expr_type(&arg.node, &[]))
+                    .map(|arg| self.infer_builtin_argument_type(&arg.node))
                     .collect::<Vec<_>>();
                 let all_integer = arg_types.iter().all(|ty| matches!(ty, Type::Integer));
                 let all_float = arg_types.iter().all(|ty| matches!(ty, Type::Float));
@@ -20300,10 +20338,10 @@ impl<'ctx> Codegen<'ctx> {
                     }
                 }
 
-                let start = self.compile_expr(&args[0].node)?;
-                let end = self.compile_expr(&args[1].node)?;
+                let start = self.compile_expr_with_expected_type(&args[0].node, &arg_types[0])?;
+                let end = self.compile_expr_with_expected_type(&args[1].node, &arg_types[1])?;
                 let step = if args.len() == 3 {
-                    self.compile_expr(&args[2].node)?
+                    self.compile_expr_with_expected_type(&args[2].node, &arg_types[2])?
                 } else {
                     match start {
                         BasicValueEnum::IntValue(v) => v.get_type().const_int(1, false).into(),
@@ -20440,14 +20478,15 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "File__read" => {
-                let path_ty = self.infer_expr_type(&args[0].node, &[]);
+                let path_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !matches!(path_ty, Type::String) {
                     return Err(CodegenError::new(format!(
                         "File.read() requires String path, got {}",
                         Self::format_diagnostic_type(&path_ty)
                     )));
                 }
-                let path = self.compile_expr(&args[0].node)?;
+                let path = self
+                    .compile_string_argument_expr(&args[0].node, "File.read() requires String path")?;
 
                 let fopen = self.get_or_declare_fopen();
                 let fseek = self.get_or_declare_fseek();
@@ -20706,14 +20745,17 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "File__exists" => {
-                let path_ty = self.infer_expr_type(&args[0].node, &[]);
+                let path_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !matches!(path_ty, Type::String) {
                     return Err(CodegenError::new(format!(
                         "File.exists() requires String path, got {}",
                         Self::format_diagnostic_type(&path_ty)
                     )));
                 }
-                let path = self.compile_expr(&args[0].node)?;
+                let path = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "File.exists() requires String path",
+                )?;
                 let fopen = self.get_or_declare_fopen();
                 let fclose = self.get_or_declare_fclose();
                 let fread = self.get_or_declare_fread();
@@ -20806,14 +20848,17 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "File__delete" => {
-                let path_ty = self.infer_expr_type(&args[0].node, &[]);
+                let path_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !matches!(path_ty, Type::String) {
                     return Err(CodegenError::new(format!(
                         "File.delete() requires String path, got {}",
                         Self::format_diagnostic_type(&path_ty)
                     )));
                 }
-                let path = self.compile_expr(&args[0].node)?;
+                let path = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "File.delete() requires String path",
+                )?;
                 let fopen = self.get_or_declare_fopen();
                 let fclose = self.get_or_declare_fclose();
                 let fread = self.get_or_declare_fread();
@@ -21112,7 +21157,7 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "Time__sleep" => {
-                let ms_ty = self.infer_expr_type(&args[0].node, &[]);
+                let ms_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !matches!(ms_ty, Type::Integer) {
                     return Err(CodegenError::new(
                         "Time.sleep(ms) requires Integer milliseconds",
@@ -21126,7 +21171,7 @@ impl<'ctx> Codegen<'ctx> {
                         "Time.sleep() milliseconds must be non-negative",
                     ));
                 }
-                let ms = self.compile_expr(&args[0].node)?;
+                let ms = self.compile_expr_with_expected_type(&args[0].node, &ms_ty)?;
                 if !ms.is_int_value() {
                     return Err(CodegenError::new(
                         "Time.sleep(ms) requires Integer milliseconds",
@@ -21804,7 +21849,7 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             "Args__get" => {
-                let index_ty = self.infer_expr_type(&args[0].node, &[]);
+                let index_ty = self.infer_builtin_argument_type(&args[0].node);
                 if !matches!(index_ty, Type::Integer) {
                     return Err(CodegenError::new("Args.get() requires Integer index"));
                 }
@@ -21814,7 +21859,9 @@ impl<'ctx> Codegen<'ctx> {
                 ) {
                     return Err(CodegenError::new("Args.get() index cannot be negative"));
                 }
-                let index = self.compile_expr(&args[0].node)?.into_int_value();
+                let index = self
+                    .compile_expr_with_expected_type(&args[0].node, &index_ty)?
+                    .into_int_value();
                 let argc_global = self.module.get_global("_apex_argc").unwrap();
                 let argv_global = self.module.get_global("_apex_argv").unwrap();
                 let argc = self
