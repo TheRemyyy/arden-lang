@@ -4219,6 +4219,32 @@ fn compile_source_runs_float_mod_compound_assignment_runtime() {
 }
 
 #[test]
+fn compile_source_runs_integer_rhs_to_float_compound_assignment_runtime() {
+    let temp_root = make_temp_project_root("int-to-float-compound-assign-runtime");
+    let source_path = temp_root.join("int_to_float_compound_assign_runtime.apex");
+    let output_path = temp_root.join("int_to_float_compound_assign_runtime");
+    let source = r#"
+            function main(): Integer {
+                mut value: Float = 1.5;
+                value += 2;
+                value *= 2;
+                return if (value == 7.0) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("integer RHS to Float compound assignment should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled int-to-float compound assignment binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_mod_compound_assignment_without_double_key_evaluation() {
     let temp_root = make_temp_project_root("mod-compound-assign-key-runtime");
     let source_path = temp_root.join("mod_compound_assign_key_runtime.apex");
@@ -4604,6 +4630,72 @@ fn compile_source_runs_integer_argument_to_float_exact_import_alias_call_runtime
     let status = std::process::Command::new(&output_path)
         .status()
         .expect("run compiled int-to-float exact-import alias call binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_integer_argument_to_float_enum_payload_variant_runtime() {
+    let temp_root = make_temp_project_root("int-to-float-enum-payload-variant-runtime");
+    let source_path = temp_root.join("int_to_float_enum_payload_variant_runtime.apex");
+    let output_path = temp_root.join("int_to_float_enum_payload_variant_runtime");
+    let source = r#"
+            enum Metric {
+                Value(Float)
+            }
+
+            function main(): Integer {
+                metric: Metric = Metric.Value(3);
+                return match (metric) {
+                    Metric.Value(value) => {
+                        if (value == 3.0) { 0 } else { 1 }
+                    }
+                };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("integer argument to Float enum payload variant should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled int-to-float enum payload variant binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_integer_argument_to_float_nested_enum_payload_variant_runtime() {
+    let temp_root = make_temp_project_root("int-to-float-nested-enum-payload-variant-runtime");
+    let source_path = temp_root.join("int_to_float_nested_enum_payload_variant_runtime.apex");
+    let output_path = temp_root.join("int_to_float_nested_enum_payload_variant_runtime");
+    let source = r#"
+            module Metrics {
+                enum Metric {
+                    Value(Float)
+                }
+            }
+
+            function main(): Integer {
+                metric: Metrics.Metric = Metrics.Metric.Value(3);
+                return match (metric) {
+                    Metrics.Metric.Value(value) => {
+                        if (value == 3.0) { 0 } else { 1 }
+                    }
+                };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("integer argument to Float nested enum payload variant should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled int-to-float nested enum payload variant binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);

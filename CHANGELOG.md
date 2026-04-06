@@ -57,6 +57,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - closure/expression call sites such as `(if (cond) { f } else { g })(...)` now lower arguments through the callee signature instead of bypassing coercion and unchecked validation whenever the callee is not a plain identifier
 - Fixed direct identifier calls using inferred callee types instead of resolved function signatures:
   - plain function and import-alias calls now prefer the concrete lookup signature from the resolved function table, which keeps argument lowering aligned with specialized/aliased functions instead of trusting stale inferred placeholder signatures
+- Fixed enum payload variant constructors skipping expected argument lowering:
+  - direct and nested enum payload constructors now lower payload arguments through the declared field types, so coercions and unchecked validation behave the same way as normal function and constructor calls
+- Fixed plain compound assignments skipping expected RHS lowering:
+  - non-container compound assignments such as `value += rhs` now compile the RHS against the target type before the binary op, so integer-to-float coercions and unchecked validation stay consistent with normal assignments
+- Fixed project extern functions losing their default C/system link names after project rewrite:
+  - namespaced project builds now preserve the original extern symbol as the implicit `link_name`, so declarations like `extern(c) function abs(...)` still link against `abs` instead of the rewritten namespace-mangled Apex symbol
+- Fixed nested-module destructors skipping project rewrite:
+  - destructors on classes inside recursively nested modules now rewrite import aliases and qualified calls the same way as constructors and methods, so file-scope aliases like `import util.add1 as inc;` keep working inside nested-module destructor bodies
+- Fixed nested-module generic bounds skipping project rewrite:
+  - generic parameter bounds on recursively nested functions, classes, methods, and enums now rewrite file-scope aliases just like top-level module declarations, so bounds such as `T extends NamedAlias` continue to resolve after project symbol mangling
 - Fixed unchecked multi-bound generic interface dispatch:
   - method calls and bound-method values on generic receivers now match against the full union of resolved interface bounds instead of only the first bound
   - this fixes cases such as `function read_b<T extends A, B>(value: T): Integer { return value.b(); }` and `value.b`, which previously failed with diagnostics like `Unknown method 'b' for interface 'A'` or `Unknown class: T`

@@ -886,6 +886,112 @@ fn project_build_supports_wildcard_imported_nested_module_integer_to_float_calls
 }
 
 #[test]
+fn project_build_preserves_default_extern_link_names() {
+    let temp_root = make_temp_project_root("project-extern-default-link-name");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package util;\nextern(c) function abs(value: Integer): Integer;\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport util.abs;\nfunction main(): Integer { return abs(-7); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should preserve default extern link names");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled project extern default-link-name binary");
+    assert_eq!(status.code(), Some(7));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_preserves_default_extern_link_names_through_exact_import_aliases() {
+    let temp_root = make_temp_project_root("project-extern-default-link-name-alias");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package util;\nextern(c) function abs(value: Integer): Integer;\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport util.abs as absolute;\nfunction main(): Integer { return absolute(-7); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should preserve extern link names through exact import aliases");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled project extern default-link-name alias binary");
+    assert_eq!(status.code(), Some(7));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_preserves_module_extern_link_names_through_exact_import_aliases() {
+    let temp_root = make_temp_project_root("project-module-extern-default-link-name-alias");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package util;\nmodule C { extern(c) function abs(value: Integer): Integer; }\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport util.C.abs as absolute;\nfunction main(): Integer { return absolute(-7); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should preserve module extern link names through exact import aliases",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled project module extern default-link-name alias binary");
+    assert_eq!(status.code(), Some(7));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_prefers_shadowed_local_over_namespace_alias_for_nested_field_chain_calls() {
     let temp_root = make_temp_project_root("shadowed-local-over-namespace-alias-project");
     let src_dir = temp_root.join("src");
@@ -4810,6 +4916,78 @@ fn project_run_supports_deeper_local_nested_module_async_paths() {
         .status()
         .expect("run deeper local nested module async project binary");
     assert_eq!(status.code(), Some(53));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_run_supports_nested_module_destructors_with_import_alias_calls() {
+    let temp_root = make_temp_project_root("nested-module-destructor-import-alias-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport util.add1 as inc;\nmodule M { module N { class Box { constructor() {} destructor() { require(inc(1) == 2); } } } }\nfunction main(): Integer { b: M.N.Box = M.N.Box(); return 0; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support nested-module destructors with import alias calls",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run nested-module destructor import-alias binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_nested_module_generic_bounds_through_file_scope_aliases() {
+    let temp_root = make_temp_project_root("nested-module-generic-bound-alias-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package app;\ninterface Named { function name(): Integer; }\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport app.Named as NamedAlias;\nmodule M { module N { class Box<T extends NamedAlias> { value: T; constructor(value: T) { this.value = value; } function get(): Integer { return this.value.name(); } } } }\nclass Item implements NamedAlias { function name(): Integer { return 7; } }\nfunction main(): Integer { return M.N.Box<Item>(Item()).get(); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support nested-module generic bounds through file-scope aliases",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run nested-module generic bound alias binary");
+    assert_eq!(status.code(), Some(7));
 
     let _ = fs::remove_dir_all(temp_root);
 }

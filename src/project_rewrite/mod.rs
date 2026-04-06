@@ -751,6 +751,9 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                 let node = match &d.node {
                     Decl::Function(func) => {
                         let mut f = func.clone();
+                        if f.is_extern && f.extern_link_name.is_none() {
+                            f.extern_link_name = Some(f.name.clone());
+                        }
                         f.generic_params =
                             rewrite_generic_params_for_project(&f.generic_params, |bound| {
                                 self::rewrite_interface_reference_for_project(
@@ -1054,6 +1057,9 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                 let node = match &inner.node {
                                     Decl::Function(func) => {
                                         let mut f = func.clone();
+                                        if f.is_extern && f.extern_link_name.is_none() {
+                                            f.extern_link_name = Some(f.name.clone());
+                                        }
                                         f.generic_params = rewrite_generic_params_for_project(
                                             &f.generic_params,
                                             |bound| {
@@ -2481,6 +2487,28 @@ fn rewrite_nested_module_decl_for_project(
     let node = match &decl.node {
         Decl::Function(func) => {
             let mut f = func.clone();
+            if f.is_extern && f.extern_link_name.is_none() {
+                f.extern_link_name = Some(f.name.clone());
+            }
+            f.generic_params = rewrite_generic_params_for_project(&f.generic_params, |bound| {
+                rewrite_interface_reference_for_module(
+                    bound,
+                    module_prefix,
+                    current_namespace,
+                    entry_namespace,
+                    module_local_classes,
+                    module_local_interfaces,
+                    module_local_enums,
+                    module_local_modules,
+                    imported_classes,
+                    imported_interfaces,
+                    imported_enums,
+                    imported_modules,
+                    global_class_map,
+                    global_interface_map,
+                    global_enum_map,
+                )
+            });
             let mut scopes = vec![f.params.iter().map(|p| p.name.clone()).collect()];
             f.params = f
                 .params
@@ -2550,6 +2578,25 @@ fn rewrite_nested_module_decl_for_project(
         }
         Decl::Class(class) => {
             let mut c = class.clone();
+            c.generic_params = rewrite_generic_params_for_project(&c.generic_params, |bound| {
+                rewrite_interface_reference_for_module(
+                    bound,
+                    module_prefix,
+                    current_namespace,
+                    entry_namespace,
+                    module_local_classes,
+                    module_local_interfaces,
+                    module_local_enums,
+                    module_local_modules,
+                    imported_classes,
+                    imported_interfaces,
+                    imported_enums,
+                    imported_modules,
+                    global_class_map,
+                    global_interface_map,
+                    global_enum_map,
+                )
+            });
             c.extends = class.extends.as_ref().map(|extends| {
                 match rewrite_module_local_type(
                     &ast::Type::Named(extends.clone()),
@@ -2676,11 +2723,60 @@ fn rewrite_nested_module_decl_for_project(
                 );
                 c.constructor = Some(new_ctor);
             }
+            if let Some(dtor) = &class.destructor {
+                let mut new_dtor = dtor.clone();
+                let mut scopes: Vec<HashSet<String>> =
+                    vec![HashSet::from(["this".to_string()])];
+                new_dtor.body = self::fix_module_local_block(
+                    &rewrite_block_calls_for_project(
+                        &new_dtor.body,
+                        current_namespace,
+                        entry_namespace,
+                        module_local_functions,
+                        imported_map,
+                        global_function_map,
+                        module_local_classes,
+                        imported_classes,
+                        global_class_map,
+                        module_local_interfaces,
+                        imported_interfaces,
+                        global_interface_map,
+                        imported_enums,
+                        global_enum_map,
+                        module_local_modules,
+                        imported_modules,
+                        global_module_map,
+                        &mut scopes,
+                    ),
+                    module_rewrite_ctx,
+                );
+                c.destructor = Some(new_dtor);
+            }
             c.methods = class
                 .methods
                 .iter()
                 .map(|method| {
                     let mut nm = method.clone();
+                    nm.generic_params =
+                        rewrite_generic_params_for_project(&nm.generic_params, |bound| {
+                            rewrite_interface_reference_for_module(
+                                bound,
+                                module_prefix,
+                                current_namespace,
+                                entry_namespace,
+                                module_local_classes,
+                                module_local_interfaces,
+                                module_local_enums,
+                                module_local_modules,
+                                imported_classes,
+                                imported_interfaces,
+                                imported_enums,
+                                imported_modules,
+                                global_class_map,
+                                global_interface_map,
+                                global_enum_map,
+                            )
+                        });
                     let mut scopes: Vec<HashSet<String>> =
                         vec![nm.params.iter().map(|p| p.name.clone()).collect()];
                     if let Some(scope) = scopes.last_mut() {
@@ -2757,6 +2853,25 @@ fn rewrite_nested_module_decl_for_project(
         }
         Decl::Enum(en) => {
             let mut e = en.clone();
+            e.generic_params = rewrite_generic_params_for_project(&e.generic_params, |bound| {
+                rewrite_interface_reference_for_module(
+                    bound,
+                    module_prefix,
+                    current_namespace,
+                    entry_namespace,
+                    module_local_classes,
+                    module_local_interfaces,
+                    module_local_enums,
+                    module_local_modules,
+                    imported_classes,
+                    imported_interfaces,
+                    imported_enums,
+                    imported_modules,
+                    global_class_map,
+                    global_interface_map,
+                    global_enum_map,
+                )
+            });
             e.variants = e
                 .variants
                 .iter()

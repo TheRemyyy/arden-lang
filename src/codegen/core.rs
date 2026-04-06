@@ -10266,21 +10266,22 @@ impl<'ctx> Codegen<'ctx> {
                             )
                     );
                     if !is_map_index_target {
+                        let target_ty = self.infer_expr_type(&target.node, &[]);
                         let ptr = self.compile_lvalue(&target.node)?;
                         let current = self
                             .builder
                             .build_load(
-                                self.llvm_type(&self.infer_expr_type(&target.node, &[])),
+                                self.llvm_type(&target_ty),
                                 ptr,
                                 "compound_current",
                             )
                             .unwrap();
-                        let rhs_value = self.compile_expr(&rhs.node)?;
+                        let rhs_value = self.compile_expr_with_expected_type(&rhs.node, &target_ty)?;
                         let result = self.compile_binary_values(
                             op,
                             current,
                             rhs_value,
-                            &self.infer_expr_type(&target.node, &[]),
+                            &target_ty,
                             &self.infer_expr_type(&rhs.node, &[]),
                         )?;
                         self.builder.build_store(ptr, result).unwrap();
@@ -15020,8 +15021,8 @@ impl<'ctx> Codegen<'ctx> {
                             )));
                         }
                         let mut values = Vec::with_capacity(args.len());
-                        for arg in args {
-                            values.push(self.compile_expr(&arg.node)?);
+                        for (arg, expected_ty) in args.iter().zip(variant_info.fields.iter()) {
+                            values.push(self.compile_expr_with_expected_type(&arg.node, expected_ty)?);
                         }
                         return self.build_enum_value(&resolved_owner, &variant_info, &values);
                     }
@@ -15129,8 +15130,8 @@ impl<'ctx> Codegen<'ctx> {
                                 )));
                             }
                             let mut values = Vec::with_capacity(args.len());
-                            for arg in args {
-                                values.push(self.compile_expr(&arg.node)?);
+                            for (arg, expected_ty) in args.iter().zip(variant_info.fields.iter()) {
+                                values.push(self.compile_expr_with_expected_type(&arg.node, expected_ty)?);
                             }
                             return self.build_enum_value(&resolved_owner, &variant_info, &values);
                         }
