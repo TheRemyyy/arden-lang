@@ -4239,6 +4239,39 @@ fn project_build_supports_namespace_alias_generic_bounds() {
 }
 
 #[test]
+fn project_build_no_check_rejects_namespace_alias_generic_bound_method_signature_mismatch() {
+    let temp_root = make_temp_project_root("namespace-alias-generic-bound-method-signature-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package lib;\ninterface Named { function name(): Integer; }\nclass Person implements Named {\n    constructor() {}\n    function name(): Integer { return 1; }\n}\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport lib as u;\nfunction read_name<T extends u.Named>(value: T): Integer { f: (Integer) -> Integer = value.name; return f(1); }\nfunction main(): None { person: u.Person = u.Person(); require(read_name(person) == 1); return None; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        let err = build_project(false, false, false, false, false)
+            .expect_err("unchecked project build should reject generic bound method signature mismatch");
+        assert!(
+            err.contains("Cannot use function value () -> Integer as (Integer) -> Integer"),
+            "{err}"
+        );
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_dereferenced_function_value_callees() {
     let temp_root = make_temp_project_root("deref-function-callee-project");
     let src_dir = temp_root.join("src");

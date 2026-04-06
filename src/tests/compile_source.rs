@@ -75,6 +75,345 @@ fn compile_source_runs_unique_interface_bound_method_value_runtime() {
 }
 
 #[test]
+fn compile_source_no_check_rejects_interface_method_wrong_arity_before_runtime() {
+    let temp_root = make_temp_project_root("no-check-interface-method-wrong-arity");
+    let source_path = temp_root.join("no_check_interface_method_wrong_arity.apex");
+    let output_path = temp_root.join("no_check_interface_method_wrong_arity");
+    let source = r#"
+            interface Reader {
+                function read(): Integer;
+            }
+
+            class Box implements Reader {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function read(): Integer { return this.value; }
+            }
+
+            function main(): Integer {
+                reader: Reader = Box(7);
+                return reader.read(1);
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("interface method wrong arity should fail in codegen");
+    assert!(
+        err.contains("Reader.read() expects 0 argument(s), got 1"),
+        "{err}"
+    );
+    assert!(!err.contains("process exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_missing_interface_method_before_runtime() {
+    let temp_root = make_temp_project_root("no-check-missing-interface-method");
+    let source_path = temp_root.join("no_check_missing_interface_method.apex");
+    let output_path = temp_root.join("no_check_missing_interface_method");
+    let source = r#"
+            interface Reader {
+                function read(): Integer;
+            }
+
+            class Box implements Reader {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function read(): Integer { return this.value; }
+            }
+
+            class Other {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function missing(): Integer { return this.value; }
+            }
+
+            function main(): Integer {
+                reader: Reader = Box(7);
+                return reader.missing();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("missing interface method should fail in codegen");
+    assert!(
+        err.contains("Unknown method 'missing' for interface 'Reader'"),
+        "{err}"
+    );
+    assert!(!err.contains("process exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_missing_interface_bound_method_before_runtime() {
+    let temp_root = make_temp_project_root("no-check-missing-interface-bound-method");
+    let source_path = temp_root.join("no_check_missing_interface_bound_method.apex");
+    let output_path = temp_root.join("no_check_missing_interface_bound_method");
+    let source = r#"
+            interface Reader {
+                function read(): Integer;
+            }
+
+            class Box implements Reader {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function read(): Integer { return this.value; }
+            }
+
+            class Other {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+                function missing(): Integer { return this.value; }
+            }
+
+            function main(): Integer {
+                reader: Reader = Box(7);
+                f: () -> Integer = reader.missing;
+                return f();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("missing interface bound method should fail in codegen");
+    assert!(
+        err.contains("Unknown method 'missing' for interface 'Reader'"),
+        "{err}"
+    );
+    assert!(!err.contains("process exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_interface_dispatch_to_non_implementor_before_runtime() {
+    let temp_root = make_temp_project_root("no-check-interface-non-implementor-dispatch");
+    let source_path = temp_root.join("no_check_interface_non_implementor_dispatch.apex");
+    let output_path = temp_root.join("no_check_interface_non_implementor_dispatch");
+    let source = r#"
+            interface Reader {
+                function read(): Integer;
+            }
+
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            class Other {
+                function read(): Integer { return 9; }
+            }
+
+            function main(): Integer {
+                reader: Reader = Box(7);
+                return reader.read();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("non-implementor interface dispatch should fail in codegen");
+    assert!(
+        err.contains("Unknown interface method implementation: read"),
+        "{err}"
+    );
+    assert!(!err.contains("process exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_interface_bound_method_from_non_implementor_before_runtime() {
+    let temp_root = make_temp_project_root("no-check-interface-non-implementor-bound-method");
+    let source_path = temp_root.join("no_check_interface_non_implementor_bound_method.apex");
+    let output_path = temp_root.join("no_check_interface_non_implementor_bound_method");
+    let source = r#"
+            interface Reader {
+                function read(): Integer;
+            }
+
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            class Other {
+                function read(): Integer { return 9; }
+            }
+
+            function main(): Integer {
+                reader: Reader = Box(7);
+                f: () -> Integer = reader.read;
+                return f();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("non-implementor interface bound method should fail in codegen");
+    assert!(
+        err.contains("Unknown interface method implementation: read"),
+        "{err}"
+    );
+    assert!(!err.contains("process exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_interface_bound_method_function_value_signature_mismatch() {
+    let temp_root = make_temp_project_root("no-check-interface-bound-method-signature-mismatch");
+    let source_path = temp_root.join("no_check_interface_bound_method_signature_mismatch.apex");
+    let output_path = temp_root.join("no_check_interface_bound_method_signature_mismatch");
+    let source = r#"
+            interface Named {
+                function get(): Integer;
+            }
+
+            class Boxed implements Named {
+                constructor() {}
+                function get(): Integer { return 1; }
+            }
+
+            function main(): Integer {
+                value: Named = Boxed();
+                f: (Integer) -> Integer = value.get;
+                return f(1);
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("interface bound method signature mismatch should fail in codegen");
+    assert!(
+        err.contains("Cannot use function value () -> Integer as (Integer) -> Integer"),
+        "{err}"
+    );
+    assert!(!err.contains("process exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_generic_bound_constructor_method_dispatch_runtime() {
+    let temp_root = make_temp_project_root("generic-bound-constructor-dispatch-runtime");
+    let source_path = temp_root.join("generic_bound_constructor_dispatch_runtime.apex");
+    let output_path = temp_root.join("generic_bound_constructor_dispatch_runtime");
+    let source = r#"
+            interface Named {
+                function name(): Integer;
+            }
+
+            class Person implements Named {
+                constructor() {}
+                function name(): Integer { return 1; }
+            }
+
+            class Holder<T extends Named> {
+                value: T;
+
+                constructor(value: T) {
+                    require(value.name() == 1);
+                    this.value = value;
+                }
+            }
+
+            function main(): Integer {
+                Holder<Person>(Person());
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect("generic bound constructor dispatch should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run generic bound constructor dispatch binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_multi_bound_interface_method_dispatch_runtime() {
+    let temp_root = make_temp_project_root("multi-bound-interface-method-dispatch-runtime");
+    let source_path = temp_root.join("multi_bound_interface_method_dispatch_runtime.apex");
+    let output_path = temp_root.join("multi_bound_interface_method_dispatch_runtime");
+    let source = r#"
+            interface A { function a(): Integer; }
+            interface B { function b(): Integer; }
+
+            class C implements A, B {
+                constructor() {}
+                function a(): Integer { return 1; }
+                function b(): Integer { return 2; }
+            }
+
+            function read_b<T extends A, B>(value: T): Integer {
+                return value.b();
+            }
+
+            function main(): Integer {
+                return if (read_b(C()) == 2) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect("multi-bound interface method dispatch should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run multi-bound interface method dispatch binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_multi_bound_interface_bound_method_runtime() {
+    let temp_root = make_temp_project_root("multi-bound-interface-bound-method-runtime");
+    let source_path = temp_root.join("multi_bound_interface_bound_method_runtime.apex");
+    let output_path = temp_root.join("multi_bound_interface_bound_method_runtime");
+    let source = r#"
+            interface A { function a(): Integer; }
+            interface B { function b(): Integer; }
+
+            class C implements A, B {
+                constructor() {}
+                function a(): Integer { return 1; }
+                function b(): Integer { return 2; }
+            }
+
+            function read_b<T extends A, B>(value: T): Integer {
+                f: () -> Integer = value.b;
+                return f();
+            }
+
+            function main(): Integer {
+                return if (read_b(C()) == 2) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect("multi-bound interface bound method should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run multi-bound interface bound method binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_generic_interface_implements_runtime() {
     let temp_root = make_temp_project_root("generic-interface-implements-runtime");
     let source_path = temp_root.join("generic_interface_implements_runtime.apex");
@@ -3637,6 +3976,85 @@ fn compile_source_runs_map_index_compound_assignment_without_double_evaluation()
 }
 
 #[test]
+fn compile_source_runs_field_map_index_assignment_on_function_value_call_result() {
+    let temp_root = make_temp_project_root("field-map-index-assign-function-value-runtime");
+    let source_path = temp_root.join("field_map_index_assign_function_value_runtime.apex");
+    let output_path = temp_root.join("field_map_index_assign_function_value_runtime");
+    let source = r#"
+            class Box {
+                mut m: Map<String, Integer>;
+                constructor() { this.m = Map<String, Integer>(); }
+            }
+
+            class Holder {
+                make: (Integer) -> Box;
+                constructor(make: (Integer) -> Box) { this.make = make; }
+            }
+
+            function build(x: Integer): Box { return Box(); }
+
+            function main(): Integer {
+                holder: Holder = Holder(build);
+                holder.make(1).m["k"] = 7;
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("map index assignment on function-valued field call result should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled field map assignment function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_field_map_index_compound_assignment_on_function_value_call_result() {
+    let temp_root =
+        make_temp_project_root("field-map-index-compound-assign-function-value-runtime");
+    let source_path = temp_root.join("field_map_index_compound_assign_function_value_runtime.apex");
+    let output_path = temp_root.join("field_map_index_compound_assign_function_value_runtime");
+    let source = r#"
+            class Box {
+                mut m: Map<String, Integer>;
+                constructor() {
+                    this.m = Map<String, Integer>();
+                    this.m.set("k", 1);
+                }
+            }
+
+            class Holder {
+                make: () -> Box;
+                constructor(make: () -> Box) { this.make = make; }
+            }
+
+            function build(): Box { return Box(); }
+
+            function main(): Integer {
+                holder: Holder = Holder(build);
+                holder.make().m["k"] += 2;
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None).expect(
+        "map index compound assignment on function-valued field call result should codegen",
+    );
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled field map compound assignment function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_map_index_compound_assignment_without_double_key_evaluation() {
     let temp_root = make_temp_project_root("map-index-compound-assign-key-runtime");
     let source_path = temp_root.join("map_index_compound_assign_key_runtime.apex");
@@ -6505,6 +6923,336 @@ fn compile_source_no_check_rejects_current_package_exact_import_result_generic_c
         .expect_err("result generic class alias println should fail");
     assert!(err.contains("got M.Box<Result<Integer, String>>"), "{err}");
     assert!(!err.contains("M.Box.spec.ResI64_Str"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_current_package_exact_import_function_generic_class_alias_index_with_user_facing_type(
+) {
+    let temp_root =
+        make_temp_project_root("no-check-current-package-exact-function-generic-alias-index");
+    let source_path =
+        temp_root.join("no_check_current_package_exact_function_generic_alias_index.apex");
+    let output_path = temp_root.join("no_check_current_package_exact_function_generic_alias_index");
+    let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function id(x: Integer): Integer {
+                return x;
+            }
+
+            function main(): Integer {
+                return BoxType<(Integer) -> Integer>(id)[0];
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("function generic class alias indexing should fail");
+    assert!(
+        err.contains("Cannot index type M.Box<(Integer) -> Integer>"),
+        "{err}"
+    );
+    assert!(!err.contains("M.Box.spec.FnI64ToI64"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_current_package_exact_import_nested_map_result_generic_class_alias_index_with_user_facing_type(
+) {
+    let temp_root = make_temp_project_root(
+        "no-check-current-package-exact-nested-map-result-generic-alias-index",
+    );
+    let source_path =
+        temp_root.join("no_check_current_package_exact_nested_map_result_generic_alias_index.apex");
+    let output_path =
+        temp_root.join("no_check_current_package_exact_nested_map_result_generic_alias_index");
+    let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                return BoxType<Map<Map<String, Integer>, Result<Integer, String>>>(
+                    Map<Map<String, Integer>, Result<Integer, String>>()
+                )[0];
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("nested map/result generic class alias indexing should fail");
+    assert!(
+        err.contains("Cannot index type M.Box<Map<Map<String, Integer>, Result<Integer, String>>>"),
+        "{err}"
+    );
+    assert!(
+        !err.contains("M.Box.spec.MapMapStr_I64_ResI64_Str"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_current_package_exact_import_list_function_generic_class_alias_println_with_user_facing_type(
+) {
+    let temp_root = make_temp_project_root(
+        "no-check-current-package-exact-list-function-generic-alias-println",
+    );
+    let source_path =
+        temp_root.join("no_check_current_package_exact_list_function_generic_alias_println.apex");
+    let output_path =
+        temp_root.join("no_check_current_package_exact_list_function_generic_alias_println");
+    let source = r#"
+            package app;
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) {
+                        this.value = value;
+                    }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): None {
+                println(BoxType<List<(Integer) -> Integer>>(List<(Integer) -> Integer>()));
+                return None;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("list function generic class alias println should fail");
+    assert!(
+        err.contains("got M.Box<List<(Integer) -> Integer>>"),
+        "{err}"
+    );
+    assert!(!err.contains("M.Box.spec.ListFnI64ToI64"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_current_package_exact_import_nested_named_generic_map_result_class_alias_index_with_user_facing_type(
+) {
+    let temp_root = make_temp_project_root(
+        "no-check-current-package-exact-nested-named-generic-map-result-class-alias-index",
+    );
+    let source_path = temp_root.join(
+        "no_check_current_package_exact_nested_named_generic_map_result_class_alias_index.apex",
+    );
+    let output_path = temp_root
+        .join("no_check_current_package_exact_nested_named_generic_map_result_class_alias_index");
+    let source = r#"
+            package app;
+
+            module N {
+                class Inner<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                return BoxType<Map<N.Inner<Integer>, Result<N.Inner<String>, String>>>(
+                    Map<N.Inner<Integer>, Result<N.Inner<String>, String>>()
+                )[0];
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("nested named generic map/result class alias indexing should fail");
+    assert!(
+        err.contains(
+            "Cannot index type M.Box<Map<N.Inner<Integer>, Result<N.Inner<String>, String>>>"
+        ),
+        "{err}"
+    );
+    assert!(!err.contains("N.InnerI64.ResGN.InnerStr"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_current_package_exact_import_named_generic_payload_class_alias_index_with_user_facing_type(
+) {
+    let temp_root =
+        make_temp_project_root("no-check-current-package-exact-named-generic-payload-alias-index");
+    let source_path =
+        temp_root.join("no_check_current_package_exact_named_generic_payload_alias_index.apex");
+    let output_path =
+        temp_root.join("no_check_current_package_exact_named_generic_payload_alias_index");
+    let source = r#"
+            package app;
+
+            module Payload {
+                class Item<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                return BoxType<Payload.Item<Integer>>(Payload.Item<Integer>(7))[0];
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("named generic payload alias indexing should fail");
+    assert!(
+        err.contains("Cannot index type M.Box<Payload.Item<Integer>>"),
+        "{err}"
+    );
+    assert!(!err.contains("M.Box.spec.GPayload.ItemI64"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_current_package_exact_import_underscored_named_generic_payload_class_alias_index_with_user_facing_type(
+) {
+    let temp_root = make_temp_project_root(
+        "no-check-current-package-exact-underscored-named-generic-payload-alias-index",
+    );
+    let source_path = temp_root
+        .join("no_check_current_package_exact_underscored_named_generic_payload_alias_index.apex");
+    let output_path = temp_root
+        .join("no_check_current_package_exact_underscored_named_generic_payload_alias_index");
+    let source = r#"
+            package app;
+
+            module N {
+                class Inner_Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                return BoxType<N.Inner_Box<Integer>>(N.Inner_Box<Integer>(7))[0];
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("underscored named generic payload alias indexing should fail");
+    assert!(
+        err.contains("Cannot index type M.Box<N.Inner_Box<Integer>>"),
+        "{err}"
+    );
+    assert!(!err.contains("N.Inner_<Box<Integer>>"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_current_package_exact_import_underscored_two_arg_named_generic_payload_class_alias_index_with_user_facing_type(
+) {
+    let temp_root = make_temp_project_root(
+        "no-check-current-package-exact-underscored-two-arg-named-generic-payload-alias-index",
+    );
+    let source_path = temp_root.join(
+        "no_check_current_package_exact_underscored_two_arg_named_generic_payload_alias_index.apex",
+    );
+    let output_path = temp_root.join(
+        "no_check_current_package_exact_underscored_two_arg_named_generic_payload_alias_index",
+    );
+    let source = r#"
+            package app;
+
+            module N {
+                class Inner_Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            module O {
+                class Pair_Box<T, U> {
+                    first: T;
+                    second: U;
+                    constructor(first: T, second: U) { this.first = first; this.second = second; }
+                }
+            }
+
+            module M {
+                class Box<T> {
+                    value: T;
+                    constructor(value: T) { this.value = value; }
+                }
+            }
+
+            import app.M.Box as BoxType;
+
+            function main(): Integer {
+                return BoxType<O.Pair_Box<N.Inner_Box<Integer>, String>>(O.Pair_Box<N.Inner_Box<Integer>, String>(N.Inner_Box<Integer>(7), "x"))[0];
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("underscored two-arg named generic payload alias indexing should fail");
+    assert!(
+        err.contains("Cannot index type M.Box<O.Pair_Box<N.Inner_Box<Integer>, String>>"),
+        "{err}"
+    );
+    assert!(
+        !err.contains("O.Pair_Box<N.Inner_<Box<Integer>>, String>"),
+        "{err}"
+    );
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -9672,6 +10420,35 @@ fn compile_source_no_check_rejects_enum_variant_call_type_args_cleanly() {
     );
     assert!(
         !err.contains("Explicit generic call code generation is not supported yet"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_enum_missing_method_with_user_facing_diagnostic() {
+    let temp_root = make_temp_project_root("no-check-enum-missing-method-diagnostic");
+    let source_path = temp_root.join("no_check_enum_missing_method_diagnostic.apex");
+    let output_path = temp_root.join("no_check_enum_missing_method_diagnostic");
+    let source = r#"
+            enum Boxed { Wrap(Integer) }
+
+            function main(): Integer {
+                value: Boxed = Boxed.Wrap(1);
+                return value.missing();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("missing enum method should fail in codegen");
+    assert!(
+        err.contains("Unknown method 'missing' for class 'Boxed'"),
+        "{err}"
+    );
+    assert!(
+        !err.contains("Unknown interface method implementation"),
         "{err}"
     );
 
@@ -12951,6 +13728,310 @@ fn compile_source_no_check_rejects_module_local_enum_variant_function_value_type
         "{err}"
     );
     assert!(!err.contains("M__Token"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_specialized_constructor_wrong_arity_with_user_facing_diagnostic()
+{
+    let temp_root = make_temp_project_root("no-check-specialized-constructor-wrong-arity");
+    let source_path = temp_root.join("no_check_specialized_constructor_wrong_arity.apex");
+    let output_path = temp_root.join("no_check_specialized_constructor_wrong_arity");
+    let source = r#"
+            module M {
+                class Pair_Box<T, U> {
+                    first: T;
+                    second: U;
+                    constructor(first: T, second: U) {
+                        this.first = first;
+                        this.second = second;
+                    }
+                }
+            }
+
+            function main(): Integer {
+                return M.Pair_Box<Integer, String>(7);
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("specialized constructor wrong arity should fail in codegen");
+    assert!(
+        err.contains("Constructor M.Pair_Box<Integer, String> expects 2 argument(s), got 1"),
+        "{err}"
+    );
+    assert!(!err.contains("Clang failed"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_specialized_method_wrong_arity_with_user_facing_diagnostic() {
+    let temp_root = make_temp_project_root("no-check-specialized-method-wrong-arity");
+    let source_path = temp_root.join("no_check_specialized_method_wrong_arity.apex");
+    let output_path = temp_root.join("no_check_specialized_method_wrong_arity");
+    let source = r#"
+            module M {
+                class Pair_Box<T, U> {
+                    first: T;
+                    second: U;
+                    constructor(first: T, second: U) {
+                        this.first = first;
+                        this.second = second;
+                    }
+
+                    function first_value(): T {
+                        return this.first;
+                    }
+                }
+            }
+
+            function main(): Integer {
+                value: M.Pair_Box<Integer, String> = M.Pair_Box<Integer, String>(7, "x");
+                return value.first_value(1);
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("specialized method wrong arity should fail in codegen");
+    assert!(
+        err.contains("M.Pair_Box<Integer, String>.first_value() expects 0 argument(s), got 1"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_unknown_specialized_class_field_access_with_user_facing_class_diagnostic(
+) {
+    let temp_root = make_temp_project_root("no-check-unknown-specialized-class-field-access");
+    let source_path = temp_root.join("no_check_unknown_specialized_class_field_access.apex");
+    let output_path = temp_root.join("no_check_unknown_specialized_class_field_access");
+    let source = r#"
+            module M {
+                class Pair_Box<T, U> {
+                    first: T;
+                    second: U;
+                    constructor(first: T, second: U) {
+                        this.first = first;
+                        this.second = second;
+                    }
+                }
+            }
+
+            function main(): Integer {
+                value: M.Pair_Box<Integer, String> = M.Pair_Box<Integer, String>(7, "x");
+                return value.missing;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("missing specialized field access should fail in codegen");
+    assert!(
+        err.contains("Unknown field 'missing' on class 'M.Pair_Box<Integer, String>'"),
+        "{err}"
+    );
+    assert!(!err.contains("M.Pair_Box.spec.I64_Str"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_module_local_missing_method_with_user_facing_class_name() {
+    let temp_root = make_temp_project_root("no-check-module-local-missing-method-call");
+    let source_path = temp_root.join("no_check_module_local_missing_method_call.apex");
+    let output_path = temp_root.join("no_check_module_local_missing_method_call");
+    let source = r#"
+            module M {
+                class Box {
+                    value: Integer;
+                    constructor(value: Integer) { this.value = value; }
+                }
+            }
+
+            function main(): Integer {
+                return M.Box(1).missing();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("module-local missing method should fail in codegen");
+    assert!(
+        err.contains("Unknown method 'missing' for class 'M.Box'"),
+        "{err}"
+    );
+    assert!(!err.contains("M__Box"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_bound_method_function_value_wrong_arity() {
+    let temp_root = make_temp_project_root("no-check-bound-method-function-value-wrong-arity");
+    let source_path = temp_root.join("no_check_bound_method_function_value_wrong_arity.apex");
+    let output_path = temp_root.join("no_check_bound_method_function_value_wrong_arity");
+    let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+
+                function get(): Integer {
+                    return this.value;
+                }
+            }
+
+            function main(): Integer {
+                b: Box = Box(7);
+                f: () -> Integer = b.get;
+                return f(1);
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("bound method function value wrong arity should fail in codegen");
+    assert!(
+        err.contains("Function value () -> Integer expects 0 argument(s), got 1"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_generic_bound_method_function_value_signature_mismatch() {
+    let temp_root =
+        make_temp_project_root("no-check-generic-bound-method-function-signature-mismatch");
+    let source_path =
+        temp_root.join("no_check_generic_bound_method_function_signature_mismatch.apex");
+    let output_path =
+        temp_root.join("no_check_generic_bound_method_function_signature_mismatch");
+    let source = r#"
+            interface Named {
+                function name(): Integer;
+            }
+
+            class Person implements Named {
+                constructor() {}
+                function name(): Integer { return 1; }
+            }
+
+            function read_name<T extends Named>(value: T): Integer {
+                f: (Integer) -> Integer = value.name;
+                return f(1);
+            }
+
+            function main(): Integer {
+                return read_name(Person());
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("generic bound method signature mismatch should fail in codegen");
+    assert!(
+        err.contains("Cannot use function value () -> Integer as (Integer) -> Integer"),
+        "{err}"
+    );
+    assert!(!err.contains("process exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_enum_missing_bound_method_value_with_user_facing_diagnostic() {
+    let temp_root = make_temp_project_root("no-check-enum-missing-bound-method-value");
+    let source_path = temp_root.join("no_check_enum_missing_bound_method_value.apex");
+    let output_path = temp_root.join("no_check_enum_missing_bound_method_value");
+    let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+
+                function missing(): Integer {
+                    return this.value;
+                }
+            }
+
+            enum Boxed { Wrap(Integer) }
+
+            function main(): Integer {
+                value: Boxed = Boxed.Wrap(1);
+                f: () -> Integer = value.missing;
+                return f();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("missing enum bound method value should fail in codegen");
+    assert!(
+        err.contains("Unknown field 'missing' on class 'Boxed'"),
+        "{err}"
+    );
+    assert!(!err.contains("process exited with code"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_enum_variant_function_value_field_access_without_panicking() {
+    let temp_root = make_temp_project_root("no-check-enum-variant-function-value-field-access");
+    let source_path = temp_root.join("no_check_enum_variant_function_value_field_access.apex");
+    let output_path = temp_root.join("no_check_enum_variant_function_value_field_access");
+    let source = r#"
+            enum Boxed {
+                Wrap(Integer)
+            }
+
+            function main(): Integer {
+                f: (Integer) -> Boxed = Boxed.Wrap;
+                return f(1).Wrap;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("enum variant function value field access should fail in codegen");
+    assert!(
+        err.contains("Unknown field 'Wrap' on class 'Boxed'"),
+        "{err}"
+    );
+    assert!(!err.contains("panicked at"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_module_function_wrong_arity_instead_of_ignoring_extra_args() {
+    let temp_root = make_temp_project_root("no-check-module-function-wrong-arity");
+    let source_path = temp_root.join("no_check_module_function_wrong_arity.apex");
+    let output_path = temp_root.join("no_check_module_function_wrong_arity");
+    let source = r#"
+            module M {
+                function f(x: Integer): Integer {
+                    return x;
+                }
+            }
+
+            function main(): Integer {
+                return M.f(7, 8);
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("module function wrong arity should fail in codegen");
+    assert!(
+        err.contains("Function value (Integer) -> Integer expects 1 argument(s), got 2"),
+        "{err}"
+    );
 
     let _ = fs::remove_dir_all(temp_root);
 }

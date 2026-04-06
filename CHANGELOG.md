@@ -8,6 +8,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed unchecked enum missing-method diagnostics:
+  - enum receivers in unchecked method-call lowering now return the same user-facing `Unknown method ... for class ...` diagnostic path as class receivers instead of falling through to pseudo-interface dispatch
+  - this fixes cases such as `value: Boxed = Boxed.Wrap(1); value.missing();`, which previously reported the internal error `Unknown interface method implementation: missing`
+- Fixed unchecked enum bound-method field access:
+  - enum receivers in unchecked field lowering now reject missing bound-method lookups before the interface-style single-candidate fallback can bind an unrelated `__method` implementation from some other class
+  - this fixes cases such as `f: () -> Integer = value.missing; return f();` on `value: Boxed`, which previously compiled and then crashed at runtime instead of reporting `Unknown field 'missing' on class 'Boxed'`
+- Fixed unchecked interface method-call arity validation:
+  - single-implementation interface dispatch now preserves the resolved method signature instead of discarding it before unchecked lowering validates arguments
+  - this fixes cases such as `reader: Reader = Box(7); reader.read(1);`, which previously compiled, ignored the extra argument in codegen, and then exited at runtime instead of reporting `Method 'read' on type Reader expects 0 argument(s), got 1`
+- Fixed unchecked interface missing-method dispatch:
+  - codegen now records declared interface method names and rejects interface method calls and bound-method accesses that are not part of the receiver contract before the global suffix fallback can bind an unrelated class implementation
+  - this fixes cases such as `reader.missing()` and `reader.missing`, which previously compiled by capturing some unrelated `__missing` implementation and then crashed at runtime instead of reporting `Unknown method 'missing' for interface 'Reader'`
+- Fixed unchecked interface dispatch to non-implementors:
+  - single-candidate interface dispatch now filters candidates through the actual `implements` graph, including parent-interface inheritance, instead of accepting any unrelated `__method` symbol with the same suffix
+  - this fixes cases such as `reader: Reader = Box(7); reader.read();` and `reader.read` when only some unrelated class provides `read`, which previously compiled and then crashed at runtime instead of stopping with `Unknown interface method implementation: read`
+- Fixed unchecked generic-bound interface dispatch:
+  - codegen now resolves generic receiver type variables such as `T extends Named` through the active generic-bound context before interface method dispatch falls back to implementation lookup
+  - this fixes cases such as `function read_name<T extends u.Named>(value: T): Integer { return value.name(); }`, which previously failed with `Unknown interface method implementation: name` in unchecked/project builds
+- Fixed unchecked bound-method function signature validation for interface-backed receivers:
+  - function-value lowering now recovers the actual bound-method signature for interface and generic-bound receivers before expected-type adaptation runs, and incompatible function signatures now fail explicitly instead of silently reusing the raw closure layout
+  - this fixes cases such as `f: (Integer) -> Integer = value.get` and `f: (Integer) -> Integer = value.name` on `value: Named` or `T extends Named`, which previously compiled in unchecked/project builds and then called the wrong ABI at runtime instead of reporting `Cannot use function value () -> Integer as (Integer) -> Integer`
+- Fixed unchecked multi-bound generic interface dispatch:
+  - method calls and bound-method values on generic receivers now match against the full union of resolved interface bounds instead of only the first bound
+  - this fixes cases such as `function read_b<T extends A, B>(value: T): Integer { return value.b(); }` and `value.b`, which previously failed with diagnostics like `Unknown method 'b' for interface 'A'` or `Unknown class: T`
 - Fixed unchecked nested receiver diagnostics in the refactored codegen pipeline:
   - field, method, index, lvalue, and dereference codegen now prefer root-cause failures from unresolved nested receivers over fallback inferred `Integer` type diagnostics, and call-derived receivers now reuse the same fallback inference path across unchecked lowering
   - this fixes unchecked cases such as `missing.inner.items[0]`, `missing.inner.items.push(1)`, `holder.make().inner.missing[0] = 9`, and `*holder.make().inner.missing`, which previously reported misleading `Cannot access/call/index/dereference ... Integer` diagnostics instead of `Undefined variable: ...` or `Unknown field ...`
@@ -537,6 +561,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed lexer handling for string interpolation expressions containing nested string literals:
   - strings like `"{m["x"]}"` now stay a single string token instead of terminating early at the inner quote
   - interpolation now parses and codegens correctly for map indexing and similar expressions that use string literal keys inside `{...}`
+  - unchecked assignment lowering now recognizes map fields reached through function-valued field calls like `holder.make(...).m["k"] = 7` and `holder.make().m["k"] += 2` instead of misrouting them through integer list indexing and failing with `Index must be Integer`
+  - unchecked call lowering now validates argument counts before LLVM emission for specialized constructors, specialized methods, function values, and module-qualified functions instead of silently ignoring extra arguments or surfacing raw Clang IR failures
+  - unchecked field diagnostics now keep specialized class names user-facing and enum-valued function results like `f(1).Wrap` fail with a normal `Unknown field` error instead of panicking in codegen
+  - specialized diagnostic rendering now decodes function-type generic payloads too, so unchecked errors show `M.Box<(Integer) -> Integer>` and `M.Box<List<(Integer) -> Integer>>` instead of leaking raw internal suffixes like `spec.FnI64ToI64`
+  - specialized diagnostic rendering now also decodes named generic payloads, including module-qualified and underscored names like `Payload.Item<Integer>` and `Data_Types.Pair_Value<Integer, String>`, instead of leaking raw `spec.G...` suffixes
+  - nested underscored generic payload diagnostics now preserve names like `Inner_Box` and `Pair_Box<N.Inner_Box<Integer>, String>` instead of mangling them into partial `Inner_<Box<...>>` fragments
+  - unchecked missing-method diagnostics on module-local classes now report user-facing names like `M.Box` instead of leaking mangled internal class names such as `M__Box`
+  - specialized diagnostic decoding now uses length-prefixed names internally for named and generic payload types, which fixes nested `Map`/`Result` payload displays like `Long_Name.Payload_Box<Map<String, Integer>>` and `A_B.C_D<Result<Integer, String>, Map<String, Integer>>`
 - Fixed long string interpolation buffer sizing in backend codegen:
   - interpolation result buffers are now sized from the actual rendered literal and expression string lengths instead of using a fixed 4096-byte allocation
   - long interpolations like `"x{s}y"` with large runtime-built strings no longer corrupt memory or crash during execution

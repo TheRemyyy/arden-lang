@@ -2489,9 +2489,23 @@ impl<'ctx> Codegen<'ctx> {
         match &normalized {
             Type::Named(name) => self
                 .canonical_codegen_type_name(name)
+                .or_else(|| {
+                    self.current_generic_bounds.get(name).and_then(|bounds| {
+                        bounds
+                            .iter()
+                            .find_map(|bound| self.resolve_interface_name_for_lookup(bound, None))
+                    })
+                })
                 .or_else(|| Some(name.clone())),
             Type::Generic(name, _) => self
                 .canonical_codegen_type_name(name)
+                .or_else(|| {
+                    self.current_generic_bounds.get(name).and_then(|bounds| {
+                        bounds
+                            .iter()
+                            .find_map(|bound| self.resolve_interface_name_for_lookup(bound, None))
+                    })
+                })
                 .or_else(|| Some(name.clone())),
             Type::Ref(inner)
             | Type::MutRef(inner)

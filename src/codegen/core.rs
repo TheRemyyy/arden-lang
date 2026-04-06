@@ -421,6 +421,8 @@ pub struct Codegen<'ctx> {
     pub functions: HashMap<String, (FunctionValue<'ctx>, Type)>,
     pub classes: HashMap<String, ClassInfo<'ctx>>,
     pub enums: HashMap<String, EnumInfo<'ctx>>,
+    pub interfaces: HashMap<String, HashSet<String>>,
+    pub interface_implementors: HashMap<String, HashSet<String>>,
     pub enum_variant_to_enum: HashMap<String, String>,
     pub current_function: Option<FunctionValue<'ctx>>,
     pub current_return_type: Option<Type>,
@@ -432,6 +434,7 @@ pub struct Codegen<'ctx> {
     extern_functions: HashSet<String>,
     import_aliases: HashMap<String, String>,
     current_package: String,
+    pub(crate) current_generic_bounds: HashMap<String, Vec<String>>,
 }
 
 impl<'ctx> Codegen<'ctx> {
@@ -461,11 +464,9 @@ impl<'ctx> Codegen<'ctx> {
         let args = if let Some(decoded) = Self::decode_specialization_suffix_token(suffixes) {
             vec![decoded]
         } else {
-            suffixes
-                .split('_')
-                .filter(|part| !part.is_empty())
-                .map(Self::decode_specialization_suffix_token)
-                .collect::<Option<Vec<_>>>()?
+            Self::decode_generic_specialization_args(suffixes)
+                .into_iter()
+                .find_map(|(args, consumed)| (consumed == suffixes.len()).then_some(args))?
         };
         Some(format!(
             "{}<{}>",
@@ -475,55 +476,253 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn decode_specialization_suffix_token(token: &str) -> Option<String> {
-        match token {
-            "I64" => Some("Integer".to_string()),
-            "F64" => Some("Float".to_string()),
-            "Bool" => Some("Boolean".to_string()),
-            "Str" => Some("String".to_string()),
-            "Char" => Some("Char".to_string()),
-            "None" => Some("None".to_string()),
-            _ => {
-                for (prefix, display_name) in [
-                    ("MutRef", "&mut "),
-                    ("Ref", "&"),
-                    ("Option", "Option<"),
-                    ("List", "List<"),
-                    ("Set", "Set<"),
-                    ("Box", "Box<"),
-                    ("Rc", "Rc<"),
-                    ("Arc", "Arc<"),
-                    ("Ptr", "Ptr<"),
-                    ("Task", "Task<"),
-                    ("Range", "Range<"),
-                    ("Opt", "Option<"),
-                ] {
-                    if let Some(inner) = token.strip_prefix(prefix) {
-                        let decoded_inner = Self::decode_specialization_suffix_token(inner)?;
-                        return match prefix {
-                            "Ref" | "MutRef" => Some(format!("{display_name}{decoded_inner}")),
-                            _ => Some(format!("{display_name}{decoded_inner}>")),
-                        };
-                    }
+        if let Some((base_name, arg_slice, _)) = Self::decode_length_prefixed_generic_name(token) {
+            for (args, args_consumed) in Self::decode_generic_specialization_args(arg_slice) {
+                if args_consumed == arg_slice.len() {
+                    return Some(format!(
+                        "{}<{}>",
+                        Self::format_diagnostic_name(base_name),
+                        args.join(", ")
+                    ));
                 }
-
-                for prefix in ["Result", "Res", "Map"] {
-                    if let Some(inner) = token.strip_prefix(prefix) {
-                        let (left, right) = inner.split_once('_')?;
-                        let left = Self::decode_specialization_suffix_token(left)?;
-                        let right = Self::decode_specialization_suffix_token(right)?;
-                        let display_name = match prefix {
-                            "Map" => "Map",
-                            _ => "Result",
-                        };
-                        return Some(format!("{display_name}<{left}, {right}>"));
-                    }
-                }
-
-                token
-                    .strip_prefix('N')
-                    .map(|name| Self::format_diagnostic_name(&name.replace('_', "__")))
             }
         }
+
+        if let Some(rest) = token.strip_prefix('G') {
+            let mut best_match: Option<(String, usize, bool, usize)> = None;
+            for base_end in 1..rest.len() {
+                let base_name = &rest[..base_end];
+                let arg_slice = &rest[base_end..];
+                for (args, args_consumed) in Self::decode_generic_specialization_args(arg_slice) {
+                    if args_consumed == arg_slice.len() {
+                        let decoded = format!(
+                            "{}<{}>",
+                            Self::format_diagnostic_name(base_name),
+                            args.join(", ")
+                        );
+                        let candidate = (
+                            decoded,
+                            args.len(),
+                            base_name.ends_with('_') || base_name.ends_with('.'),
+                            base_name.len(),
+                        );
+                        if best_match.as_ref().is_none_or(
+                            |(_, best_arg_count, best_trailing_sep, best_base_len)| {
+                                candidate.1 > *best_arg_count
+                                    || (candidate.1 == *best_arg_count
+                                        && candidate.2 != *best_trailing_sep
+                                        && !candidate.2)
+                                    || (candidate.1 == *best_arg_count
+                                        && candidate.2 == *best_trailing_sep
+                                        && candidate.3 < *best_base_len)
+                            },
+                        ) {
+                            best_match = Some(candidate);
+                        }
+                    }
+                }
+            }
+            if let Some((decoded, _, _, _)) = best_match {
+                return Some(decoded);
+            }
+        }
+        Self::decode_specialization_suffix_token_prefix(token)
+            .into_iter()
+            .find_map(|(decoded, consumed)| (consumed == token.len()).then_some(decoded))
+    }
+
+    fn decode_specialization_suffix_token_prefix(token: &str) -> Vec<(String, usize)> {
+        let mut results = Vec::new();
+
+        if let Some((name, consumed)) = Self::decode_length_prefixed_named_name(token) {
+            results.push((Self::format_diagnostic_name(name), consumed));
+        }
+
+        if let Some((base_name, arg_slice, prefix_consumed)) =
+            Self::decode_length_prefixed_generic_name(token)
+        {
+            for (args, args_consumed) in Self::decode_generic_specialization_args(arg_slice) {
+                results.push((
+                    format!(
+                        "{}<{}>",
+                        Self::format_diagnostic_name(base_name),
+                        args.join(", ")
+                    ),
+                    prefix_consumed + args_consumed,
+                ));
+            }
+        }
+
+        match token {
+            _ if token.starts_with("I64") => results.push(("Integer".to_string(), 3)),
+            _ if token.starts_with("F64") => results.push(("Float".to_string(), 3)),
+            _ if token.starts_with("Bool") => results.push(("Boolean".to_string(), 4)),
+            _ if token.starts_with("Str") => results.push(("String".to_string(), 3)),
+            _ if token.starts_with("Char") => results.push(("Char".to_string(), 4)),
+            _ if token.starts_with("None") => results.push(("None".to_string(), 4)),
+            _ => {}
+        }
+
+        for (prefix, display_name) in [
+            ("MutRef", "&mut "),
+            ("Ref", "&"),
+            ("Option", "Option<"),
+            ("List", "List<"),
+            ("Set", "Set<"),
+            ("Box", "Box<"),
+            ("Rc", "Rc<"),
+            ("Arc", "Arc<"),
+            ("Ptr", "Ptr<"),
+            ("Task", "Task<"),
+            ("Range", "Range<"),
+            ("Opt", "Option<"),
+        ] {
+            if let Some(rest) = token.strip_prefix(prefix) {
+                for (decoded_inner, consumed_inner) in
+                    Self::decode_specialization_suffix_token_prefix(rest)
+                {
+                    let decoded = match prefix {
+                        "Ref" | "MutRef" => format!("{display_name}{decoded_inner}"),
+                        _ => format!("{display_name}{decoded_inner}>"),
+                    };
+                    results.push((decoded, prefix.len() + consumed_inner));
+                }
+            }
+        }
+
+        for prefix in ["Result", "Res", "Map"] {
+            if let Some(rest) = token.strip_prefix(prefix) {
+                for (left, left_consumed) in Self::decode_specialization_suffix_token_prefix(rest) {
+                    let Some(right_rest) = rest[left_consumed..].strip_prefix('_') else {
+                        continue;
+                    };
+                    for (right, right_consumed) in
+                        Self::decode_specialization_suffix_token_prefix(right_rest)
+                    {
+                        let display_name = if prefix == "Map" { "Map" } else { "Result" };
+                        results.push((
+                            format!("{display_name}<{left}, {right}>"),
+                            prefix.len() + left_consumed + 1 + right_consumed,
+                        ));
+                    }
+                }
+            }
+        }
+
+        if let Some(rest) = token.strip_prefix("Fn") {
+            for (params, params_consumed) in Self::decode_function_specialization_params(rest) {
+                let Some(ret_rest) = rest[params_consumed..].strip_prefix("To") else {
+                    continue;
+                };
+                for (ret, ret_consumed) in Self::decode_specialization_suffix_token_prefix(ret_rest)
+                {
+                    results.push((
+                        format!("({}) -> {}", params.join(", "), ret),
+                        2 + params_consumed + 2 + ret_consumed,
+                    ));
+                }
+            }
+        }
+
+        if let Some(rest) = token.strip_prefix('G') {
+            let mut generic_results: Vec<(String, usize, bool, usize)> = Vec::new();
+            for base_end in 1..rest.len() {
+                let base_name = &rest[..base_end];
+                let arg_slice = &rest[base_end..];
+                for (args, args_consumed) in Self::decode_generic_specialization_args(arg_slice) {
+                    generic_results.push((
+                        format!(
+                            "{}<{}>",
+                            Self::format_diagnostic_name(base_name),
+                            args.join(", ")
+                        ),
+                        1 + base_end + args_consumed,
+                        base_name.ends_with('_') || base_name.ends_with('.'),
+                        base_name.len(),
+                    ));
+                }
+            }
+            generic_results.sort_by(|a, b| {
+                a.2.cmp(&b.2)
+                    .then_with(|| a.3.cmp(&b.3))
+                    .then_with(|| b.1.cmp(&a.1))
+            });
+            results.extend(
+                generic_results
+                    .into_iter()
+                    .map(|(decoded, consumed, _, _)| (decoded, consumed)),
+            );
+        }
+
+        if let Some(name) = token.strip_prefix('N') {
+            results.push((Self::format_diagnostic_name(name), token.len()));
+        }
+
+        results
+    }
+
+    fn decode_length_prefixed_named_name(token: &str) -> Option<(&str, usize)> {
+        let rest = token.strip_prefix('N')?;
+        let (len_str, remainder) = rest.split_once('_')?;
+        let name_len: usize = len_str.parse().ok()?;
+        if remainder.len() < name_len {
+            return None;
+        }
+        let (name, _) = remainder.split_at(name_len);
+        Some((name, 1 + len_str.len() + 1 + name_len))
+    }
+
+    fn decode_length_prefixed_generic_name(token: &str) -> Option<(&str, &str, usize)> {
+        let rest = token.strip_prefix('G')?;
+        let (len_str, remainder) = rest.split_once('_')?;
+        let name_len: usize = len_str.parse().ok()?;
+        if remainder.len() < name_len {
+            return None;
+        }
+        let (name, args) = remainder.split_at(name_len);
+        Some((name, args, 1 + len_str.len() + 1 + name_len))
+    }
+
+    fn decode_generic_specialization_args(token: &str) -> Vec<(Vec<String>, usize)> {
+        let mut results = Vec::new();
+
+        for (first, first_consumed) in Self::decode_specialization_suffix_token_prefix(token) {
+            results.push((vec![first.clone()], first_consumed));
+
+            let Some(rest) = token[first_consumed..].strip_prefix('_') else {
+                continue;
+            };
+            for (remaining, remaining_consumed) in Self::decode_generic_specialization_args(rest) {
+                let mut args = vec![first.clone()];
+                args.extend(remaining);
+                results.push((args, first_consumed + 1 + remaining_consumed));
+            }
+        }
+
+        results
+    }
+
+    fn decode_function_specialization_params(token: &str) -> Vec<(Vec<String>, usize)> {
+        if let Some(rest) = token.strip_prefix("To") {
+            return vec![(Vec::new(), token.len() - rest.len())];
+        }
+
+        let mut results = Vec::new();
+        for (first, first_consumed) in Self::decode_specialization_suffix_token_prefix(token) {
+            results.push((vec![first.clone()], first_consumed));
+
+            let Some(rest) = token[first_consumed..].strip_prefix('_') else {
+                continue;
+            };
+            for (remaining, remaining_consumed) in Self::decode_function_specialization_params(rest)
+            {
+                let mut params = vec![first.clone()];
+                params.extend(remaining);
+                results.push((params, first_consumed + 1 + remaining_consumed));
+            }
+        }
+
+        results
     }
 
     pub(crate) fn undefined_variable_error(name: &str) -> CodegenError {
@@ -554,6 +753,30 @@ impl<'ctx> Codegen<'ctx> {
         ))
     }
 
+    fn constructor_call_arity_error(ty: &Type, expected: usize, got: usize) -> CodegenError {
+        CodegenError::new(format!(
+            "Constructor {} expects {} argument(s), got {}",
+            Self::format_diagnostic_type(ty),
+            expected,
+            got
+        ))
+    }
+
+    fn method_call_arity_error(
+        receiver_ty: &Type,
+        method: &str,
+        expected: usize,
+        got: usize,
+    ) -> CodegenError {
+        CodegenError::new(format!(
+            "{}.{}() expects {} argument(s), got {}",
+            Self::format_diagnostic_type(receiver_ty),
+            method,
+            expected,
+            got
+        ))
+    }
+
     pub(crate) fn call_expr_arity_error(&self, expr: &Expr) -> Option<CodegenError> {
         let Expr::Call { callee, args, .. } = expr else {
             return None;
@@ -573,7 +796,23 @@ impl<'ctx> Codegen<'ctx> {
         CodegenError::new(format!(
             "Unknown field '{}' on class '{}'",
             field,
-            Self::format_diagnostic_name(&Self::format_type_string(ty))
+            Self::format_diagnostic_type(ty)
+        ))
+    }
+
+    fn unknown_method_error(method: &str, ty: &Type) -> CodegenError {
+        CodegenError::new(format!(
+            "Unknown method '{}' for class '{}'",
+            method,
+            Self::format_diagnostic_type(ty)
+        ))
+    }
+
+    fn unknown_interface_method_error(method: &str, interface_name: &str) -> CodegenError {
+        CodegenError::new(format!(
+            "Unknown method '{}' for interface '{}'",
+            method,
+            Self::format_diagnostic_name(interface_name)
         ))
     }
 
@@ -594,18 +833,350 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         Some(if treat_as_method {
-            CodegenError::new(format!(
-                "Unknown method '{}' for class '{}'",
-                field,
-                Self::format_diagnostic_name(&Self::format_type_string(&display_ty))
-            ))
+            Self::unknown_method_error(field, &display_ty)
         } else {
             Self::unknown_field_error(field, &display_ty)
         })
     }
 
+    fn function_value_signature_mismatch_error(
+        actual_ty: &Type,
+        expected_ty: &Type,
+    ) -> CodegenError {
+        CodegenError::new(format!(
+            "Cannot use function value {} as {}",
+            Self::format_diagnostic_type(actual_ty),
+            Self::format_diagnostic_type(expected_ty)
+        ))
+    }
+
     fn has_known_codegen_type(&self, name: &str) -> bool {
-        self.classes.contains_key(name) || self.enums.contains_key(name)
+        self.classes.contains_key(name)
+            || self.enums.contains_key(name)
+            || self.interfaces.contains_key(name)
+    }
+
+    fn interface_base_name_from_ref(raw: &str) -> Option<String> {
+        match parse_type_source(raw).ok()? {
+            Type::Named(name) | Type::Generic(name, _) => Some(name),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn resolve_interface_name_for_lookup(
+        &self,
+        raw_name: &str,
+        module_prefix: Option<&str>,
+    ) -> Option<String> {
+        let base_name = Self::interface_base_name_from_ref(raw_name)?;
+
+        if let Some(prefix) = module_prefix {
+            let scoped = format!("{}__{}", prefix, base_name);
+            if self.interfaces.contains_key(&scoped) {
+                return Some(scoped);
+            }
+        }
+
+        if self.interfaces.contains_key(&base_name) {
+            return Some(base_name);
+        }
+
+        let mangled = base_name.replace('.', "__");
+        if self.interfaces.contains_key(&mangled) {
+            return Some(mangled);
+        }
+
+        if let Some(resolved) = self.resolve_alias_qualified_codegen_type_name(&base_name) {
+            if self.interfaces.contains_key(&resolved) {
+                return Some(resolved);
+            }
+        }
+
+        self.canonical_codegen_type_name(&base_name)
+            .filter(|name| self.interfaces.contains_key(name))
+    }
+
+    fn collect_interface_methods_from_decl(
+        decl: &Spanned<Decl>,
+        module_prefix: Option<&str>,
+        interfaces: &mut HashMap<String, HashSet<String>>,
+        interface_extends: &mut HashMap<String, Vec<(Option<String>, String)>>,
+    ) {
+        match &decl.node {
+            Decl::Interface(interface) => {
+                let interface_name = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, interface.name)
+                } else {
+                    interface.name.clone()
+                };
+                interfaces.insert(
+                    interface_name.clone(),
+                    interface
+                        .methods
+                        .iter()
+                        .map(|method| method.name.clone())
+                        .collect(),
+                );
+                interface_extends.insert(
+                    interface_name,
+                    interface
+                        .extends
+                        .iter()
+                        .cloned()
+                        .map(|parent| (module_prefix.map(str::to_string), parent))
+                        .collect(),
+                );
+            }
+            Decl::Module(module) => {
+                let next_prefix = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, module.name)
+                } else {
+                    module.name.clone()
+                };
+                for nested in &module.declarations {
+                    Self::collect_interface_methods_from_decl(
+                        nested,
+                        Some(&next_prefix),
+                        interfaces,
+                        interface_extends,
+                    );
+                }
+            }
+            Decl::Function(_) | Decl::Class(_) | Decl::Enum(_) | Decl::Import(_) => {}
+        }
+    }
+
+    fn collect_interface_methods_with_inheritance(
+        &self,
+        interface_name: &str,
+        own_methods: &HashMap<String, HashSet<String>>,
+        interface_extends: &HashMap<String, Vec<(Option<String>, String)>>,
+        cache: &mut HashMap<String, HashSet<String>>,
+        visiting: &mut HashSet<String>,
+    ) -> HashSet<String> {
+        if let Some(methods) = cache.get(interface_name) {
+            return methods.clone();
+        }
+        if !visiting.insert(interface_name.to_string()) {
+            return own_methods.get(interface_name).cloned().unwrap_or_default();
+        }
+
+        let mut methods = own_methods.get(interface_name).cloned().unwrap_or_default();
+        if let Some(parents) = interface_extends.get(interface_name) {
+            for (module_prefix, parent) in parents {
+                if let Some(parent_name) =
+                    self.resolve_interface_name_for_lookup(parent, module_prefix.as_deref())
+                {
+                    methods.extend(self.collect_interface_methods_with_inheritance(
+                        &parent_name,
+                        own_methods,
+                        interface_extends,
+                        cache,
+                        visiting,
+                    ));
+                }
+            }
+        }
+
+        visiting.remove(interface_name);
+        cache.insert(interface_name.to_string(), methods.clone());
+        methods
+    }
+
+    fn collect_interface_ancestors(
+        &self,
+        interface_name: &str,
+        interface_extends: &HashMap<String, Vec<(Option<String>, String)>>,
+        cache: &mut HashMap<String, HashSet<String>>,
+        visiting: &mut HashSet<String>,
+    ) -> HashSet<String> {
+        if let Some(ancestors) = cache.get(interface_name) {
+            return ancestors.clone();
+        }
+        if !visiting.insert(interface_name.to_string()) {
+            return HashSet::from([interface_name.to_string()]);
+        }
+
+        let mut ancestors = HashSet::from([interface_name.to_string()]);
+        if let Some(parents) = interface_extends.get(interface_name) {
+            for (module_prefix, parent) in parents {
+                if let Some(parent_name) =
+                    self.resolve_interface_name_for_lookup(parent, module_prefix.as_deref())
+                {
+                    ancestors.extend(self.collect_interface_ancestors(
+                        &parent_name,
+                        interface_extends,
+                        cache,
+                        visiting,
+                    ));
+                }
+            }
+        }
+
+        visiting.remove(interface_name);
+        cache.insert(interface_name.to_string(), ancestors.clone());
+        ancestors
+    }
+
+    fn collect_class_interface_impls_from_decl(
+        decl: &Spanned<Decl>,
+        module_prefix: Option<&str>,
+        class_impls: &mut Vec<(String, Option<String>, String)>,
+    ) {
+        match &decl.node {
+            Decl::Class(class) => {
+                let class_name = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, class.name)
+                } else {
+                    class.name.clone()
+                };
+                for interface in &class.implements {
+                    class_impls.push((
+                        class_name.clone(),
+                        module_prefix.map(str::to_string),
+                        interface.clone(),
+                    ));
+                }
+            }
+            Decl::Module(module) => {
+                let next_prefix = if let Some(prefix) = module_prefix {
+                    format!("{}__{}", prefix, module.name)
+                } else {
+                    module.name.clone()
+                };
+                for nested in &module.declarations {
+                    Self::collect_class_interface_impls_from_decl(
+                        nested,
+                        Some(&next_prefix),
+                        class_impls,
+                    );
+                }
+            }
+            Decl::Function(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
+        }
+    }
+
+    fn reset_current_generic_bounds(&mut self) {
+        self.current_generic_bounds.clear();
+    }
+
+    fn extend_current_generic_bounds(&mut self, generic_params: &[GenericParam]) {
+        for param in generic_params {
+            if !param.bounds.is_empty() {
+                self.current_generic_bounds
+                    .insert(param.name.clone(), param.bounds.clone());
+            }
+        }
+    }
+
+    pub(crate) fn resolved_generic_bound_interfaces(&self, ty: &Type) -> Vec<String> {
+        match self.normalize_codegen_type(ty) {
+            Type::Named(name) | Type::Generic(name, _) => self
+                .current_generic_bounds
+                .get(&name)
+                .into_iter()
+                .flatten()
+                .filter_map(|bound| self.resolve_interface_name_for_lookup(bound, None))
+                .collect(),
+            Type::Ref(inner)
+            | Type::MutRef(inner)
+            | Type::Box(inner)
+            | Type::Rc(inner)
+            | Type::Arc(inner) => self.resolved_generic_bound_interfaces(&inner),
+            _ => Vec::new(),
+        }
+    }
+
+    fn matching_interface_implementors(
+        &self,
+        interface_names: &[String],
+        method: &str,
+    ) -> Result<HashSet<String>> {
+        let matching_interfaces = interface_names
+            .iter()
+            .filter(|interface_name| {
+                self.interfaces
+                    .get(*interface_name)
+                    .is_some_and(|methods| methods.contains(method))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if matching_interfaces.is_empty() {
+            let display_interface = interface_names
+                .first()
+                .map(String::as_str)
+                .unwrap_or("unknown");
+            return Err(Self::unknown_interface_method_error(
+                method,
+                display_interface,
+            ));
+        }
+
+        let mut implementors = HashSet::new();
+        for interface_name in matching_interfaces {
+            if let Some(owners) = self.interface_implementors.get(&interface_name) {
+                implementors.extend(owners.iter().cloned());
+            }
+        }
+        Ok(implementors)
+    }
+
+    fn infer_bound_field_function_type(&self, object: &Expr, field: &str) -> Option<Type> {
+        let obj_ty = self
+            .infer_object_type(object)
+            .or_else(|| Some(self.infer_expr_type(object, &[])))?;
+        let (class_name, generic_args) = self.unwrap_class_like_type(&obj_ty)?;
+
+        if let Some(class_info) = self.classes.get(&class_name) {
+            let method_name = self.resolve_method_function_name(&class_name, field)?;
+            let (_, func_ty) = self.functions.get(&method_name)?;
+            if let Some(args) = generic_args.as_ref() {
+                if class_info.generic_params.len() == args.len() {
+                    let bindings = class_info
+                        .generic_params
+                        .iter()
+                        .cloned()
+                        .zip(args.iter().cloned())
+                        .collect::<HashMap<_, _>>();
+                    return Some(Self::substitute_type(func_ty, &bindings));
+                }
+            }
+            return Some(func_ty.clone());
+        }
+
+        if self.enums.contains_key(&class_name) {
+            return None;
+        }
+
+        let generic_bound_interfaces = self.resolved_generic_bound_interfaces(&obj_ty);
+        let receiver_interfaces = if !generic_bound_interfaces.is_empty() {
+            generic_bound_interfaces
+        } else if self.interfaces.contains_key(&class_name) {
+            vec![class_name.clone()]
+        } else {
+            Vec::new()
+        };
+        if receiver_interfaces.is_empty() {
+            return None;
+        }
+
+        let implementors = self
+            .matching_interface_implementors(&receiver_interfaces, field)
+            .ok()?;
+        let suffix = format!("__{}", field);
+        let mut candidates = self
+            .functions
+            .iter()
+            .filter_map(|(name, (_, ty))| {
+                let owner = name.strip_suffix(&suffix)?;
+                implementors.contains(owner).then_some(ty.clone())
+            })
+            .collect::<Vec<_>>();
+        if candidates.len() != 1 {
+            return None;
+        }
+
+        candidates.pop()
     }
 
     pub(crate) fn canonical_codegen_type_name(&self, name: &str) -> Option<String> {
@@ -625,6 +1196,7 @@ impl<'ctx> Codegen<'ctx> {
             .classes
             .keys()
             .chain(self.enums.keys())
+            .chain(self.interfaces.keys())
             .filter(|candidate| *candidate == name || candidate.ends_with(&suffix))
             .cloned()
             .collect::<Vec<_>>();
@@ -710,10 +1282,11 @@ impl<'ctx> Codegen<'ctx> {
             Type::String => "Str".to_string(),
             Type::Char => "Char".to_string(),
             Type::None => "None".to_string(),
-            Type::Named(name) => format!("N{}", name.replace("__", "_")),
+            Type::Named(name) => format!("N{}_{}", name.len(), name),
             Type::Generic(name, args) => format!(
-                "G{}{}",
-                name.replace("__", "_"),
+                "G{}_{}{}",
+                name.len(),
+                name,
                 args.iter()
                     .map(Self::type_specialization_suffix)
                     .collect::<Vec<_>>()
@@ -6213,6 +6786,8 @@ impl<'ctx> Codegen<'ctx> {
             functions: HashMap::new(),
             classes: HashMap::new(),
             enums: HashMap::new(),
+            interfaces: HashMap::new(),
+            interface_implementors: HashMap::new(),
             enum_variant_to_enum: HashMap::new(),
             current_function: None,
             current_return_type: None,
@@ -6224,6 +6799,7 @@ impl<'ctx> Codegen<'ctx> {
             extern_functions: HashSet::new(),
             import_aliases: HashMap::new(),
             current_package: String::new(),
+            current_generic_bounds: HashMap::new(),
         }
     }
 
@@ -6578,7 +7154,11 @@ impl<'ctx> Codegen<'ctx> {
 
         let import_alias_collection_started_at = Instant::now();
         let mut import_alias_count = 0_usize;
+        let mut interface_extends: HashMap<String, Vec<(Option<String>, String)>> = HashMap::new();
+        let mut class_interface_impls = Vec::new();
         self.import_aliases.clear();
+        self.interfaces.clear();
+        self.interface_implementors.clear();
         for decl in &program.declarations {
             if let Decl::Import(import) = &decl.node {
                 if let Some(alias) = &import.alias {
@@ -6589,6 +7169,46 @@ impl<'ctx> Codegen<'ctx> {
                     self.import_aliases
                         .insert(import.path.clone(), import.path.clone());
                     import_alias_count += 1;
+                }
+            }
+            Self::collect_interface_methods_from_decl(
+                decl,
+                None,
+                &mut self.interfaces,
+                &mut interface_extends,
+            );
+            Self::collect_class_interface_impls_from_decl(decl, None, &mut class_interface_impls);
+        }
+        let own_interface_methods = self.interfaces.clone();
+        let mut expanded_interface_methods = HashMap::new();
+        let mut visiting = HashSet::new();
+        for interface_name in own_interface_methods.keys() {
+            let methods = self.collect_interface_methods_with_inheritance(
+                interface_name,
+                &own_interface_methods,
+                &interface_extends,
+                &mut expanded_interface_methods,
+                &mut visiting,
+            );
+            expanded_interface_methods.insert(interface_name.clone(), methods);
+        }
+        self.interfaces = expanded_interface_methods;
+        let mut ancestor_cache = HashMap::new();
+        let mut ancestor_visiting = HashSet::new();
+        for (class_name, module_prefix, interface_ref) in class_interface_impls {
+            if let Some(interface_name) =
+                self.resolve_interface_name_for_lookup(&interface_ref, module_prefix.as_deref())
+            {
+                for ancestor in self.collect_interface_ancestors(
+                    &interface_name,
+                    &interface_extends,
+                    &mut ancestor_cache,
+                    &mut ancestor_visiting,
+                ) {
+                    self.interface_implementors
+                        .entry(ancestor)
+                        .or_default()
+                        .insert(class_name.clone());
                 }
             }
         }
@@ -8343,6 +8963,8 @@ impl<'ctx> Codegen<'ctx> {
         let entry = self.context.append_basic_block(func, "entry");
         self.builder.position_at_end(entry);
         self.variables.clear();
+        self.reset_current_generic_bounds();
+        self.extend_current_generic_bounds(&class.generic_params);
 
         // Allocate parameters
         // Param 0 is env_ptr, constructor params start at 1
@@ -8428,6 +9050,7 @@ impl<'ctx> Codegen<'ctx> {
 
         self.current_function = None;
         self.current_return_type = None;
+        self.reset_current_generic_bounds();
         Ok(())
     }
 
@@ -8444,6 +9067,9 @@ impl<'ctx> Codegen<'ctx> {
         let entry = self.context.append_basic_block(func, "entry");
         self.builder.position_at_end(entry);
         self.variables.clear();
+        self.reset_current_generic_bounds();
+        self.extend_current_generic_bounds(&class.generic_params);
+        self.extend_current_generic_bounds(&method.generic_params);
 
         // Param 0 is env_ptr
         // Store 'this' (Param 1)
@@ -8523,6 +9149,7 @@ impl<'ctx> Codegen<'ctx> {
 
         self.current_function = None;
         self.current_return_type = None;
+        self.reset_current_generic_bounds();
         Ok(())
     }
 
@@ -9128,6 +9755,8 @@ impl<'ctx> Codegen<'ctx> {
         self.current_return_type = Some(inner_return_type.clone());
         self.variables.clear();
         self.loop_stack.clear();
+        self.reset_current_generic_bounds();
+        self.extend_current_generic_bounds(&func.generic_params);
         let body_entry = self.context.append_basic_block(body, "entry");
         self.builder.position_at_end(body_entry);
 
@@ -9193,6 +9822,7 @@ impl<'ctx> Codegen<'ctx> {
         self.current_return_type = None;
         self.variables.clear();
         self.loop_stack.clear();
+        self.reset_current_generic_bounds();
         let thunk_entry = self.context.append_basic_block(thunk, "entry");
         self.builder.position_at_end(thunk_entry);
 
@@ -9325,6 +9955,7 @@ impl<'ctx> Codegen<'ctx> {
         self.current_return_type = Some(Type::Task(Box::new(inner_return_type.clone())));
         self.variables.clear();
         self.loop_stack.clear();
+        self.reset_current_generic_bounds();
         let wrapper_entry = self.context.append_basic_block(wrapper, "entry");
         self.builder.position_at_end(wrapper_entry);
 
@@ -9393,6 +10024,7 @@ impl<'ctx> Codegen<'ctx> {
 
         self.current_function = None;
         self.current_return_type = None;
+        self.reset_current_generic_bounds();
         Ok(())
     }
 
@@ -9413,6 +10045,8 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(entry);
         self.variables.clear();
         self.loop_stack.clear();
+        self.reset_current_generic_bounds();
+        self.extend_current_generic_bounds(&func.generic_params);
 
         // Special handling for main: store argc/argv in globals
         if func.name == "main" {
@@ -9497,6 +10131,7 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         self.current_function = None;
+        self.reset_current_generic_bounds();
         Ok(())
     }
 
@@ -9537,6 +10172,7 @@ impl<'ctx> Codegen<'ctx> {
                         Expr::Index { object, .. }
                             if matches!(
                                 self.infer_object_type(&object.node)
+                                    .or_else(|| Some(self.infer_expr_type(&object.node, &[])))
                                     .map(|ty| self.deref_codegen_type(&ty).clone()),
                                 Some(Type::Map(_, _))
                             )
@@ -9565,7 +10201,9 @@ impl<'ctx> Codegen<'ctx> {
                 }
 
                 if let Expr::Index { object, index } = &target.node {
-                    let object_ty = self.infer_object_type(&object.node);
+                    let object_ty = self
+                        .infer_object_type(&object.node)
+                        .or_else(|| Some(self.infer_expr_type(&object.node, &[])));
                     let deref_object_ty = object_ty
                         .clone()
                         .map(|ty| self.deref_codegen_type(&ty).clone());
@@ -11793,7 +12431,12 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         if matches!(expected_ty, Type::Function(_, _)) {
-            let actual_ty = self.infer_expr_type(expr, &[]);
+            let actual_ty = match expr {
+                Expr::Field { object, field } => self
+                    .infer_bound_field_function_type(&object.node, field)
+                    .unwrap_or_else(|| self.infer_expr_type(expr, &[])),
+                _ => self.infer_expr_type(expr, &[]),
+            };
             if matches!(actual_ty, Type::Function(_, _)) {
                 let value = self.compile_expr(expr)?;
                 if let Some(adapted) = self.compile_function_value_adapter_from_closure(
@@ -11802,6 +12445,12 @@ impl<'ctx> Codegen<'ctx> {
                     expected_ty,
                 )? {
                     return Ok(adapted);
+                }
+                if &actual_ty != expected_ty {
+                    return Err(Self::function_value_signature_mismatch_error(
+                        &actual_ty,
+                        expected_ty,
+                    ));
                 }
                 return Ok(value);
             }
@@ -14274,7 +14923,12 @@ impl<'ctx> Codegen<'ctx> {
 
                 // Module dot syntax: Module.func(...) -> Module__func(...)
                 let mangled = format!("{}__{}", resolved_owner, field);
-                if let Some((func, _)) = self.functions.get(&mangled).cloned() {
+                if let Some((func, func_ty)) = self.functions.get(&mangled).cloned() {
+                    if let Type::Function(params, _) = &func_ty {
+                        if args.len() != params.len() {
+                            return Err(Self::function_call_arity_error(&func_ty, args.len()));
+                        }
+                    }
                     let mut compiled_args: Vec<BasicValueEnum> = vec![self
                         .context
                         .ptr_type(AddressSpace::default())
@@ -14297,7 +14951,12 @@ impl<'ctx> Codegen<'ctx> {
                     owner_name,
                     std::slice::from_ref(field),
                 ) {
-                    if let Some((func, _)) = self.functions.get(&candidate).cloned() {
+                    if let Some((func, func_ty)) = self.functions.get(&candidate).cloned() {
+                        if let Type::Function(params, _) = &func_ty {
+                            if args.len() != params.len() {
+                                return Err(Self::function_call_arity_error(&func_ty, args.len()));
+                            }
+                        }
                         let mut compiled_args: Vec<BasicValueEnum> = vec![self
                             .context
                             .ptr_type(AddressSpace::default())
@@ -14358,7 +15017,12 @@ impl<'ctx> Codegen<'ctx> {
                 }
 
                 let candidate = path_parts.join("__");
-                if let Some((func, _)) = self.functions.get(&candidate).cloned() {
+                if let Some((func, func_ty)) = self.functions.get(&candidate).cloned() {
+                    if let Type::Function(params, _) = &func_ty {
+                        if args.len() != params.len() {
+                            return Err(Self::function_call_arity_error(&func_ty, args.len()));
+                        }
+                    }
                     let mut compiled_args: Vec<BasicValueEnum> = vec![self
                         .context
                         .ptr_type(AddressSpace::default())
@@ -14381,7 +15045,12 @@ impl<'ctx> Codegen<'ctx> {
                     &path_parts[0],
                     &path_parts[1..],
                 ) {
-                    if let Some((func, _)) = self.functions.get(&candidate).cloned() {
+                    if let Some((func, func_ty)) = self.functions.get(&candidate).cloned() {
+                        if let Type::Function(params, _) = &func_ty {
+                            if args.len() != params.len() {
+                                return Err(Self::function_call_arity_error(&func_ty, args.len()));
+                            }
+                        }
                         let mut compiled_args: Vec<BasicValueEnum> = vec![self
                             .context
                             .ptr_type(AddressSpace::default())
@@ -14469,6 +15138,12 @@ impl<'ctx> Codegen<'ctx> {
                     };
 
                     let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
+                    if args.len() != param_types.len() {
+                        return Err(Self::function_call_arity_error(
+                            &Type::Function(param_types.clone(), ret_type.clone()),
+                            args.len(),
+                        ));
+                    }
                     for (arg, param_ty) in args.iter().zip(param_types.iter()) {
                         compiled_args
                             .push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
@@ -14546,6 +15221,13 @@ impl<'ctx> Codegen<'ctx> {
                     _ => self.context.i8_type().fn_type(&llvm_params, false),
                 };
 
+                if args.len() != param_types.len() {
+                    return Err(Self::function_call_arity_error(
+                        &Type::Function(param_types.clone(), ret_type.clone()),
+                        args.len(),
+                    ));
+                }
+
                 let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
                 for a in args {
                     compiled_args.push(self.compile_expr(&a.node)?);
@@ -14620,6 +15302,10 @@ impl<'ctx> Codegen<'ctx> {
                             }
                         };
 
+                        if args.len() != param_types.len() {
+                            return Err(Self::function_call_arity_error(&var.ty, args.len()));
+                        }
+
                         let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
                         for (arg, param_ty) in args.iter().zip(param_types.iter()) {
                             compiled_args
@@ -14680,11 +15366,15 @@ impl<'ctx> Codegen<'ctx> {
             );
         }
 
-        let expected_param_types = match self.infer_expr_type(callee, &[]) {
-            Type::Function(param_types, _) => Some(param_types),
+        let callee_ty = self.infer_expr_type(callee, &[]);
+        let expected_param_types = match &callee_ty {
+            Type::Function(param_types, _) => Some(param_types.as_slice()),
             _ => None,
         };
         if let Some(param_types) = expected_param_types {
+            if args.len() != param_types.len() {
+                return Err(Self::function_call_arity_error(&callee_ty, args.len()));
+            }
             for (arg, param_ty) in args.iter().zip(param_types.iter()) {
                 compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
             }
@@ -14906,32 +15596,69 @@ impl<'ctx> Codegen<'ctx> {
                     object
                 ))
             })?;
+        let generic_bound_interfaces = deref_obj_ty
+            .as_ref()
+            .map(|ty| self.resolved_generic_bound_interfaces(ty))
+            .unwrap_or_default();
+        let receiver_interfaces = if !generic_bound_interfaces.is_empty() {
+            generic_bound_interfaces
+        } else if self.interfaces.contains_key(&class_name) {
+            vec![class_name.clone()]
+        } else {
+            Vec::new()
+        };
 
         let (func, func_ty) = if self.classes.contains_key(&class_name) {
             let func_name = self
                 .resolve_method_function_name(&class_name, method)
                 .ok_or_else(|| {
-                    CodegenError::new(format!(
-                        "Unknown method '{}' for class '{}'",
-                        method, class_name
-                    ))
+                    obj_ty.as_ref().map_or_else(
+                        || {
+                            CodegenError::new(format!(
+                                "Unknown method '{}' for class '{}'",
+                                method,
+                                Self::format_diagnostic_name(&class_name)
+                            ))
+                        },
+                        |ty| Self::unknown_method_error(method, ty),
+                    )
                 })?;
             self.functions
                 .get(&func_name)
                 .ok_or_else(|| CodegenError::new(format!("Unknown method: {}", func_name)))?
                 .clone()
+        } else if self.enums.contains_key(&class_name) {
+            return Err(obj_ty.as_ref().map_or_else(
+                || {
+                    CodegenError::new(format!(
+                        "Unknown method '{}' for class '{}'",
+                        method,
+                        Self::format_diagnostic_name(&class_name)
+                    ))
+                },
+                |ty| Self::unknown_method_error(method, ty),
+            ));
         } else {
+            let implementors = if receiver_interfaces.is_empty() {
+                HashSet::new()
+            } else {
+                self.matching_interface_implementors(&receiver_interfaces, method)?
+            };
             // Interface-typed object (or unknown Named type): no vtable yet.
             // We allow codegen only when there is a single unambiguous method implementation.
             let suffix = format!("__{}", method);
-            let mut candidates = self
-                .functions
-                .iter()
-                .filter_map(|(name, sig)| name.ends_with(&suffix).then_some((name.clone(), sig.0)))
-                .collect::<Vec<_>>();
+            let mut candidates =
+                self.functions
+                    .iter()
+                    .filter_map(|(name, (func, ty))| {
+                        let owner = name.strip_suffix(&suffix)?;
+                        (!receiver_interfaces.is_empty() && implementors.contains(owner))
+                            .then_some((name.clone(), *func, ty.clone()))
+                    })
+                    .collect::<Vec<_>>();
             if candidates.len() == 1 {
-                let (_, func) = candidates.pop().unwrap();
-                (func, Type::None)
+                let (_, func, func_ty) = candidates.pop().unwrap();
+                (func, func_ty)
             } else if candidates.is_empty() {
                 return Err(CodegenError::new(format!(
                     "Unknown interface method implementation: {}",
@@ -14963,6 +15690,16 @@ impl<'ctx> Codegen<'ctx> {
             _ => None,
         };
         if let Some(param_types) = apex_param_types {
+            if args.len() != param_types.len() {
+                return Err(Self::method_call_arity_error(
+                    deref_obj_ty
+                        .as_ref()
+                        .expect("method receiver type should exist after class resolution"),
+                    method,
+                    param_types.len(),
+                    args.len(),
+                ));
+            }
             for (arg, param_ty) in args.iter().zip(param_types.iter()) {
                 compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
             }
@@ -15630,11 +16367,6 @@ impl<'ctx> Codegen<'ctx> {
                 )));
             }
         }
-        let obj_ptr = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
-            self.compile_deref(object)?.into_pointer_value()
-        } else {
-            self.compile_expr(object)?.into_pointer_value()
-        };
         let class_name = obj_ty
             .as_ref()
             .and_then(|ty| self.unwrap_class_like_type(ty).map(|(name, _)| name))
@@ -15645,6 +16377,29 @@ impl<'ctx> Codegen<'ctx> {
                     object, field
                 ))
             })?;
+        let generic_bound_interfaces = obj_ty
+            .as_ref()
+            .map(|ty| self.resolved_generic_bound_interfaces(ty))
+            .unwrap_or_default();
+        let receiver_interfaces = if !generic_bound_interfaces.is_empty() {
+            generic_bound_interfaces
+        } else if self.interfaces.contains_key(&class_name) {
+            vec![class_name.clone()]
+        } else {
+            Vec::new()
+        };
+
+        if self.enums.contains_key(&class_name) {
+            return Err(Self::unknown_field_error(
+                field,
+                obj_ty.as_ref().expect("class-like type already validated"),
+            ));
+        }
+        let interface_implementors = if receiver_interfaces.is_empty() {
+            HashSet::new()
+        } else {
+            self.matching_interface_implementors(&receiver_interfaces, field)?
+        };
 
         let class_info = self.classes.get(&class_name);
         if class_info.is_none() {
@@ -15653,7 +16408,8 @@ impl<'ctx> Codegen<'ctx> {
                 .functions
                 .iter()
                 .filter_map(|(name, (_, ty))| {
-                    name.ends_with(&suffix)
+                    let owner = name.strip_suffix(&suffix)?;
+                    (!receiver_interfaces.is_empty() && interface_implementors.contains(owner))
                         .then_some((name.clone(), ty.clone()))
                 })
                 .collect::<Vec<_>>();
@@ -15667,11 +16423,11 @@ impl<'ctx> Codegen<'ctx> {
                 );
             }
             if candidates.is_empty() {
-                if self.enums.contains_key(&class_name) {
-                    return Err(Self::unknown_field_error(
-                        field,
-                        obj_ty.as_ref().expect("class-like type already validated"),
-                    ));
+                if !receiver_interfaces.is_empty() {
+                    return Err(CodegenError::new(format!(
+                        "Unknown interface method implementation: {}",
+                        field
+                    )));
                 }
                 return Err(CodegenError::new(format!("Unknown class: {}", class_name)));
             }
@@ -15682,7 +16438,6 @@ impl<'ctx> Codegen<'ctx> {
             )));
         }
         let class_info = class_info.unwrap();
-
         let Some(field_idx) = class_info.field_indices.get(field).copied() else {
             if let Some(method_name) = self.resolve_method_function_name(&class_name, field) {
                 let (_, func_ty) =
@@ -15706,6 +16461,12 @@ impl<'ctx> Codegen<'ctx> {
                 obj_ty.as_ref().expect("class-like type already validated"),
             ));
         };
+        let struct_type = class_info.struct_type;
+        let obj_ptr = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+            self.compile_deref(object)?.into_pointer_value()
+        } else {
+            self.compile_expr(object)?.into_pointer_value()
+        };
 
         let i32_type = self.context.i32_type();
         let zero = i32_type.const_int(0, false);
@@ -15714,7 +16475,7 @@ impl<'ctx> Codegen<'ctx> {
         let field_ptr = unsafe {
             self.builder
                 .build_gep(
-                    class_info.struct_type.as_basic_type_enum(),
+                    struct_type.as_basic_type_enum(),
                     obj_ptr,
                     &[zero, idx],
                     field,
@@ -15722,10 +16483,7 @@ impl<'ctx> Codegen<'ctx> {
                 .unwrap()
         };
 
-        let field_type = class_info
-            .struct_type
-            .get_field_type_at_index(field_idx)
-            .unwrap();
+        let field_type = struct_type.get_field_type_at_index(field_idx).unwrap();
         Ok(self
             .builder
             .build_load(field_type, field_ptr, field)
@@ -15907,16 +16665,17 @@ impl<'ctx> Codegen<'ctx> {
                 )));
             }
         }
-        let obj_ptr = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
-            self.compile_deref(object)?.into_pointer_value()
-        } else {
-            self.compile_expr(object)?.into_pointer_value()
-        };
         let class_name = obj_ty
             .as_ref()
             .and_then(|ty| self.unwrap_class_like_type(ty).map(|(name, _)| name))
             .ok_or_else(|| CodegenError::new("Cannot determine object type for field ptr"))?;
 
+        if self.enums.contains_key(&class_name) {
+            return Err(Self::unknown_field_error(
+                field,
+                obj_ty.as_ref().expect("class-like type already validated"),
+            ));
+        }
         let class_info = self
             .classes
             .get(&class_name)
@@ -15928,6 +16687,12 @@ impl<'ctx> Codegen<'ctx> {
                 obj_ty.as_ref().expect("class-like type already validated"),
             )
         })?;
+        let struct_type = class_info.struct_type;
+        let obj_ptr = if matches!(obj_ty, Some(Type::Ref(_)) | Some(Type::MutRef(_))) {
+            self.compile_deref(object)?.into_pointer_value()
+        } else {
+            self.compile_expr(object)?.into_pointer_value()
+        };
 
         let i32_type = self.context.i32_type();
         let zero = i32_type.const_int(0, false);
@@ -15936,7 +16701,7 @@ impl<'ctx> Codegen<'ctx> {
         let field_ptr = unsafe {
             self.builder
                 .build_gep(
-                    class_info.struct_type.as_basic_type_enum(),
+                    struct_type.as_basic_type_enum(),
                     obj_ptr,
                     &[zero, idx],
                     field,
@@ -17496,6 +18261,13 @@ impl<'ctx> Codegen<'ctx> {
             &normalized_ty,
             &ctor_params,
         );
+        if args.len() != ctor_params.len() {
+            return Err(Self::constructor_call_arity_error(
+                &normalized_ty,
+                ctor_params.len(),
+                args.len(),
+            ));
+        }
         for (arg, expected_ty) in args.iter().zip(ctor_params.iter()) {
             compiled_args.push(self.compile_expr_with_expected_type(&arg.node, expected_ty)?);
         }
