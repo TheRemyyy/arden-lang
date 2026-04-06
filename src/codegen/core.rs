@@ -16506,7 +16506,13 @@ impl<'ctx> Codegen<'ctx> {
                         "Task.await_timeout() timeout must be non-negative",
                     ));
                 }
-                let ms = self.compile_expr(&args[0].node)?;
+                let ms_ty = self.infer_builtin_argument_type(&args[0].node);
+                if !matches!(ms_ty, Type::Integer) {
+                    return Err(CodegenError::new(
+                        "Task.await_timeout(ms) requires Integer milliseconds",
+                    ));
+                }
+                let ms = self.compile_expr_with_expected_type(&args[0].node, &ms_ty)?;
                 if !ms.is_int_value() {
                     return Err(CodegenError::new(
                         "Task.await_timeout(ms) requires Integer milliseconds",

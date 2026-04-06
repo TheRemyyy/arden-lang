@@ -6873,7 +6873,7 @@ impl TypeChecker {
                 "await_timeout" => {
                     self.check_arg_count(method, args, 1, span.clone());
                     if let Some(arg) = args.first() {
-                        let t = self.check_expr(&arg.node, arg.span.clone());
+                        let t = self.check_builtin_argument_expr(&arg.node, arg.span.clone());
                         if !matches!(t, ResolvedType::Unknown)
                             && !matches!(t, ResolvedType::Integer)
                         {
