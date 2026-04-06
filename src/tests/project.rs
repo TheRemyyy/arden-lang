@@ -5122,6 +5122,74 @@ fn project_build_supports_generic_namespace_alias_base_classes() {
 }
 
 #[test]
+fn project_build_supports_module_local_namespace_alias_imports() {
+    let temp_root = make_temp_project_root("module-local-namespace-alias-import-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package lib;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } function get(): T { return this.value; } }\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nmodule M { import lib as u; function make(): Integer { f: (Integer) -> u.Box<Integer> = u.Box<Integer>; value: u.Box<Integer> = f(7); return value.get(); } }\nfunction main(): Integer { return M.make(); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support module-local namespace alias imports");
+    });
+
+    let status = std::process::Command::new(temp_root.join("smoke"))
+        .status()
+        .expect("run compiled module-local namespace alias binary");
+    assert_eq!(status.code(), Some(7));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_module_local_exact_import_aliases() {
+    let temp_root = make_temp_project_root("module-local-exact-import-alias-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package lib;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } function get(): T { return this.value; } }\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nmodule M { import lib.Box as Boxed; function make(): Integer { f: (Integer) -> Boxed<Integer> = Boxed<Integer>; value: Boxed<Integer> = f(7); return value.get(); } }\nfunction main(): Integer { return M.make(); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support module-local exact import aliases");
+    });
+
+    let status = std::process::Command::new(temp_root.join("smoke"))
+        .status()
+        .expect("run compiled module-local exact import alias binary");
+    assert_eq!(status.code(), Some(7));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
     let temp_root = make_temp_project_root("project-check-invalid-files-list-fix");
     fs::write(

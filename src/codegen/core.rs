@@ -7309,18 +7309,39 @@ impl<'ctx> Codegen<'ctx> {
         self.import_aliases.clear();
         self.interfaces.clear();
         self.interface_implementors.clear();
-        for decl in &program.declarations {
-            if let Decl::Import(import) = &decl.node {
-                if let Some(alias) = &import.alias {
-                    self.import_aliases
-                        .insert(alias.clone(), import.path.clone());
-                    import_alias_count += 1;
-                } else if import.path.ends_with(".*") {
-                    self.import_aliases
-                        .insert(import.path.clone(), import.path.clone());
-                    import_alias_count += 1;
+        fn collect_codegen_import_aliases(
+            declarations: &[Spanned<Decl>],
+            import_aliases: &mut HashMap<String, String>,
+            import_alias_count: &mut usize,
+        ) {
+            for decl in declarations {
+                match &decl.node {
+                    Decl::Import(import) => {
+                        if let Some(alias) = &import.alias {
+                            import_aliases.insert(alias.clone(), import.path.clone());
+                            *import_alias_count += 1;
+                        } else if import.path.ends_with(".*") {
+                            import_aliases.insert(import.path.clone(), import.path.clone());
+                            *import_alias_count += 1;
+                        }
+                    }
+                    Decl::Module(module) => {
+                        collect_codegen_import_aliases(
+                            &module.declarations,
+                            import_aliases,
+                            import_alias_count,
+                        );
+                    }
+                    _ => {}
                 }
             }
+        }
+        collect_codegen_import_aliases(
+            &program.declarations,
+            &mut self.import_aliases,
+            &mut import_alias_count,
+        );
+        for decl in &program.declarations {
             Self::collect_interface_methods_from_decl(
                 decl,
                 None,

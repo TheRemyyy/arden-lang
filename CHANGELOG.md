@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed module-local project imports being dropped from parse and codegen metadata:
+  - project parsing and codegen alias collection now recurse into nested module declarations instead of only recording top-level imports
+  - this fixes cases such as `module M { import lib as u; ... u.Box<Integer> ... }` and `module M { import lib.Box as Boxed; ... Boxed<Integer> ... }`, which previously failed in project builds with split semantic components, `Unknown type`, or unresolved alias diagnostics even though the same imports were valid at module scope
 - Fixed project-build generic base classes through exact-import and namespace aliases:
   - project rewrite now parses and rewrites top-level `class ... extends Alias<...>` nominal sources instead of treating generic parent references as opaque strings, and codegen now treats generic inheritance as specialization demand so cross-file inherited generic bases compile through the combined-program path
   - this fixes cases such as `class Child extends BaseAlias<PayloadAlias>` and `class Child extends u.Base<u.Payload>`, which previously failed in project builds with semantic `extends unknown class ...` errors or later `Codegen error: Unknown base class ...`

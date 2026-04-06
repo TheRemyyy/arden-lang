@@ -340,14 +340,7 @@ fn parse_source_text(
         .package
         .clone()
         .unwrap_or_else(|| "global".to_string());
-    let imports: Vec<ImportDecl> = program
-        .declarations
-        .iter()
-        .filter_map(|d| match &d.node {
-            Decl::Import(import) => Some(import.clone()),
-            _ => None,
-        })
-        .collect();
+    let imports = extract_imports(&program);
     let api_fingerprint = api_program_fingerprint(&program);
     let semantic_fingerprint = semantic_program_fingerprint(&program);
     Ok(SourceParseResult {
@@ -4140,14 +4133,22 @@ fn validate_entry_main_signature(
 
 /// Extract imports from a program
 fn extract_imports(program: &ast::Program) -> Vec<ast::ImportDecl> {
-    program
-        .declarations
-        .iter()
-        .filter_map(|d| match &d.node {
-            ast::Decl::Import(import) => Some(import.clone()),
-            _ => None,
-        })
-        .collect()
+    fn collect_imports(
+        declarations: &[ast::Spanned<ast::Decl>],
+        imports: &mut Vec<ast::ImportDecl>,
+    ) {
+        for decl in declarations {
+            match &decl.node {
+                ast::Decl::Import(import) => imports.push(import.clone()),
+                ast::Decl::Module(module) => collect_imports(&module.declarations, imports),
+                _ => {}
+            }
+        }
+    }
+
+    let mut imports = Vec::new();
+    collect_imports(&program.declarations, &mut imports);
+    imports
 }
 
 /// Show project information
