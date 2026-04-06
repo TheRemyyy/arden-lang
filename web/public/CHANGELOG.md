@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed builtin-call argument coercion for exact zero-argument aliases:
   - builtin argument validation and codegen now route string, integer, and numeric builtin parameters through the same contextual zero-argument alias coercion used by typed values and regular function-call arguments, covering cases such as `to_string(Pi)`, `Str.len(CurrentDir)`, `File.read(CurrentDir)`, `Args.get(ArgCount)`, and numeric `range(...)` bounds
   - this fixes valid project builds that still rewrote exact aliases like `import std.math.pi as Pi;` or `import std.system.cwd as CurrentDir;` to raw builtin symbols such as `Math__pi` or `System__cwd` inside builtin calls and then failed with `Undefined variable` diagnostics
+- Fixed remaining type-check builtin helpers skipping exact zero-argument aliases:
+  - builtin-only validation paths such as `Time.now(...)`, `fail(...)`, and the assertion helpers now use the same contextual zero-argument alias coercion path instead of re-checking alias expressions as unresolved raw variables
+  - this fixes valid builds where aliases like `import std.system.cwd as CurrentDir;` were still rejected in these helper builtins even after the main builtin-call codegen paths were fixed
 - Fixed typed collection method arguments skipping exact zero-argument alias coercion:
   - collection methods such as `List.push`, `List.set`, `Map.insert`, `Map.set`, `Map.get`, `Map.contains`, and `Set.add`/`remove`/`contains` now type-check their value arguments through the same expected-type path as regular function calls instead of bypassing contextual coercions
   - this fixes valid project builds such as `values: List<Float> = List<Float>(); values.push(Pi);` for `import std.math.pi as Pi;`, which previously failed with `Undefined variable: Math__pi` even after zero-argument exact import values worked in direct `let`, `return`, and plain call-argument contexts

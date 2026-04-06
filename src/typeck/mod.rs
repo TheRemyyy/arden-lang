@@ -6271,7 +6271,7 @@ impl TypeChecker {
             "Time__now" => {
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
-                    let t = self.check_expr(&args[0].node, args[0].span.clone());
+                    let t = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error(
                             "Time.now() requires String format".to_string(),
@@ -6390,7 +6390,7 @@ impl TypeChecker {
                 // assert(condition: Boolean): None
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
-                    let t = self.check_expr(&args[0].node, args[0].span.clone());
+                    let t = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::Boolean) {
                         self.error(
                             "assert() requires boolean condition".to_string(),
@@ -6405,8 +6405,10 @@ impl TypeChecker {
                 // assert_ne(a: T, b: T): None
                 self.check_arg_count(name, args, 2, span.clone());
                 if args.len() >= 2 {
-                    let t1 = self.check_expr(&args[0].node, args[0].span.clone());
-                    let t2 = self.check_expr(&args[1].node, args[1].span.clone());
+                    let t1 =
+                        self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
+                    let t2 =
+                        self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
                     if self.common_compatible_type(&t1, &t2).is_none() {
                         self.error(
                             format!(
@@ -6425,7 +6427,7 @@ impl TypeChecker {
                 // assert_true(condition: Boolean): None
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
-                    let t = self.check_expr(&args[0].node, args[0].span.clone());
+                    let t = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::Boolean) {
                         self.error("assert_true() requires boolean".to_string(), span.clone());
                     }
@@ -6436,7 +6438,7 @@ impl TypeChecker {
                 // assert_false(condition: Boolean): None
                 self.check_arg_count(name, args, 1, span.clone());
                 if !args.is_empty() {
-                    let t = self.check_expr(&args[0].node, args[0].span.clone());
+                    let t = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::Boolean) {
                         self.error("assert_false() requires boolean".to_string(), span.clone());
                     }
@@ -6447,7 +6449,7 @@ impl TypeChecker {
                 // fail(message: String): None - unconditionally fails
                 if !args.is_empty() {
                     self.check_arg_count(name, args, 1, span.clone());
-                    let t = self.check_expr(&args[0].node, args[0].span.clone());
+                    let t = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
                     if !matches!(t, ResolvedType::Unknown) && !matches!(t, ResolvedType::String) {
                         self.error("fail() requires String message".to_string(), span.clone());
                     }
