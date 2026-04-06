@@ -5219,6 +5219,148 @@ fn project_build_no_check_rejects_module_local_wildcard_import_leaking_to_top_le
 }
 
 #[test]
+fn project_build_rechecks_module_local_wildcard_import_dependents_after_symbol_removal() {
+    let temp_root = make_temp_project_root("project-build-module-local-wildcard-symbol-removal");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/helper.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "package app;\nmodule Inner { import lib.*; function run(): Integer { return add(1); } }\nfunction main(): Integer { return Inner.run(); }\n",
+    )
+    .expect("write main");
+    fs::write(
+        temp_root.join("src/helper.apex"),
+        "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("initial module-local wildcard project build should succeed");
+    });
+
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    fs::write(
+        temp_root.join("src/helper.apex"),
+        "package lib;\nfunction plus(x: Integer): Integer { return x + 1; }\n",
+    )
+    .expect("rewrite helper without module-local wildcard imported symbol");
+
+    with_current_dir(&temp_root, || {
+        let err = build_project(false, false, true, false, false)
+            .expect_err("build should fail after module-local wildcard-imported symbol removal");
+        assert!(
+            err.contains("Wildcard import 'lib.*' no longer provides 'add'")
+                || err.contains("Function 'add' is defined in 'lib' but not imported in 'app'")
+                || err.contains("Import check failed"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: add"), "{err}");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_rechecks_module_local_exact_import_alias_dependents_after_symbol_removal() {
+    let temp_root =
+        make_temp_project_root("project-build-module-local-exact-import-alias-symbol-removal");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/helper.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "package app;\nmodule Inner { import lib.add as plus_one; function run(): Integer { return plus_one(1); } }\nfunction main(): Integer { return Inner.run(); }\n",
+    )
+    .expect("write main");
+    fs::write(
+        temp_root.join("src/helper.apex"),
+        "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("initial module-local exact-import alias project build should succeed");
+    });
+
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    fs::write(
+        temp_root.join("src/helper.apex"),
+        "package lib;\nfunction plus(x: Integer): Integer { return x + 1; }\n",
+    )
+    .expect("rewrite helper without module-local exact-import alias symbol");
+
+    with_current_dir(&temp_root, || {
+        let err = build_project(false, false, true, false, false)
+            .expect_err("build should fail after module-local exact-import alias symbol removal");
+        assert!(
+            err.contains("Imported alias 'plus_one' no longer resolves")
+                || err.contains("Function 'plus_one' is defined")
+                || err.contains("Import check failed"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: plus_one"), "{err}");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_rechecks_module_local_namespace_alias_dependents_after_symbol_removal() {
+    let temp_root =
+        make_temp_project_root("project-build-module-local-namespace-alias-symbol-removal");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/helper.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        temp_root.join("src/main.apex"),
+        "package app;\nmodule Inner { import lib as l; function run(): Integer { return l.add(1); } }\nfunction main(): Integer { return Inner.run(); }\n",
+    )
+    .expect("write main");
+    fs::write(
+        temp_root.join("src/helper.apex"),
+        "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("initial module-local namespace-alias project build should succeed");
+    });
+
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    fs::write(
+        temp_root.join("src/helper.apex"),
+        "package lib;\nfunction plus(x: Integer): Integer { return x + 1; }\n",
+    )
+    .expect("rewrite helper without module-local namespace-alias symbol");
+
+    with_current_dir(&temp_root, || {
+        let err = build_project(false, false, true, false, false)
+            .expect_err("build should fail after module-local namespace-alias symbol removal");
+        assert!(
+            err.contains("Imported namespace alias 'l' has no member 'add'")
+                || err.contains("Import check failed"),
+            "{err}"
+        );
+        assert!(!err.contains("Undefined variable: l"), "{err}");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
     let temp_root = make_temp_project_root("project-check-invalid-files-list-fix");
     fs::write(

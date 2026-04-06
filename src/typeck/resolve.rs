@@ -86,6 +86,28 @@ impl TypeChecker {
         None
     }
 
+    pub(crate) fn resolve_wildcard_import_symbol(&self, ident: &str) -> Option<String> {
+        if self.lookup_variable(ident).is_some() {
+            return None;
+        }
+        let mut matches = self
+            .visible_wildcard_import_paths()
+            .into_iter()
+            .filter_map(|path| path.strip_suffix(".*"))
+            .filter_map(|namespace| {
+                stdlib_registry()
+                    .resolve_alias_call(namespace, ident)
+                    .or_else(|| {
+                        let candidate = format!("{}__{}", namespace.replace('.', "__"), ident);
+                        self.functions.contains_key(&candidate).then_some(candidate)
+                    })
+            })
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        (matches.len() == 1).then(|| matches[0].clone())
+    }
+
     pub(crate) fn resolve_import_alias_variant(
         &self,
         alias_ident: &str,
@@ -838,6 +860,7 @@ impl TypeChecker {
         match expr {
             Expr::Ident(name) => self
                 .resolve_import_alias_symbol(name)
+                .or_else(|| self.resolve_wildcard_import_symbol(name))
                 .or_else(|| {
                     self.resolve_function_value_name(name)
                         .map(|resolved| resolved.to_string())

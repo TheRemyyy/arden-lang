@@ -3592,8 +3592,10 @@ impl TypeChecker {
                         self.error(format!("Undefined variable: {}", name), span);
                         ResolvedType::Unknown
                     }
-                } else if let Some(function_name) = self.resolve_function_value_name(name) {
-                    let function_name = function_name.to_owned();
+                } else if let Some(function_name) = self
+                    .resolve_wildcard_import_symbol(name)
+                    .or_else(|| self.resolve_function_value_name(name).map(str::to_string))
+                {
                     self.function_value_type_or_error(&function_name, span)
                 } else if let Some(actual_ty) = self.resolve_class_constructor_function_value_type(
                     expr,
@@ -5007,7 +5009,9 @@ impl TypeChecker {
         span: Span,
     ) -> ResolvedType {
         let canonical_ident_call = match callee {
-            Expr::Ident(name) => self.resolve_import_alias_symbol(name),
+            Expr::Ident(name) => self
+                .resolve_import_alias_symbol(name)
+                .or_else(|| self.resolve_wildcard_import_symbol(name)),
             _ => None,
         };
         let aliased_variant_call = match callee {

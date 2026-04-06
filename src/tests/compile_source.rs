@@ -15846,6 +15846,57 @@ fn compile_source_runs_direct_math_abs_widened_return_function_value_runtime() {
 }
 
 #[test]
+fn compile_source_runs_wildcard_imported_math_abs_call_runtime() {
+    let temp_root = make_temp_project_root("wildcard-imported-math-abs-call-runtime");
+    let source_path = temp_root.join("wildcard_imported_math_abs_call_runtime.apex");
+    let output_path = temp_root.join("wildcard_imported_math_abs_call_runtime");
+    let source = r#"
+            import std.math.*;
+
+            function main(): Integer {
+                return if (abs(-2) == 2) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("wildcard imported Math.abs call should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled wildcard imported Math.abs call binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_wildcard_imported_math_abs_widened_return_function_value_runtime() {
+    let temp_root = make_temp_project_root("wildcard-imported-math-abs-widened-return-fn-value");
+    let source_path = temp_root.join("wildcard_imported_math_abs_widened_return_fn_value.apex");
+    let output_path = temp_root.join("wildcard_imported_math_abs_widened_return_fn_value");
+    let source = r#"
+            import std.math.*;
+
+            function main(): Integer {
+                f: (Integer) -> Float = abs;
+                return if (f(-2) == 2.0) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("wildcard imported Math.abs widened return function value should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled wildcard imported Math.abs widened return function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_alias_math_abs_widened_return_function_value_runtime() {
     let temp_root = make_temp_project_root("alias-math-abs-widened-return-fn-value-runtime");
     let source_path = temp_root.join("alias_math_abs_widened_return_fn_value_runtime.apex");

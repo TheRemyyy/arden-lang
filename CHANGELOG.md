@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed checked wildcard-imported stdlib direct members in call and function-value resolution:
+  - type checking and codegen now resolve direct stdlib members such as `abs`, `len`, and similar names through visible wildcard imports when they are used as bare calls or first-class function values, instead of only supporting `Math.abs`-style qualified access or exact aliases
+  - this fixes valid programs such as `import std.math.*; f: (Integer) -> Float = abs;` and `import std.math.*; return abs(-2);`, which previously failed with `Undefined variable: abs` even though the wildcard import was in scope
 - Fixed import-check handling for direct stdlib wildcard members and module-local wildcard scope leaks:
   - `import std.math.*`, `import std.string.*`, and similar stdlib wildcard imports now register user-facing direct member names such as `abs`, `len`, and `cwd` instead of only their internal canonical symbols, and missing direct wildcard members now report proper import errors instead of silently bypassing import checking
   - this also fixes cases such as `module Inner { import std.math.*; function keep(): Float { return abs(-1.0); } }` followed by top-level `abs(-1.0)`, which previously passed import checking because the top-level direct stdlib member was never recognized as an import-checked symbol

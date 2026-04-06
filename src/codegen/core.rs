@@ -7880,7 +7880,9 @@ impl<'ctx> Codegen<'ctx> {
 
     pub(crate) fn resolve_function_alias(&self, name: &str) -> String {
         let Some(path) = self.lookup_import_alias_path(name) else {
-            return name.to_string();
+            return self
+                .resolve_wildcard_import_symbol(name)
+                .unwrap_or_else(|| name.to_string());
         };
         if let Some(canonical) = builtin_exact_import_alias_canonical(path) {
             return canonical.to_string();
@@ -7913,6 +7915,28 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         name.to_string()
+    }
+
+    fn resolve_wildcard_import_symbol(&self, ident: &str) -> Option<String> {
+        if self.variables.contains_key(ident) {
+            return None;
+        }
+        let mut matches = self
+            .visible_wildcard_import_paths()
+            .into_iter()
+            .filter_map(|path| path.strip_suffix(".*"))
+            .filter_map(|namespace| {
+                stdlib_registry()
+                    .resolve_alias_call(namespace, ident)
+                    .or_else(|| {
+                        let candidate = format!("{}__{}", namespace.replace('.', "__"), ident);
+                        self.functions.contains_key(&candidate).then_some(candidate)
+                    })
+            })
+            .collect::<Vec<_>>();
+        matches.sort_unstable();
+        matches.dedup();
+        (matches.len() == 1).then(|| matches[0].clone())
     }
 
     pub(crate) fn resolve_import_alias_variant(
