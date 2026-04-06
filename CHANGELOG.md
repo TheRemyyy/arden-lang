@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project rewrite for exact `Option.None` builtin aliases:
+  - combined project builds now rewrite exact aliases of the zero-argument builtin `Option.None` constructor such as `import Option.None as Empty;` back to an explicit `Option.none()` value form when they are used as plain expressions
+  - this fixes valid project builds that previously rewrote `Empty` to the raw canonical symbol `Option__none` and then failed with `Undefined variable: Option__none` in both top-level and module-local alias usages
 - Fixed project rewrite for builtin exact import patterns:
   - combined project builds now rewrite builtin exact import pattern aliases such as `import Option.Some as Present;`, `import Option.None as Empty;`, `import Result.Ok as Success;`, and `import Result.Error as Failure;` back to their canonical `Some`/`None`/`Ok`/`Error` pattern forms during project rewrite
   - this fixes valid project builds where builtin alias patterns previously failed with `Invalid Option pattern` / `Invalid Result pattern` and lost their bound pattern variables even though the same aliases already worked outside the combined project rewrite path

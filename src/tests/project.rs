@@ -1126,6 +1126,66 @@ fn project_build_supports_builtin_result_alias_patterns() {
 }
 
 #[test]
+fn project_build_supports_builtin_option_none_alias_values() {
+    let temp_root = make_temp_project_root("builtin-option-none-alias-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport Option.None as Empty;\nfunction main(): Integer { value: Option<Integer> = Empty; return if (value.is_none()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support builtin Option.None aliases");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled builtin Option.None alias binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_module_local_builtin_option_none_alias_values() {
+    let temp_root = make_temp_project_root("module-local-builtin-option-none-alias-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { value: Option<Integer> = Empty; return if (value.is_none()) { 0 } else { 1 }; } }\nfunction main(): Integer { return Inner.keep(); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support module-local builtin Option.None aliases");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled module-local builtin Option.None alias binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_preserves_default_extern_link_names() {
     let temp_root = make_temp_project_root("project-extern-default-link-name");
     let src_dir = temp_root.join("src");

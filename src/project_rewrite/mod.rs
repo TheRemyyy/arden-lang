@@ -380,6 +380,34 @@ fn builtin_exact_import_pattern_variant(
     }
 }
 
+fn builtin_exact_import_value_expr(
+    namespace_path: &str,
+    symbol_name: &str,
+) -> Option<Expr> {
+    let canonical = if namespace_path.is_empty() {
+        Some(symbol_name)
+    } else {
+        crate::ast::builtin_exact_import_alias_canonical(&format!("{namespace_path}.{symbol_name}"))
+    };
+    match canonical {
+        Some("Option__none") => Some(Expr::Call {
+            callee: Box::new(ast::Spanned::new(
+                Expr::Field {
+                    object: Box::new(ast::Spanned::new(
+                        Expr::Ident("Option".to_string()),
+                        ast::Span::default(),
+                    )),
+                    field: "none".to_string(),
+                },
+                ast::Span::default(),
+            )),
+            args: Vec::new(),
+            type_args: Vec::new(),
+        }),
+        _ => None,
+    }
+}
+
 fn direct_wildcard_member_name(
     import_path: &str,
     owner_ns: &str,
@@ -5276,7 +5304,9 @@ fn rewrite_expr_calls_for_project(
                             name,
                         ))
                     } else if let Some((ns, symbol_name)) = imported_map.get(name) {
-                        if is_builtin_exact_import_canonical(symbol_name)
+                        if let Some(value_expr) = builtin_exact_import_value_expr(ns, symbol_name) {
+                            value_expr
+                        } else if is_builtin_exact_import_canonical(symbol_name)
                             || stdlib_registry()
                                 .get_namespace(symbol_name)
                                 .is_some_and(|owner| owner == ns)
@@ -5965,7 +5995,9 @@ fn rewrite_expr_calls_for_project(
                     name,
                 ))
             } else if let Some((ns, symbol_name)) = imported_map.get(name) {
-                if is_builtin_exact_import_canonical(symbol_name)
+                if let Some(value_expr) = builtin_exact_import_value_expr(ns, symbol_name) {
+                    value_expr
+                } else if is_builtin_exact_import_canonical(symbol_name)
                     || stdlib_registry()
                         .get_namespace(symbol_name)
                         .is_some_and(|owner| owner == ns)
