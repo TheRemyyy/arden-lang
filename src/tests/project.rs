@@ -886,6 +886,66 @@ fn project_build_supports_wildcard_imported_nested_module_integer_to_float_calls
 }
 
 #[test]
+fn project_build_supports_stdlib_wildcard_import_calls() {
+    let temp_root = make_temp_project_root("stdlib-wildcard-import-call-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.math.*;\nfunction main(): Integer { return if (abs(-7) == 7) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support stdlib wildcard import calls");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled stdlib wildcard import call binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_stdlib_wildcard_import_function_values() {
+    let temp_root = make_temp_project_root("stdlib-wildcard-import-fn-value-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.math.*;\nfunction main(): Integer { f: (Integer) -> Float = abs; return if (f(-7) == 7.0) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support stdlib wildcard import function values");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled stdlib wildcard import function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_preserves_default_extern_link_names() {
     let temp_root = make_temp_project_root("project-extern-default-link-name");
     let src_dir = temp_root.join("src");

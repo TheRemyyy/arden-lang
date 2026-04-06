@@ -355,6 +355,32 @@ fn direct_wildcard_member_name(
     result
 }
 
+fn direct_stdlib_wildcard_member_name(
+    import_path: &str,
+    owner_ns: &str,
+    symbol_name: &str,
+) -> Option<String> {
+    let started_at = Instant::now();
+    REWRITE_INTERNAL_TIMING_TOTALS
+        .wildcard_match_calls
+        .fetch_add(1, Ordering::Relaxed);
+    let result = if owner_ns != import_path {
+        None
+    } else {
+        Some(
+            symbol_name
+                .split_once("__")
+                .map(|(_, member)| member)
+                .unwrap_or(symbol_name)
+                .to_string(),
+        )
+    };
+    REWRITE_INTERNAL_TIMING_TOTALS
+        .wildcard_match_ns
+        .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+    result
+}
+
 fn resolve_exact_imported_symbol_from_namespaces(
     namespace_path: &str,
     symbol_name: &str,
@@ -586,8 +612,20 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
             extend_wildcard_import_map(import_path, namespace_functions, &mut imported_map);
             if imported_map.len() == imported_map_before {
                 for (symbol_name, owner_ns) in global_function_map {
+                    if let Some(imported_name) = direct_wildcard_member_name(
+                        import_path,
+                        owner_ns,
+                        symbol_name,
+                    )
+                    .or_else(|| {
+                        direct_stdlib_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    }) {
+                        imported_map.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
+                }
+                for (symbol_name, owner_ns) in stdlib_registry().get_functions() {
                     if let Some(imported_name) =
-                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                        direct_stdlib_wildcard_member_name(import_path, owner_ns, symbol_name)
                     {
                         imported_map.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
                     }

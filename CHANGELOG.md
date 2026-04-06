@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project rewrite for direct stdlib wildcard members:
+  - combined project builds now rewrite direct stdlib wildcard-imported members such as `abs` from `import std.math.*;` through the same canonical-symbol mapping already used by import checking and single-file checked compilation
+  - this fixes valid project builds such as `import std.math.*; return abs(-7);` and `f: (Integer) -> Float = abs;`, which previously passed import checking but later failed during project rewrite/codegen with `Undefined variable: abs`
 - Fixed checked wildcard-imported stdlib direct members in call and function-value resolution:
   - type checking and codegen now resolve direct stdlib members such as `abs`, `len`, and similar names through visible wildcard imports when they are used as bare calls or first-class function values, instead of only supporting `Math.abs`-style qualified access or exact aliases
   - this fixes valid programs such as `import std.math.*; f: (Integer) -> Float = abs;` and `import std.math.*; return abs(-2);`, which previously failed with `Undefined variable: abs` even though the wildcard import was in scope
