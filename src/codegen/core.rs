@@ -14759,14 +14759,16 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub(crate) fn compile_integer_index_expr(&mut self, expr: &Expr) -> Result<IntValue<'ctx>> {
-        let index_ty = self.infer_expr_type(expr, &[]);
+        let index_ty = self.infer_builtin_argument_type(expr);
         if !matches!(index_ty, Type::Integer) {
             return Err(CodegenError::new(format!(
                 "Index must be Integer, found {}",
                 Self::format_diagnostic_type(&index_ty)
             )));
         }
-        Ok(self.compile_expr(expr)?.into_int_value())
+        Ok(self
+            .compile_expr_with_expected_type(expr, &index_ty)?
+            .into_int_value())
     }
 
     pub(crate) fn compile_non_negative_integer_index_expr(
@@ -18672,12 +18674,14 @@ impl<'ctx> Codegen<'ctx> {
                             "List constructor capacity cannot be negative",
                         ));
                     }
-                    let capacity = self.compile_expr(&args[0].node)?;
+                    let capacity_ty = self.infer_builtin_argument_type(&args[0].node);
+                    let capacity =
+                        self.compile_expr_with_expected_type(&args[0].node, &capacity_ty)?;
                     if !capacity.is_int_value() {
                         return Err(CodegenError::new(format!(
                             "Constructor {} expects optional Integer capacity, got {}",
                             Self::format_diagnostic_type(&normalized_ty),
-                            Self::format_diagnostic_type(&self.infer_expr_type(&args[0].node, &[]))
+                            Self::format_diagnostic_type(&capacity_ty)
                         )));
                     }
                     return self.create_list_with_capacity_value(

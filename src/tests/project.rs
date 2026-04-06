@@ -1488,6 +1488,67 @@ fn project_build_supports_zero_arg_exact_import_values_in_time_builtin_calls() {
 }
 
 #[test]
+fn project_build_supports_zero_arg_exact_import_values_in_list_index_methods() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-value-list-index-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { values: List<Integer> = List<Integer>(); values.push(10); values.push(20); return values.get(ArgCount) - 20; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support zero-arg exact import values in list index methods");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import list index binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_zero_arg_exact_import_values_in_list_constructor_capacity() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-value-list-capacity-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { values: List<Integer> = List<Integer>(ArgCount); values.push(7); return values.get(0) - 7; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support zero-arg exact import values in list constructor capacity",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import list capacity binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_builtin_option_some_alias_calls() {
     let temp_root = make_temp_project_root("builtin-option-some-alias-project");
     let src_dir = temp_root.join("src");

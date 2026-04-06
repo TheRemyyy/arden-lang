@@ -4673,7 +4673,7 @@ impl TypeChecker {
     ) {
         let arg_types: Vec<ResolvedType> = args
             .iter()
-            .map(|arg| self.check_expr(&arg.node, arg.span.clone()))
+            .map(|arg| self.check_builtin_argument_expr(&arg.node, arg.span.clone()))
             .collect();
         let has_unknown_arg = arg_types
             .iter()
@@ -6507,7 +6507,8 @@ impl TypeChecker {
                 "get" => {
                     self.check_arg_count(method, args, 1, span.clone());
                     if !args.is_empty() {
-                        let idx_type = self.check_expr(&args[0].node, args[0].span.clone());
+                        let idx_type =
+                            self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
                         if matches!(idx_type, ResolvedType::Unknown) {
                             return (**inner).clone();
                         }
@@ -6532,7 +6533,8 @@ impl TypeChecker {
                 "set" => {
                     self.check_arg_count(method, args, 2, span.clone());
                     if args.len() >= 2 {
-                        let idx_type = self.check_expr(&args[0].node, args[0].span.clone());
+                        let idx_type =
+                            self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
                         let val_type = self.check_expr_with_expected_type(
                             &args[1].node,
                             args[1].span.clone(),
