@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project rewrite for exact stdlib function imports:
+  - combined project builds now resolve exact stdlib function imports such as `import std.math.abs as absolute;` through the stdlib alias registry when building the rewrite import map, instead of only checking user-defined project symbols
+  - this fixes valid project builds where exact stdlib imports were later left unreplaced in expressions and failed with `Undefined variable` during rewrite/codegen despite being accepted by import checking
 - Fixed project rewrite for direct stdlib wildcard members:
   - combined project builds now rewrite direct stdlib wildcard-imported members such as `abs` from `import std.math.*;` through the same canonical-symbol mapping already used by import checking and single-file checked compilation
   - this fixes valid project builds such as `import std.math.*; return abs(-7);` and `f: (Integer) -> Float = abs;`, which previously passed import checking but later failed during project rewrite/codegen with `Undefined variable: abs`

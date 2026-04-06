@@ -328,6 +328,15 @@ fn resolve_exact_imported_variant_alias(
         .map(|(owner_ns, enum_name)| (owner_ns, enum_name, symbol_name.to_string()))
 }
 
+fn resolve_exact_stdlib_imported_symbol(
+    namespace_path: &str,
+    symbol_name: &str,
+) -> Option<(String, String)> {
+    stdlib_registry()
+        .resolve_alias_call(namespace_path, symbol_name)
+        .map(|canonical| (namespace_path.to_string(), canonical))
+}
+
 fn direct_wildcard_member_name(
     import_path: &str,
     owner_ns: &str,
@@ -692,6 +701,7 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                     .or_else(|| {
                         resolve_exact_imported_symbol_path(&ns, source_name, global_function_map)
                     })
+                    .or_else(|| resolve_exact_stdlib_imported_symbol(&ns, source_name))
                 {
                     imported_map.insert(import_key.clone(), (owner_ns, function_name));
                 }
