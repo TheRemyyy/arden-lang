@@ -1006,6 +1006,66 @@ fn project_build_supports_stdlib_exact_import_function_values() {
 }
 
 #[test]
+fn project_build_supports_builtin_option_some_alias_calls() {
+    let temp_root = make_temp_project_root("builtin-option-some-alias-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport Option.Some as Present;\nfunction main(): Integer { value: Option<Integer> = Present(7); return if (value.unwrap() == 7) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support builtin Option.Some aliases");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled builtin Option.Some alias binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_builtin_result_ok_alias_function_values() {
+    let temp_root = make_temp_project_root("builtin-result-ok-alias-fn-value-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport Result.Ok as Success;\nfunction main(): Integer { f: (Integer) -> Result<Integer, String> = Success; value: Result<Integer, String> = f(7); return if (value.unwrap() == 7) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support builtin Result.Ok alias function values");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled builtin Result.Ok alias function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_preserves_default_extern_link_names() {
     let temp_root = make_temp_project_root("project-extern-default-link-name");
     let src_dir = temp_root.join("src");

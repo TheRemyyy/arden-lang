@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project rewrite for builtin exact import aliases:
+  - combined project builds now preserve canonical rewrites for builtin exact imports such as `import Option.Some as Present;` and `import Result.Ok as Success;` in both constructor-style calls and first-class function values instead of dropping them during project rewrite
+  - this fixes valid project builds that previously failed with errors such as `Unknown type: Present` or `Undefined variable: Success` even though the same exact builtin aliases already worked in single-file checked compilation
 - Fixed project rewrite for exact stdlib function imports:
   - combined project builds now resolve exact stdlib function imports such as `import std.math.abs as absolute;` through the stdlib alias registry when building the rewrite import map, instead of only checking user-defined project symbols
   - this fixes valid project builds where exact stdlib imports were later left unreplaced in expressions and failed with `Undefined variable` during rewrite/codegen despite being accepted by import checking

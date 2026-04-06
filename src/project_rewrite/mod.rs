@@ -337,6 +337,35 @@ fn resolve_exact_stdlib_imported_symbol(
         .map(|canonical| (namespace_path.to_string(), canonical))
 }
 
+fn resolve_exact_builtin_imported_symbol(
+    namespace_path: &str,
+    symbol_name: &str,
+) -> Option<String> {
+    crate::ast::builtin_exact_import_alias_canonical(&format!("{namespace_path}.{symbol_name}"))
+        .map(str::to_string)
+}
+
+fn is_builtin_exact_import_canonical(symbol_name: &str) -> bool {
+    matches!(
+        symbol_name,
+        "Option__some" | "Option__none" | "Result__ok" | "Result__error"
+    )
+}
+
+fn builtin_exact_import_static_container_parts(
+    namespace_path: &str,
+    symbol_name: &str,
+) -> Option<(&'static str, &'static str)> {
+    match crate::ast::builtin_exact_import_alias_canonical(&format!("{namespace_path}.{symbol_name}"))
+    {
+        Some("Option__some") => Some(("Option", "some")),
+        Some("Option__none") => Some(("Option", "none")),
+        Some("Result__ok") => Some(("Result", "ok")),
+        Some("Result__error") => Some(("Result", "error")),
+        _ => None,
+    }
+}
+
 fn direct_wildcard_member_name(
     import_path: &str,
     owner_ns: &str,
@@ -702,6 +731,10 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                         resolve_exact_imported_symbol_path(&ns, source_name, global_function_map)
                     })
                     .or_else(|| resolve_exact_stdlib_imported_symbol(&ns, source_name))
+                    .or_else(|| {
+                        resolve_exact_builtin_imported_symbol(&ns, source_name)
+                            .map(|canonical| (String::new(), canonical))
+                    })
                 {
                     imported_map.insert(import_key.clone(), (owner_ns, function_name));
                 }
@@ -4731,6 +4764,26 @@ fn rewrite_expr_calls_for_project(
                         };
                     }
                     if let Some((import_ns, symbol_name)) = imported_modules.get(name) {
+                        if let Some(canonical) =
+                            resolve_exact_builtin_imported_symbol(import_ns, symbol_name)
+                        {
+                            return Expr::Call {
+                                callee: Box::new(ast::Spanned::new(
+                                    Expr::Ident(canonical),
+                                    callee.span.clone(),
+                                )),
+                                args: args
+                                    .iter()
+                                    .map(|arg| {
+                                        ast::Spanned::new(
+                                            rewrite_expr_calls_for_project(&arg.node, ctx, scopes),
+                                            arg.span.clone(),
+                                        )
+                                    })
+                                    .collect(),
+                                type_args: vec![],
+                            };
+                        }
                         if let Some((owner_ns, enum_name, variant_name)) =
                             resolve_exact_imported_variant_alias(
                                 import_ns,
@@ -5193,9 +5246,10 @@ fn rewrite_expr_calls_for_project(
                             name,
                         ))
                     } else if let Some((ns, symbol_name)) = imported_map.get(name) {
-                        if stdlib_registry()
-                            .get_namespace(symbol_name)
-                            .is_some_and(|owner| owner == ns)
+                        if is_builtin_exact_import_canonical(symbol_name)
+                            || stdlib_registry()
+                                .get_namespace(symbol_name)
+                                .is_some_and(|owner| owner == ns)
                         {
                             Expr::Ident(symbol_name.clone())
                         } else {
@@ -5601,6 +5655,32 @@ fn rewrite_expr_calls_for_project(
         },
         Expr::Construct { ty, args } => {
             if let Some((import_ns, symbol_name)) = imported_modules.get(ty) {
+                if let Some((owner_name, field_name)) =
+                    builtin_exact_import_static_container_parts(import_ns, symbol_name)
+                {
+                    return Expr::Call {
+                        callee: Box::new(ast::Spanned::new(
+                            Expr::Field {
+                                object: Box::new(ast::Spanned::new(
+                                    Expr::Ident(owner_name.to_string()),
+                                    ast::Span::default(),
+                                )),
+                                field: field_name.to_string(),
+                            },
+                            ast::Span::default(),
+                        )),
+                        args: args
+                            .iter()
+                            .map(|a| {
+                                ast::Spanned::new(
+                                    rewrite_expr_calls_for_project(&a.node, ctx, scopes),
+                                    a.span.clone(),
+                                )
+                            })
+                            .collect(),
+                        type_args: vec![],
+                    };
+                }
                 if let Some((owner_ns, enum_name, variant_name)) =
                     resolve_exact_imported_variant_alias(import_ns, symbol_name, global_enum_map)
                 {
@@ -5855,9 +5935,10 @@ fn rewrite_expr_calls_for_project(
                     name,
                 ))
             } else if let Some((ns, symbol_name)) = imported_map.get(name) {
-                if stdlib_registry()
-                    .get_namespace(symbol_name)
-                    .is_some_and(|owner| owner == ns)
+                if is_builtin_exact_import_canonical(symbol_name)
+                    || stdlib_registry()
+                        .get_namespace(symbol_name)
+                        .is_some_and(|owner| owner == ns)
                 {
                     Expr::Ident(symbol_name.clone())
                 } else {
