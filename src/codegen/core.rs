@@ -455,6 +455,36 @@ impl<'ctx> Codegen<'ctx> {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            Type::Function(params, ret) => format!(
+                "({}) -> {}",
+                params
+                    .iter()
+                    .map(Self::format_diagnostic_type)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                Self::format_diagnostic_type(ret)
+            ),
+            Type::Option(inner) => format!("Option<{}>", Self::format_diagnostic_type(inner)),
+            Type::Result(ok, err) => format!(
+                "Result<{}, {}>",
+                Self::format_diagnostic_type(ok),
+                Self::format_diagnostic_type(err)
+            ),
+            Type::List(inner) => format!("List<{}>", Self::format_diagnostic_type(inner)),
+            Type::Map(key, value) => format!(
+                "Map<{}, {}>",
+                Self::format_diagnostic_type(key),
+                Self::format_diagnostic_type(value)
+            ),
+            Type::Set(inner) => format!("Set<{}>", Self::format_diagnostic_type(inner)),
+            Type::Ref(inner) => format!("&{}", Self::format_diagnostic_type(inner)),
+            Type::MutRef(inner) => format!("&mut {}", Self::format_diagnostic_type(inner)),
+            Type::Box(inner) => format!("Box<{}>", Self::format_diagnostic_type(inner)),
+            Type::Rc(inner) => format!("Rc<{}>", Self::format_diagnostic_type(inner)),
+            Type::Arc(inner) => format!("Arc<{}>", Self::format_diagnostic_type(inner)),
+            Type::Ptr(inner) => format!("*{}", Self::format_diagnostic_type(inner)),
+            Type::Task(inner) => format!("Task<{}>", Self::format_diagnostic_type(inner)),
+            Type::Range(inner) => format!("Range<{}>", Self::format_diagnostic_type(inner)),
             _ => Self::format_diagnostic_name(&Self::format_type_string(ty)),
         }
     }
@@ -8003,7 +8033,16 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(Some(closure.into()));
         }
 
-        self.compile_function_value_adapter_from_closure(closure.into(), &actual_ty, expected_ty)
+        if let Some(adapted) =
+            self.compile_function_value_adapter_from_closure(closure.into(), &actual_ty, expected_ty)?
+        {
+            return Ok(Some(adapted));
+        }
+
+        Err(Self::function_value_signature_mismatch_error(
+            &actual_ty,
+            expected_ty,
+        ))
     }
 
     fn is_contextual_static_container_function_value(name: &str) -> bool {
@@ -12412,10 +12451,18 @@ impl<'ctx> Codegen<'ctx> {
         }
         if matches!(expected_ty, Type::Function(_, _)) {
             if let Some(name) = self.resolve_contextual_function_value_name(expr) {
-                if let Some(adapted) =
-                    self.compile_named_function_value_with_expected_type(&name, expected_ty)?
-                {
-                    return Ok(adapted);
+                if let Some(actual_ty) = self.functions.get(&name).map(|(_, ty)| ty.clone()) {
+                    if let Type::Function(_, _) = actual_ty {
+                        if let Some(adapted) =
+                            self.compile_named_function_value_with_expected_type(&name, expected_ty)?
+                        {
+                            return Ok(adapted);
+                        }
+                        return Err(Self::function_value_signature_mismatch_error(
+                            &actual_ty,
+                            expected_ty,
+                        ));
+                    }
                 }
                 if let Some(adapted) =
                     self.compile_builtin_function_value_with_expected_type(&name, expected_ty)?
@@ -12789,7 +12836,7 @@ impl<'ctx> Codegen<'ctx> {
         } else {
             return Err(CodegenError::new(format!(
                 "Type mismatch: expected {}, got {}",
-                Self::format_type_string(expected_ty),
+                Self::format_diagnostic_type(expected_ty),
                 Self::builtin_function_value_diagnostic_signature(name)
             )));
         };

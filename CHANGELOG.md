@@ -29,6 +29,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked bound-method function signature validation for interface-backed receivers:
   - function-value lowering now recovers the actual bound-method signature for interface and generic-bound receivers before expected-type adaptation runs, and incompatible function signatures now fail explicitly instead of silently reusing the raw closure layout
   - this fixes cases such as `f: (Integer) -> Integer = value.get` and `f: (Integer) -> Integer = value.name` on `value: Named` or `T extends Named`, which previously compiled in unchecked/project builds and then called the wrong ABI at runtime instead of reporting `Cannot use function value () -> Integer as (Integer) -> Integer`
+- Fixed unchecked named-function signature mismatch diagnostics:
+  - contextual function-value lowering now keeps user-defined named functions on the named-function path even when expected signature adaptation fails, instead of falling through to the builtin-function diagnostic branch
+  - this fixes cases such as `f: (Integer) -> Integer = get` for `function get(): Integer`, which previously reported the bogus message `Type mismatch: expected (Integer) -> Integer, got builtin function` instead of the actual function-type mismatch
+- Fixed unchecked constructor function-value signature mismatch diagnostics:
+  - constructor function-value lowering now reports constructor/function signature mismatches directly when no adapter can be built, instead of dropping out of constructor detection and later misreporting the class name as an undefined variable
+  - this fixes cases such as `f: () -> Box = Box` for `class Box { constructor(value: Integer) ... }`, which previously reported `Undefined variable: Box` instead of `Cannot use function value (Integer) -> Box as () -> Box`
+- Fixed specialized generic type names leaking through function-value diagnostics:
+  - diagnostic type formatting now recursively prettifies specialized generic names inside function and container types instead of only handling top-level `Named` and `Generic` nodes
+  - this fixes cases such as `f: () -> Box<Integer> = Box<Integer>`, which previously leaked internal names like `Box.spec.I64` in mismatch diagnostics instead of showing `Box<Integer>`
+- Fixed specialized generic type names leaking through builtin function-value mismatches:
+  - builtin function-value mismatch diagnostics now use the same user-facing type formatter for the expected function type instead of the raw internal type formatter
+  - this fixes cases such as `f: () -> Option<Box<Integer>> = Option.some`, which previously reported internal names like `Option<Box__spec__I64>` instead of `Option<Box<Integer>>`
 - Fixed unchecked multi-bound generic interface dispatch:
   - method calls and bound-method values on generic receivers now match against the full union of resolved interface bounds instead of only the first bound
   - this fixes cases such as `function read_b<T extends A, B>(value: T): Integer { return value.b(); }` and `value.b`, which previously failed with diagnostics like `Unknown method 'b' for interface 'A'` or `Unknown class: T`

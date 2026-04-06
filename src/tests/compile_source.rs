@@ -14973,6 +14973,129 @@ fn compile_source_rejects_function_value_retyped_to_narrower_integer_parameter()
 }
 
 #[test]
+fn compile_source_no_check_rejects_named_function_value_signature_mismatch_with_function_type() {
+    let temp_root = make_temp_project_root("no-check-named-function-value-signature-mismatch");
+    let source_path = temp_root.join("no_check_named_function_value_signature_mismatch.apex");
+    let output_path = temp_root.join("no_check_named_function_value_signature_mismatch");
+    let source = r#"
+            function get(): Integer {
+                return 1;
+            }
+
+            function main(): Integer {
+                f: (Integer) -> Integer = get;
+                return f(1);
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("named function value signature mismatch should fail in codegen");
+    assert!(
+        err.contains("Cannot use function value () -> Integer as (Integer) -> Integer"),
+        "{err}"
+    );
+    assert!(!err.contains("builtin function"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_constructor_function_value_signature_mismatch() {
+    let temp_root = make_temp_project_root("no-check-constructor-function-value-signature-mismatch");
+    let source_path =
+        temp_root.join("no_check_constructor_function_value_signature_mismatch.apex");
+    let output_path =
+        temp_root.join("no_check_constructor_function_value_signature_mismatch");
+    let source = r#"
+            class Box {
+                value: Integer;
+                constructor(value: Integer) { this.value = value; }
+            }
+
+            function main(): Integer {
+                f: () -> Box = Box;
+                return f().value;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("constructor function value signature mismatch should fail in codegen");
+    assert!(
+        err.contains("Cannot use function value (Integer) -> Box as () -> Box"),
+        "{err}"
+    );
+    assert!(!err.contains("Undefined variable: Box"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_formats_specialized_constructor_function_value_signature_mismatch() {
+    let temp_root =
+        make_temp_project_root("no-check-specialized-constructor-function-signature-mismatch");
+    let source_path =
+        temp_root.join("no_check_specialized_constructor_function_signature_mismatch.apex");
+    let output_path =
+        temp_root.join("no_check_specialized_constructor_function_signature_mismatch");
+    let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                f: () -> Box<Integer> = Box<Integer>;
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("specialized constructor function value signature mismatch should fail in codegen");
+    assert!(
+        err.contains("Cannot use function value (Integer) -> Box<Integer> as () -> Box<Integer>"),
+        "{err}"
+    );
+    assert!(!err.contains("Box.spec.I64"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_formats_specialized_builtin_function_value_signature_mismatch() {
+    let temp_root =
+        make_temp_project_root("no-check-specialized-builtin-function-signature-mismatch");
+    let source_path =
+        temp_root.join("no_check_specialized_builtin_function_signature_mismatch.apex");
+    let output_path =
+        temp_root.join("no_check_specialized_builtin_function_signature_mismatch");
+    let source = r#"
+            class Box<T> {
+                value: T;
+                constructor(value: T) { this.value = value; }
+            }
+
+            function main(): Integer {
+                f: () -> Option<Box<Integer>> = Option.some;
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("specialized builtin function value signature mismatch should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected () -> Option<Box<Integer>>, got (unknown) -> Option<unknown>"),
+        "{err}"
+    );
+    assert!(!err.contains("Box__spec__I64"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_async_block_nested_integer_return_for_float_task_runtime() {
     let temp_root = make_temp_project_root("async-nested-int-return-float-task-runtime");
     let source_path = temp_root.join("async_nested_int_return_float_task_runtime.apex");
