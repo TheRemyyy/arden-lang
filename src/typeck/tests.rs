@@ -65,6 +65,68 @@ fn parses_nested_namespace_aliased_function_type_string_inside_generic_container
 }
 
 #[test]
+fn resolves_generic_exact_import_alias_nominal_reference_names() {
+    let mut checker = TypeChecker::new();
+    checker
+        .import_aliases
+        .insert("BaseAlias".to_string(), "lib.Base".to_string());
+    checker
+        .import_aliases
+        .insert("PayloadAlias".to_string(), "lib.Payload".to_string());
+    checker.classes.insert(
+        "lib__Base".to_string(),
+        ClassInfo {
+            fields: HashMap::new(),
+            methods: HashMap::new(),
+            method_visibilities: HashMap::new(),
+            constructor: None,
+            generic_type_vars: Vec::new(),
+            visibility: Visibility::Public,
+            extends: None,
+            implements: Vec::new(),
+            span: 0..0,
+        },
+    );
+    checker.classes.insert(
+        "lib__Payload".to_string(),
+        ClassInfo {
+            fields: HashMap::new(),
+            methods: HashMap::new(),
+            method_visibilities: HashMap::new(),
+            constructor: None,
+            generic_type_vars: Vec::new(),
+            visibility: Visibility::Public,
+            extends: None,
+            implements: Vec::new(),
+            span: 0..0,
+        },
+    );
+
+    let resolved = checker
+        .resolve_nominal_reference_name("BaseAlias<PayloadAlias>")
+        .expect("generic alias name should resolve");
+
+    assert_eq!(resolved, "lib__Base<lib__Payload>");
+}
+
+#[test]
+fn supports_generic_exact_import_alias_base_classes_inside_modules() {
+    let src = r#"
+        module lib {
+            class Payload { constructor() {} }
+            class Base<T> { constructor() {} }
+        }
+        module app {
+            import lib.Base as BaseAlias;
+            import lib.Payload as PayloadAlias;
+            class Child extends BaseAlias<PayloadAlias> { constructor() {} }
+        }
+    "#;
+
+    check_source(src).expect("module-scoped generic alias base class should type-check");
+}
+
+#[test]
 fn rejects_private_member_access_from_outside_class() {
     let src = r#"
         class Secret {

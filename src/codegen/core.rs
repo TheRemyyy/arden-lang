@@ -6798,24 +6798,48 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn collect_import_resolution_paths(program: &Program) -> HashMap<String, String> {
-        let mut import_paths = HashMap::new();
-        let current_package = program.package.as_deref();
-        for decl in &program.declarations {
-            let Decl::Import(import) = &decl.node else {
-                continue;
-            };
-            if let Some(alias) = &import.alias {
-                import_paths.insert(
-                    alias.clone(),
-                    Self::normalize_import_resolution_path(current_package, &import.path),
-                );
-            } else if import.path.ends_with(".*") {
-                import_paths.insert(
-                    import.path.clone(),
-                    Self::normalize_import_resolution_path(current_package, &import.path),
-                );
+        fn collect_from_decls(
+            declarations: &[Spanned<Decl>],
+            current_package: Option<&str>,
+            normalize_import_path: fn(Option<&str>, &str) -> String,
+            import_paths: &mut HashMap<String, String>,
+        ) {
+            for decl in declarations {
+                match &decl.node {
+                    Decl::Import(import) => {
+                        if let Some(alias) = &import.alias {
+                            import_paths.insert(
+                                alias.clone(),
+                                normalize_import_path(current_package, &import.path),
+                            );
+                        } else if import.path.ends_with(".*") {
+                            import_paths.insert(
+                                import.path.clone(),
+                                normalize_import_path(current_package, &import.path),
+                            );
+                        }
+                    }
+                    Decl::Module(module) => {
+                        collect_from_decls(
+                            &module.declarations,
+                            current_package,
+                            normalize_import_path,
+                            import_paths,
+                        );
+                    }
+                    _ => {}
+                }
             }
         }
+
+        let mut import_paths = HashMap::new();
+        let current_package = program.package.as_deref();
+        collect_from_decls(
+            &program.declarations,
+            current_package,
+            Self::normalize_import_resolution_path,
+            &mut import_paths,
+        );
         import_paths
     }
 
@@ -7242,11 +7266,25 @@ impl<'ctx> Codegen<'ctx> {
             .generated_spec_owners_count
             .fetch_add(generated_spec_symbols_by_owner.len(), Ordering::Relaxed);
         let specialized_active_symbols_started_at = Instant::now();
+        let specialized_declaration_symbols = declaration_symbols.map(|symbols| {
+            let mut combined = symbols.clone();
+            for owner in symbols {
+                if let Some(generated_symbols) = generated_spec_symbols_by_owner.get(owner) {
+                    combined.extend(generated_symbols.iter().cloned());
+                }
+            }
+            for generated_symbols in generated_spec_symbols_by_owner.values() {
+                combined.extend(generated_symbols.iter().cloned());
+            }
+            combined
+        });
         let specialized_active_symbols = active_symbols.map(|symbols| {
             let mut combined = symbols.clone();
-            let owner_symbols = symbols
-                .iter()
-                .chain(declaration_symbols.into_iter().flat_map(|set| set.iter()));
+            let owner_symbols = symbols.iter().chain(
+                specialized_declaration_symbols
+                    .iter()
+                    .flat_map(|set| set.iter()),
+            );
             for owner in owner_symbols {
                 if let Some(generated_symbols) = generated_spec_symbols_by_owner.get(owner) {
                     combined.extend(generated_symbols.iter().cloned());
@@ -7341,7 +7379,8 @@ impl<'ctx> Codegen<'ctx> {
         let mut declared_enum_count = 0_usize;
         for decl in &program.declarations {
             let decl_filter_started_at = Instant::now();
-            let should_declare = declaration_symbols
+            let should_declare = specialized_declaration_symbols
+                .as_ref()
                 .map(|symbols| self.should_compile_decl(&decl.node, symbols))
                 .unwrap_or(true);
             enum_declare_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
@@ -7378,9 +7417,15 @@ impl<'ctx> Codegen<'ctx> {
         let mut declared_class_count = 0_usize;
         let mut declared_function_count = 0_usize;
         let mut declared_module_count = 0_usize;
+        let mut pending_classes = Vec::new();
         for decl in &program.declarations {
+            if let Decl::Class(class) = &decl.node {
+                pending_classes.push(class.clone());
+                continue;
+            }
             let decl_filter_started_at = Instant::now();
-            let should_declare = declaration_symbols
+            let should_declare = specialized_declaration_symbols
+                .as_ref()
                 .map(|symbols| self.should_compile_decl(&decl.node, symbols))
                 .unwrap_or(true);
             decl_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
@@ -7388,27 +7433,64 @@ impl<'ctx> Codegen<'ctx> {
                 continue;
             }
             match &decl.node {
-                Decl::Class(class) => {
-                    let declare_started_at = Instant::now();
-                    self.declare_class(class)?;
-                    decl_pass_class_work_ns += elapsed_nanos_u64(declare_started_at);
-                    declared_class_count += 1;
-                }
                 Decl::Function(func) => {
                     let declare_started_at = Instant::now();
                     self.declare_function(func)?;
                     decl_pass_function_work_ns += elapsed_nanos_u64(declare_started_at);
                     declared_function_count += 1;
                 }
+                Decl::Class(_) => {}
                 Decl::Enum(_) => {}
                 Decl::Interface(_) => {} // Interfaces don't generate code
                 Decl::Module(_) => {}
                 Decl::Import(_) => {} // Handled at file level
             }
         }
+        let mut module_enums = Vec::new();
+        let mut module_classes = Vec::new();
+        for decl in &program.declarations {
+            if let Decl::Module(module) = &decl.node {
+                Self::collect_module_enums_with_prefix(module, &module.name, &mut module_enums);
+                Self::collect_module_classes_with_prefix(module, &module.name, &mut module_classes);
+            }
+        }
+        for en in &module_enums {
+            self.declare_enum(en)?;
+        }
+        pending_classes.extend(module_classes);
+        while !pending_classes.is_empty() {
+            let mut progress = false;
+            let mut next_pending = Vec::new();
+            for class in pending_classes {
+                let declare_started_at = Instant::now();
+                let parent_ready = class.extends.as_ref().is_none_or(|parent| {
+                    self.classes.contains_key(parent)
+                        || self.materialize_generic_parent_class_info(parent).is_some()
+                });
+                if parent_ready {
+                    self.declare_class(&class)?;
+                    decl_pass_class_work_ns += elapsed_nanos_u64(declare_started_at);
+                    declared_class_count += 1;
+                    progress = true;
+                } else {
+                    next_pending.push(class);
+                }
+            }
+            if !progress {
+                for class in next_pending {
+                    let declare_started_at = Instant::now();
+                    self.declare_class(&class)?;
+                    decl_pass_class_work_ns += elapsed_nanos_u64(declare_started_at);
+                    declared_class_count += 1;
+                }
+                break;
+            }
+            pending_classes = next_pending;
+        }
         for decl in &program.declarations {
             let decl_filter_started_at = Instant::now();
-            let should_declare = declaration_symbols
+            let should_declare = specialized_declaration_symbols
+                .as_ref()
                 .map(|symbols| self.should_compile_decl(&decl.node, symbols))
                 .unwrap_or(true);
             decl_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
@@ -7417,7 +7499,7 @@ impl<'ctx> Codegen<'ctx> {
             }
             if let Decl::Module(module) = &decl.node {
                 let declare_started_at = Instant::now();
-                self.declare_module(module)?;
+                self.declare_module_functions_with_prefix(module, &module.name)?;
                 decl_pass_module_work_ns += elapsed_nanos_u64(declare_started_at);
                 declared_module_count += 1;
             }
@@ -8556,7 +8638,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn declare_module(&mut self, module: &ModuleDecl) -> Result<()> {
-        self.declare_module_with_prefix(module, &module.name)
+        self.declare_module_functions_with_prefix(module, &module.name)
     }
 
     pub fn compile_module(&mut self, module: &ModuleDecl) -> Result<()> {
@@ -8571,7 +8653,49 @@ impl<'ctx> Codegen<'ctx> {
         self.compile_module_filtered_with_prefix(module, &module.name, active_symbols)
     }
 
-    fn declare_module_with_prefix(&mut self, module: &ModuleDecl, prefix: &str) -> Result<()> {
+    fn collect_module_enums_with_prefix(
+        module: &ModuleDecl,
+        prefix: &str,
+        out: &mut Vec<EnumDecl>,
+    ) {
+        for decl in &module.declarations {
+            match &decl.node {
+                Decl::Enum(en) => {
+                    let mut prefixed_enum = en.clone();
+                    prefixed_enum.name = format!("{}__{}", prefix, en.name);
+                    out.push(prefixed_enum);
+                }
+                Decl::Module(nested) => {
+                    let nested_prefix = format!("{}__{}", prefix, nested.name);
+                    Self::collect_module_enums_with_prefix(nested, &nested_prefix, out);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn collect_module_classes_with_prefix(
+        module: &ModuleDecl,
+        prefix: &str,
+        out: &mut Vec<ClassDecl>,
+    ) {
+        for decl in &module.declarations {
+            match &decl.node {
+                Decl::Class(class) => {
+                    let mut prefixed_class = class.clone();
+                    prefixed_class.name = format!("{}__{}", prefix, class.name);
+                    out.push(prefixed_class);
+                }
+                Decl::Module(nested) => {
+                    let nested_prefix = format!("{}__{}", prefix, nested.name);
+                    Self::collect_module_classes_with_prefix(nested, &nested_prefix, out);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn declare_module_functions_with_prefix(&mut self, module: &ModuleDecl, prefix: &str) -> Result<()> {
         for decl in &module.declarations {
             match &decl.node {
                 Decl::Function(func) => {
@@ -8579,21 +8703,11 @@ impl<'ctx> Codegen<'ctx> {
                     prefixed_func.name = format!("{}__{}", prefix, func.name);
                     self.declare_function(&prefixed_func)?;
                 }
-                Decl::Class(class) => {
-                    let mut prefixed_class = class.clone();
-                    prefixed_class.name = format!("{}__{}", prefix, class.name);
-                    self.declare_class(&prefixed_class)?;
-                }
-                Decl::Enum(en) => {
-                    let mut prefixed_enum = en.clone();
-                    prefixed_enum.name = format!("{}__{}", prefix, en.name);
-                    self.declare_enum(&prefixed_enum)?;
-                }
                 Decl::Module(nested) => {
                     let nested_prefix = format!("{}__{}", prefix, nested.name);
-                    self.declare_module_with_prefix(nested, &nested_prefix)?;
+                    self.declare_module_functions_with_prefix(nested, &nested_prefix)?;
                 }
-                Decl::Interface(_) | Decl::Import(_) => {}
+                Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
             }
         }
         Ok(())
@@ -8882,6 +8996,76 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
+    fn materialize_generic_parent_class_info(&mut self, parent: &str) -> Option<()> {
+        if self.classes.contains_key(parent) {
+            return Some(());
+        }
+
+        let (base_name, args) = if let Ok(Type::Generic(base_name, args)) = parse_type_source(parent)
+        {
+            (base_name, args)
+        } else if let Some((base_name, suffixes)) = parent.split_once("__spec__") {
+            let (decoded_args, consumed) = Self::decode_generic_specialization_args(suffixes)
+                .into_iter()
+                .find(|(_, consumed)| *consumed == suffixes.len())?;
+            if consumed != suffixes.len() {
+                return None;
+            }
+            let parsed_args = decoded_args
+                .into_iter()
+                .map(|arg| parse_type_source(&arg).ok())
+                .collect::<Option<Vec<_>>>()?;
+            (base_name.to_string(), parsed_args)
+        } else {
+            return None;
+        };
+
+        let base_info = self.classes.get(&base_name)?;
+        if base_info.generic_params.len() != args.len() {
+            return None;
+        }
+
+        let bindings = base_info
+            .generic_params
+            .iter()
+            .cloned()
+            .zip(args)
+            .collect::<HashMap<_, _>>();
+        let field_indices = base_info.field_indices.clone();
+        let field_types = base_info
+            .field_types
+            .iter()
+            .map(|(name, ty)| (name.clone(), Self::substitute_type(ty, &bindings)))
+            .collect::<HashMap<_, _>>();
+        let mut ordered_fields = field_indices
+            .iter()
+            .map(|(name, idx)| (name.clone(), *idx))
+            .collect::<Vec<_>>();
+        ordered_fields.sort_by_key(|(_, idx)| *idx);
+        let field_llvm_types = ordered_fields
+            .iter()
+            .map(|(name, _)| self.llvm_type(field_types.get(name).expect("field type must exist")))
+            .collect::<Vec<_>>();
+        let extends = base_info.extends.as_ref().map(|extends| {
+            parse_type_source(extends)
+                .ok()
+                .map(|parsed| Self::format_type_string(&Self::substitute_type(&parsed, &bindings)))
+                .unwrap_or_else(|| extends.clone())
+        });
+
+        self.classes.insert(
+            parent.to_string(),
+            ClassInfo {
+                struct_type: self.context.struct_type(&field_llvm_types, false),
+                field_indices,
+                field_types,
+                generic_params: Vec::new(),
+                extends,
+            },
+        );
+        Some(())
+    }
+
     // === Classes ===
 
     pub fn declare_class(&mut self, class: &ClassDecl) -> Result<()> {
@@ -8891,6 +9075,7 @@ impl<'ctx> Codegen<'ctx> {
 
         let mut next_index = 0u32;
         if let Some(parent) = &class.extends {
+            self.materialize_generic_parent_class_info(parent);
             let parent_info = self
                 .classes
                 .get(parent)

@@ -1810,9 +1810,17 @@ fn rewrite_named_reference_for_project_with_interfaces(
     name: &str,
     ctx: RewriteTypeContext<'_>,
 ) -> String {
-    match rewrite_type_for_project_with_interfaces(&ast::Type::Named(name.to_string()), ctx) {
-        ast::Type::Named(rewritten) => rewritten,
-        _ => name.to_string(),
+    match parse_type_source(name) {
+        Ok(parsed @ ast::Type::Named(_)) | Ok(parsed @ ast::Type::Generic(_, _)) => {
+            format_type_string(&rewrite_type_for_project_with_interfaces(&parsed, ctx))
+        }
+        Ok(_) | Err(_) => match rewrite_type_for_project_with_interfaces(
+            &ast::Type::Named(name.to_string()),
+            ctx,
+        ) {
+            ast::Type::Named(rewritten) => rewritten,
+            _ => name.to_string(),
+        },
     }
 }
 

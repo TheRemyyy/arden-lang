@@ -643,18 +643,29 @@ impl TypeChecker {
         }
     }
     fn populate_import_aliases(&mut self, program: &Program) {
-        self.import_aliases.clear();
-        for decl in &program.declarations {
-            if let Decl::Import(import) = &decl.node {
-                if let Some(alias) = &import.alias {
-                    self.import_aliases
-                        .insert(alias.clone(), import.path.clone());
-                } else if import.path.ends_with(".*") {
-                    self.import_aliases
-                        .insert(import.path.clone(), import.path.clone());
+        fn collect_import_aliases(
+            import_aliases: &mut HashMap<String, String>,
+            declarations: &[Spanned<Decl>],
+        ) {
+            for decl in declarations {
+                match &decl.node {
+                    Decl::Import(import) => {
+                        if let Some(alias) = &import.alias {
+                            import_aliases.insert(alias.clone(), import.path.clone());
+                        } else if import.path.ends_with(".*") {
+                            import_aliases.insert(import.path.clone(), import.path.clone());
+                        }
+                    }
+                    Decl::Module(module) => {
+                        collect_import_aliases(import_aliases, &module.declarations);
+                    }
+                    _ => {}
                 }
             }
         }
+
+        self.import_aliases.clear();
+        collect_import_aliases(&mut self.import_aliases, &program.declarations);
     }
 
     fn is_same_or_subclass_of(&self, class_name: &str, ancestor: &str) -> bool {
@@ -1641,8 +1652,13 @@ impl TypeChecker {
         self.current_class = Some(class_key.to_string());
         if let Some(parent) = &class.extends {
             let resolved_parent = self
-                .resolve_nominal_reference_name(parent)
-                .unwrap_or_else(|| parent.clone());
+                .classes
+                .get(class_key)
+                .and_then(|info| info.extends.clone())
+                .unwrap_or_else(|| {
+                    self.resolve_nominal_reference_name(parent)
+                        .unwrap_or_else(|| parent.clone())
+                });
             let resolved_parent_base = self.class_base_name(&resolved_parent);
             if self.interfaces.contains_key(resolved_parent_base) {
                 self.error(

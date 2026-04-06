@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project-build generic base classes through exact-import and namespace aliases:
+  - project rewrite now parses and rewrites top-level `class ... extends Alias<...>` nominal sources instead of treating generic parent references as opaque strings, and codegen now treats generic inheritance as specialization demand so cross-file inherited generic bases compile through the combined-program path
+  - this fixes cases such as `class Child extends BaseAlias<PayloadAlias>` and `class Child extends u.Base<u.Payload>`, which previously failed in project builds with semantic `extends unknown class ...` errors or later `Codegen error: Unknown base class ...`
 - Fixed unchecked enum missing-method diagnostics:
   - enum receivers in unchecked method-call lowering now return the same user-facing `Unknown method ... for class ...` diagnostic path as class receivers instead of falling through to pseudo-interface dispatch
   - this fixes cases such as `value: Boxed = Boxed.Wrap(1); value.missing();`, which previously reported the internal error `Unknown interface method implementation: missing`

@@ -5054,6 +5054,74 @@ fn project_build_supports_nested_module_generic_base_classes() {
 }
 
 #[test]
+fn project_build_supports_generic_exact_import_alias_base_classes() {
+    let temp_root = make_temp_project_root("generic-exact-alias-base-class-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package lib;\nclass Payload { constructor() {} }\nclass Base<T> { constructor() {} }\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport lib.Base as BaseAlias;\nimport lib.Payload as PayloadAlias;\nclass Child extends BaseAlias<PayloadAlias> { constructor() {} }\nfunction main(): Integer { value: Child = Child(); return 0; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support generic exact-import alias base classes");
+    });
+
+    let status = std::process::Command::new(temp_root.join("smoke"))
+        .status()
+        .expect("run compiled generic exact-import alias base class binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_generic_namespace_alias_base_classes() {
+    let temp_root = make_temp_project_root("generic-namespace-alias-base-class-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex", "src/lib.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("lib.apex"),
+        "package lib;\nclass Payload { constructor() {} }\nclass Base<T> { constructor() {} }\n",
+    )
+    .expect("write lib");
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport lib as u;\nclass Child extends u.Base<u.Payload> { constructor() {} }\nfunction main(): Integer { value: Child = Child(); return 0; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support generic namespace alias base classes");
+    });
+
+    let status = std::process::Command::new(temp_root.join("smoke"))
+        .status()
+        .expect("run compiled generic namespace alias base class binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
     let temp_root = make_temp_project_root("project-check-invalid-files-list-fix");
     fs::write(
