@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project rewrite for builtin exact import patterns:
+  - combined project builds now rewrite builtin exact import pattern aliases such as `import Option.Some as Present;`, `import Option.None as Empty;`, `import Result.Ok as Success;`, and `import Result.Error as Failure;` back to their canonical `Some`/`None`/`Ok`/`Error` pattern forms during project rewrite
+  - this fixes valid project builds where builtin alias patterns previously failed with `Invalid Option pattern` / `Invalid Result pattern` and lost their bound pattern variables even though the same aliases already worked outside the combined project rewrite path
 - Fixed project rewrite for builtin exact import aliases:
   - combined project builds now preserve canonical rewrites for builtin exact imports such as `import Option.Some as Present;` and `import Result.Ok as Success;` in both constructor-style calls and first-class function values instead of dropping them during project rewrite
   - this fixes valid project builds that previously failed with errors such as `Unknown type: Present` or `Undefined variable: Success` even though the same exact builtin aliases already worked in single-file checked compilation

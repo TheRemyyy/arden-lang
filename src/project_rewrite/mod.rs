@@ -366,6 +366,20 @@ fn builtin_exact_import_static_container_parts(
     }
 }
 
+fn builtin_exact_import_pattern_variant(
+    namespace_path: &str,
+    symbol_name: &str,
+) -> Option<&'static str> {
+    match crate::ast::builtin_exact_import_alias_canonical(&format!("{namespace_path}.{symbol_name}"))
+    {
+        Some("Option__some") => Some("Some"),
+        Some("Option__none") => Some("None"),
+        Some("Result__ok") => Some("Ok"),
+        Some("Result__error") => Some("Error"),
+        _ => None,
+    }
+}
+
 fn direct_wildcard_member_name(
     import_path: &str,
     owner_ns: &str,
@@ -2224,6 +2238,14 @@ fn rewrite_pattern_for_project(
         ast::Pattern::Variant(name, bindings) => {
             if !name.contains('.') {
                 if let Some((import_ns, symbol_name)) = imported_modules.get(name) {
+                    if let Some(variant_name) =
+                        builtin_exact_import_pattern_variant(import_ns, symbol_name)
+                    {
+                        return ast::Pattern::Variant(
+                            variant_name.to_string(),
+                            bindings.clone(),
+                        );
+                    }
                     if let Some((owner_ns, enum_name, variant_name)) =
                         resolve_exact_imported_variant_alias(
                             import_ns,
@@ -2308,6 +2330,14 @@ fn rewrite_pattern_for_module(
         ast::Pattern::Variant(name, bindings) => {
             if !name.contains('.') {
                 if let Some((import_ns, symbol_name)) = imported_modules.get(name) {
+                    if let Some(variant_name) =
+                        builtin_exact_import_pattern_variant(import_ns, symbol_name)
+                    {
+                        return ast::Pattern::Variant(
+                            variant_name.to_string(),
+                            bindings.clone(),
+                        );
+                    }
                     if let Some((owner_ns, enum_name, variant_name)) =
                         resolve_exact_imported_variant_alias(
                             import_ns,
