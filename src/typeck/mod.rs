@@ -2981,13 +2981,16 @@ impl TypeChecker {
     }
 
     fn builtin_zero_arg_value_type_for_expected(
+        &self,
         name: &str,
         expected: &ResolvedType,
     ) -> Option<ResolvedType> {
-        match (name, expected) {
-            ("Option__none", ResolvedType::Option(_)) => Some(expected.clone()),
-            ("Math__pi" | "Math__e", ResolvedType::Float) => Some(ResolvedType::Float),
-            _ => None,
+        let synthetic_function_type =
+            ResolvedType::Function(vec![], Box::new(expected.clone()));
+        if Self::builtin_matches_expected_function_type(name, &synthetic_function_type) {
+            Some(expected.clone())
+        } else {
+            None
         }
     }
     fn check_enum_variant_function_value_with_expected_type(
@@ -3188,7 +3191,7 @@ impl TypeChecker {
             if !matches!(expected_ty, ResolvedType::Function(_, _)) {
                 if let Some(name) = self.resolve_contextual_function_value_name(expr) {
                     if let Some(actual_ty) =
-                        Self::builtin_zero_arg_value_type_for_expected(&name, expected_ty)
+                        self.builtin_zero_arg_value_type_for_expected(&name, expected_ty)
                     {
                         return actual_ty;
                     }

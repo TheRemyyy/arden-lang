@@ -1036,6 +1036,66 @@ fn project_build_supports_stdlib_zero_arg_exact_import_values() {
 }
 
 #[test]
+fn project_build_supports_stdlib_zero_arg_string_exact_import_values() {
+    let temp_root = make_temp_project_root("stdlib-zero-arg-string-exact-import-value-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { value: String = CurrentDir; return if (value.length() >= 1) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support zero-arg stdlib string exact import values");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg stdlib string exact import value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_stdlib_zero_arg_integer_exact_import_values() {
+    let temp_root = make_temp_project_root("stdlib-zero-arg-integer-exact-import-value-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { value: Integer = ArgCount; return if (value >= 1) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support zero-arg stdlib integer exact import values");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg stdlib integer exact import value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_builtin_option_some_alias_calls() {
     let temp_root = make_temp_project_root("builtin-option-some-alias-project");
     let src_dir = temp_root.join("src");

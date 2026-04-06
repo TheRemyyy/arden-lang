@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed zero-argument stdlib exact import aliases across typed value contexts:
+  - type checking and codegen now coerce exact zero-argument stdlib aliases into immediate values whenever the surrounding non-function type matches the builtin return type, covering cases such as `import std.system.cwd as CurrentDir; value: String = CurrentDir;` and `import std.args.count as ArgCount; value: Integer = ArgCount;` in addition to numeric constants like `std.math.pi`
+  - this fixes valid project builds that previously rewrote these aliases to raw canonical symbols like `System__cwd` or `Args__count` and then failed with `Undefined variable` instead of evaluating the zero-argument builtin
 - Fixed zero-argument stdlib exact import aliases in typed value contexts:
   - type checking and codegen now coerce exact zero-argument stdlib aliases such as `import std.math.pi as Pi;` and `import std.math.e as E;` into plain `Float` values when they are used in non-function typed contexts instead of only treating them as first-class function values
   - this fixes valid project builds such as `value: Float = Pi;`, which previously rewrote the alias to `Math__pi` and then failed with `Undefined variable: Math__pi`

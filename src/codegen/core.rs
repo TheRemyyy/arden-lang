@@ -13292,14 +13292,15 @@ impl<'ctx> Codegen<'ctx> {
         name: &str,
         expected_ty: &Type,
     ) -> Result<Option<BasicValueEnum<'ctx>>> {
+        let synthetic_function_type = Type::Function(vec![], Box::new(expected_ty.clone()));
+        if !Self::builtin_matches_expected_function_type(name, &synthetic_function_type) {
+            return Ok(None);
+        }
         match (name, expected_ty) {
             ("Option__none", Type::Option(inner_ty)) => {
                 Ok(Some(self.create_option_none_typed(inner_ty.as_ref())?))
             }
-            ("Math__pi", Type::Float) | ("Math__e", Type::Float) => {
-                self.compile_stdlib_function(name, &[])
-            }
-            _ => Ok(None),
+            _ => self.compile_stdlib_function(name, &[]),
         }
     }
 
