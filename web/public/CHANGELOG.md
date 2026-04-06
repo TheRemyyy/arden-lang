@@ -32,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed display formatting coercion for exact zero-argument aliases:
   - codegen display boundaries for `print`/`println` and string interpolation now infer exact zero-argument aliases as concrete values before rendering them to strings
   - this fixes valid project builds such as `println(Pi)` and `value: String = "{Pi}"`, which previously failed in codegen with raw builtin symbol errors like `Math__pi`
+- Fixed variadic extern-call coercion for exact zero-argument aliases:
+  - variadic extern tail arguments now type-check and codegen through concrete inferred value types instead of raw unresolved alias expressions
+  - this fixes valid project builds such as `sys_printf("%f\\n", Pi)`, which previously failed with `Undefined variable: Math__pi` and an additional non-FFI-safe `unknown` variadic argument diagnostic
 - Fixed typed collection method arguments skipping exact zero-argument alias coercion:
   - collection methods such as `List.push`, `List.set`, `Map.insert`, `Map.set`, `Map.get`, `Map.contains`, and `Set.add`/`remove`/`contains` now type-check their value arguments through the same expected-type path as regular function calls instead of bypassing contextual coercions
   - this fixes valid project builds such as `values: List<Float> = List<Float>(); values.push(Pi);` for `import std.math.pi as Pi;`, which previously failed with `Undefined variable: Math__pi` even after zero-argument exact import values worked in direct `let`, `return`, and plain call-argument contexts

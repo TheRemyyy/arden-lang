@@ -5809,7 +5809,7 @@ impl TypeChecker {
         fixed_count: usize,
     ) {
         for arg in args.iter().skip(fixed_count) {
-            let t = self.check_expr(&arg.node, arg.span.clone());
+            let t = self.check_builtin_argument_expr(&arg.node, arg.span.clone());
             if !self.is_ffi_safe_type(&t) {
                 self.error(
                     format!(

@@ -15929,11 +15929,23 @@ impl<'ctx> Codegen<'ctx> {
             _ => None,
         };
         if let Some(param_types) = expected_param_types {
-            if args.len() != param_types.len() {
+            let is_variadic_extern_call = is_extern_call && func.get_type().is_var_arg();
+            let bad_arity = if is_variadic_extern_call {
+                args.len() < param_types.len()
+            } else {
+                args.len() != param_types.len()
+            };
+            if bad_arity {
                 return Err(Self::function_call_arity_error(&callee_ty, args.len()));
             }
             for (arg, param_ty) in args.iter().zip(param_types.iter()) {
                 compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+            }
+            if is_variadic_extern_call {
+                for arg in args.iter().skip(param_types.len()) {
+                    let arg_ty = self.infer_builtin_argument_type(&arg.node);
+                    compiled_args.push(self.compile_expr_with_expected_type(&arg.node, &arg_ty)?);
+                }
             }
         } else {
             for a in args {
