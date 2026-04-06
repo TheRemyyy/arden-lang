@@ -65,17 +65,29 @@ pub fn lint_source(source: &str, apply_fixes: bool) -> Result<LintResult, String
 }
 
 fn check_duplicate_imports(program: &Program) -> Vec<LintFinding> {
-    let mut seen = HashSet::new();
     let mut duplicates = BTreeSet::new();
-
-    for decl in &program.declarations {
-        if let Decl::Import(import) = &decl.node {
-            let key = import_identity(import);
-            if !seen.insert(key.clone()) {
-                duplicates.insert(key);
+    fn collect_scope_duplicates(
+        declarations: &[crate::ast::Spanned<Decl>],
+        duplicates: &mut BTreeSet<String>,
+    ) {
+        let mut seen = HashSet::new();
+        for decl in declarations {
+            match &decl.node {
+                Decl::Import(import) => {
+                    let key = import_identity(import);
+                    if !seen.insert(key.clone()) {
+                        duplicates.insert(key);
+                    }
+                }
+                Decl::Module(module) => {
+                    collect_scope_duplicates(&module.declarations, duplicates);
+                }
+                Decl::Function(_) | Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) => {}
             }
         }
     }
+
+    collect_scope_duplicates(&program.declarations, &mut duplicates);
 
     duplicates
         .into_iter()
@@ -121,39 +133,52 @@ fn check_import_sorting(program: &Program) -> Vec<LintFinding> {
 }
 
 fn check_unused_specific_imports(program: &Program) -> Vec<LintFinding> {
-    let mut used_names = HashSet::new();
-    collect_used_names(program, &mut used_names);
+    fn collect_unused_specific_imports(program: &Program, findings: &mut Vec<LintFinding>) {
+        let mut used_names = HashSet::new();
+        collect_used_names(program, &mut used_names);
 
-    let mut findings = Vec::new();
-    for decl in &program.declarations {
-        let Decl::Import(import) = &decl.node else {
-            continue;
-        };
-        if import.path.ends_with(".*") {
-            continue;
-        }
+        for decl in &program.declarations {
+            match &decl.node {
+                Decl::Import(import) => {
+                    if import.path.ends_with(".*") {
+                        continue;
+                    }
 
-        let Some(imported_name) = import.path.rsplit('.').next() else {
-            continue;
-        };
-        let binding_name = import.alias.as_deref().unwrap_or(imported_name);
+                    let Some(imported_name) = import.path.rsplit('.').next() else {
+                        continue;
+                    };
+                    let binding_name = import.alias.as_deref().unwrap_or(imported_name);
 
-        if !used_names.contains(binding_name) {
-            findings.push(LintFinding {
-                code: "L003",
-                level: LintLevel::Warning,
-                message: format!(
-                    "specific import '{}' appears unused",
-                    import_identity(import)
-                ),
-                suggestion: Some(
-                    "remove it or switch to a wildcard import only if justified".to_string(),
-                ),
-                span: Some(decl.span.clone()),
-            });
+                    if !used_names.contains(binding_name) {
+                        findings.push(LintFinding {
+                            code: "L003",
+                            level: LintLevel::Warning,
+                            message: format!(
+                                "specific import '{}' appears unused",
+                                import_identity(import)
+                            ),
+                            suggestion: Some(
+                                "remove it or switch to a wildcard import only if justified"
+                                    .to_string(),
+                            ),
+                            span: Some(decl.span.clone()),
+                        });
+                    }
+                }
+                Decl::Module(module) => {
+                    let nested = Program {
+                        package: None,
+                        declarations: module.declarations.clone(),
+                    };
+                    collect_unused_specific_imports(&nested, findings);
+                }
+                Decl::Function(_) | Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) => {}
+            }
         }
     }
 
+    let mut findings = Vec::new();
+    collect_unused_specific_imports(program, &mut findings);
     findings
 }
 

@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `apex fix` hoisting module-local imports to file scope:
   - the safe import autofix now only rewrites the top-level import prelude before the first real declaration body instead of textually extracting every later `import ...;` line in the file
   - this fixes cases such as `module M { import util.helper; ... }`, which previously got rewritten with `import util.helper;` moved to file scope and silently changed program semantics
+- Fixed lint import analysis skipping module-local import scopes:
+  - duplicate-import and unused-specific-import lint passes now recurse through nested module declarations and evaluate each import scope independently instead of only scanning the file-level declaration list
+  - this fixes cases such as `module M { import util.helper as helper; }` and repeated module-local imports, which previously produced no `L003`/`L001` findings at all
 - Fixed module-local project imports being dropped from parse and codegen metadata:
   - project parsing and codegen alias collection now recurse into nested module declarations instead of only recording top-level imports
   - this fixes cases such as `module M { import lib as u; ... u.Box<Integer> ... }` and `module M { import lib.Box as Boxed; ... Boxed<Integer> ... }`, which previously failed in project builds with split semantic components, `Unknown type`, or unresolved alias diagnostics even though the same imports were valid at module scope

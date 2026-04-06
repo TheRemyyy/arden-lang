@@ -287,6 +287,40 @@ return None;
 }
 
 #[test]
+fn flags_unused_module_local_specific_imports() {
+    let source = r#"module Inner {
+import util.helper as helper;
+
+function main(): None {
+return None;
+}
+}
+"#;
+    let result = lint_source(source, false).expect("lint succeeds");
+    assert!(result.findings.iter().any(|f| {
+        f.code == "L003"
+            && f.message.contains("specific import 'util.helper as helper' appears unused")
+    }));
+}
+
+#[test]
+fn flags_duplicate_module_local_imports_within_same_scope() {
+    let source = r#"module Inner {
+import util.helper;
+import util.helper;
+
+function main(): None {
+return None;
+}
+}
+"#;
+    let result = lint_source(source, false).expect("lint succeeds");
+    assert!(result.findings.iter().any(|f| {
+        f.code == "L001" && f.message.contains("duplicate import 'util.helper'")
+    }));
+}
+
+#[test]
 fn fix_does_not_hoist_imports_out_of_block_comments() {
     let source = r#"/*
 import evil.pkg;
