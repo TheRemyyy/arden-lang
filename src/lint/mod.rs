@@ -818,6 +818,7 @@ fn apply_safe_import_fixes(source: &str, program: &Program) -> String {
     let mut in_block_comment = false;
     let mut package_seen = false;
     let mut import_seen = false;
+    let mut body_started = false;
 
     for line in source.lines() {
         if shebang.as_ref().is_some_and(|s| s == line) {
@@ -836,7 +837,9 @@ fn apply_safe_import_fixes(source: &str, program: &Program) -> String {
                 .as_ref()
                 .is_some_and(|package| trimmed == format!("package {};", package));
 
-        if can_extract_import && trimmed.starts_with("import ") && trimmed.ends_with(';') {
+        if body_started {
+            body_lines.push(line);
+        } else if can_extract_import && trimmed.starts_with("import ") && trimmed.ends_with(';') {
             imports.push(trimmed.to_string());
             import_seen = true;
         } else if is_package_line {
@@ -853,6 +856,7 @@ fn apply_safe_import_fixes(source: &str, program: &Program) -> String {
             } else if package_seen && !import_seen && is_trivia {
                 package_prelude_lines.push(line);
             } else {
+                body_started = true;
                 body_lines.push(line);
             }
         }

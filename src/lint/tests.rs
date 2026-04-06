@@ -304,6 +304,34 @@ return None;
 }
 
 #[test]
+fn fix_does_not_hoist_module_local_imports() {
+    let source = r#"package demo;
+import std.string.*;
+import std.io.*;
+
+module Inner {
+import util.helper;
+
+function load(): None {
+println("ok");
+return None;
+}
+}
+"#;
+    let result = lint_source(source, true).expect("lint succeeds");
+    let fixed = result.fixed_source.expect("fixed source");
+    assert!(
+        fixed.starts_with("package demo;\n\nimport std.io.*;\nimport std.string.*;\n\nmodule Inner {"),
+        "{fixed}"
+    );
+    assert_eq!(fixed.matches("import util.helper;").count(), 1, "{fixed}");
+    assert!(
+        fixed.contains("module Inner {\nimport util.helper;\n\nfunction load(): None {"),
+        "{fixed}"
+    );
+}
+
+#[test]
 fn fix_preserves_line_comments_before_package() {
     let source = r#"// generated file
 package demo;
