@@ -4331,7 +4331,7 @@ impl TypeChecker {
             Expr::StringInterp(parts) => {
                 for part in parts {
                     if let StringPart::Expr(e) = part {
-                        let ty = self.check_expr(&e.node, e.span.clone());
+                        let ty = self.check_builtin_argument_expr(&e.node, e.span.clone());
                         if matches!(ty, ResolvedType::Unknown) {
                             continue;
                         }
@@ -5833,7 +5833,7 @@ impl TypeChecker {
         match name {
             "println" | "print" => {
                 for arg in args {
-                    let ty = self.check_expr(&arg.node, arg.span.clone());
+                    let ty = self.check_builtin_argument_expr(&arg.node, arg.span.clone());
                     if matches!(ty, ResolvedType::Unknown) {
                         continue;
                     }

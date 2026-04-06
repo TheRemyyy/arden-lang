@@ -18858,7 +18858,7 @@ impl<'ctx> Codegen<'ctx> {
         let printf = self.get_or_declare_printf();
 
         for arg in args {
-            let arg_ty = self.infer_expr_type(&arg.node, &[]);
+            let arg_ty = self.infer_builtin_argument_type(&arg.node);
             if !Self::supports_display_expr(&arg.node, &arg_ty) {
                 return Err(CodegenError::new(format!(
                     "println() currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",
@@ -18922,7 +18922,7 @@ impl<'ctx> Codegen<'ctx> {
                         .unwrap();
                 }
                 StringPart::Expr(expr) => {
-                    let expr_ty = self.infer_expr_type(&expr.node, &[]);
+                    let expr_ty = self.infer_builtin_argument_type(&expr.node);
                     if !Self::supports_display_expr(&expr.node, &expr_ty) {
                         return Err(CodegenError::new(format!(
                             "display formatting currently supports Integer, Float, Boolean, String, Char, None, Option<T>, and Result<T, E> when their payload types support display formatting, got {}",

@@ -26,6 +26,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `Option.some(...)` and `Result.{ok,error}(...)` coercion for exact zero-argument aliases:
   - static Option/Result wrapper constructors now type-check and compile their payload arguments through the same contextual zero-argument alias coercion path used by typed arguments elsewhere
   - this fixes valid project builds such as `Option.some(ArgCount)` and `Result.ok(Pi)`, which previously failed with raw builtin symbol errors like `Args__count` or `Math__pi`
+- Fixed `print(...)` and `println(...)` coercion for exact zero-argument aliases:
+  - display validation for the std.io print builtins now treats exact zero-argument aliases as concrete displayable values instead of unresolved raw builtin symbols
+  - this fixes valid project builds such as `println(Pi)`, which previously failed with `Undefined variable: Math__pi`
+- Fixed display formatting coercion for exact zero-argument aliases:
+  - codegen display boundaries for `print`/`println` and string interpolation now infer exact zero-argument aliases as concrete values before rendering them to strings
+  - this fixes valid project builds such as `println(Pi)` and `value: String = "{Pi}"`, which previously failed in codegen with raw builtin symbol errors like `Math__pi`
 - Fixed typed collection method arguments skipping exact zero-argument alias coercion:
   - collection methods such as `List.push`, `List.set`, `Map.insert`, `Map.set`, `Map.get`, `Map.contains`, and `Set.add`/`remove`/`contains` now type-check their value arguments through the same expected-type path as regular function calls instead of bypassing contextual coercions
   - this fixes valid project builds such as `values: List<Float> = List<Float>(); values.push(Pi);` for `import std.math.pi as Pi;`, which previously failed with `Undefined variable: Math__pi` even after zero-argument exact import values worked in direct `let`, `return`, and plain call-argument contexts
