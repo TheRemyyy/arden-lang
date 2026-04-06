@@ -408,6 +408,25 @@ fn builtin_exact_import_value_expr(
     }
 }
 
+fn materialize_builtin_exact_import_value_for_type(
+    expr: &Expr,
+    expected_type: &ast::Type,
+    imported_map: &ImportedMap,
+    scopes: &[HashSet<String>],
+) -> Option<Expr> {
+    if matches!(expected_type, ast::Type::Function(_, _)) {
+        return None;
+    }
+    let Expr::Ident(name) = expr else {
+        return None;
+    };
+    if is_shadowed(name, scopes) {
+        return None;
+    }
+    let (namespace_path, symbol_name) = imported_map.get(name)?;
+    builtin_exact_import_value_expr(namespace_path, symbol_name)
+}
+
 fn direct_wildcard_member_name(
     import_path: &str,
     owner_ns: &str,
@@ -4377,6 +4396,15 @@ fn rewrite_stmt_calls_for_project(
             value,
             mutable,
         } => {
+            let rewritten_value =
+                self::rewrite_expr_calls_for_project(&value.node, ctx, scopes);
+            let rewritten_value = materialize_builtin_exact_import_value_for_type(
+                &value.node,
+                ty,
+                imported_map,
+                scopes,
+            )
+            .unwrap_or(rewritten_value);
             let rewritten = Stmt::Let {
                 name: name.clone(),
                 ty: rewrite_type_for_project_with_interfaces(
@@ -4394,10 +4422,7 @@ fn rewrite_stmt_calls_for_project(
                     imported_modules,
                     entry_namespace,
                 ),
-                value: ast::Spanned::new(
-                    self::rewrite_expr_calls_for_project(&value.node, ctx, scopes),
-                    value.span.clone(),
-                ),
+                value: ast::Spanned::new(rewritten_value, value.span.clone()),
                 mutable: *mutable,
             };
             if let Some(scope) = scopes.last_mut() {
@@ -5304,9 +5329,7 @@ fn rewrite_expr_calls_for_project(
                             name,
                         ))
                     } else if let Some((ns, symbol_name)) = imported_map.get(name) {
-                        if let Some(value_expr) = builtin_exact_import_value_expr(ns, symbol_name) {
-                            value_expr
-                        } else if is_builtin_exact_import_canonical(symbol_name)
+                        if is_builtin_exact_import_canonical(symbol_name)
                             || stdlib_registry()
                                 .get_namespace(symbol_name)
                                 .is_some_and(|owner| owner == ns)
@@ -5995,9 +6018,7 @@ fn rewrite_expr_calls_for_project(
                     name,
                 ))
             } else if let Some((ns, symbol_name)) = imported_map.get(name) {
-                if let Some(value_expr) = builtin_exact_import_value_expr(ns, symbol_name) {
-                    value_expr
-                } else if is_builtin_exact_import_canonical(symbol_name)
+                if is_builtin_exact_import_canonical(symbol_name)
                     || stdlib_registry()
                         .get_namespace(symbol_name)
                         .is_some_and(|owner| owner == ns)
