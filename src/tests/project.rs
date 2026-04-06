@@ -1794,6 +1794,68 @@ fn project_build_supports_zero_arg_exact_import_values_in_variadic_ffi_calls() {
 }
 
 #[test]
+fn project_build_supports_zero_arg_exact_import_values_in_binary_expressions() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-value-binary-expr-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { return if (Pi > 3.14 && Pi < 3.15) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support zero-arg exact import values in binary expressions",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import binary expression binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_zero_arg_exact_import_values_in_unary_expressions() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-value-unary-expr-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = -Pi; return if (value < -3.14 && value > -3.15) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support zero-arg exact import values in unary expressions",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import unary expression binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_builtin_option_some_alias_calls() {
     let temp_root = make_temp_project_root("builtin-option-some-alias-project");
     let src_dir = temp_root.join("src");

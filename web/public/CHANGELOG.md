@@ -35,6 +35,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed variadic extern-call coercion for exact zero-argument aliases:
   - variadic extern tail arguments now type-check and codegen through concrete inferred value types instead of raw unresolved alias expressions
   - this fixes valid project builds such as `sys_printf("%f\\n", Pi)`, which previously failed with `Undefined variable: Math__pi` and an additional non-FFI-safe `unknown` variadic argument diagnostic
+- Fixed operator-expression coercion for exact zero-argument aliases:
+  - unary and binary operator type-checking/codegen now treat exact zero-argument aliases as concrete operand values instead of unresolved raw builtin symbols
+  - this fixes valid project builds such as `Pi > 3.14 && Pi < 3.15` and `value: Float = -Pi`, which previously failed with repeated `Undefined variable: Math__pi` diagnostics
 - Fixed typed collection method arguments skipping exact zero-argument alias coercion:
   - collection methods such as `List.push`, `List.set`, `Map.insert`, `Map.set`, `Map.get`, `Map.contains`, and `Set.add`/`remove`/`contains` now type-check their value arguments through the same expected-type path as regular function calls instead of bypassing contextual coercions
   - this fixes valid project builds such as `values: List<Float> = List<Float>(); values.push(Pi);` for `import std.math.pi as Pi;`, which previously failed with `Undefined variable: Math__pi` even after zero-argument exact import values worked in direct `let`, `return`, and plain call-argument contexts

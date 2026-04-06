@@ -3861,8 +3861,8 @@ impl TypeChecker {
             },
 
             Expr::Binary { op, left, right } => {
-                let left_type = self.check_expr(&left.node, left.span.clone());
-                let right_type = self.check_expr(&right.node, right.span.clone());
+                let left_type = self.check_builtin_argument_expr(&left.node, left.span.clone());
+                let right_type = self.check_builtin_argument_expr(&right.node, right.span.clone());
 
                 if matches!(op, BinOp::Div | BinOp::Mod)
                     && matches!(left_type, ResolvedType::Integer)
@@ -3884,7 +3884,7 @@ impl TypeChecker {
             }
 
             Expr::Unary { op, expr: inner } => {
-                let inner_type = self.check_expr(&inner.node, inner.span.clone());
+                let inner_type = self.check_builtin_argument_expr(&inner.node, inner.span.clone());
 
                 match op {
                     UnaryOp::Neg => {

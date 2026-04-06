@@ -14854,8 +14854,8 @@ impl<'ctx> Codegen<'ctx> {
         left: &Expr,
         right: &Expr,
     ) -> Result<BasicValueEnum<'ctx>> {
-        let left_ty = self.infer_expr_type(left, &[]);
-        let right_ty = self.infer_expr_type(right, &[]);
+        let left_ty = self.infer_builtin_argument_type(left);
+        let right_ty = self.infer_builtin_argument_type(right);
 
         if matches!(op, BinOp::Eq | BinOp::NotEq) {
             let try_expected_eq = |this: &mut Self,
@@ -14881,8 +14881,8 @@ impl<'ctx> Codegen<'ctx> {
             };
 
             if left_ty == right_ty {
-                let lhs = self.compile_expr(left)?;
-                let rhs = self.compile_expr(right)?;
+                let lhs = self.compile_expr_with_expected_type(left, &left_ty)?;
+                let rhs = self.compile_expr_with_expected_type(right, &right_ty)?;
                 let eq = self.build_value_equality(lhs, rhs, &left_ty, "eq")?;
                 let result = if matches!(op, BinOp::Eq) {
                     eq
@@ -14901,8 +14901,8 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         self.ensure_binary_operator_supported(op, &left_ty, &right_ty)?;
-        let lhs = self.compile_expr(left)?;
-        let rhs = self.compile_expr(right)?;
+        let lhs = self.compile_expr_with_expected_type(left, &left_ty)?;
+        let rhs = self.compile_expr_with_expected_type(right, &right_ty)?;
         self.compile_binary_values(op, lhs, rhs, &left_ty, &right_ty)
     }
 
@@ -15255,7 +15255,7 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub fn compile_unary(&mut self, op: UnaryOp, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
-        let expr_ty = self.infer_expr_type(expr, &[]);
+        let expr_ty = self.infer_builtin_argument_type(expr);
 
         match op {
             UnaryOp::Neg => {
@@ -15265,7 +15265,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::format_diagnostic_type(&expr_ty)
                     )));
                 }
-                let val = self.compile_expr(expr)?;
+                let val = self.compile_expr_with_expected_type(expr, &expr_ty)?;
                 if val.is_int_value() {
                     Ok(self
                         .builder
@@ -15289,7 +15289,7 @@ impl<'ctx> Codegen<'ctx> {
                         Self::format_diagnostic_type(&expr_ty)
                     )));
                 }
-                let val = self.compile_expr(expr)?;
+                let val = self.compile_expr_with_expected_type(expr, &expr_ty)?;
                 Ok(self
                     .builder
                     .build_not(val.into_int_value(), "not")
