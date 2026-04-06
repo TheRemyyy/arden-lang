@@ -4009,7 +4009,7 @@ impl TypeChecker {
 
             Expr::Index { object, index } => {
                 let obj_type = self.check_expr(&object.node, object.span.clone());
-                let idx_type = self.check_expr(&index.node, index.span.clone());
+                let idx_type = self.check_builtin_argument_expr(&index.node, index.span.clone());
                 let indexed_type = Self::peel_reference_type(&obj_type);
 
                 if matches!(obj_type, ResolvedType::Unknown)
