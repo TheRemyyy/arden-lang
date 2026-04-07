@@ -4575,7 +4575,7 @@ impl TypeChecker {
                     );
                 }
                 if let Some(msg) = message {
-                    let msg_type = self.check_expr(&msg.node, msg.span.clone());
+                    let msg_type = self.check_builtin_argument_expr(&msg.node, msg.span.clone());
                     if !matches!(msg_type, ResolvedType::Unknown)
                         && !matches!(msg_type, ResolvedType::String)
                     {

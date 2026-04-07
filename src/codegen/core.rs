@@ -12688,7 +12688,7 @@ impl<'ctx> Codegen<'ctx> {
                 // Fail block - call abort or print message
                 self.builder.position_at_end(fail_block);
                 if let Some(msg) = message {
-                    let msg_ty = self.infer_expr_type(&msg.node, &[]);
+                    let msg_ty = self.infer_builtin_argument_type(&msg.node);
                     if !matches!(msg_ty, Type::String) {
                         return Err(CodegenError::new(format!(
                             "require() message must be String, got {}",
