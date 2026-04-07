@@ -19951,3 +19951,67 @@ function main(): Integer {
 
     let _ = fs::remove_dir_all(temp_root);
 }
+
+#[test]
+fn compile_source_runs_package_qualified_direct_builtin_option_constructor() {
+    let temp_root = make_temp_project_root("package-qualified-direct-builtin-option-constructor");
+    let source_path = temp_root.join("package_qualified_direct_builtin_option_constructor.apex");
+    let output_path = temp_root.join("package_qualified_direct_builtin_option_constructor");
+    let source = r#"
+package app;
+
+function main(): Integer {
+    value: Option<Integer> = Option.Some(4);
+    return value.unwrap();
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("package-qualified direct Option constructor should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled package-qualified direct Option constructor binary");
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_package_qualified_direct_builtin_result_constructor() {
+    let temp_root = make_temp_project_root("package-qualified-direct-builtin-result-constructor");
+    let source_path = temp_root.join("package_qualified_direct_builtin_result_constructor.apex");
+    let output_path = temp_root.join("package_qualified_direct_builtin_result_constructor");
+    let source = r#"
+package app;
+
+function main(): Integer {
+    value: Result<Integer, String> = Result.Ok(4);
+    return value.unwrap();
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("package-qualified direct Result constructor should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled package-qualified direct Result constructor binary");
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}

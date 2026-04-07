@@ -918,13 +918,13 @@ impl TypeChecker {
 
                         if path_parts.len() == 2 {
                             let builtin_owner = self.resolve_builtin_module_alias(&path_parts[0]);
-                            if matches!(builtin_owner.as_str(), "Option" | "Result") {
-                                let static_container_name = format!("{}__{}", builtin_owner, field);
-                                if Self::is_contextual_static_container_function_value(
-                                    &static_container_name,
-                                ) {
-                                    return Some(static_container_name);
-                                }
+                            if let Some(static_container_name) =
+                                crate::ast::builtin_exact_import_alias_canonical(&format!(
+                                    "{}.{}",
+                                    builtin_owner, field
+                                ))
+                            {
+                                return Some(static_container_name.to_string());
                             }
                             let builtin_name = format!("{}__{}", builtin_owner, field);
                             if Self::builtin_matches_expected_function_type(
@@ -946,13 +946,13 @@ impl TypeChecker {
                 }
                 if let Expr::Ident(owner_name) = &object.node {
                     let resolved_owner = self.resolve_builtin_module_alias(owner_name);
-                    if matches!(resolved_owner.as_str(), "Option" | "Result") {
-                        let static_container_name = format!("{}__{}", resolved_owner, field);
-                        if Self::is_contextual_static_container_function_value(
-                            &static_container_name,
-                        ) {
-                            return Some(static_container_name);
-                        }
+                    if let Some(static_container_name) =
+                        crate::ast::builtin_exact_import_alias_canonical(&format!(
+                            "{}.{}",
+                            resolved_owner, field
+                        ))
+                    {
+                        return Some(static_container_name.to_string());
                     }
                     let builtin_name = format!("{}__{}", resolved_owner, field);
                     if Self::builtin_matches_expected_function_type(

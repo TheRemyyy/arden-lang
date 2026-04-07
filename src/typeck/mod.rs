@@ -3821,6 +3821,21 @@ impl TypeChecker {
                                     &mangled, &sig, type_args, span,
                                 );
                             }
+                            if let Some(canonical) =
+                                crate::ast::builtin_exact_import_alias_canonical(
+                                    &path_parts.join("."),
+                                )
+                            {
+                                let builtin_label = canonical.replace("__", ".");
+                                self.error(
+                                    format!(
+                                        "Built-in function '{}' does not accept type arguments",
+                                        builtin_label
+                                    ),
+                                    span,
+                                );
+                                return ResolvedType::Unknown;
+                            }
                         }
                     }
 
@@ -4038,6 +4053,13 @@ impl TypeChecker {
                         if self.functions.contains_key(resolved) {
                             let resolved = resolved.to_owned();
                             return self.function_value_type_or_error(&resolved, span.clone());
+                        }
+                        if let Some(canonical) =
+                            crate::ast::builtin_exact_import_alias_canonical(&path_parts.join("."))
+                        {
+                            if let Some(ty) = Self::builtin_function_value_type(canonical) {
+                                return ty;
+                            }
                         }
                         if let Some(ty) = Self::builtin_function_value_type(&mangled) {
                             return ty;
@@ -5491,6 +5513,59 @@ impl TypeChecker {
 
             // Special handling for static calls (e.g. File.read, Time.now)
             if let Expr::Ident(name) = &object.node {
+                if let Some(canonical_builtin) =
+                    crate::ast::builtin_exact_import_alias_canonical(&format!("{}.{}", name, field))
+                {
+                    if !type_args.is_empty() {
+                        self.error(
+                            format!(
+                                "Built-in function '{}' does not accept type arguments",
+                                canonical_builtin.replace("__", ".")
+                            ),
+                            span.clone(),
+                        );
+                    }
+                    match canonical_builtin {
+                        "Option__some" => {
+                            self.check_arg_count("Option.some", args, 1, span.clone());
+                            let inner = if let Some(arg) = args.first() {
+                                self.check_builtin_argument_expr(&arg.node, arg.span.clone())
+                            } else {
+                                ResolvedType::Unknown
+                            };
+                            return ResolvedType::Option(Box::new(inner));
+                        }
+                        "Option__none" => {
+                            self.check_arg_count("Option.none", args, 0, span.clone());
+                            return ResolvedType::Option(Box::new(self.fresh_type_var()));
+                        }
+                        "Result__ok" => {
+                            self.check_arg_count("Result.ok", args, 1, span.clone());
+                            let ok_ty = if let Some(arg) = args.first() {
+                                self.check_builtin_argument_expr(&arg.node, arg.span.clone())
+                            } else {
+                                ResolvedType::Unknown
+                            };
+                            return ResolvedType::Result(
+                                Box::new(ok_ty),
+                                Box::new(self.fresh_type_var()),
+                            );
+                        }
+                        "Result__error" => {
+                            self.check_arg_count("Result.error", args, 1, span.clone());
+                            let err_ty = if let Some(arg) = args.first() {
+                                self.check_builtin_argument_expr(&arg.node, arg.span.clone())
+                            } else {
+                                ResolvedType::Unknown
+                            };
+                            return ResolvedType::Result(
+                                Box::new(self.fresh_type_var()),
+                                Box::new(err_ty),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
                 match name.as_str() {
                     "Option" => {
                         if !type_args.is_empty() {

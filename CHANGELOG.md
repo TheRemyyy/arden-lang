@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed direct builtin `Option`/`Result` constructors inside `package app`:
+  - qualified static constructor resolution now canonicalizes `Option.{Some,None}` and `Result.{Ok,Error}` through the shared builtin alias helper instead of assembling mixed-case internal names like `Option__Some` that never matched the real builtin symbols
+  - this fixes package-scoped builds such as `value: Option<Integer> = Option.Some(4);` and `value: Result<Integer, String> = Result.Ok(4);`, which previously failed with `Undefined variable: Option` or `Undefined variable: Result`
 - Fixed `package app` builtin exact-import variant aliases during single-file import checking:
   - builtin exact-import canonicalization now accepts the package-qualified forms `app.Option.{Some,None}` and `app.Result.{Ok,Error}` through the same shared helper used by later compiler stages instead of treating those imports as stale aliases only inside `import_check`
   - this fixes single-file builds such as `import app.Option.Some as Present;` and `import app.Result.Ok as Success;`, which previously failed before codegen with `Imported alias 'Present' no longer resolves in 'app'`
