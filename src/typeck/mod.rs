@@ -3563,7 +3563,9 @@ impl TypeChecker {
         for stmt in body {
             match &stmt.node {
                 Stmt::Expr(expr) => {
-                    tail_expr_type = Some(self.check_expr(&expr.node, expr.span.clone()));
+                    tail_expr_type = Some(
+                        self.check_builtin_argument_expr(&expr.node, expr.span.clone()),
+                    );
                 }
                 _ => {
                     tail_expr_type = None;
