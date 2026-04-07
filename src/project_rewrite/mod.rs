@@ -390,6 +390,43 @@ fn builtin_exact_import_static_container_parts(
     }
 }
 
+fn builtin_module_alias_static_container_parts(
+    import_ns: &str,
+    symbol_name: &str,
+    member_parts: &[String],
+) -> Option<(&'static str, &'static str)> {
+    match resolve_module_alias_builtin_canonical(import_ns, symbol_name, member_parts) {
+        Some("Option__some") => Some(("Option", "some")),
+        Some("Option__none") => Some(("Option", "none")),
+        Some("Result__ok") => Some(("Result", "ok")),
+        Some("Result__error") => Some(("Result", "error")),
+        _ => None,
+    }
+}
+
+fn resolve_module_alias_builtin_canonical(
+    import_ns: &str,
+    symbol_name: &str,
+    member_parts: &[String],
+) -> Option<&'static str> {
+    if member_parts.is_empty() {
+        return None;
+    }
+
+    let mut full_path_parts =
+        Vec::with_capacity(member_parts.len() + usize::from(!symbol_name.is_empty()));
+    if !symbol_name.is_empty() {
+        full_path_parts.push(symbol_name.to_string());
+    }
+    full_path_parts.extend(member_parts.iter().cloned());
+
+    crate::ast::builtin_exact_import_alias_canonical(&format!(
+        "{}.{}",
+        import_ns,
+        full_path_parts.join(".")
+    ))
+}
+
 fn builtin_exact_import_pattern_variant(
     namespace_path: &str,
     symbol_name: &str,
@@ -397,6 +434,20 @@ fn builtin_exact_import_pattern_variant(
     match crate::ast::builtin_exact_import_alias_canonical(&format!(
         "{namespace_path}.{symbol_name}"
     )) {
+        Some("Option__some") => Some("Some"),
+        Some("Option__none") => Some("None"),
+        Some("Result__ok") => Some("Ok"),
+        Some("Result__error") => Some("Error"),
+        _ => None,
+    }
+}
+
+fn builtin_module_alias_pattern_variant(
+    import_ns: &str,
+    symbol_name: &str,
+    member_parts: &[String],
+) -> Option<&'static str> {
+    match resolve_module_alias_builtin_canonical(import_ns, symbol_name, member_parts) {
         Some("Option__some") => Some("Some"),
         Some("Option__none") => Some("None"),
         Some("Result__ok") => Some("Ok"),
@@ -430,23 +481,61 @@ fn builtin_exact_import_value_expr(namespace_path: &str, symbol_name: &str) -> O
     }
 }
 
-fn materialize_builtin_exact_import_value_for_type(
+fn builtin_module_alias_value_expr(
+    import_ns: &str,
+    symbol_name: &str,
+    member_parts: &[String],
+) -> Option<Expr> {
+    match resolve_module_alias_builtin_canonical(import_ns, symbol_name, member_parts) {
+        Some("Option__none") => Some(Expr::Call {
+            callee: Box::new(ast::Spanned::new(
+                Expr::Field {
+                    object: Box::new(ast::Spanned::new(
+                        Expr::Ident("Option".to_string()),
+                        ast::Span::default(),
+                    )),
+                    field: "none".to_string(),
+                },
+                ast::Span::default(),
+            )),
+            args: Vec::new(),
+            type_args: Vec::new(),
+        }),
+        _ => None,
+    }
+}
+
+fn materialize_builtin_import_value_for_type(
     expr: &Expr,
     expected_type: &ast::Type,
     imported_map: &ImportedMap,
+    imported_modules: &ImportedMap,
     scopes: &[HashSet<String>],
 ) -> Option<Expr> {
     if matches!(expected_type, ast::Type::Function(_, _)) {
         return None;
     }
-    let Expr::Ident(name) = expr else {
-        return None;
-    };
-    if is_shadowed(name, scopes) {
-        return None;
+
+    match expr {
+        Expr::Ident(name) => {
+            if is_shadowed(name, scopes) {
+                return None;
+            }
+            let (namespace_path, symbol_name) = imported_map.get(name)?;
+            builtin_exact_import_value_expr(namespace_path, symbol_name)
+        }
+        Expr::Field { .. } => {
+            let path_parts = flatten_field_chain(expr)?;
+            let module_alias = path_parts.first()?;
+            if is_shadowed(module_alias, scopes) {
+                return None;
+            }
+            let member_parts = &path_parts[1..];
+            let (import_ns, symbol_name) = imported_modules.get(module_alias)?;
+            builtin_module_alias_value_expr(import_ns, symbol_name, member_parts)
+        }
+        _ => None,
     }
-    let (namespace_path, symbol_name) = imported_map.get(name)?;
-    builtin_exact_import_value_expr(namespace_path, symbol_name)
 }
 
 fn direct_wildcard_member_name(
@@ -2360,6 +2449,11 @@ fn rewrite_pattern_for_project(
                     }
                 }
                 if let Some((ns, symbol_name)) = imported_modules.get(module_alias) {
+                    if let Some(variant_name) =
+                        builtin_module_alias_pattern_variant(ns, symbol_name, &member_parts)
+                    {
+                        return ast::Pattern::Variant(variant_name.to_string(), bindings.clone());
+                    }
                     if let Some((owner_ns, enum_name, variant_name)) =
                         resolve_module_alias_enum_candidate(
                             ns,
@@ -2449,6 +2543,11 @@ fn rewrite_pattern_for_module(
                     }
                 }
                 if let Some((ns, symbol_name)) = imported_modules.get(module_alias) {
+                    if let Some(variant_name) =
+                        builtin_module_alias_pattern_variant(ns, symbol_name, &member_parts)
+                    {
+                        return ast::Pattern::Variant(variant_name.to_string(), bindings.clone());
+                    }
                     if let Some((owner_ns, enum_name, variant_name)) =
                         resolve_module_alias_enum_candidate(
                             ns,
@@ -4421,10 +4520,11 @@ fn rewrite_stmt_calls_for_project(
             mutable,
         } => {
             let rewritten_value = self::rewrite_expr_calls_for_project(&value.node, ctx, scopes);
-            let rewritten_value = materialize_builtin_exact_import_value_for_type(
+            let rewritten_value = materialize_builtin_import_value_for_type(
                 &value.node,
                 ty,
                 imported_map,
+                imported_modules,
                 scopes,
             )
             .unwrap_or(rewritten_value);
@@ -4471,10 +4571,11 @@ fn rewrite_stmt_calls_for_project(
             let rewritten_expr = self::rewrite_expr_calls_for_project(&expr.node, ctx, scopes);
             let rewritten_expr = expected_return_type
                 .and_then(|ty| {
-                    materialize_builtin_exact_import_value_for_type(
+                    materialize_builtin_import_value_for_type(
                         &expr.node,
                         ty,
                         imported_map,
+                        imported_modules,
                         scopes,
                     )
                 })
@@ -4792,6 +4893,69 @@ fn rewrite_expr_calls_for_project(
                         }
                     }
                     if let Some((ns, symbol_name)) = imported_modules.get(module_alias) {
+                        if let Some((owner_name, field_name)) =
+                            builtin_module_alias_static_container_parts(
+                                ns,
+                                symbol_name,
+                                member_parts,
+                            )
+                        {
+                            return Expr::Call {
+                                callee: Box::new(ast::Spanned::new(
+                                    Expr::Field {
+                                        object: Box::new(ast::Spanned::new(
+                                            Expr::Ident(owner_name.to_string()),
+                                            callee.span.clone(),
+                                        )),
+                                        field: field_name.to_string(),
+                                    },
+                                    callee.span.clone(),
+                                )),
+                                args: args
+                                    .iter()
+                                    .map(|arg| {
+                                        ast::Spanned::new(
+                                            rewrite_expr_calls_for_project(&arg.node, ctx, scopes),
+                                            arg.span.clone(),
+                                        )
+                                    })
+                                    .collect(),
+                                type_args: vec![],
+                            };
+                        }
+                        if member_parts.len() > 1 {
+                            let receiver_parts = &member_parts[..member_parts.len() - 1];
+                            let receiver_field =
+                                member_parts.last().expect("member_parts length checked");
+                            if let Some(receiver_value) =
+                                builtin_module_alias_value_expr(ns, symbol_name, receiver_parts)
+                            {
+                                return Expr::Call {
+                                    callee: Box::new(ast::Spanned::new(
+                                        Expr::Field {
+                                            object: Box::new(ast::Spanned::new(
+                                                receiver_value,
+                                                callee.span.clone(),
+                                            )),
+                                            field: receiver_field.clone(),
+                                        },
+                                        callee.span.clone(),
+                                    )),
+                                    args: args
+                                        .iter()
+                                        .map(|arg| {
+                                            ast::Spanned::new(
+                                                rewrite_expr_calls_for_project(
+                                                    &arg.node, ctx, scopes,
+                                                ),
+                                                arg.span.clone(),
+                                            )
+                                        })
+                                        .collect(),
+                                    type_args: vec![],
+                                };
+                            }
+                        }
                         if let Some((owner_ns, class_name)) = resolve_module_alias_class_candidate(
                             ns,
                             symbol_name,
@@ -5529,6 +5693,11 @@ fn rewrite_expr_calls_for_project(
                         }
                     }
                     if let Some((ns, symbol_name)) = imported_modules.get(module_alias) {
+                        if let Some(canonical) =
+                            resolve_module_alias_builtin_canonical(ns, symbol_name, member_parts)
+                        {
+                            return Expr::Ident(canonical.to_string());
+                        }
                         if let Some((owner_ns, enum_name, variant_name)) =
                             resolve_module_alias_enum_candidate(
                                 ns,

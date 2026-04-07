@@ -834,6 +834,10 @@ impl<'a> ImportChecker<'a> {
             return Some(());
         }
 
+        if crate::ast::builtin_exact_import_alias_canonical(&namespace_path).is_some() {
+            return Some(());
+        }
+
         if alias_path.contains('.') && path_parts.len() == 2 {
             if self.exact_import_alias_resolves(alias_path) {
                 return Some(());

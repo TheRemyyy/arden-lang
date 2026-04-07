@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed project-mode root namespace aliases for builtin `Option`/`Result` members:
+  - project rewrite now canonicalizes `import app as root; root.Option.{Some,None}` and `root.Result.{Ok,Error}` through the same builtin-aware constructor, pattern, and function-value paths as exact builtin imports instead of leaving them as unresolved namespace fields in multi-file builds
+  - import checking now also accepts method/member access on builtin values reached through root namespace aliases, so chains like `root.Option.None.is_none()` validate through the same exact-import alias rule used by `import Option.None as Empty; Empty.is_none()`
+  - this fixes valid project builds that previously failed with `Undefined variable: root`, `Undefined function: Option__none`, or stale namespace-alias diagnostics for cases such as `root.Option.None()`, `root.Option.None`, `root.Option.None.is_none()`, `root.Option.None` match patterns, and `root.Result.Error(...)` match patterns
 - Fixed root namespace aliases for builtin `Option`/`Result` constructors:
   - checked builtin-call dispatch now handles namespace-alias canonical constructor names through the same shared `Option`/`Result` path as direct package-qualified calls, so `import app as root; root.Option.Some(...)` and `root.Result.Ok(...)` no longer fall through to ordinary field-access evaluation
   - this fixes package-scoped checked builds that previously failed later in type checking with `Undefined variable: root`, including inline chains such as `root.Result.Ok(4).unwrap()`

@@ -848,6 +848,78 @@ fn rewrites_namespace_alias_enum_variant_patterns() {
 }
 
 #[test]
+fn rewrites_root_namespace_alias_builtin_variant_patterns() {
+    let program = Program {
+        package: Some("app".to_string()),
+        declarations: vec![
+            sp(Decl::Import(ast::ImportDecl {
+                path: "app".to_string(),
+                alias: Some("root".to_string()),
+            })),
+            sp(Decl::Function(ast::FunctionDecl {
+                name: "main".to_string(),
+                generic_params: vec![],
+                params: vec![ast::Parameter {
+                    name: "value".to_string(),
+                    ty: ast::Type::Named("Option".to_string()),
+                    mutable: false,
+                    mode: ast::ParamMode::Owned,
+                }],
+                is_variadic: false,
+                extern_abi: None,
+                extern_link_name: None,
+                return_type: ast::Type::None,
+                body: vec![sp(Stmt::Match {
+                    expr: sp(Expr::Ident("value".to_string())),
+                    arms: vec![ast::MatchArm {
+                        pattern: ast::Pattern::Variant("root.Option.None".to_string(), vec![]),
+                        body: vec![sp(Stmt::Expr(sp(Expr::Literal(ast::Literal::Integer(0)))))],
+                    }],
+                })],
+                is_async: false,
+                is_extern: false,
+                visibility: ast::Visibility::Private,
+                attributes: vec![],
+            })),
+        ],
+    };
+
+    let rewritten = rewrite_program_for_project(
+        &program,
+        "app",
+        "app",
+        &HashMap::from([("app".to_string(), HashSet::from(["main".to_string()]))]),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &[ImportDecl {
+            path: "app".to_string(),
+            alias: Some("root".to_string()),
+        }],
+    );
+
+    let func = rewritten
+        .declarations
+        .iter()
+        .find_map(|decl| match &decl.node {
+            Decl::Function(func) if func.name == "main" => Some(func),
+            _ => None,
+        })
+        .expect("expected main function declaration");
+    let Stmt::Match { arms, .. } = &func.body[0].node else {
+        panic!("expected match statement");
+    };
+    assert!(matches!(
+        &arms[0].pattern,
+        ast::Pattern::Variant(name, bindings) if name == "None" && bindings.is_empty()
+    ));
+}
+
+#[test]
 fn rewrites_local_enum_types_and_variant_calls_inside_function_bodies() {
     let program = Program {
         package: Some("app".to_string()),
@@ -3112,6 +3184,160 @@ fn rewrites_module_local_nested_enum_variant_patterns() {
         ast::Pattern::Variant(name, bindings)
             if name == "app__M__N__E.A" && bindings == vec!["v".to_string()]
     ));
+}
+
+#[test]
+fn rewrites_root_namespace_alias_builtin_static_constructor_calls() {
+    let program = Program {
+        package: Some("app".to_string()),
+        declarations: vec![
+            sp(Decl::Import(ast::ImportDecl {
+                path: "app".to_string(),
+                alias: Some("root".to_string()),
+            })),
+            sp(Decl::Function(ast::FunctionDecl {
+                name: "main".to_string(),
+                generic_params: vec![],
+                params: vec![],
+                is_variadic: false,
+                extern_abi: None,
+                extern_link_name: None,
+                return_type: ast::Type::None,
+                body: vec![sp(Stmt::Expr(sp(Expr::Call {
+                    callee: Box::new(sp(Expr::Field {
+                        object: Box::new(sp(Expr::Field {
+                            object: Box::new(sp(Expr::Ident("root".to_string()))),
+                            field: "Option".to_string(),
+                        })),
+                        field: "None".to_string(),
+                    })),
+                    args: vec![],
+                    type_args: vec![],
+                })))],
+                is_async: false,
+                is_extern: false,
+                visibility: ast::Visibility::Private,
+                attributes: vec![],
+            })),
+        ],
+    };
+
+    let rewritten = rewrite_program_for_project(
+        &program,
+        "app",
+        "app",
+        &HashMap::from([("app".to_string(), HashSet::from(["main".to_string()]))]),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &[ImportDecl {
+            path: "app".to_string(),
+            alias: Some("root".to_string()),
+        }],
+    );
+
+    let func = rewritten
+        .declarations
+        .iter()
+        .find_map(|decl| match &decl.node {
+            Decl::Function(func) if func.name == "main" => Some(func),
+            _ => None,
+        })
+        .expect("expected function declaration");
+    let Stmt::Expr(call_stmt) = &func.body[0].node else {
+        panic!("expected expr statement");
+    };
+    let Expr::Call {
+        callee,
+        args,
+        type_args,
+    } = &call_stmt.node
+    else {
+        panic!("expected call expression");
+    };
+    assert!(args.is_empty());
+    assert!(type_args.is_empty());
+    let Expr::Field { object, field } = &callee.node else {
+        panic!("expected rewritten builtin field call");
+    };
+    assert!(matches!(&object.node, Expr::Ident(name) if name == "Option"));
+    assert_eq!(field, "none");
+}
+
+#[test]
+fn preserves_root_namespace_alias_builtin_function_values() {
+    let program = Program {
+        package: Some("app".to_string()),
+        declarations: vec![
+            sp(Decl::Import(ast::ImportDecl {
+                path: "app".to_string(),
+                alias: Some("root".to_string()),
+            })),
+            sp(Decl::Function(ast::FunctionDecl {
+                name: "main".to_string(),
+                generic_params: vec![],
+                params: vec![],
+                is_variadic: false,
+                extern_abi: None,
+                extern_link_name: None,
+                return_type: ast::Type::None,
+                body: vec![sp(Stmt::Let {
+                    name: "empty".to_string(),
+                    ty: ast::Type::Function(
+                        vec![],
+                        Box::new(ast::Type::Named("Option".to_string())),
+                    ),
+                    value: sp(Expr::Field {
+                        object: Box::new(sp(Expr::Field {
+                            object: Box::new(sp(Expr::Ident("root".to_string()))),
+                            field: "Option".to_string(),
+                        })),
+                        field: "None".to_string(),
+                    }),
+                    mutable: false,
+                })],
+                is_async: false,
+                is_extern: false,
+                visibility: ast::Visibility::Private,
+                attributes: vec![],
+            })),
+        ],
+    };
+
+    let rewritten = rewrite_program_for_project(
+        &program,
+        "app",
+        "app",
+        &HashMap::from([("app".to_string(), HashSet::from(["main".to_string()]))]),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &[ImportDecl {
+            path: "app".to_string(),
+            alias: Some("root".to_string()),
+        }],
+    );
+
+    let func = rewritten
+        .declarations
+        .iter()
+        .find_map(|decl| match &decl.node {
+            Decl::Function(func) if func.name == "main" => Some(func),
+            _ => None,
+        })
+        .expect("expected function declaration");
+    let Stmt::Let { value, .. } = &func.body[0].node else {
+        panic!("expected let statement");
+    };
+    assert!(matches!(&value.node, Expr::Ident(name) if name == "Option__none"));
 }
 
 #[test]

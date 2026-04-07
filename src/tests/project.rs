@@ -743,6 +743,150 @@ fn project_build_supports_root_namespace_alias_explicit_generic_function_values(
 }
 
 #[test]
+fn project_build_supports_root_namespace_alias_builtin_option_none_constructor() {
+    let temp_root = make_temp_project_root("root-alias-builtin-option-none-constructor-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nimport app as root;\nfunction main(): Integer { value: Option<Integer> = root.Option.None(); return if (value.is_none()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+    fs::write(
+        src_dir.join("helper.arden"),
+        "package app;\nfunction helper(): Integer { return 0; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support root namespace alias builtin Option.None constructor",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled root alias builtin Option.None constructor binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_root_namespace_alias_builtin_option_none_method_receivers() {
+    let temp_root =
+        make_temp_project_root("root-alias-builtin-option-none-method-receiver-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nimport app as root;\nfunction main(): Integer { return if (root.Option.None.is_none()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+    fs::write(
+        src_dir.join("helper.arden"),
+        "package app;\nfunction helper(): Integer { return 0; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support root namespace alias builtin Option.None method receivers",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled root alias builtin Option.None method receiver binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_root_namespace_alias_builtin_option_none_function_values() {
+    let temp_root = make_temp_project_root("root-alias-builtin-option-none-fn-value-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nimport app as root;\nfunction main(): Integer { empty: () -> Option<Integer> = root.Option.None; value: Option<Integer> = empty(); return if (value.is_none()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+    fs::write(
+        src_dir.join("helper.arden"),
+        "package app;\nfunction helper(): Integer { return 0; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support root namespace alias builtin Option.None function values",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled root alias builtin Option.None function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_root_namespace_alias_builtin_patterns() {
+    let temp_root = make_temp_project_root("root-alias-builtin-patterns-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nimport app as root;\nfunction classify(flag: Boolean): Integer { return match (if (flag) { root.Option.None() } else { root.Option.Some(7) }) { root.Option.None => 0, root.Option.Some(_) => 1, }; }\nfunction fail(flag: Boolean): Integer { return match (if (flag) { root.Result.Error(\"boom\") } else { root.Result.Ok(7) }) { root.Result.Error(_) => 0, root.Result.Ok(_) => 1, }; }\nfunction main(): Integer { return classify(true) + fail(true); }\n",
+    )
+    .expect("write main");
+    fs::write(
+        src_dir.join("helper.arden"),
+        "package app;\nfunction helper(): Integer { return 0; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support root namespace alias builtin patterns");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled root alias builtin pattern binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_module_wildcard_import_calls() {
     let temp_root = make_temp_project_root("module-wildcard-import-call-project");
     let src_dir = temp_root.join("src");
