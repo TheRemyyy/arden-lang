@@ -60,6 +60,31 @@ fn test_parse_ignore_attribute_with_reason() {
 }
 
 #[test]
+fn parses_builtin_option_none_static_constructor_call() {
+    let source = r#"
+        function main(): Option<Integer> {
+            return Option.None();
+        }
+    "#;
+
+    parse_source(source).expect("Option.None() should parse");
+}
+
+#[test]
+fn parses_root_namespace_alias_builtin_option_none_static_constructor_call() {
+    let source = r#"
+        package app;
+        import app as root;
+
+        function main(): Option<Integer> {
+            return root.Option.None();
+        }
+    "#;
+
+    parse_source(source).expect("root.Option.None() should parse");
+}
+
+#[test]
 fn test_parse_function_without_attributes() {
     let source = r#"
         package test;

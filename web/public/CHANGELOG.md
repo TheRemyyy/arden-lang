@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed root namespace aliases for builtin `Option`/`Result` constructors:
   - checked builtin-call dispatch now handles namespace-alias canonical constructor names through the same shared `Option`/`Result` path as direct package-qualified calls, so `import app as root; root.Option.Some(...)` and `root.Result.Ok(...)` no longer fall through to ordinary field-access evaluation
   - this fixes package-scoped checked builds that previously failed later in type checking with `Undefined variable: root`, including inline chains such as `root.Result.Ok(4).unwrap()`
+- Fixed parser handling for builtin `Option.None()` static constructor syntax:
+  - field/member parsing now accepts `None` after `.` as a valid member segment instead of only as the standalone literal keyword, so constructor forms like `Option.None()` and `root.Option.None()` parse through the same static-call path as `Option.Some(...)`
+  - this fixes package-scoped builds that previously failed during parsing with `Expected identifier, found Some(None)`
 - Fixed inline method chains on direct builtin constructors inside `package app`:
   - codegen-side builtin call inference now derives `Option`/`Result` return types from the shared canonical constructor names for `Option.{Some,None}` and `Result.{Ok,Error}` instead of falling back to raw scalar inference in expression-only chains
   - this fixes package-scoped expressions such as `Option.Some(4).unwrap()` and `Result.Ok(4).unwrap()`, which previously reached codegen as `Integer` values and failed with `Cannot call method on type Integer`

@@ -19993,6 +19993,43 @@ function main(): Integer {
 }
 
 #[test]
+fn compile_source_runs_package_qualified_direct_builtin_option_none_constructor() {
+    let temp_root =
+        make_temp_project_root("package-qualified-direct-builtin-option-none-constructor");
+    let source_path =
+        temp_root.join("package_qualified_direct_builtin_option_none_constructor.arden");
+    let output_path = temp_root.join("package_qualified_direct_builtin_option_none_constructor");
+    let source = r#"
+package app;
+
+function main(): Integer {
+    value: Option<Integer> = Option.None();
+    return match (value) {
+        None => 0,
+        Some(_) => 1,
+    };
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("package-qualified direct Option.None constructor should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled package-qualified direct Option.None constructor binary");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_package_qualified_direct_builtin_result_constructor() {
     let temp_root = make_temp_project_root("package-qualified-direct-builtin-result-constructor");
     let source_path = temp_root.join("package_qualified_direct_builtin_result_constructor.arden");
@@ -20116,6 +20153,43 @@ function main(): Integer {
     assert_eq!(
         output.status.code(),
         Some(4),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_root_namespace_alias_builtin_option_none_constructor() {
+    let temp_root = make_temp_project_root("root-namespace-alias-builtin-option-none-constructor");
+    let source_path = temp_root.join("root_namespace_alias_builtin_option_none_constructor.arden");
+    let output_path = temp_root.join("root_namespace_alias_builtin_option_none_constructor");
+    let source = r#"
+package app;
+
+import app as root;
+
+function main(): Integer {
+    value: Option<Integer> = root.Option.None();
+    return match (value) {
+        None => 0,
+        Some(_) => 1,
+    };
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("root namespace alias builtin Option.None constructor should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled root alias Option.None constructor binary");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
         "stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)

@@ -2250,7 +2250,7 @@ impl<'src> Parser<'src> {
             match self.current() {
                 Some(Token::Dot) => {
                     self.advance();
-                    let field = self.parse_ident()?;
+                    let field = self.parse_member_ident()?;
                     let type_args = if self.check(&Token::Lt) {
                         let saved = self.pos;
                         self.advance();
@@ -3039,6 +3039,24 @@ impl<'src> Parser<'src> {
                 let name = name.to_string();
                 self.advance();
                 Ok(name)
+            }
+            _ => Err(ParseError::new(
+                format!("Expected identifier, found {:?}", self.current()),
+                self.current_span(),
+            )),
+        }
+    }
+
+    fn parse_member_ident(&mut self) -> ParseResult<String> {
+        match self.current() {
+            Some(Token::Ident(name)) => {
+                let name = name.to_string();
+                self.advance();
+                Ok(name)
+            }
+            Some(Token::None) => {
+                self.advance();
+                Ok("None".to_string())
             }
             _ => Err(ParseError::new(
                 format!("Expected identifier, found {:?}", self.current()),
