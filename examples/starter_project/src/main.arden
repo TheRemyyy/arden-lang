@@ -7,7 +7,7 @@ function main(): None {
     println("=== Multi-File Project Demo ===");
     println("");
     
-    // Using math_utils functions
+    // Using math helper functions
     println("Math Utilities:");
     println("---------------");
     
@@ -25,7 +25,7 @@ function main(): None {
     
     println("");
     
-    // Using string_utils functions
+    // Using string helper functions
     println("String Utilities:");
     println("-----------------");
     

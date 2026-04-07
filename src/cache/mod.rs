@@ -1082,12 +1082,12 @@ pub(crate) fn env_usize_override(name: &str, default: usize) -> usize {
 }
 
 pub(crate) fn object_codegen_shard_size() -> usize {
-    env_usize_override("APEX_OBJECT_SHARD_SIZE", OBJECT_CODEGEN_SHARD_SIZE)
+    env_usize_override("ARDEN_OBJECT_SHARD_SIZE", OBJECT_CODEGEN_SHARD_SIZE)
 }
 
 pub(crate) fn object_codegen_shard_threshold() -> usize {
     env_usize_override(
-        "APEX_OBJECT_SHARD_THRESHOLD",
+        "ARDEN_OBJECT_SHARD_THRESHOLD",
         OBJECT_CODEGEN_SHARD_THRESHOLD,
     )
 }

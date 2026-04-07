@@ -184,7 +184,7 @@ function printHeader(title: String): None {
 
 function main(): None {
     println("========================================");
-    println("        APEX TODO LIST MANAGER          ");
+    println("       ARDEN TODO LIST MANAGER          ");
     println("========================================");
 
     // Create a todo list

@@ -182,10 +182,10 @@ jobs:
           name: arden-linux-x64
           path: target/release
       - run: chmod +x target/release/arden
-      - run: bash scripts/ci_cli_smoke.sh
+      - run: bash scripts/cli_smoke.sh
         env:
           CI_SKIP_COMPILER_BUILD: "1"
-          APEX_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
+          ARDEN_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
 
   smoke-macos:
     name: CLI Smoke (macos-arm64)
@@ -199,10 +199,10 @@ jobs:
           name: arden-macos-arm64
           path: target/release
       - run: chmod +x target/release/arden
-      - run: bash scripts/ci_cli_smoke.sh
+      - run: bash scripts/cli_smoke.sh
         env:
           CI_SKIP_COMPILER_BUILD: "1"
-          APEX_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
+          ARDEN_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
 
   smoke-windows:
     name: CLI Smoke (windows-x64)
@@ -219,11 +219,11 @@ jobs:
         with:
           name: arden-windows-x64
           path: target/release
-      - run: .\scripts\ci_cli_smoke_windows.ps1
+      - run: .\scripts\cli_smoke_windows.ps1
         shell: pwsh
         env:
           CI_SKIP_COMPILER_BUILD: "1"
-          APEX_COMPILER_PATH: ${{ github.workspace }}\target\release\arden.exe
+          ARDEN_COMPILER_PATH: ${{ github.workspace }}\target\release\arden.exe
 
   examples-linux:
     name: Examples (linux-x64)
@@ -237,10 +237,10 @@ jobs:
           name: arden-linux-x64
           path: target/release
       - run: chmod +x target/release/arden
-      - run: bash scripts/test_examples_linux.sh
+      - run: bash scripts/examples_smoke_linux.sh
         env:
           CI_SKIP_COMPILER_BUILD: "1"
-          APEX_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
+          ARDEN_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
 
   examples-macos:
     name: Examples (macos-arm64)
@@ -254,10 +254,10 @@ jobs:
           name: arden-macos-arm64
           path: target/release
       - run: chmod +x target/release/arden
-      - run: bash scripts/test_examples_macos.sh
+      - run: bash scripts/examples_smoke_macos.sh
         env:
           CI_SKIP_COMPILER_BUILD: "1"
-          APEX_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
+          ARDEN_COMPILER_PATH: ${{ github.workspace }}/target/release/arden
 
   examples-windows:
     name: Examples (windows-x64)
@@ -274,11 +274,11 @@ jobs:
         with:
           name: arden-windows-x64
           path: target/release
-      - run: scripts\test_examples.bat
+      - run: scripts\examples_smoke.bat
         shell: cmd
         env:
           CI_SKIP_COMPILER_BUILD: "1"
-          APEX_COMPILER_PATH: ${{ github.workspace }}\target\release\arden.exe
+          ARDEN_COMPILER_PATH: ${{ github.workspace }}\target\release\arden.exe
 
   web:
     name: Web

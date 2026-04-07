@@ -213,7 +213,7 @@ module Bank {
 
 function printBanner(): None {
     println("========================================");
-    println("          APEX BANKING SYSTEM           ");
+    println("         ARDEN BANKING SYSTEM           ");
     println("========================================");
     return None;
 }

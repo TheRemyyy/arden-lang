@@ -1,0 +1,10 @@
+name = "starter_project"
+version = "1.0.0"
+entry = "src/main.arden"
+files = [
+    "src/math.arden",
+    "src/strings.arden",
+    "src/main.arden"
+]
+output = "starter_project"
+opt_level = "3"

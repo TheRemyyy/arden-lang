@@ -5,8 +5,33 @@ const siteUrl = 'https://apex-compiler.vercel.app';
 const projectRoot = path.resolve(process.cwd(), '..');
 const docsRoot = path.join(projectRoot, 'docs');
 const publicRoot = path.join(process.cwd(), 'public');
+const publicDocsRoot = path.join(publicRoot, 'docs');
 const changelogPath = path.join(projectRoot, 'CHANGELOG.md');
 const logoPath = path.join(projectRoot, 'LOGO.png');
+
+async function ensureCleanDir(dir) {
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+}
+
+async function copyDirectory(sourceDir, targetDir) {
+  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  await fs.mkdir(targetDir, { recursive: true });
+
+  for (const entry of entries) {
+    const sourcePath = path.join(sourceDir, entry.name);
+    const targetPath = path.join(targetDir, entry.name);
+
+    if (entry.isDirectory()) {
+      await copyDirectory(sourcePath, targetPath);
+      continue;
+    }
+
+    if (entry.isFile()) {
+      await fs.copyFile(sourcePath, targetPath);
+    }
+  }
+}
 
 async function collectDocRoutes(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -142,6 +167,8 @@ async function main() {
   await fs.writeFile(path.join(publicRoot, 'site.webmanifest'), manifest, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'llms.txt'), llmsTxt, 'utf8');
   await fs.copyFile(logoPath, path.join(publicRoot, 'logo.png'));
+  await ensureCleanDir(publicDocsRoot);
+  await copyDirectory(docsRoot, publicDocsRoot);
 }
 
 await main();

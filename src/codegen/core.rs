@@ -12137,8 +12137,13 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn infer_async_block_return_type(&self, body: &[Spanned<Stmt>]) -> Type {
-        self.infer_block_tail_type(body).unwrap_or(Type::None)
+    fn infer_async_block_return_type(
+        &self,
+        body: &[Spanned<Stmt>],
+        expected_inner_return_type: Option<&Type>,
+    ) -> Type {
+        self.infer_block_tail_type_with_expected(body, &[], expected_inner_return_type)
+            .unwrap_or(Type::None)
     }
 
     fn compile_async_block(
@@ -12153,9 +12158,9 @@ impl<'ctx> Codegen<'ctx> {
             self.walk_stmt_for_captures(&stmt.node, &mut params, &mut captures, &mut seen);
         }
 
-        let inner_return_type = expected_inner_return_type
-            .cloned()
-            .unwrap_or_else(|| self.infer_async_block_return_type(body));
+        let inner_return_type = expected_inner_return_type.cloned().unwrap_or_else(|| {
+            self.infer_async_block_return_type(body, expected_inner_return_type)
+        });
         let ptr_ty = self.context.ptr_type(AddressSpace::default());
         let mut env_fields = Vec::new();
         for (_, ty) in &captures {
@@ -14828,7 +14833,8 @@ impl<'ctx> Codegen<'ctx> {
             .build_conditional_branch(cond, then_block, else_block)
             .unwrap();
 
-        let inferred_result_ty = self.infer_if_expr_result_type(then_branch, else_branch, &[]);
+        let inferred_result_ty =
+            self.infer_if_expr_result_type(then_branch, else_branch, &[], expected_ty);
         let expected_result_ty = expected_ty.or(match inferred_result_ty {
             Type::None => None,
             ref ty => Some(ty),

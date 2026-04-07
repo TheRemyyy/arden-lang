@@ -1,4 +1,4 @@
-name = "multi_file_depth_project"
+name = "nested_package_project"
 version = "1.0.0"
 entry = "src/main.arden"
 files = [
@@ -6,5 +6,5 @@ files = [
     "src/utils/strings.arden",
     "src/main.arden"
 ]
-output = "multi_file_depth_project"
+output = "nested_package_project"
 opt_level = "3"

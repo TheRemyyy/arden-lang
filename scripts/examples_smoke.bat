@@ -7,11 +7,11 @@ for %%I in ("%SCRIPT_DIR%..") do set "REPO_ROOT=%%~fI"
 pushd "%REPO_ROOT%" >nul
 
 echo ========================================
-echo      Arden Test Runner
+echo   Arden Example Smoke Runner
 echo ========================================
 
-if defined APEX_COMPILER_PATH (
-    set "COMPILER=%APEX_COMPILER_PATH%"
+if defined ARDEN_COMPILER_PATH (
+    set "COMPILER=%ARDEN_COMPILER_PATH%"
 ) else (
     set "COMPILER=%REPO_ROOT%\target\release\arden.exe"
 )
@@ -58,70 +58,70 @@ for %%f in ("%REPO_ROOT%\examples\*.arden") do (
     )
 )
 
-REM Test multi-file project (basic)
+REM Test starter project
 echo.
-echo [3/5] Testing Multi-File Project (Basic)...
+echo [3/5] Testing Starter Project...
 echo.
 
-if exist "%REPO_ROOT%\examples\multi_file_project\arden.toml" (
-    pushd "%REPO_ROOT%\examples\multi_file_project" >nul
+if exist "%REPO_ROOT%\examples\starter_project\arden.toml" (
+    pushd "%REPO_ROOT%\examples\starter_project" >nul
     "%COMPILER%" run
     set TEST_EXIT=!ERRORLEVEL!
     popd >nul
 
     if !TEST_EXIT! EQU 0 (
-        echo [PASS] multi_file_project
+        echo [PASS] starter_project
         set /a PASS_COUNT+=1
     ) else (
-        echo [FAIL] multi_file_project
+        echo [FAIL] starter_project
         set /a FAIL_COUNT+=1
     )
 ) else (
-    echo multi_file_project not found, skipping...
+    echo starter_project not found, skipping...
 )
 
-REM Test multi-file project with Java-style namespaces
+REM Test nested package project
 echo.
-echo [4/5] Testing Java-Style Namespace Project...
+echo [4/5] Testing Nested Package Project...
 echo.
 
-if exist "%REPO_ROOT%\examples\multi_file_depth_project\arden.toml" (
-    pushd "%REPO_ROOT%\examples\multi_file_depth_project" >nul
+if exist "%REPO_ROOT%\examples\nested_package_project\arden.toml" (
+    pushd "%REPO_ROOT%\examples\nested_package_project" >nul
     "%COMPILER%" run
     set TEST_EXIT=!ERRORLEVEL!
     popd >nul
 
     if !TEST_EXIT! EQU 0 (
-        echo [PASS] multi_file_depth_project
+        echo [PASS] nested_package_project
         set /a PASS_COUNT+=1
     ) else (
-        echo [FAIL] multi_file_depth_project
+        echo [FAIL] nested_package_project
         set /a FAIL_COUNT+=1
     )
 ) else (
-    echo multi_file_depth_project not found, skipping...
+    echo nested_package_project not found, skipping...
 )
 
-REM Test no-import project
+REM Test minimal project
 echo.
-echo [5/5] Testing No-Import Project (Global Scope)...
+echo [5/5] Testing Minimal Project...
 echo.
 
-if exist "%REPO_ROOT%\examples\test_no_import\arden.toml" (
-    pushd "%REPO_ROOT%\examples\test_no_import" >nul
+if exist "%REPO_ROOT%\examples\minimal_project\arden.toml" (
+    pushd "%REPO_ROOT%\examples\minimal_project" >nul
     "%COMPILER%" run
     set TEST_EXIT=!ERRORLEVEL!
     popd >nul
 
     if !TEST_EXIT! EQU 0 (
-        echo [PASS] test_no_import
+        echo [PASS] minimal_project
         set /a PASS_COUNT+=1
     ) else (
-        echo [FAIL] test_no_import
+        echo [FAIL] minimal_project
         set /a FAIL_COUNT+=1
     )
 ) else (
-    echo test_no_import not found, skipping...
+    echo minimal_project not found, skipping...
 )
 
 echo.

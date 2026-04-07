@@ -1,8 +1,8 @@
-name = "test_no_import"
+name = "minimal_project"
 version = "1.0.0"
 entry = "src/main.arden"
 files = [
     "src/utils.arden",
     "src/main.arden"
 ]
-output = "test_no_import"
+output = "minimal_project"

@@ -5590,6 +5590,85 @@ fn project_build_accepts_module_local_contextual_lambda_parameter_inference_with
 }
 
 #[test]
+fn project_build_accepts_contextual_lambda_parameter_inference_in_if_expression() {
+    let temp_root = make_temp_project_root("project-contextual-lambda-parameter-inference-if-expr");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nfunction choose(flag: Boolean): (Integer) -> Integer { return if (flag) { |x| x } else { |x| x + 1 }; }\nfunction main(): Integer { return choose(false)(6) - 7; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should accept contextual lambda parameter inference in if expressions",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled contextual lambda parameter inference if-expression binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_accepts_contextual_lambda_parameter_inference_in_match_expression() {
+    let temp_root =
+        make_temp_project_root("project-contextual-lambda-parameter-inference-match-expr");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nfunction choose(flag: Boolean): (Integer) -> Integer { return match (flag) { true => { |x| x }, false => { |x| x + 1 }, }; }\nfunction main(): Integer { return choose(false)(6) - 7; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should accept contextual lambda parameter inference in match expressions",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled contextual lambda parameter inference match-expression binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_accepts_contextual_lambda_parameter_inference_in_async_tail() {
+    let temp_root = make_temp_project_root("project-contextual-lambda-parameter-inference-async");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nfunction make(): Task<(Integer) -> Integer> { return async { |x| x + 1 }; }\nfunction main(): Integer { return (await(make()))(6) - 7; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should accept contextual lambda parameter inference in async tail expressions",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled contextual lambda parameter inference async-tail binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_accepts_module_local_nested_enum_variant_patterns() {
     let temp_root = make_temp_project_root("project-module-local-nested-enum-variant-patterns");
     let src_dir = temp_root.join("src");

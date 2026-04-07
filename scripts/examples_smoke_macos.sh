@@ -7,10 +7,10 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}" || exit 1
 
 echo "========================================"
-echo "     Arden Test Runner (macOS)"
+echo "   Arden Example Smoke Runner (macOS)"
 echo "========================================"
 echo
-COMPILER_INPUT="${APEX_COMPILER_PATH:-${REPO_ROOT}/target/release/arden}"
+COMPILER_INPUT="${ARDEN_COMPILER_PATH:-${REPO_ROOT}/target/release/arden}"
 if [[ "${COMPILER_INPUT}" = /* ]]; then
   COMPILER="${COMPILER_INPUT}"
 else
@@ -73,9 +73,9 @@ run_project_test() {
   fi
 }
 
-run_project_test "multi_file_project" "[3/5] Testing multi-file project (basic)..."
-run_project_test "multi_file_depth_project" "[4/5] Testing Java-style namespace project..."
-run_project_test "test_no_import" "[5/5] Testing no-import project (global scope)..."
+run_project_test "starter_project" "[3/5] Testing starter project..."
+run_project_test "nested_package_project" "[4/5] Testing nested package project..."
+run_project_test "minimal_project" "[5/5] Testing minimal project..."
 
 echo
 echo "========================================"

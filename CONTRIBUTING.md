@@ -1,82 +1,112 @@
 # Contributing to Arden
 
-Thank you for your interest in contributing to Arden! We are building a modern, safe, and efficient systems programming language, and we need your help.
+Arden needs contributions across compiler internals, examples, docs, scripts, CI, and web docs.
 
-## Development Setup
+## Before You Start
 
-See the [Installation Guide](docs/getting_started/installation.md) for prerequisites.
+Read:
 
-1. **Fork the repository** on GitHub.
-2. **Clone your fork**:
+- [README.md](README.md)
+- [docs/getting_started/installation.md](docs/getting_started/installation.md)
+- [docs/compiler/architecture.md](docs/compiler/architecture.md)
+- [scripts/README.md](scripts/README.md)
 
-   ```bash
-   git clone https://github.com/theremyyy/arden.git
-   cd arden
-   ```
+If your change touches user-facing behavior, also read the matching page under `docs/` or `examples/` first. The repo treats documentation and runnable examples as part of the product surface, not as afterthoughts.
 
-3. **Build the project**:
-
-   ```bash
-   cargo build
-   ```
-
-## Workflow
-
-### 1. Create a Branch
-
-Always work on a new branch for your changes:
+## Local Setup
 
 ```bash
-git checkout -b feat/my-new-feature
-# or
-git checkout -b fix/bug-description
+git clone https://github.com/TheRemyyy/apex-compiler.git arden
+cd arden
+cargo build
 ```
 
-### 2. Make Changes
-
-- **Code Style**: We follow standard Rust formatting. Run `cargo fmt` before committing.
-- **Linting**: Ensure your code passes `cargo clippy` without warnings.
-- **Tests**: Add unit tests for new logic and integration tests (in `examples/`) for new language features.
-
-### 3. Run Tests
-
-Ensure the compiler is working correctly:
+## Useful Checks
 
 ```bash
 cargo test
+cargo fmt -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo run -- --help
 ```
 
-To run a specific Arden example check:
+Compiler-facing smoke checks:
 
 ```bash
 cargo run -- check examples/01_hello.arden
+bash scripts/cli_smoke.sh
+bash scripts/examples_smoke_linux.sh
 ```
 
-### 4. Submit a Pull Request
+If you changed documentation generation for the website, also run the web sync/build path from `web/`.
 
-Push your changes to your fork and open a Pull Request against the `main` branch of the official repository.
+## Where To Contribute
 
-## Project Structure
+### Compiler
 
-- **`src/lexer.rs`**: Tokenizes source code.
-- **`src/parser.rs`**: Parses tokens into an AST.
-- **`src/typeck.rs`**: Validates types.
-- **`src/borrowck.rs`**: Enforces ownership rules.
-- **`src/codegen.rs`**: Generates LLVM IR.
+Core implementation lives in `src/`.
 
-See internal docs in [Compiler Architecture](docs/compiler/architecture.md) for more details.
+Key areas:
 
-## Adding Language Features
+- `src/lexer/`
+- `src/parser/`
+- `src/typeck/`
+- `src/borrowck/`
+- `src/codegen/`
+- `src/project/`
+- `src/test_runner/`
 
-If you are adding a new syntax feature (e.g., a new keyword):
+### Docs
 
-1. **Lexer**: Add the new token variant in `Token` enum and matching logic in `lexer.rs`.
-2. **AST**: Add the new node structure in `ast.rs`.
-3. **Parser**: Update `parser.rs` to handle the new syntax.
-4. **Type Checking**: Implement validation logic in `typeck.rs`.
-5. **Codegen**: Implement LLVM IR generation in `codegen.rs`.
-6. **Docs**: Update relevant documentation in `docs/` and add an example in `examples/`.
+Repository source docs live in:
 
-## Code of Conduct
+- `README.md`
+- `docs/`
+- `examples/README.md`
+- `benchmark/README.md`
+- `scripts/README.md`
 
-Be kind and respectful. Harassment or abusive behavior will not be tolerated.
+The web docs are built from the repository docs, so updating source markdown improves both the repo and the website.
+
+Good docs changes are:
+
+- accurate to current behavior
+- specific about commands, files, and outputs
+- backed by runnable examples where possible
+- structured so a new reader can find the next step quickly
+
+### Examples
+
+Examples in `examples/` should be:
+
+- runnable
+- focused
+- representative of current compiler behavior
+- worth pointing users at
+
+### CI / Release
+
+Automation lives in:
+
+- `.github/workflows/`
+- `.github/actions/`
+
+If you change scripts or release behavior, update the docs that explain them too.
+
+## Expectations For Changes
+
+- keep docs aligned with actual behavior
+- prefer concrete examples over vague promises
+- add or update tests when behavior changes
+- avoid stale placeholder language in docs
+
+## Pull Requests
+
+A strong PR usually includes:
+
+- the code change
+- updated docs or examples if user-facing behavior changed
+- tests or smoke coverage when relevant
+- concise explanation of what changed and why
+
+If you remove material from docs, make sure you are removing stale or duplicate content, not deleting the explanation that new users actually need.

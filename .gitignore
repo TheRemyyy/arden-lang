@@ -7,19 +7,19 @@ target/
 *.o
 
 # Benchmarks
-benchmark/bin/matrix_mul_apex
+benchmark/bin/matrix_mul_arden
 benchmark/bin/matrix_mul_c
 benchmark/bin/matrix_mul_rust
 benchmark/bin/matrix_mul_go
-benchmark/bin/prime_count_apex
+benchmark/bin/prime_count_arden
 benchmark/bin/prime_count_c
 benchmark/bin/prime_count_rust
 benchmark/bin/prime_count_go
-benchmark/bin/sum_loop_apex
+benchmark/bin/sum_loop_arden
 benchmark/bin/sum_loop_c
 benchmark/bin/sum_loop_rust
 benchmark/bin/sum_loop_go
-benchmark/bin/matrix_mul_heavy_apex
+benchmark/bin/matrix_mul_heavy_arden
 benchmark/bin/matrix_mul_heavy_c
 benchmark/bin/matrix_mul_heavy_rust
 benchmark/bin/matrix_mul_heavy_go
@@ -27,6 +27,7 @@ benchmark/results/latest.json
 benchmark/results/latest.md
 benchmark/generated/
 benchmark/__pycache__/
+benchmark/benchmark_runner/__pycache__/
 
 # Web
 web/node_modules
@@ -37,10 +38,10 @@ web/package-lock.json
 .idea/
 
 # Tests
-examples/test_no_import/test_no_import
-examples/multi_file_depth_project/multi_file_depth_project
-examples/multi_file_project/multi_file_project
-examples/insane_showcase_project/insane_showcase_project
+examples/minimal_project/minimal_project
+examples/nested_package_project/nested_package_project
+examples/starter_project/starter_project
+examples/showcase_project/showcase_project
 examples/.ardencache/
 .ardencache/
 fuzz/artifacts/

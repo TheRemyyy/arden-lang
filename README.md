@@ -4,15 +4,13 @@
 
 # Arden
 
-**Blazing-fast systems language with static safety checks and near-instant rebuilds.**
-
-Arden is built for fast feedback loops, not long rebuild cycles.
+**A native systems language focused on fast feedback, strong static checks, and practical tooling.**
 
 [![Website](https://img.shields.io/badge/Website-Arden-white?style=flat-square&logo=vercel)](https://apex-compiler.vercel.app/)
 [![Rust](https://img.shields.io/badge/Rust-1.83+-orange.svg?style=flat-square)](https://www.rust-lang.org/)
 [![LLVM](https://img.shields.io/badge/LLVM-21.0+-blue.svg?style=flat-square)](https://llvm.org/)
 
-[Quick Start](docs/getting_started/quick_start.md) • [Examples](examples/) • [Documentation](docs/) • [Benchmarks](benchmark/)
+[Documentation](docs/) • [Examples](examples/) • [Benchmarks](benchmark/) • [Web Docs](https://apex-compiler.vercel.app/)
 
 </div>
 
@@ -20,68 +18,66 @@ Arden is built for fast feedback loops, not long rebuild cycles.
 
 ## Why Arden
 
-Arden is trying to be useful now, not "interesting someday". The current compiler already ships a real CLI, native code generation through LLVM, multi-file project support, a borrow checker, async tasks, formatting/linting, a test runner, and benchmark tooling in one repo.
+Arden is built for people who want native output, compiler-enforced safety, and an integrated workflow without stitching together five separate tools.
 
-If you care about compile-time feedback and iteration speed, Arden is strongest when used as:
+Today the repository already includes:
 
-- a native language with ownership and borrowing
-- a project-oriented compiler with incremental build caching
-- an experimental language that already has enough tooling to build, run, format, lint, test, benchmark, and inspect code from the CLI
+- LLVM-backed native code generation
+- a real CLI for `build`, `run`, `check`, `fmt`, `lint`, `fix`, `test`, `bench`, `profile`, `bindgen`, `lex`, `parse`, and `lsp`
+- multi-file project builds via `arden.toml`
+- ownership and borrowing checks
+- async tasks and runtime control helpers
+- formatter, linter, test runner, benchmark harness, and CI smoke coverage in the same repo
 
-## Try It Quickly
+This is still an experimental language, but it is not a toy parser demo.
 
-```bash
-# Requires the toolchain from docs/getting_started/installation.md:
-# Rust 1.83+, LLVM 21+, clang, and mold/lld depending on platform.
+## What You Get In This Repository
 
-git clone https://github.com/TheRemyyy/apex-compiler.git arden
-cd arden
-cargo build --release
+This repository is not just the compiler binary. It also contains the material a new user needs to go from "what is this?" to "I can build something with it":
 
-echo 'import std.io.*; function main(): None { println("Hello"); return None; }' > hello.arden
-./target/release/arden run hello.arden
+- source documentation under [`docs/`](docs/)
+- runnable language and project examples under [`examples/`](examples/)
+- compiler and project smoke scripts under [`scripts/`](scripts/)
+- the benchmark harness under [`benchmark/`](benchmark/)
+- CI and release automation under [`.github/`](.github/)
+
+The intended learning loop is:
+
+1. install the toolchain
+2. run one single-file example
+3. create a project with `arden new`
+4. inspect project mode with `arden info`
+5. move into testing, formatting, benchmarking, and larger examples
+
+## What Arden Looks Like
+
+```arden
+import std.io.*;
+
+function main(): None {
+    mut sum: Integer = 0;
+
+    for (value in range(0, 5)) {
+        sum += value;
+    }
+
+    println("sum = {sum}");
+    return None;
+}
 ```
-
-## Status
-
-Arden is an experimental but actively developed compiler.
-
-- core language features, the project CLI, and benchmark tooling are working today
-- incremental caching and per-phase build timings are implemented and measurable
-- expect rough edges and ongoing compiler work, but this is not a toy parser demo
-
-## When Arden Makes Sense
-
-- You want fast compile times and fast rebuild feedback on native projects.
-- You like Rust-style safety pressure but want a simpler, more integrated CLI workflow.
-- You want one toolchain for `build`, `run`, `check`, `fmt`, `lint`, `test`, `bench`, and `profile`.
-
-## What Is Implemented
-
-The repository currently includes:
-
-- **Ownership and borrowing** with a dedicated borrow checker in [`src/borrowck.rs`](src/borrowck.rs)
-- **Strong static typing** with type checking in [`src/typeck.rs`](src/typeck.rs)
-- **Async/await and `Task<T>`** with runtime controls such as `await_timeout`, `is_done`, and `cancel`
-- **Pattern matching, enums, interfaces, classes, generics, lambdas, ranges, and effects**
-- **Multi-file projects** with `arden.toml`, package declarations, imports, and project rewriting
-- **LLVM-based native codegen** in [`src/codegen/`](src/codegen/)
-- **CLI tooling** for `build`, `run`, `compile`, `check`, `fmt`, `lint`, `fix`, `test`, `bench`, `profile`, `bindgen`, `lex`, `parse`, and `lsp`
 
 ## Quick Start
 
 ### Requirements
-
-Build-from-source currently requires:
 
 - Rust `1.83+`
 - LLVM `21+`
 - Clang
 - `mold` on Linux, or LLVM `lld` on macOS/Windows
 
-See [Installation](docs/getting_started/installation.md) for platform details.
+Detailed platform notes live in [docs/getting_started/installation.md](docs/getting_started/installation.md).
 
-### Build The Compiler
+### Build From Source
 
 ```bash
 git clone https://github.com/TheRemyyy/apex-compiler.git arden
@@ -89,7 +85,10 @@ cd arden
 cargo build --release
 ```
 
-The built binary is `target/release/arden`. README examples use `arden`; if you have not added an alias or symlink yet, substitute `target/release/arden`.
+The compiler binary will be available at:
+
+- `target/release/arden`
+- `target/release/arden.exe` on Windows
 
 ### Run A Single File
 
@@ -103,183 +102,221 @@ function main(): None {
 }
 EOF
 
-arden run hello.arden
-```
-
-Other useful commands:
-
-```bash
-arden check hello.arden
-arden compile hello.arden
-arden fmt hello.arden
-arden lint hello.arden
-arden profile hello.arden
+./target/release/arden run hello.arden
 ```
 
 ### Create A Project
 
 ```bash
-arden new my_project
-cd my_project
-arden run
+./target/release/arden new hello_project
+cd hello_project
+../target/release/arden run
 ```
 
-This flow was smoke-tested against the current compiler build and produces a runnable project skeleton.
+That scaffold is intentionally small, but it already gives you the pieces Arden uses for project mode:
 
-## Example Features
+- `arden.toml` declares the project name, entry file, output kind, output path, and explicit source file list
+- `src/main.arden` is the entrypoint used by `arden run` and `arden build`
+- `README.md` records the local workflow so the generated project is not a dead skeleton
 
-### Ownership And Borrowing
-
-```arden
-function readData(borrow data: Data): Integer {
-    return data.value;
-}
-
-function modifyValue(borrow mut x: Integer): None {
-    x = x + 10;
-    return None;
-}
-```
-
-See [`examples/10_ownership.arden`](examples/10_ownership.arden).
-
-### Async Tasks
-
-```arden
-async function delayedValue(ms: Integer, value: Integer): Task<Integer> {
-    std.time.sleep(ms);
-    return async { value };
-}
-```
-
-See [`examples/14_async.arden`](examples/14_async.arden) and [`examples/28_async_runtime_control.arden`](examples/28_async_runtime_control.arden).
-
-### Multi-File Projects
-
-```arden
-package main;
-
-import utils.math.factorial;
-
-function main(): None {
-    println("5! = " + to_string(factorial(5)));
-    return None;
-}
-```
-
-See [`examples/multi_file_project`](examples/multi_file_project/) and [`examples/multi_file_depth_project`](examples/multi_file_depth_project/).
-
-## Tooling
-
-The current CLI surface is broader than a toy compiler:
+To inspect exactly what the compiler sees, run:
 
 ```bash
-arden build
-arden run [file]
-arden check [file]
-arden fmt [path]
-arden lint [path]
-arden fix [path]
-arden test --list --path examples/24_test_attributes.arden
-arden bindgen path/to/header.h
-arden bench hello.arden --iterations 5
-arden profile hello.arden
-arden lsp
+../target/release/arden info
 ```
 
-Also available:
+## CLI Surface
 
-- platform-specific example test scripts in [`scripts/`](scripts/)
-- a fuzz target in [`fuzz/`](fuzz/)
-- ignored stress tests via `cargo test -- --ignored`
+Arden ships with a broader workflow than just `compile`.
 
-## Documentation
+```text
+new      Create a project skeleton
+build    Build the current project
+run      Build and run a project or single file
+compile  Compile a single Arden file
+check    Parse, type-check, and borrow-check source
+info     Print project configuration and build settings
+lint     Report static findings
+fix      Apply safe fixes and reformat the result
+fmt      Format Arden source
+lex      Print lexer tokens
+parse    Print the parsed AST
+lsp      Start the language server
+test     Discover and run @Test suites
+bindgen  Generate Arden extern bindings from a C header
+bench    Measure end-to-end execution time
+profile  Run once and print a timing summary
+```
 
-Start here:
+Reference: [docs/compiler/cli.md](docs/compiler/cli.md)
 
-- [Installation](docs/getting_started/installation.md)
-- [Quick Start](docs/getting_started/quick_start.md)
-- [Language Overview](docs/overview.md)
-- [Compiler CLI](docs/compiler/cli.md)
-- [Ownership](docs/advanced/ownership.md)
-- [Async](docs/advanced/async.md)
-- [Modules and projects](docs/features/modules.md)
-- [Testing](docs/features/testing.md)
-- [Standard library](docs/stdlib/overview.md)
+## Language Snapshot
+
+Arden currently supports:
+
+- functions, lambdas, modules, packages, and imports
+- classes, inheritance, interfaces, and visibility rules
+- enums, pattern matching, `Option<T>`, and `Result<T, E>`
+- generics and generic bounds
+- ownership, borrowing, and mutability checking
+- async / await with `Task<T>`
+- intrinsic standard library modules for I/O, math, time, args, strings, collections, and system access
+
+Good starting points:
+
+- [docs/overview.md](docs/overview.md)
+- [docs/getting_started/quick_start.md](docs/getting_started/quick_start.md)
+- [docs/features/projects.md](docs/features/projects.md)
+- [docs/features/testing.md](docs/features/testing.md)
+- [docs/stdlib/overview.md](docs/stdlib/overview.md)
+
+## How Arden Works
+
+At a high level, the compiler pipeline is:
+
+1. lex source text into tokens
+2. parse the token stream into an AST
+3. resolve names, types, and effects
+4. run ownership and borrow validation
+5. lower the checked program to LLVM IR
+6. link a native executable or library
+
+That matters for users because many CLI commands stop at different layers:
+
+- `arden lex` shows tokenizer output
+- `arden parse` shows parser output
+- `arden check` runs semantic and borrow checks without building a native binary
+- `arden build` goes through codegen and linking
+- `arden run` builds and executes
+
+More detail lives in [docs/compiler/architecture.md](docs/compiler/architecture.md).
+
+## Project Mode In Practice
+
+Single-file programs are useful for experiments, but most real Arden work happens in project mode.
+
+Project mode gives you:
+
+- explicit source graph control through `arden.toml`
+- a stable entry file instead of magic directory scanning
+- reusable build metadata in `.ardencache/`
+- project-aware `build`, `run`, `check`, `fmt`, `test`, and `info`
+
+This is one of the bigger differences between Arden and parser-demo style language repos: there is an opinionated workflow for building multi-file code, not just compiling one example file at a time.
+
+Reference: [docs/features/projects.md](docs/features/projects.md)
 
 ## Examples
 
-Useful entry points:
+The repo includes both focused feature examples and larger project-style samples.
 
-- [`examples/01_hello.arden`](examples/01_hello.arden)
-- [`examples/10_ownership.arden`](examples/10_ownership.arden)
-- [`examples/14_async.arden`](examples/14_async.arden)
-- [`examples/16_pattern_matching.arden`](examples/16_pattern_matching.arden)
-- [`examples/24_test_attributes.arden`](examples/24_test_attributes.arden)
-- [`examples/37_interfaces_contracts.arden`](examples/37_interfaces_contracts.arden)
-- [`examples/insane_showcase_project`](examples/insane_showcase_project/)
+Recommended first passes:
 
-## Performance Snapshot
+- [examples/01_hello.arden](examples/01_hello.arden)
+- [examples/10_ownership.arden](examples/10_ownership.arden)
+- [examples/14_async.arden](examples/14_async.arden)
+- [examples/24_test_attributes.arden](examples/24_test_attributes.arden)
+- [examples/35_visibility_enforcement.arden](examples/35_visibility_enforcement.arden)
+- [examples/starter_project/README.md](examples/starter_project/README.md)
+- [examples/showcase_project/README.md](examples/showcase_project/README.md)
 
-The repo includes a reproducible benchmark runner in [`benchmark/run.py`](benchmark/run.py) that compares Arden, Rust, and Go on the same workloads.
+Overview: [examples/README.md](examples/README.md)
 
-Beyond the baseline suite, the benchmark harness now also includes:
+If you are learning the language, a good order is:
 
-- `matrix_mul_heavy` for a more meaningful CPU-bound runtime pass
-- `compile_project_extreme_graph` for a much larger synthetic project compile
-- `incremental_rebuild_extreme_graph*` for harsher invalidation/rebuild scenarios
-- `--arden-timings` to capture Arden phase breakdowns from `arden build --timings`
+1. start with `01_hello`, `02_variables`, and `04_control_flow`
+2. move to `05_classes`, `08_modules`, and `09_generics`
+3. then read `10_ownership`, `13_error_handling`, and `14_async`
+4. after that, switch to `starter_project/` and `showcase_project/`
 
-I verified a small subset locally on **April 2, 2026** using:
+That path mirrors the way the docs are structured, so you can alternate between prose and runnable code instead of reading one giant manual first.
+
+## Benchmarks
+
+Arden includes a benchmark harness that compares Arden, Rust, and Go on shared workloads.
+
+The suite covers:
+
+- CPU-focused runtime workloads
+- cold and hot project compile benchmarks
+- incremental rebuild benchmarks
+- optional larger synthetic graph stress tests
+
+Start here:
+
+```bash
+python3 benchmark/run.py --help
+python3 benchmark/run.py --bench sum_loop --repeats 3 --warmup 1
+python3 benchmark/run.py --bench compile_project_starter_graph --compile-mode hot --repeats 3 --warmup 1
+```
+
+Reference: [benchmark/README.md](benchmark/README.md)
+
+The benchmark harness is intentionally part of the repository instead of an external gist so numbers can be regenerated, challenged, and updated. If benchmark results are published, they should always be tied to a command, machine, and date rather than presented as timeless marketing.
+
+### Local Snapshot
+
+Verified locally on `2026-04-07` with `target/release/arden` built from this repository and single-sample runs (`--repeats 1 --warmup 0`):
+
+| Benchmark | Arden | Rust | Go |
+| :--- | ---: | ---: | ---: |
+| `matrix_mul_heavy` runtime | `0.012186s` | `0.027221s` | `0.041095s` |
+| `incremental_rebuild_large_project_batch` hot rebuild after 10 edits | `0.060284s` | `1.012121s` | `0.891075s` |
+
+Commands used:
 
 ```bash
 python3 benchmark/run.py --bench matrix_mul_heavy --repeats 1 --warmup 0 --no-build
-python3 benchmark/run.py --bench compile_project_10_files --compile-mode hot --repeats 1 --warmup 0 --no-build
-python3 benchmark/run.py --bench incremental_rebuild_1_file --repeats 1 --warmup 0 --no-build --arden-timings
+python3 benchmark/run.py --bench incremental_rebuild_large_project_batch --repeats 1 --warmup 0 --no-build
 ```
 
-Current local snapshot for the heavier CPU-bound runtime benchmark (`matrix_mul_heavy`):
+Treat this as a repository snapshot, not a publication-grade claim. For stable reporting, rerun with more repeats on a quieter machine.
 
-| Language | Runtime mean |
-|---|---:|
-| Arden | 0.0106 s |
-| Rust | 0.0218 s |
-| Go | 0.0144 s |
+On this machine, the even larger synthetic and extreme graph compile benchmarks were available in the harness but the Go side was killed during quick snapshot runs, so they are better treated as stress tests than as a clean three-way headline comparison.
 
-Current local snapshot for the generated 10-file compile benchmark:
+## Repository Map
 
-| Language | Hot compile mean |
-|---|---:|
-| Arden | 0.106 s |
-| Rust | 0.131 s |
-| Go | 3.097 s |
+- [docs/](docs/) - language, stdlib, project, and compiler documentation
+- [examples/](examples/) - feature-focused examples and multi-file sample projects
+- [benchmark/](benchmark/) - benchmark harness and report generation
+- [scripts/](scripts/) - smoke tests, example runners, and maintenance scripts
+- [.github/workflows/](.github/workflows/) - CI and release automation
+- [src/](src/) - compiler implementation
 
-Current local snapshot for incremental rebuild after changing one file:
+## Documentation Map
 
-| Language | Full compile mean | Rebuild mean |
-|---|---:|---:|
-| Arden | 0.1846 s | 0.0108 s |
-| Rust | 0.1288 s | 0.1647 s |
-| Go | 3.0512 s | 0.1497 s |
+If you want a structured reading order:
 
-In this measured scenario, Arden rebuilds were roughly 13x faster than Rust and roughly 14x faster than Go.
+- [docs/overview.md](docs/overview.md) for the broad mental model
+- [docs/getting_started/installation.md](docs/getting_started/installation.md) for toolchain setup
+- [docs/getting_started/quick_start.md](docs/getting_started/quick_start.md) for the first runnable steps
+- [docs/compiler/cli.md](docs/compiler/cli.md) for the command surface
+- [docs/features/projects.md](docs/features/projects.md) and [docs/features/testing.md](docs/features/testing.md) for day-to-day workflow
+- [docs/compiler/architecture.md](docs/compiler/architecture.md) if you want to understand how the compiler is arranged internally
 
-With `--arden-timings`, the benchmark report also captures where Arden spends build time. On the verified 1-file rebuild scenario, the cold build was dominated by `object codegen` and `final link`, while the hot rebuild collapsed to a cache-heavy path with only `parse + symbol scan`, `dependency graph`, and `semantic cache gate` showing up materially.
+If you prefer code first:
 
-I also ran an Arden-only extreme synthetic project probe outside the cross-language suite:
+- [examples/README.md](examples/README.md)
+- [benchmark/README.md](benchmark/README.md)
+- [scripts/README.md](scripts/README.md)
 
-- cold build of a generated 2200-file graph: about `21.0 s`
-- hot rebuild after one leaf edit: about `0.628 s`
-- biggest cold-build phases: `rewrite ~8.17 s`, `object codegen ~11.57 s`
+## Project Status
 
-These are single-run sanity checks on one machine, not publication-grade benchmark claims. The important point is that Arden now has runtime benchmarks, incremental compile benchmarks, harsher synthetic compile scenarios, and phase-level timing data instead of a vague "fast compilation" bullet.
+Arden is actively evolving. The docs in this repository aim to describe what is implemented now, not an aspirational roadmap.
 
-For the full suite and workload descriptions, see [`benchmark/README.md`](benchmark/README.md).
+That means:
+
+- examples are intended to run against the current compiler
+- CLI docs follow the current `--help` output
+- benchmark docs describe the actual shipped harness
+- web docs are generated from the repository sources in `docs/`
+
+That also means docs should become richer over time, but not looser. If a feature is incomplete, the docs should say so plainly.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+If you want to improve the compiler, docs, examples, or tooling, start with:
 
-## License
-
-Apache 2.0 - See [LICENSE](LICENSE).
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [docs/compiler/architecture.md](docs/compiler/architecture.md)
+- [scripts/README.md](scripts/README.md)

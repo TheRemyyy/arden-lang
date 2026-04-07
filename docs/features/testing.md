@@ -1,278 +1,159 @@
-# Testing Framework
+# Testing
 
-Arden includes a built-in testing framework with annotations and assertions for writing unit tests.
+Arden includes a built-in test framework based on attributes and assertion helpers.
 
-## Writing Tests
+The goal is to keep normal test workflows inside the same compiler CLI instead of forcing a separate external runner.
 
-Tests are functions marked with the `@Test` attribute:
+## Minimal Test
 
 ```arden
 @Test
 function testAddition(): None {
-    result: Integer = 2 + 2;
-    assert_eq(result, 4);
+    assert_eq(2 + 2, 4);
+    return None;
 }
+```
+
+Run it with:
+
+```bash
+arden test --path test_math.arden
 ```
 
 ## Test Attributes
 
-### @Test
-Marks a function as a test case:
+### `@Test`
+
+Marks a function as a test case.
+
+### `@Ignore`
+
+Skips a test.
 
 ```arden
 @Test
-function testSomething(): None {
-    // Test code here
+@Ignore("waiting for feature")
+function skipped(): None {
+    fail("should not run");
+    return None;
 }
 ```
 
-### @Ignore
-Skips a test (optionally with a reason):
+### `@Before` / `@After`
 
-```arden
-@Test
-@Ignore("Not implemented yet")
-function testFutureFeature(): None {
-    // This test will be skipped
-}
+Run before and after each test.
 
-@Test
-@Ignore  // No reason given
-function testAnotherSkipped(): None {
-    // This test will also be skipped
-}
-```
+Use these for per-test setup/cleanup.
 
-### @Before
-Runs before each test in the suite:
+### `@BeforeAll` / `@AfterAll`
 
-```arden
-@Before
-function setup(): None {
-    // Setup code runs before each test
-}
-```
+Run once per suite.
 
-### @After
-Runs after each test in the suite:
+Use these when repeated setup would be wasteful.
 
-```arden
-@After
-function teardown(): None {
-    // Cleanup code runs after each test
-}
-```
+## Assertion Helpers
 
-### @BeforeAll
-Runs once before all tests in the suite:
+Common built-ins:
 
-```arden
-@BeforeAll
-function initSuite(): None {
-    // Suite setup code
-}
-```
+- `assert(condition)`
+- `assert_true(condition)`
+- `assert_false(condition)`
+- `assert_eq(a, b)`
+- `assert_ne(a, b)`
+- `fail()`
+- `fail("message")`
 
-### @AfterAll
-Runs once after all tests in the suite:
+Assertion helpers can also be stored as typed function values.
 
-```arden
-@AfterAll
-function cleanupSuite(): None {
-    // Suite cleanup code
-}
-```
-
-## Assertion Functions
-
-### assert(condition)
-Panics if the condition is false:
-
-```arden
-assert(x > 0);
-assert(name != "");
-```
-
-### assert_eq(a, b)
-Panics if `a` is not equal to `b`:
-
-```arden
-assert_eq(2 + 2, 4);
-assert_eq("hello", greeting);
-```
-
-Assertion helpers can also be stored in typed function values:
-
-```arden
-check: (Integer, Integer) -> None = assert_eq;
-ensure_false: (Boolean) -> None = assert_false;
-```
-
-Those typed function values keep the same parameter rules as direct calls. For example, `assert` / `assert_true` / `assert_false` require `Boolean`, and `fail` can be used as either `() -> None` or `(String) -> None`.
-Mixed numeric assertion parity also applies in higher-order form, so signatures like `(Integer, Float) -> None` for `assert_eq` and `(Float, Integer) -> None` for `assert_ne` work the same way as direct calls.
-
-### assert_ne(a, b)
-Panics if `a` equals `b`:
-
-```arden
-assert_ne(0, divisor);
-assert_ne("error", status);
-```
-
-### assert_true(condition)
-Panics if the condition is false (same as `assert`):
-
-```arden
-assert_true(isValid);
-```
-
-### assert_false(condition)
-Panics if the condition is true:
-
-```arden
-assert_false(isEmpty);
-```
-
-### fail(message)
-Unconditionally fails the test:
-
-```arden
-fail("This should not be reached");
-```
-
-## Running Tests
-
-Use the `arden test` command to discover and run tests:
+## CLI
 
 ```bash
-# Run all tests in current project
 arden test
-
-# Run tests in a specific file
-arden test --path tests/math_test.arden
-
-# List tests without running them
 arden test --list
-
-# Filter tests by name pattern
-arden test --filter "math"
+arden test --filter math
+arden test --path tests/
+arden test --path tests/math_test.arden
 ```
 
-Notes:
-- Without `--path`, `arden test` uses every source file listed in the current project's `arden.toml` when available, so `@Test` functions in regular files like `src/main.arden` are discovered and unrelated `*_test.arden` files outside the project list are ignored.
-- The test runner auto-injects `import std.io.*;` when needed.
-- Block-commented `import std.io.*;` text no longer suppresses that injection, and shebang scripts keep the shebang above the injected import.
-- Existing user `main(...)` entrypoints are removed from runner input before generation (including `public function main(...)`) so the generated test entrypoint remains unique.
-- Main stripping is signature-aware and avoids stripping comment text that only mentions `function main(...)`.
-- `async main(...)` forms are also stripped from test-runner input before generated entrypoint insertion.
-- Main stripping is now also brace-aware inside strings and both comment forms, so `{` / `}` in main-body text no longer corrupt runner generation or erase following helpers.
-- Directory-based discovery now walks nested folders, so `arden test --path tests/` picks up files like `tests/unit/math_spec.arden`.
-- Discovery matches `test/spec` case-insensitively, so names like `MathTest.arden` and `USER_SPEC.arden` are picked up too.
-- Missing test directories now fail fast with a CLI error instead of being treated as an empty test set.
-- Explicit file paths must target `.arden` files; passing a non-Arden file now fails before lex/parse.
-- In project mode, generated runners are built from an isolated temporary copy of the project, so tests can still import project-local packages and aliases while safely replacing the original entrypoint.
-- Bare `@Ignore` and `@Ignore("reason")` are both skipped correctly by `arden test`.
-- Ignored tests do not run `@Before` or `@After` hooks.
-- Final summary `Total` counts all discovered tests, including ignored ones.
-- String escapes inside tests follow normal Arden string semantics, so `\n`, `\t`, `\"`, `\\`, `\{`, and `\}` are decoded before execution.
-- Ignore reasons containing backslashes, control characters, or literal braces are rendered safely by the generated runner instead of being reinterpreted as escape sequences.
-- `arden test --list` also escapes control characters inside ignore reasons so discovery output stays single-line per test.
+Options:
+
+- `-p, --path <file-or-dir>`
+- `-l, --list`
+- `-f, --filter <pattern>`
+
+## Typical Workflows
+
+### Run The Current Project's Tests
+
+```bash
+arden test
+```
+
+### List Tests Without Executing
+
+```bash
+arden test --list
+```
+
+### Run A Focused Subset
+
+```bash
+arden test --filter math
+```
+
+### Point At A Specific Directory Or File
+
+```bash
+arden test --path tests/
+arden test --path tests/math_test.arden
+```
+
+## Behavior Notes
+
+- without `--path`, project mode uses the current project's configured files
+- directory discovery walks nested folders
+- generated runner files are isolated from the source tree
+- ignored tests are reported but not executed
+- `--list` shows discovered tests without running them
 
 ## Complete Example
 
 ```arden
-// test_math.arden
-
-import std.io.*;
-import std.string.*;
-
 @BeforeAll
-function initTests(): None {
-    println("=== Starting Math Tests ===");
-}
-
-@Before
-function setup(): None {
-    // Reset state before each test
+function initSuite(): None {
+    println("starting tests");
+    return None;
 }
 
 @Test
-function testAddition(): None {
-    assert_eq(2 + 2, 4);
-    assert_eq(10 + 5, 15);
+function testNumbers(): None {
+    assert_eq(3 * 7, 21);
+    return None;
 }
 
 @Test
-function testMultiplication(): None {
-    result: Integer = 6 * 7;
-    assert_eq(result, 42);
-}
-
-@Test
-function testStringConcat(): None {
-    assert_eq("Hello, " + "World!", "Hello, World!");
-}
-
-@Test
-@Ignore("Division by zero check not ready")
-function testDivisionByZero(): None {
-    // This test will be skipped
-}
-
-@After
-function teardown(): None {
-    // Cleanup after each test
-}
-
-@AfterAll
-function cleanup(): None {
-    println("=== Math Tests Complete ===");
+@Ignore("example")
+function skipped(): None {
+    fail("should not run");
+    return None;
 }
 ```
 
-## Test Output
+## When To Prefer `arden test`
 
-```
-$ arden test --path test_math.arden
+Use the built-in test runner when:
 
-========================================
-         Arden Test Runner
-========================================
+- you want attribute-driven unit-style coverage
+- you are already in project mode
+- you want test discovery integrated with the compiler
 
---- Running Tests ---
+Use the repository example sweep scripts when:
 
-Running: testAddition... [PASS]
-Running: testMultiplication... [PASS]
-Running: testStringConcat... [PASS]
+- you changed compiler behavior broadly
+- you want to validate the public example corpus
+- you need a regression pass beyond one project's tests
 
-[IGNORE] testDivisionByZero
-      Reason: Division by zero check not ready
+Reference example:
 
-========================================
-         Test Summary
-========================================
-Total:   4
-Passed:  3
-Failed:  0
-Ignored: 1
-
-ALL TESTS PASSED
-```
-
-## Best Practices
-
-1. **Test one thing at a time**: Each test should verify a single concept
-2. **Use descriptive names**: `testDivisionByZero` is better than `test3`
-3. **Group related tests**: Use @Before/@After for common setup
-4. **Skip with reason**: Always provide a reason when using @Ignore
-5. **Assert with messages**: The assertion functions provide clear error messages
-
-## Error Messages
-
-When an assertion fails, you get a clear error message:
-
-```
-Assertion failed: values are not equal!
-```
-
-The test runner then reports which test failed and exits with error code 1.
+- [examples/24_test_attributes.arden](../../examples/24_test_attributes.arden)
+- [scripts/README.md](../../scripts/README.md)

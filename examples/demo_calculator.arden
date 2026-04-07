@@ -186,7 +186,7 @@ module MathConstants {
 
 function main(): None {
     println("========================================");
-    println("       APEX SCIENTIFIC CALCULATOR       ");
+    println("      ARDEN SCIENTIFIC CALCULATOR       ");
     println("========================================");
     println("");
 

@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
-$bashScript = Join-Path $scriptDir "ci_cli_smoke.sh"
+$bashScript = Join-Path $scriptDir "cli_smoke.sh"
 $bashCommand = Get-Command bash -ErrorAction SilentlyContinue
 
 if (-not $bashCommand) {
@@ -13,8 +13,8 @@ if (-not (Test-Path $bashScript)) {
     throw "Smoke script not found: $bashScript"
 }
 
-$compilerInput = if ($env:APEX_COMPILER_PATH) {
-    $env:APEX_COMPILER_PATH
+$compilerInput = if ($env:ARDEN_COMPILER_PATH) {
+    $env:ARDEN_COMPILER_PATH
 } else {
     Join-Path $repoRoot "target\release\arden.exe"
 }
@@ -50,12 +50,12 @@ if (-not $repoRootUnix) {
 }
 
 $ciSkip = if ($env:CI_SKIP_COMPILER_BUILD) { $env:CI_SKIP_COMPILER_BUILD } else { "0" }
-$logPath = Join-Path $env:RUNNER_TEMP "arden-ci-smoke-windows.log"
+$logPath = Join-Path $env:RUNNER_TEMP "arden-cli-smoke-windows.log"
 $bashRun = @"
 set -euo pipefail
 cd '$repoRootUnix'
 chmod +x '$bashScriptUnix' '$compilerUnix'
-export APEX_COMPILER_PATH='$compilerUnix'
+export ARDEN_COMPILER_PATH='$compilerUnix'
 export CI_SKIP_COMPILER_BUILD='$ciSkip'
 echo "=== Running smoke script ==="
 bash -x '$bashScriptUnix' 2>&1

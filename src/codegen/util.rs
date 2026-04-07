@@ -373,9 +373,66 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     pub(crate) fn infer_block_tail_type(&self, block: &[Spanned<Stmt>]) -> Option<Type> {
+        self.infer_block_tail_type_with_expected(block, &[], None)
+    }
+
+    fn infer_expr_type_with_expected(
+        &self,
+        expr: &Expr,
+        params: &[Parameter],
+        expected_ty: Option<&Type>,
+    ) -> Type {
+        match expr {
+            Expr::Lambda {
+                params: lambda_params,
+                ..
+            } => {
+                if let Some(Type::Function(expected_params, expected_return)) = expected_ty {
+                    if expected_params.len() == lambda_params.len() {
+                        return Type::Function(
+                            expected_params.clone(),
+                            Box::new((**expected_return).clone()),
+                        );
+                    }
+                }
+                self.infer_expr_type(expr, params)
+            }
+            Expr::IfExpr {
+                then_branch,
+                else_branch,
+                ..
+            } => self.infer_if_expr_result_type(
+                then_branch,
+                else_branch.as_ref(),
+                params,
+                expected_ty,
+            ),
+            Expr::Match {
+                expr: match_expr,
+                arms,
+            } => self.infer_match_expr_result_type(&match_expr.node, arms, params, expected_ty),
+            Expr::Block(block) => self
+                .infer_block_tail_type_with_expected(block, params, expected_ty)
+                .unwrap_or(Type::None),
+            Expr::AsyncBlock(block) => Some(Type::Task(Box::new(
+                self.infer_block_tail_type_with_expected(block, params, expected_ty)
+                    .unwrap_or(Type::None),
+            )))
+            .unwrap_or(Type::None),
+            _ => self.infer_expr_type(expr, params),
+        }
+    }
+
+    pub(crate) fn infer_block_tail_type_with_expected(
+        &self,
+        stmts: &[Spanned<Stmt>],
+        params: &[Parameter],
+        expected_ty: Option<&Type>,
+    ) -> Option<Type> {
         let mut scoped_params: Vec<Parameter> = Vec::new();
+        scoped_params.extend_from_slice(params);
         let mut ret = None;
-        for stmt in block {
+        for stmt in stmts {
             match &stmt.node {
                 Stmt::Let {
                     name, ty, mutable, ..
@@ -390,7 +447,13 @@ impl<'ctx> Codegen<'ctx> {
                 Stmt::Expr(expr) => {
                     ret = Some(
                         self.builtin_argument_type_hint(&expr.node)
-                            .unwrap_or_else(|| self.infer_expr_type(&expr.node, &scoped_params)),
+                            .unwrap_or_else(|| {
+                                self.infer_expr_type_with_expected(
+                                    &expr.node,
+                                    &scoped_params,
+                                    expected_ty,
+                                )
+                            }),
                     );
                 }
                 _ => {}
@@ -1159,6 +1222,23 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>> {
         // 1. Identify captures
         let captures = self.identify_captures(&body.node, params);
+        let effective_params: Vec<Parameter> = match expected_fn_ty {
+            Some(Type::Function(expected_params, _)) if expected_params.len() == params.len() => params
+                .iter()
+                .zip(expected_params.iter())
+                .map(|(param, expected_ty)| Parameter {
+                    name: param.name.clone(),
+                    ty: if matches!(param.ty, Type::None) {
+                        expected_ty.clone()
+                    } else {
+                        param.ty.clone()
+                    },
+                    mutable: param.mutable,
+                    mode: param.mode,
+                })
+                .collect(),
+            _ => params.to_vec(),
+        };
 
         // 2. Infer return type
         let ret_arden_ty = match expected_fn_ty {
@@ -1227,7 +1307,7 @@ impl<'ctx> Codegen<'ctx> {
         let mut llvm_params: Vec<BasicMetadataTypeEnum> = vec![
             self.context.ptr_type(AddressSpace::default()).into(), // env_ptr
         ];
-        for p in params {
+        for p in &effective_params {
             llvm_params.push(self.llvm_type(&p.ty).into());
         }
 
@@ -1284,7 +1364,7 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         // Allocate parameters (starting from index 1)
-        for (i, param) in params.iter().enumerate() {
+        for (i, param) in effective_params.iter().enumerate() {
             let llvm_param = lambda_fn.get_nth_param((i + 1) as u32).ok_or_else(|| {
                 CodegenError::new(format!(
                     "Lambda parameter {} missing for '{}'",
@@ -1468,7 +1548,7 @@ impl<'ctx> Codegen<'ctx> {
             .ok_or_else(|| CodegenError::new("match expression missing insert block"))?;
         let mut incoming: Vec<(BasicValueEnum<'ctx>, BasicBlock<'ctx>)> = Vec::new();
         let mut result_ty: Option<BasicTypeEnum<'ctx>> = None;
-        let inferred_match_result_ty = self.infer_match_expr_result_type(expr, arms, &[]);
+        let inferred_match_result_ty = self.infer_match_expr_result_type(expr, arms, &[], None);
         let expected_match_result_ty = expected_result_ty.or(match inferred_match_result_ty {
             Type::None => None,
             ref ty => Some(ty),
@@ -2457,7 +2537,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Match { expr, arms } => {
-                let inferred = self.infer_match_expr_result_type(&expr.node, arms, &[]);
+                let inferred = self.infer_match_expr_result_type(&expr.node, arms, &[], None);
                 (!matches!(inferred, Type::None)).then_some(inferred)
             }
             Expr::Block(block) => self.infer_block_tail_type(block),
@@ -2741,10 +2821,12 @@ impl<'ctx> Codegen<'ctx> {
         then_branch: &[Spanned<Stmt>],
         else_branch: Option<&Vec<Spanned<Stmt>>>,
         params: &[Parameter],
+        expected_ty: Option<&Type>,
     ) -> Type {
-        let then_ty = self.infer_block_tail_type_with_params(then_branch, params);
-        let else_ty =
-            else_branch.and_then(|branch| self.infer_block_tail_type_with_params(branch, params));
+        let then_ty = self.infer_block_tail_type_with_expected(then_branch, params, expected_ty);
+        let else_ty = else_branch.and_then(|branch| {
+            self.infer_block_tail_type_with_expected(branch, params, expected_ty)
+        });
         match (then_ty, else_ty) {
             (Some(then_ty), Some(else_ty)) => self
                 .common_compatible_codegen_type(&then_ty, &else_ty)
@@ -2759,13 +2841,15 @@ impl<'ctx> Codegen<'ctx> {
         match_expr: &Expr,
         arms: &[MatchArm],
         params: &[Parameter],
+        expected_ty: Option<&Type>,
     ) -> Type {
         let match_ty = self.infer_expr_type(match_expr, params);
         let mut result: Option<Type> = None;
         for arm in arms {
             let mut arm_params = params.to_vec();
             arm_params.extend(self.infer_match_pattern_params(&arm.pattern, &match_ty));
-            let Some(arm_ty) = self.infer_block_tail_type_with_params(&arm.body, &arm_params)
+            let Some(arm_ty) =
+                self.infer_block_tail_type_with_expected(&arm.body, &arm_params, expected_ty)
             else {
                 continue;
             };
@@ -2779,30 +2863,7 @@ impl<'ctx> Codegen<'ctx> {
         stmts: &[Spanned<Stmt>],
         params: &[Parameter],
     ) -> Option<Type> {
-        let mut scoped_params = params.to_vec();
-        let mut ret = None;
-        for stmt in stmts {
-            match &stmt.node {
-                Stmt::Let {
-                    name, ty, mutable, ..
-                } => {
-                    scoped_params.push(Parameter {
-                        name: name.clone(),
-                        ty: ty.clone(),
-                        mutable: *mutable,
-                        mode: crate::ast::ParamMode::Owned,
-                    });
-                }
-                Stmt::Expr(expr) => {
-                    ret = Some(
-                        self.builtin_argument_type_hint(&expr.node)
-                            .unwrap_or_else(|| self.infer_expr_type(&expr.node, &scoped_params)),
-                    );
-                }
-                _ => {}
-            }
-        }
-        ret
+        self.infer_block_tail_type_with_expected(stmts, params, None)
     }
 
     pub fn needs_terminator(&self) -> bool {
@@ -3699,9 +3760,9 @@ impl<'ctx> Codegen<'ctx> {
                 then_branch,
                 else_branch,
                 ..
-            } => self.infer_if_expr_result_type(then_branch, else_branch.as_ref(), params),
+            } => self.infer_if_expr_result_type(then_branch, else_branch.as_ref(), params, None),
             Expr::Match { expr, arms } => {
-                self.infer_match_expr_result_type(&expr.node, arms, params)
+                self.infer_match_expr_result_type(&expr.node, arms, params, None)
             }
             Expr::Await(inner) => {
                 let inner_ty = self.infer_expr_type(&inner.node, params);

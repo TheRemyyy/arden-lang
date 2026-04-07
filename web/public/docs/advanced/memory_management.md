@@ -1,25 +1,47 @@
 # Memory Management
 
-Arden is a systems language that compiles to native code. it uses LLVM as a backend.
+Arden is a native language with compiler-enforced ownership and borrowing.
+
+It targets LLVM and does not rely on a tracing garbage collector for ordinary program execution.
+
+## High-Level Model
+
+- primitive values behave like ordinary native values
+- heap-backed runtime values such as `String`, collections, and class instances are managed through the language runtime and ownership rules
+- lifetimes and mutation hazards are checked statically where possible
+
+## Ownership
+
+Arden tracks ownership transfers and borrowed access.
+
+That means the compiler can reject:
+
+- use-after-move
+- conflicting mutable and immutable borrows
+- invalid mutation through immutable access paths
+
+Primary reference:
+
+- [Ownership and Borrowing](ownership.md)
 
 ## Stack vs Heap
 
-- **Stack**: Used for primitive types (`Integer`, `Float`, `Boolean`) and small structs. Fast allocation/deallocation.
-- **Heap**: Used for dynamic data like `String`, `List`, and class instances. Managed automatically via RAII.
+As a practical mental model:
 
-## RAII (Resource Acquisition Is Initialization)
+- small scalar values are cheap, local native values
+- strings, collections, tasks, and class instances generally involve runtime-managed storage
 
-Arden follows the RAII pattern.
+The exact representation is an implementation detail, but the user-facing rule is: write code against ownership and borrowing semantics, not guessed storage trivia.
 
-- Memory is allocated when an object is created.
-- Memory is freed when the object goes out of scope (droppped).
+## Destruction And Scope
 
-There is no Garbage Collector (GC), ensuring predictable performance and low latency.
+When values leave scope, Arden can run the necessary cleanup for the underlying runtime representation.
 
-## Smart Pointers
+That is why destructors and ownership rules matter more than “manual free everywhere” style programming.
 
-> **Note**: These smart pointers are reserved types in the compiler but full backend support is currently in development.
+## Smart-Pointer-Like Types
 
-- `Box<T>`: Unique ownership on the heap.
-- `Rc<T>`: Reference counting (shared ownership, single-threaded).
-- `Arc<T>`: Atomic reference counting (shared ownership, thread-safe).
+Some generic ownership/container forms such as `Box<T>`, `Rc<T>`, and `Arc<T>` appear in examples and type surfaces.
+
+Treat these as evolving language/runtime surface area and verify current behavior against examples or the compiler before documenting them as a stable low-level ABI guarantee.
+

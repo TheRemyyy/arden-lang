@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed contextual typing for unannotated lambdas returned from `if`, `match`, and `async` tail expressions:
+  - codegen-side tail/branch inference now propagates the expected function signature through `if` branches, `match` arms, nested tail blocks, and async block tails instead of re-inferring branch lambdas without parameter context
+  - this fixes valid builds such as `return if (flag) { |x| x } else { |x| x + 1 };`, `return match (flag) { true => { |x| x }, false => { |x| x + 1 } };`, and `return async { |x| x + 1 };`, which previously collapsed lambda body types to `None` and failed in codegen with numeric-operator diagnostics
 - Fixed contextual typing for unannotated lambda parameters:
   - type checking now applies the expected function signature to lambda parameters and body when a lambda expression appears in a typed function-value context, instead of inferring unannotated parameters as `None`
   - this fixes valid builds such as `f: (Integer) -> Integer = |x| x`, plus exact-import shadowing forms like `import Option.None as Empty; f: (Integer) -> Integer = |Empty| Empty` and the same shape inside module-local functions, which previously failed with `(None) -> None` type mismatches

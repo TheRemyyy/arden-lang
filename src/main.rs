@@ -1076,24 +1076,54 @@ function main(): None {{
     let readme_content = format!(
         r#"# {}
 
-Arden project created with `arden new`.
+Project scaffold created with `arden new`.
+
+This directory is intentionally small, but it already contains the pieces Arden uses for project-mode development.
 
 ## Project Structure
 
 ```
 .
-├── arden.toml       # Project configuration
+├── arden.toml      # Project configuration
 ├── src/
-│   └── main.arden   # Entry point
-└── README.md       # This file
+│   └── main.arden  # Entry point
+└── README.md       # Project notes and workflow guide
 ```
 
-## Common Commands
+## What Each File Does
+
+- `arden.toml` declares the project name, entry file, output path, optimization level, and explicit source list.
+- `src/main.arden` is the default entrypoint used by `arden run` and `arden build`.
+- `README.md` is where you should document the local workflow, architecture notes, and useful commands as the project grows.
+
+## Common Workflow
 
 - `arden build` - Build the project
 - `arden run` - Build and run the project
 - `arden check` - Parse and type-check the project
 - `arden test` - Run test files in the project
+- `arden fmt` - Format project sources
+- `arden info` - Print the resolved project configuration
+
+A good first pass after generating the project is:
+
+```bash
+arden info
+arden run
+arden check
+```
+
+## How Project Mode Works
+
+When you run Arden inside this directory without passing a file path, the compiler reads `arden.toml` and uses it as the source of truth for:
+
+- project name and version
+- entrypoint
+- native output name
+- output kind
+- which source files belong to the build
+
+That makes project builds explicit and reproducible. As the project grows, add new files to `files = [...]` in `arden.toml`.
 
 ## Configuration
 
@@ -1108,6 +1138,13 @@ output = "{}"
 opt_level = "3"
 output_kind = "bin"
 ```
+
+## Next Steps
+
+- add more `.arden` files under `src/`
+- list them in `arden.toml`
+- use `arden test` for test files and `arden fmt` before commits
+- read the upstream documentation in the main Arden repository for language and stdlib details
 "#,
         name, name, name
     );

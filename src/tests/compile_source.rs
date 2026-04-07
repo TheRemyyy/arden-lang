@@ -18398,7 +18398,7 @@ fn compile_source_fails_fast_on_system_getenv_invalid_utf8() {
             import std.system.*;
 
             function main(): Integer {
-                value: String = System.getenv("APEX_BAD_UTF8_ENV");
+                value: String = System.getenv("ARDEN_BAD_UTF8_ENV");
                 return 0;
             }
         "#;
@@ -18409,7 +18409,7 @@ fn compile_source_fails_fast_on_system_getenv_invalid_utf8() {
 
     let output = std::process::Command::new(&output_path)
         .env(
-            "APEX_BAD_UTF8_ENV",
+            "ARDEN_BAD_UTF8_ENV",
             std::ffi::OsString::from_vec(vec![0xff]),
         )
         .output()

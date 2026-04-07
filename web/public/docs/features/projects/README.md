@@ -163,9 +163,9 @@ Source Files:
 
 ## Example Projects
 
-See `examples/multi_file_project/` for the minimal starter example.
+See `examples/starter_project/` for the minimal starter example.
 
-See `examples/insane_showcase_project/` for a larger project-mode showcase that combines:
+See `examples/showcase_project/` for a larger project-mode showcase that combines:
 - cross-file packages
 - nested modules
 - interfaces and inheritance
@@ -179,8 +179,8 @@ name = "multi_file_demo"
 version = "1.0.0"
 entry = "src/main.arden"
 files = [
-    "src/math_utils.arden",
-    "src/string_utils.arden",
+    "src/math.arden",
+    "src/strings.arden",
     "src/main.arden"
 ]
 output = "multi_file_demo"
@@ -188,7 +188,7 @@ output_kind = "bin"
 ```
 
 ```arden
-// src/math_utils.arden
+// src/math.arden
 function factorial(n: Integer): Integer {
     if (n <= 1) {
         return 1;

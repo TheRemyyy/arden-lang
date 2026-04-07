@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-COMPILER_INPUT="${APEX_COMPILER_PATH:-${REPO_ROOT}/target/release/arden}"
+COMPILER_INPUT="${ARDEN_COMPILER_PATH:-${REPO_ROOT}/target/release/arden}"
 if [[ "${COMPILER_INPUT}" = /* ]]; then
   COMPILER="${COMPILER_INPUT}"
 else
@@ -239,7 +239,7 @@ grep -Fq 'sound=woof' "${EXAMPLE_STDOUT}"
 grep -Fq 'name=Arden Language' "${EXAMPLE_STDOUT}"
 grep -Fq 'Book: Arden Language' "${EXAMPLE_STDOUT}"
 "${COMPILER}" run "${REPO_ROOT}/examples/38_import_aliases.arden" >"${EXAMPLE_STDOUT}"
-grep -Fq 'abs=42, upper=APEX' "${EXAMPLE_STDOUT}"
+grep -Fq 'abs=42, upper=ARDEN' "${EXAMPLE_STDOUT}"
 
 cat <<'EOF_RANGE_FLOAT' > "${RANGE_FLOAT_FILE}"
 import std.io.*;

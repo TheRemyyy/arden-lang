@@ -130,8 +130,8 @@ runs:
           'int main(int argc, char** argv)',
           '{',
           '    int i;',
-          '    const char* prefix = getenv("APEX_LLVM_REAL_PREFIX");',
-          '    const char* version = getenv("APEX_LLVM_SHIM_VERSION");',
+          '    const char* prefix = getenv("ARDEN_LLVM_REAL_PREFIX");',
+          '    const char* version = getenv("ARDEN_LLVM_SHIM_VERSION");',
           '    const char* command = NULL;',
           '',
           '    if (prefix == NULL || prefix[0] == ''\0'') {',
@@ -185,8 +185,8 @@ runs:
           throw "Failed to compile llvm-config shim with clang.exe"
         }
 
-        echo "APEX_LLVM_REAL_PREFIX=$llvmPrefix" >> $env:GITHUB_ENV
-        echo "APEX_LLVM_SHIM_VERSION=$llvmVersion" >> $env:GITHUB_ENV
+        echo "ARDEN_LLVM_REAL_PREFIX=$llvmPrefix" >> $env:GITHUB_ENV
+        echo "ARDEN_LLVM_SHIM_VERSION=$llvmVersion" >> $env:GITHUB_ENV
         echo "LLVM_SYS_211_PREFIX=$shimRoot" >> $env:GITHUB_ENV
         echo "LLVM_CONFIG_PATH=$llvmConfig" >> $env:GITHUB_ENV
         echo "$llvmBin" >> $env:GITHUB_PATH
