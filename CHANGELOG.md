@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked function-value adapters from treating unrelated nominal types as compatible just because they shared the same LLVM layout:
   - codegen now validates adapter parameter and return compatibility with nominal class/interface rules and recursive type compatibility instead of accepting arbitrary pointer-shaped types
   - this fixes invalid unchecked builds such as `f: () -> B = make_a` when `make_a` returns `A`, which previously compiled even though `A` and `B` were unrelated classes
+- Fixed unchecked `for` loop bindings from treating unrelated nominal element types as interchangeable:
+  - codegen now validates loop binding coercions with the same semantic type-compatibility rules used by safe function-value adapters instead of accepting arbitrary equal-layout pointer types
+  - this fixes invalid unchecked builds such as `for (item: B in xs)` when `xs` is `List<A>`, which previously compiled even though `A` and `B` were unrelated classes
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values

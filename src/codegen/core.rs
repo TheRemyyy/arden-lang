@@ -11454,23 +11454,29 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(value);
         }
 
-        let normalized_source = self.normalize_codegen_type(source_ty);
-        let normalized_target = self.normalize_codegen_type(target_ty);
-        if self.llvm_type(&normalized_source) == self.llvm_type(&normalized_target) {
+        match (source_ty, target_ty) {
+            (Type::Integer, Type::Float) if value.is_int_value() => {
+                return Ok(self
+                    .builder
+                    .build_signed_int_to_float(
+                        value.into_int_value(),
+                        self.context.f64_type(),
+                        name,
+                    )
+                    .unwrap()
+                    .into())
+            }
+            _ => {}
+        }
+
+        if self.is_supported_function_adapter_assignment(target_ty, source_ty) {
             return Ok(value);
         }
 
-        match (source_ty, target_ty) {
-            (Type::Integer, Type::Float) if value.is_int_value() => Ok(self
-                .builder
-                .build_signed_int_to_float(value.into_int_value(), self.context.f64_type(), name)
-                .unwrap()
-                .into()),
-            _ => Err(CodegenError::new(format!(
-                "unsupported for-loop binding conversion: {:?} -> {:?}",
-                source_ty, target_ty
-            ))),
-        }
+        Err(CodegenError::new(format!(
+            "unsupported for-loop binding conversion: {:?} -> {:?}",
+            source_ty, target_ty
+        )))
     }
 
     fn encode_enum_payload(

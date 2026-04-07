@@ -16732,6 +16732,43 @@ fn compile_source_no_check_rejects_function_value_adapter_between_unrelated_nomi
 }
 
 #[test]
+fn compile_source_no_check_rejects_for_loop_binding_between_unrelated_nominal_types() {
+    let temp_root = make_temp_project_root("no-check-for-binding-unrelated-nominal");
+    let source_path = temp_root.join("no_check_for_binding_unrelated_nominal.arden");
+    let output_path = temp_root.join("no_check_for_binding_unrelated_nominal");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                xs: List<A> = List<A>();
+                xs.push(A());
+
+                for (item: B in xs) {
+                    return 0;
+                }
+
+                return 1;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated nominal for-loop binding should fail in codegen");
+    assert!(
+        err.contains("unsupported for-loop binding conversion: Named(\"A\") -> Named(\"B\")"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");
