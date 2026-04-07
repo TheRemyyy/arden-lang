@@ -1918,7 +1918,9 @@ impl<'ctx> Codegen<'ctx> {
             }
             Expr::Index { object, index } => {
                 if let Expr::Ident(name) = &object.node {
-                    if !self.variables.contains_key(name) {
+                    if !self.variables.contains_key(name)
+                        && self.resolve_contextual_function_value_name(&object.node).is_none()
+                    {
                         return Err(Self::undefined_variable_error(name));
                     }
                 }
@@ -1929,7 +1931,7 @@ impl<'ctx> Codegen<'ctx> {
                 let inferred_object_ty = self.infer_object_type(&object.node);
                 let object_ty = inferred_object_ty
                     .clone()
-                    .or_else(|| Some(self.infer_expr_type(&object.node, &[])));
+                    .or_else(|| Some(self.infer_builtin_argument_type(&object.node)));
                 let deref_object_ty = object_ty
                     .clone()
                     .map(|ty| self.deref_codegen_type(&ty).clone());
@@ -1937,10 +1939,13 @@ impl<'ctx> Codegen<'ctx> {
 
                 if !supports_index_assignment {
                     if inferred_object_ty.is_none() {
-                        let _ = self.compile_expr(&object.node)?;
+                        let _ = self.compile_expr_with_expected_type(
+                            &object.node,
+                            &self.infer_builtin_argument_type(&object.node),
+                        )?;
                     }
                     let diagnostic_ty = deref_object_ty.clone().unwrap_or_else(|| {
-                        self.deref_codegen_type(&self.infer_expr_type(&object.node, &[]))
+                        self.deref_codegen_type(&self.infer_builtin_argument_type(&object.node))
                             .clone()
                     });
                     return Err(CodegenError::new(format!(

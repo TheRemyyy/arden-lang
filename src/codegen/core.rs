@@ -18308,14 +18308,16 @@ impl<'ctx> Codegen<'ctx> {
 
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
         if let Expr::Ident(name) = object {
-            if !self.variables.contains_key(name) {
+            if !self.variables.contains_key(name)
+                && self.resolve_contextual_function_value_name(object).is_none()
+            {
                 return Err(Self::undefined_variable_error(name));
             }
         }
         let inferred_object_ty = self.infer_object_type(object);
         let object_ty = inferred_object_ty
             .clone()
-            .or_else(|| Some(self.infer_expr_type(object, &[])));
+            .or_else(|| Some(self.infer_builtin_argument_type(object)));
         let deref_object_ty = object_ty
             .clone()
             .map(|ty| self.deref_codegen_type(&ty).clone());
@@ -18326,10 +18328,10 @@ impl<'ctx> Codegen<'ctx> {
 
         if !supports_indexing {
             if inferred_object_ty.is_none() {
-                let _ = self.compile_expr(object)?;
+                let _ = self.compile_expr_with_expected_type(object, &self.infer_builtin_argument_type(object))?;
             }
             let diagnostic_ty = deref_object_ty.clone().unwrap_or_else(|| {
-                self.deref_codegen_type(&self.infer_expr_type(object, &[]))
+                self.deref_codegen_type(&self.infer_builtin_argument_type(object))
                     .clone()
             });
             return Err(CodegenError::new(format!(
@@ -18338,7 +18340,7 @@ impl<'ctx> Codegen<'ctx> {
             )));
         }
 
-        let obj_val = self.compile_expr(object)?;
+        let obj_val = self.compile_expr_with_expected_type(object, &self.infer_builtin_argument_type(object))?;
         if let Some(Type::Map(_, _)) = &deref_object_ty {
             let index_arg = [Spanned::new(index.clone(), 0..0)];
             if let Some(map_ty) = &deref_object_ty {
