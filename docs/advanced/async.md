@@ -61,6 +61,6 @@ Expression-bodied async blocks also infer the tail expression type directly, so 
 import std.string.*;
 
 task: Task<String> = async { Str.upper("arden") };
-f: Task<(Integer) -> Integer> = async { |x: Integer| x + 1 };
+f: Task<(Integer) -> Integer> = async { (x: Integer) => x + 1 };
 r: Task<Range<Integer>> = async { range(0, 3) };
 ```

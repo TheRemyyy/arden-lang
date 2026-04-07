@@ -680,7 +680,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - project builds no longer reject valid signatures such as `function use(r: api.Reader<String>)` or `function make(): ReaderAlias<String>` with `Unknown type` and downstream mismatch errors
 - Fixed remaining project rewrite gaps for generic alias-qualified interface types in nested/function-type positions:
   - module-local declarations now rewrite alias-qualified interface types through the same interface-aware path, so signatures inside `module Helpers { ... }` no longer fail on `api.Reader<String>`
-  - function-type and lambda parameter annotations now rewrite alias-qualified interface types too, so values like `(api.Reader<String>) -> Integer` and `|reader: api.Reader<String>| ...` compile cleanly in project mode
+  - function-type and lambda parameter annotations now rewrite alias-qualified interface types too, so values like `(api.Reader<String>) -> Integer` and `(reader: api.Reader<String>) => ...` compile cleanly in project mode
 - Fixed cascading diagnostics for invalid string interpolation expressions:
   - when an interpolated subexpression already fails typechecking, the compiler now keeps the primary error instead of adding a second misleading `String interpolation ... got unknown` diagnostic
   - invalid expressions like `"{1 + true}"` now report the real arithmetic/type error without extra noise
