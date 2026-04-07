@@ -1,6 +1,6 @@
 # Standard Library
 
-The Apex Standard Library (`std`) provides core functionality for building applications.
+The Arden Standard Library (`std`) provides core functionality for building applications.
 
 ## Modules
 
@@ -24,4 +24,4 @@ The stdlib is implemented as **compiler intrinsics**, but import behavior is spl
 - Those builtins can also be stored in typed function values, for example `conv: (Integer) -> Float = to_float`, `build: (Integer, Integer) -> Range<Integer> = range`, `check: (Integer, Integer) -> None = assert_eq`, `stop: (Integer) -> None = exit`, and `fail_now: () -> None = fail`.
 - Direct stdlib object members can be stored as typed function values too, for example `cwd: () -> String = System.cwd`, `sleep_ms: (Integer) -> None = Time.sleep`, `argc: () -> Integer = Args.count`, and `rand: () -> Float = Math.random`.
 
-There are no external `.apex` stdlib source files; calls are lowered directly by the compiler/codegen pipeline.
+There are no external `.arden` stdlib source files; calls are lowered directly by the compiler/codegen pipeline.

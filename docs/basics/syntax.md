@@ -1,10 +1,10 @@
 # Syntax
 
-Apex syntax is inspired by C, C++, Rust, and TypeScript. It is designed to be familiar yet modern.
+Arden syntax is inspired by C, C++, Rust, and TypeScript. It is designed to be familiar yet modern.
 
 ## Comments
 
-```apex
+```arden
 // Single-line comment
 
 /*
@@ -15,9 +15,9 @@ Apex syntax is inspired by C, C++, Rust, and TypeScript. It is designed to be fa
 
 ## Blocks and Scoping
 
-Apex uses curly braces `{}` to define blocks of code. Variables defined inside a block are scoped to that block.
+Arden uses curly braces `{}` to define blocks of code. Variables defined inside a block are scoped to that block.
 
-```apex
+```arden
 function main(): None {
     // Outer scope
     x: Integer = 10;
@@ -34,7 +34,7 @@ function main(): None {
 
 String interpolation embeds supported scalar expressions directly inside string literals:
 
-```apex
+```arden
 println("{10} {true} {'🚀'} {None}");
 ```
 
@@ -44,7 +44,7 @@ Interpolation currently supports `Integer`, `Float`, `Boolean`, `String`, `Char`
 
 Semicolons `;` are required at the end of statements.
 
-```apex
+```arden
 x: Integer = 5; // Required
 return None;    // Required
 ```
@@ -55,7 +55,7 @@ Some constructs like `if`, `while`, `function` definitions do not require a semi
 
 Basic assignment and compound assignment are supported:
 
-```apex
+```arden
 x: Integer = 10;
 x = x + 1;
 x += 2;
@@ -67,7 +67,7 @@ x %= 3;
 
 Compound assignment also works with index and field targets:
 
-```apex
+```arden
 arr[i] += 1;
 obj.count -= 1;
 ```

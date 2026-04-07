@@ -1,6 +1,6 @@
 # Insane Showcase Project
 
-This example is the heavy multi-file Apex showcase.
+This example is the heavy multi-file Arden showcase.
 
 It intentionally combines:
 
@@ -17,7 +17,7 @@ It intentionally combines:
 
 ```bash
 cd examples/insane_showcase_project
-apex build
+arden build
 ./insane_showcase_project
 ```
 

@@ -1,6 +1,6 @@
-# Apex Production Benchmark Suite
+# Arden Production Benchmark Suite
 
-This directory contains a structured benchmark suite that compares Apex against Rust and Go on the same workloads.
+This directory contains a structured benchmark suite that compares Arden against Rust and Go on the same workloads.
 
 ## Goals
 
@@ -30,7 +30,7 @@ This directory contains a structured benchmark suite that compares Apex against 
 
 ```text
 benchmark/
-  apex/         # Apex implementations
+  arden/         # Arden implementations
   rust/         # Rust implementations
   go/           # Go implementations
   bin/          # Compiled binaries (generated)
@@ -45,10 +45,10 @@ benchmark/
 - `python3`
 - `rustc` (for Rust)
 - `go` (for Go)
-- `mold` for Linux Apex project builds, or LLVM `lld` on macOS/Windows
-- Apex compiler binary available at `target/release/apex-compiler`
+- `mold` for Linux Arden project builds, or LLVM `lld` on macOS/Windows
+- Arden binary available at `target/release/arden`
 
-If the Apex compiler binary is missing, the runner will build it via:
+If the Arden binary is missing, the runner will build it via:
 
 ```bash
 cargo build --release
@@ -101,10 +101,10 @@ python3 benchmark/run.py --bench incremental_rebuild_synthetic_mega_graph_mixed_
 python3 benchmark/run.py --bench incremental_rebuild_extreme_graph
 python3 benchmark/run.py --bench incremental_rebuild_extreme_graph_mixed_invalidation
 python3 benchmark/run.py --bench compile_project_10_files --compile-mode cold
-python3 benchmark/run.py --bench compile_project_extreme_graph --compile-mode hot --apex-timings
+python3 benchmark/run.py --bench compile_project_extreme_graph --compile-mode hot --arden-timings
 python3 benchmark/run.py --no-build
-python3 benchmark/run.py --apex-opt-level 3
-python3 benchmark/run.py --apex-target x86_64-unknown-linux-gnu
+python3 benchmark/run.py --arden-opt-level 3
+python3 benchmark/run.py --arden-target x86_64-unknown-linux-gnu
 ```
 
 ## Output
@@ -116,18 +116,18 @@ Both include:
 
 - per-language timings
 - summary stats (min/mean/median/stddev/max)
-- speedups relative to Apex
+- speedups relative to Arden
 - correctness checksums
-- optional Apex per-phase build timings when `--apex-timings` is enabled
+- optional Arden per-phase build timings when `--arden-timings` is enabled
 
 For `compile_project_10_files` and `compile_project_synthetic_mega_graph`:
 - `--compile-mode hot` keeps compile caches/artifacts between runs (incremental-friendly).
-- `--compile-mode cold` clears artifacts between timed runs; for Apex this also removes `.apexcache`.
+- `--compile-mode cold` clears artifacts between timed runs; for Arden this also removes `.ardencache`.
 
-For compile and incremental scenarios with `--apex-timings`:
-- the runner passes `--timings` to Apex project builds
-- Markdown and JSON reports include averaged Apex phase timings plus the last observed per-phase counters
-- this makes it easier to see whether Apex time is going into parse, semantic, object codegen, or final link instead of only comparing one wall-clock number
+For compile and incremental scenarios with `--arden-timings`:
+- the runner passes `--timings` to Arden project builds
+- Markdown and JSON reports include averaged Arden phase timings plus the last observed per-phase counters
+- this makes it easier to see whether Arden time is going into parse, semantic, object codegen, or final link instead of only comparing one wall-clock number
 
 For `compile_project_synthetic_mega_graph` specifically:
 - each language compiles a generated 1400-file project with 96 helper functions per file
@@ -154,7 +154,7 @@ For `incremental_rebuild_mega_project_10_files`:
 - each measured cycle generates a much larger 120-file project with 320 helper functions per file
 - the first timing is a cold full build on a fresh project
 - the second timing is a hot rebuild after syntax-only edits in 10 spread-out files
-- this is the benchmark intended to show how much Apex incremental caching shrinks rebuild cost on very large codebases
+- this is the benchmark intended to show how much Arden incremental caching shrinks rebuild cost on very large codebases
 
 For `incremental_rebuild_synthetic_mega_graph`:
 - each measured cycle generates the same synthetic 1400-file dependency graph used by the mega compile benchmark

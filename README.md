@@ -1,12 +1,14 @@
 <div align="center">
 
-# Apex Programming Language
+<img src="LOGO.png" alt="Arden logo" width="160" />
+
+# Arden
 
 **Blazing-fast systems language with static safety checks and near-instant rebuilds.**
 
-Apex is built for fast feedback loops, not long rebuild cycles.
+Arden is built for fast feedback loops, not long rebuild cycles.
 
-[![Website](https://img.shields.io/badge/Website-apex--compiler.vercel.app-white?style=flat-square&logo=vercel)](https://apex-compiler.vercel.app/)
+[![Website](https://img.shields.io/badge/Website-Arden-white?style=flat-square&logo=vercel)](https://apex-compiler.vercel.app/)
 [![Rust](https://img.shields.io/badge/Rust-1.83+-orange.svg?style=flat-square)](https://www.rust-lang.org/)
 [![LLVM](https://img.shields.io/badge/LLVM-21.0+-blue.svg?style=flat-square)](https://llvm.org/)
 
@@ -16,11 +18,11 @@ Apex is built for fast feedback loops, not long rebuild cycles.
 
 ---
 
-## Why Apex
+## Why Arden
 
-Apex is trying to be useful now, not "interesting someday". The current compiler already ships a real CLI, native code generation through LLVM, multi-file project support, a borrow checker, async tasks, formatting/linting, a test runner, and benchmark tooling in one repo.
+Arden is trying to be useful now, not "interesting someday". The current compiler already ships a real CLI, native code generation through LLVM, multi-file project support, a borrow checker, async tasks, formatting/linting, a test runner, and benchmark tooling in one repo.
 
-If you care about compile-time feedback and iteration speed, Apex is strongest when used as:
+If you care about compile-time feedback and iteration speed, Arden is strongest when used as:
 
 - a native language with ownership and borrowing
 - a project-oriented compiler with incremental build caching
@@ -32,23 +34,23 @@ If you care about compile-time feedback and iteration speed, Apex is strongest w
 # Requires the toolchain from docs/getting_started/installation.md:
 # Rust 1.83+, LLVM 21+, clang, and mold/lld depending on platform.
 
-git clone https://github.com/TheRemyyy/apex-compiler.git
-cd apex-compiler
+git clone https://github.com/TheRemyyy/apex-compiler.git arden
+cd arden
 cargo build --release
 
-echo 'import std.io.*; function main(): None { println("Hello"); return None; }' > hello.apex
-./target/release/apex-compiler run hello.apex
+echo 'import std.io.*; function main(): None { println("Hello"); return None; }' > hello.arden
+./target/release/arden run hello.arden
 ```
 
 ## Status
 
-Apex is an experimental but actively developed compiler.
+Arden is an experimental but actively developed compiler.
 
 - core language features, the project CLI, and benchmark tooling are working today
 - incremental caching and per-phase build timings are implemented and measurable
 - expect rough edges and ongoing compiler work, but this is not a toy parser demo
 
-## When Apex Makes Sense
+## When Arden Makes Sense
 
 - You want fast compile times and fast rebuild feedback on native projects.
 - You like Rust-style safety pressure but want a simpler, more integrated CLI workflow.
@@ -62,7 +64,7 @@ The repository currently includes:
 - **Strong static typing** with type checking in [`src/typeck.rs`](src/typeck.rs)
 - **Async/await and `Task<T>`** with runtime controls such as `await_timeout`, `is_done`, and `cancel`
 - **Pattern matching, enums, interfaces, classes, generics, lambdas, ranges, and effects**
-- **Multi-file projects** with `apex.toml`, package declarations, imports, and project rewriting
+- **Multi-file projects** with `arden.toml`, package declarations, imports, and project rewriting
 - **LLVM-based native codegen** in [`src/codegen/`](src/codegen/)
 - **CLI tooling** for `build`, `run`, `compile`, `check`, `fmt`, `lint`, `fix`, `test`, `bench`, `profile`, `bindgen`, `lex`, `parse`, and `lsp`
 
@@ -82,44 +84,44 @@ See [Installation](docs/getting_started/installation.md) for platform details.
 ### Build The Compiler
 
 ```bash
-git clone https://github.com/TheRemyyy/apex-compiler.git
-cd apex-compiler
+git clone https://github.com/TheRemyyy/apex-compiler.git arden
+cd arden
 cargo build --release
 ```
 
-The built binary is `target/release/apex-compiler`. README examples use `apex`; if you have not added an alias or symlink yet, substitute `target/release/apex-compiler`.
+The built binary is `target/release/arden`. README examples use `arden`; if you have not added an alias or symlink yet, substitute `target/release/arden`.
 
 ### Run A Single File
 
 ```bash
-cat > hello.apex <<'EOF'
+cat > hello.arden <<'EOF'
 import std.io.*;
 
 function main(): None {
-    println("Hello, Apex!");
+    println("Hello, Arden!");
     return None;
 }
 EOF
 
-apex run hello.apex
+arden run hello.arden
 ```
 
 Other useful commands:
 
 ```bash
-apex check hello.apex
-apex compile hello.apex
-apex fmt hello.apex
-apex lint hello.apex
-apex profile hello.apex
+arden check hello.arden
+arden compile hello.arden
+arden fmt hello.arden
+arden lint hello.arden
+arden profile hello.arden
 ```
 
 ### Create A Project
 
 ```bash
-apex new my_project
+arden new my_project
 cd my_project
-apex run
+arden run
 ```
 
 This flow was smoke-tested against the current compiler build and produces a runnable project skeleton.
@@ -128,7 +130,7 @@ This flow was smoke-tested against the current compiler build and produces a run
 
 ### Ownership And Borrowing
 
-```apex
+```arden
 function readData(borrow data: Data): Integer {
     return data.value;
 }
@@ -139,22 +141,22 @@ function modifyValue(borrow mut x: Integer): None {
 }
 ```
 
-See [`examples/10_ownership.apex`](examples/10_ownership.apex).
+See [`examples/10_ownership.arden`](examples/10_ownership.arden).
 
 ### Async Tasks
 
-```apex
+```arden
 async function delayedValue(ms: Integer, value: Integer): Task<Integer> {
     std.time.sleep(ms);
     return async { value };
 }
 ```
 
-See [`examples/14_async.apex`](examples/14_async.apex) and [`examples/28_async_runtime_control.apex`](examples/28_async_runtime_control.apex).
+See [`examples/14_async.arden`](examples/14_async.arden) and [`examples/28_async_runtime_control.arden`](examples/28_async_runtime_control.arden).
 
 ### Multi-File Projects
 
-```apex
+```arden
 package main;
 
 import utils.math.factorial;
@@ -172,17 +174,17 @@ See [`examples/multi_file_project`](examples/multi_file_project/) and [`examples
 The current CLI surface is broader than a toy compiler:
 
 ```bash
-apex build
-apex run [file]
-apex check [file]
-apex fmt [path]
-apex lint [path]
-apex fix [path]
-apex test --list --path examples/24_test_attributes.apex
-apex bindgen path/to/header.h
-apex bench hello.apex --iterations 5
-apex profile hello.apex
-apex lsp
+arden build
+arden run [file]
+arden check [file]
+arden fmt [path]
+arden lint [path]
+arden fix [path]
+arden test --list --path examples/24_test_attributes.arden
+arden bindgen path/to/header.h
+arden bench hello.arden --iterations 5
+arden profile hello.arden
+arden lsp
 ```
 
 Also available:
@@ -209,38 +211,38 @@ Start here:
 
 Useful entry points:
 
-- [`examples/01_hello.apex`](examples/01_hello.apex)
-- [`examples/10_ownership.apex`](examples/10_ownership.apex)
-- [`examples/14_async.apex`](examples/14_async.apex)
-- [`examples/16_pattern_matching.apex`](examples/16_pattern_matching.apex)
-- [`examples/24_test_attributes.apex`](examples/24_test_attributes.apex)
-- [`examples/37_interfaces_contracts.apex`](examples/37_interfaces_contracts.apex)
+- [`examples/01_hello.arden`](examples/01_hello.arden)
+- [`examples/10_ownership.arden`](examples/10_ownership.arden)
+- [`examples/14_async.arden`](examples/14_async.arden)
+- [`examples/16_pattern_matching.arden`](examples/16_pattern_matching.arden)
+- [`examples/24_test_attributes.arden`](examples/24_test_attributes.arden)
+- [`examples/37_interfaces_contracts.arden`](examples/37_interfaces_contracts.arden)
 - [`examples/insane_showcase_project`](examples/insane_showcase_project/)
 
 ## Performance Snapshot
 
-The repo includes a reproducible benchmark runner in [`benchmark/run.py`](benchmark/run.py) that compares Apex, Rust, and Go on the same workloads.
+The repo includes a reproducible benchmark runner in [`benchmark/run.py`](benchmark/run.py) that compares Arden, Rust, and Go on the same workloads.
 
 Beyond the baseline suite, the benchmark harness now also includes:
 
 - `matrix_mul_heavy` for a more meaningful CPU-bound runtime pass
 - `compile_project_extreme_graph` for a much larger synthetic project compile
 - `incremental_rebuild_extreme_graph*` for harsher invalidation/rebuild scenarios
-- `--apex-timings` to capture Apex phase breakdowns from `apex build --timings`
+- `--arden-timings` to capture Arden phase breakdowns from `arden build --timings`
 
 I verified a small subset locally on **April 2, 2026** using:
 
 ```bash
 python3 benchmark/run.py --bench matrix_mul_heavy --repeats 1 --warmup 0 --no-build
 python3 benchmark/run.py --bench compile_project_10_files --compile-mode hot --repeats 1 --warmup 0 --no-build
-python3 benchmark/run.py --bench incremental_rebuild_1_file --repeats 1 --warmup 0 --no-build --apex-timings
+python3 benchmark/run.py --bench incremental_rebuild_1_file --repeats 1 --warmup 0 --no-build --arden-timings
 ```
 
 Current local snapshot for the heavier CPU-bound runtime benchmark (`matrix_mul_heavy`):
 
 | Language | Runtime mean |
 |---|---:|
-| Apex | 0.0106 s |
+| Arden | 0.0106 s |
 | Rust | 0.0218 s |
 | Go | 0.0144 s |
 
@@ -248,7 +250,7 @@ Current local snapshot for the generated 10-file compile benchmark:
 
 | Language | Hot compile mean |
 |---|---:|
-| Apex | 0.106 s |
+| Arden | 0.106 s |
 | Rust | 0.131 s |
 | Go | 3.097 s |
 
@@ -256,21 +258,21 @@ Current local snapshot for incremental rebuild after changing one file:
 
 | Language | Full compile mean | Rebuild mean |
 |---|---:|---:|
-| Apex | 0.1846 s | 0.0108 s |
+| Arden | 0.1846 s | 0.0108 s |
 | Rust | 0.1288 s | 0.1647 s |
 | Go | 3.0512 s | 0.1497 s |
 
-In this measured scenario, Apex rebuilds were roughly 13x faster than Rust and roughly 14x faster than Go.
+In this measured scenario, Arden rebuilds were roughly 13x faster than Rust and roughly 14x faster than Go.
 
-With `--apex-timings`, the benchmark report also captures where Apex spends build time. On the verified 1-file rebuild scenario, the cold build was dominated by `object codegen` and `final link`, while the hot rebuild collapsed to a cache-heavy path with only `parse + symbol scan`, `dependency graph`, and `semantic cache gate` showing up materially.
+With `--arden-timings`, the benchmark report also captures where Arden spends build time. On the verified 1-file rebuild scenario, the cold build was dominated by `object codegen` and `final link`, while the hot rebuild collapsed to a cache-heavy path with only `parse + symbol scan`, `dependency graph`, and `semantic cache gate` showing up materially.
 
-I also ran an Apex-only extreme synthetic project probe outside the cross-language suite:
+I also ran an Arden-only extreme synthetic project probe outside the cross-language suite:
 
 - cold build of a generated 2200-file graph: about `21.0 s`
 - hot rebuild after one leaf edit: about `0.628 s`
 - biggest cold-build phases: `rewrite ~8.17 s`, `object codegen ~11.57 s`
 
-These are single-run sanity checks on one machine, not publication-grade benchmark claims. The important point is that Apex now has runtime benchmarks, incremental compile benchmarks, harsher synthetic compile scenarios, and phase-level timing data instead of a vague "fast compilation" bullet.
+These are single-run sanity checks on one machine, not publication-grade benchmark claims. The important point is that Arden now has runtime benchmarks, incremental compile benchmarks, harsher synthetic compile scenarios, and phase-level timing data instead of a vague "fast compilation" bullet.
 
 For the full suite and workload descriptions, see [`benchmark/README.md`](benchmark/README.md).
 

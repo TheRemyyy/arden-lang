@@ -1,5 +1,5 @@
 // Test 17: Comprehensive Feature Test
-// Tests all major Apex features in one file
+// Tests all major Arden features in one file
 
 import std.io.*;
 import std.math.*;
@@ -134,7 +134,7 @@ function main(): None {
     // Different types
     f: Float = 3.14159;
     b: Boolean = true;
-    s: String = "Hello, Apex!";
+    s: String = "Hello, Arden!";
     c: Char = 'A';
     println("Float: {f}");
     println("Boolean: {b}");

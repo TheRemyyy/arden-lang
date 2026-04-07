@@ -1,6 +1,6 @@
 # Collections
 
-Apex provides built-in collection types for managing groups of data. These are implemented as efficient intrinsic types.
+Arden provides built-in collection types for managing groups of data. These are implemented as efficient intrinsic types.
 
 ## List`<T>`
 
@@ -16,7 +16,7 @@ Apex provides built-in collection types for managing groups of data. These are i
 
 Adds an element to the end of the list.
 
-```apex
+```arden
 list: List<Integer> = List<Integer>();
 list.push(42);
 ```
@@ -25,7 +25,7 @@ list.push(42);
 
 Removes and returns the last element from the list.
 
-```apex
+```arden
 last: Integer = list.pop();
 ```
 
@@ -33,7 +33,7 @@ last: Integer = list.pop();
 
 Returns the element at the specified index. Panics if index is out of bounds.
 
-```apex
+```arden
 val: Integer = list.get(0);
 ```
 
@@ -41,7 +41,7 @@ val: Integer = list.get(0);
 
 Updates the element at the specified index. Panics if index is out of bounds.
 
-```apex
+```arden
 list.set(0, 100);
 ```
 
@@ -49,7 +49,7 @@ list.set(0, 100);
 
 Returns the number of elements in the list.
 
-```apex
+```arden
 size: Integer = list.length();
 ```
 
@@ -63,7 +63,7 @@ size: Integer = list.length();
 
 Inserts a key-value pair into the map. If the key already exists, the value is updated.
 
-```apex
+```arden
 scores: Map<String, Integer> = Map<String, Integer>();
 scores.insert("Alice", 100);
 ```
@@ -72,7 +72,7 @@ scores.insert("Alice", 100);
 
 Retrieves the value associated with the key. Panics if the key is not found (use `contains` check first).
 
-```apex
+```arden
 score: Integer = scores.get("Alice");
 ```
 
@@ -80,7 +80,7 @@ score: Integer = scores.get("Alice");
 
 Returns `true` if the map contains the specified key.
 
-```apex
+```arden
 import std.io.*;
 
 if (scores.contains("Alice")) {
@@ -92,7 +92,7 @@ if (scores.contains("Alice")) {
 
 Returns the number of key-value pairs in the map.
 
-```apex
+```arden
 count: Integer = scores.length();
 ```
 
@@ -102,7 +102,7 @@ count: Integer = scores.length();
 
 ### Creating Ranges
 
-```apex
+```arden
 // Basic range (step defaults to 1)
 r: Range<Integer> = range(0, 5);     // 0, 1, 2, 3, 4
 
@@ -124,7 +124,7 @@ r = range(0.0, 1.0, 0.25);            // 0.0, 0.25, 0.5, 0.75
 
 Returns `true` if there are more elements to iterate over.
 
-```apex
+```arden
 r = range(0, 5);
 while (r.has_next()) {
     // Iterates 5 times
@@ -135,7 +135,7 @@ while (r.has_next()) {
 
 Returns the current value and advances the iterator.
 
-```apex
+```arden
 r = range(0, 5);
 val: Integer = r.next();  // Returns 0
 val = r.next();           // Returns 1
@@ -143,7 +143,7 @@ val = r.next();           // Returns 1
 
 ### Example: Sum of 1 to N
 
-```apex
+```arden
 function sum_to_n(n: Integer): Integer {
     mut sum: Integer = 0;
     r: Range<Integer> = range(1, n + 1);

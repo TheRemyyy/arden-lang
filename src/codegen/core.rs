@@ -1,4 +1,4 @@
-//! Apex Code Generator - LLVM IR generation
+//! Arden Code Generator - LLVM IR generation
 
 #![allow(dead_code)]
 
@@ -8036,6 +8036,29 @@ impl<'ctx> Codegen<'ctx> {
         (matches.len() == 1).then(|| matches[0].clone())
     }
 
+    fn resolve_import_alias_module_function_candidate(
+        &self,
+        alias_ident: &str,
+        member_parts: &[String],
+    ) -> Option<String> {
+        if member_parts.is_empty() || self.variables.contains_key(alias_ident) {
+            return None;
+        }
+        let path = self.lookup_import_alias_path(alias_ident)?;
+        if path.ends_with(".*") {
+            return None;
+        }
+        let full_path = format!("{}.{}", path, member_parts.join("."));
+        if let Some(canonical) = builtin_exact_import_alias_canonical(&full_path) {
+            return Some(canonical.to_string());
+        }
+        Some(format!(
+            "{}__{}",
+            path.replace('.', "__"),
+            member_parts.join("__")
+        ))
+    }
+
     fn split_generic_args_static(s: &str) -> Vec<String> {
         let mut parts = Vec::new();
         let mut current = String::new();
@@ -8135,6 +8158,12 @@ impl<'ctx> Codegen<'ctx> {
                                 .resolve_alias_call(&namespace_path, path_parts.last()?)
                             {
                                 return Some(canonical);
+                            }
+                            let full_path = format!("{}.{}", path, path_parts[1..].join("."));
+                            if let Some(canonical) =
+                                builtin_exact_import_alias_canonical(&full_path)
+                            {
+                                return Some(canonical.to_string());
                             }
                             let candidate = format!(
                                 "{}__{}",
@@ -9852,14 +9881,14 @@ impl<'ctx> Codegen<'ctx> {
         let wrapper_fn_type = ptr_type.fn_type(&wrapper_params, false);
         let wrapper = self.module.add_function(&func.name, wrapper_fn_type, None);
 
-        let body_name = format!("__apex_async_body__{}", func.name);
+        let body_name = format!("__arden_async_body__{}", func.name);
         let body_fn_type = match &inner_return {
             Type::None => self.context.void_type().fn_type(&[ptr_type.into()], false),
             ty => self.llvm_type(ty).fn_type(&[ptr_type.into()], false),
         };
         let body = self.module.add_function(&body_name, body_fn_type, None);
 
-        let thunk_name = format!("__apex_async_thunk__{}", func.name);
+        let thunk_name = format!("__arden_async_thunk__{}", func.name);
         #[cfg(windows)]
         let thunk_fn_type = self.context.i32_type().fn_type(&[ptr_type.into()], false);
         #[cfg(not(windows))]
@@ -10237,7 +10266,7 @@ impl<'ctx> Codegen<'ctx> {
         let inner_return_type = plan.inner_return_type.clone();
         let ptr_type = self.context.ptr_type(AddressSpace::default());
 
-        // 1) Compile body function: __apex_async_body__*
+        // 1) Compile body function: __arden_async_body__*
         self.current_function = Some(body);
         self.current_return_type = Some(inner_return_type.clone());
         self.variables.clear();
@@ -10304,7 +10333,7 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        // 2) Compile thunk: __apex_async_thunk__*
+        // 2) Compile thunk: __arden_async_thunk__*
         self.current_function = Some(thunk);
         self.current_return_type = None;
         self.variables.clear();
@@ -10540,12 +10569,12 @@ impl<'ctx> Codegen<'ctx> {
             let argc = function.get_nth_param(0).unwrap().into_int_value();
             let argv = function.get_nth_param(1).unwrap().into_pointer_value();
 
-            let argc_global = match self.module.get_global("_apex_argc") {
+            let argc_global = match self.module.get_global("_arden_argc") {
                 Some(g) => g,
                 None => {
                     let g = self
                         .module
-                        .add_global(self.context.i32_type(), None, "_apex_argc");
+                        .add_global(self.context.i32_type(), None, "_arden_argc");
                     g.set_initializer(&self.context.i32_type().const_int(0, false));
                     g
                 }
@@ -10554,13 +10583,13 @@ impl<'ctx> Codegen<'ctx> {
                 .build_store(argc_global.as_pointer_value(), argc)
                 .unwrap();
 
-            let argv_global = match self.module.get_global("_apex_argv") {
+            let argv_global = match self.module.get_global("_arden_argv") {
                 Some(g) => g,
                 None => {
                     let g = self.module.add_global(
                         self.context.ptr_type(AddressSpace::default()),
                         None,
-                        "_apex_argv",
+                        "_arden_argv",
                     );
                     g.set_initializer(&self.context.ptr_type(AddressSpace::default()).const_null());
                     g
@@ -10574,7 +10603,7 @@ impl<'ctx> Codegen<'ctx> {
         // Allocate parameters
         // Param 0 is argc for main, but for other functions 0 is env_ptr
         // We skip argc/argv for main in the regular parameter allocation loop
-        // because main() in Apex is usually main(): None
+        // because main() in Arden is usually main(): None
         let start_idx = if func.name == "main" { 2 } else { 1 };
         for (i, param) in func.params.iter().enumerate() {
             let normalized_param_ty = self.normalize_codegen_type(&param.ty);
@@ -12205,7 +12234,7 @@ impl<'ctx> Codegen<'ctx> {
         let id = self.async_counter;
         self.async_counter += 1;
 
-        let body_name = format!("__apex_async_block_body_{}", id);
+        let body_name = format!("__arden_async_block_body_{}", id);
         let body_fn_type = match &inner_return_type {
             Type::None => self.context.void_type().fn_type(&[ptr_ty.into()], false),
             ty => self.llvm_type(ty).fn_type(&[ptr_ty.into()], false),
@@ -12283,7 +12312,7 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        let thunk_name = format!("__apex_async_block_thunk_{}", id);
+        let thunk_name = format!("__arden_async_block_thunk_{}", id);
         #[cfg(windows)]
         let thunk_fn_type = self.context.i32_type().fn_type(&[ptr_ty.into()], false);
         #[cfg(not(windows))]
@@ -15860,6 +15889,58 @@ impl<'ctx> Codegen<'ctx> {
                         };
                     }
                 }
+                if let Some(candidate) = self.resolve_import_alias_module_function_candidate(
+                    &path_parts[0],
+                    &path_parts[1..],
+                ) {
+                    if Self::is_supported_builtin_function_name(&candidate) {
+                        match candidate.as_str() {
+                            "Option__some" => {
+                                if args.len() != 1 {
+                                    return Err(CodegenError::new(
+                                        "Option.some() requires exactly 1 argument",
+                                    ));
+                                }
+                                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                                let value =
+                                    self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
+                                return self.create_option_some(value);
+                            }
+                            "Option__none" => {
+                                if !args.is_empty() {
+                                    return Err(CodegenError::new(format!(
+                                        "Option.none() expects 0 argument(s), got {}",
+                                        args.len()
+                                    )));
+                                }
+                                return self.create_option_none();
+                            }
+                            "Result__ok" => {
+                                if args.len() != 1 {
+                                    return Err(CodegenError::new(
+                                        "Result.ok() requires exactly 1 argument",
+                                    ));
+                                }
+                                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                                let value =
+                                    self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
+                                return self.create_result_ok(value);
+                            }
+                            "Result__error" => {
+                                if args.len() != 1 {
+                                    return Err(CodegenError::new(
+                                        "Result.error() requires exactly 1 argument",
+                                    ));
+                                }
+                                let arg_ty = self.infer_builtin_argument_type(&args[0].node);
+                                let value =
+                                    self.compile_expr_with_expected_type(&args[0].node, &arg_ty)?;
+                                return self.create_result_error(value);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
         }
 
@@ -16149,7 +16230,7 @@ impl<'ctx> Codegen<'ctx> {
             .as_deref()
             .map(|n| self.extern_functions.contains(n))
             .unwrap_or(false);
-        // Add null env_ptr for direct Apex calls (except main / extern C ABI)
+        // Add null env_ptr for direct Arden calls (except main / extern C ABI)
         if func_name != "main" && !is_extern_call {
             compiled_args.push(
                 self.context
@@ -16496,11 +16577,11 @@ impl<'ctx> Codegen<'ctx> {
             &class_name,
             &func_ty,
         );
-        let apex_param_types = match &specialized_func_ty {
+        let arden_param_types = match &specialized_func_ty {
             Type::Function(params, _) => Some(params.as_slice()),
             _ => None,
         };
-        if let Some(param_types) = apex_param_types {
+        if let Some(param_types) = arden_param_types {
             if args.len() != param_types.len() {
                 return Err(Self::method_call_arity_error(
                     deref_obj_ty
@@ -17261,7 +17342,7 @@ impl<'ctx> Codegen<'ctx> {
                     self.functions.get(&method_name).cloned().ok_or_else(|| {
                         CodegenError::new(format!("Unknown method: {}", method_name))
                     })?;
-                let apex_func_ty = self.specialize_method_signature_for_receiver(
+                let arden_func_ty = self.specialize_method_signature_for_receiver(
                     obj_ty.as_ref(),
                     &class_name,
                     &func_ty,
@@ -17270,7 +17351,7 @@ impl<'ctx> Codegen<'ctx> {
                     object,
                     obj_ty.as_ref(),
                     &method_name,
-                    &apex_func_ty,
+                    &arden_func_ty,
                 );
             }
             return Err(Self::unknown_field_error(
@@ -17312,14 +17393,14 @@ impl<'ctx> Codegen<'ctx> {
         object: &Expr,
         object_ty: Option<&Type>,
         method_name: &str,
-        apex_func_ty: &Type,
+        arden_func_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
         let (method_fn, _) = self
             .functions
             .get(method_name)
             .cloned()
             .ok_or_else(|| CodegenError::new(format!("Unknown method: {}", method_name)))?;
-        let Type::Function(param_types, ret_type) = apex_func_ty else {
+        let Type::Function(param_types, ret_type) = arden_func_ty else {
             return Err(CodegenError::new(
                 "bound method value requires function type",
             ));
@@ -17382,7 +17463,7 @@ impl<'ctx> Codegen<'ctx> {
         let saved_insert_block = self.builder.get_insert_block();
 
         self.current_function = Some(adapter_fn);
-        self.current_return_type = Some(apex_func_ty.clone());
+        self.current_return_type = Some(arden_func_ty.clone());
         let entry = self.context.append_basic_block(adapter_fn, "entry");
         self.builder.position_at_end(entry);
 
@@ -17441,7 +17522,7 @@ impl<'ctx> Codegen<'ctx> {
             self.builder.position_at_end(block);
         }
 
-        let closure_ty = self.llvm_type(apex_func_ty).into_struct_type();
+        let closure_ty = self.llvm_type(arden_func_ty).into_struct_type();
         let mut closure = closure_ty.get_undef();
         closure = self
             .builder
@@ -19413,12 +19494,12 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn ensure_argc_global(&self) -> GlobalValue<'ctx> {
-        match self.module.get_global("_apex_argc") {
+        match self.module.get_global("_arden_argc") {
             Some(global) => global,
             None => {
                 let global = self
                     .module
-                    .add_global(self.context.i32_type(), None, "_apex_argc");
+                    .add_global(self.context.i32_type(), None, "_arden_argc");
                 global.set_initializer(&self.context.i32_type().const_int(0, false));
                 global
             }
@@ -19426,11 +19507,11 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn ensure_argv_global(&self) -> GlobalValue<'ctx> {
-        match self.module.get_global("_apex_argv") {
+        match self.module.get_global("_arden_argv") {
             Some(global) => global,
             None => {
                 let argv_ty = self.context.ptr_type(AddressSpace::default());
-                let global = self.module.add_global(argv_ty, None, "_apex_argv");
+                let global = self.module.add_global(argv_ty, None, "_arden_argv");
                 global.set_initializer(&argv_ty.const_null());
                 global
             }

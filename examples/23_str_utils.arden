@@ -7,7 +7,7 @@ import std.string.*;
 function main(): None {
     println("=== Str Utility Tests ===");
 
-    s: String = "  Apex Language  ";
+    s: String = "  Arden Language  ";
     println("Original: '{s}'");
 
     // 1. Length
@@ -28,10 +28,10 @@ function main(): None {
     println("Lower: {lower}");
 
     // 4. Contains
-    if (Str.contains(trimmed, "Apex")) {
-        println("Contains 'Apex': true");
+    if (Str.contains(trimmed, "Arden")) {
+        println("Contains 'Arden': true");
     } else {
-        println("Contains 'Apex': false");
+        println("Contains 'Arden': false");
     }
 
     if (Str.contains(trimmed, "Rust")) {
@@ -41,8 +41,8 @@ function main(): None {
     }
 
     // 5. StartsWith / EndsWith
-    if (Str.startsWith(trimmed, "Apex")) {
-        println("Starts with 'Apex': true");
+    if (Str.startsWith(trimmed, "Arden")) {
+        println("Starts with 'Arden': true");
     }
     if (Str.endsWith(trimmed, "Language")) {
         println("Ends with 'Language': true");
@@ -54,7 +54,7 @@ function main(): None {
     }
 
     // 6. Comparison
-    if (Str.compare(lower, "apex language") == 0) {
+    if (Str.compare(lower, "arden language") == 0) {
         println("Lower case comparison: OK");
     }
 

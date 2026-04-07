@@ -1,5 +1,5 @@
 // Application: Banking System
-// A comprehensive banking app demonstrating Apex features
+// A comprehensive banking app demonstrating Arden features
 
 import std.io.*;
 import std.math.*;

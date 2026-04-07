@@ -1,4 +1,4 @@
-//! Apex Test Runner - Discovers and runs @Test annotated functions
+//! Arden Test Runner - Discovers and runs @Test annotated functions
 //!
 //! Supports:
 //! - @Test: Marks a function as a test
@@ -258,7 +258,7 @@ fn get_ignore_reason(attributes: &[Attribute]) -> Option<String> {
     None
 }
 
-fn escape_apex_string_literal(value: &str) -> String {
+fn escape_arden_string_literal(value: &str) -> String {
     let mut escaped = String::new();
     for ch in value.chars() {
         match ch {
@@ -309,7 +309,7 @@ pub fn generate_test_runner(discovery: &TestDiscovery) -> String {
     code.push_str("    mut tests_ignored: Integer = 0;\n\n");
 
     code.push_str("    println(\"========================================\");\n");
-    code.push_str("    println(\"         Apex Test Runner\");\n");
+    code.push_str("    println(\"         Arden Test Runner\");\n");
     code.push_str("    println(\"========================================\");\n");
     code.push_str("    println(\"\");\n\n");
 
@@ -366,7 +366,7 @@ pub fn generate_test_runner_with_source(
     code.push_str("    mut tests_ignored: Integer = 0;\n\n");
 
     code.push_str("    println(\"========================================\");\n");
-    code.push_str("    println(\"         Apex Test Runner\");\n");
+    code.push_str("    println(\"         Arden Test Runner\");\n");
     code.push_str("    println(\"========================================\");\n");
     code.push_str("    println(\"\");\n\n");
 
@@ -627,7 +627,7 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
             {
                 code.push_str(&format!(
                     "    println(\"      Reason: {}\");\n",
-                    escape_apex_string_literal(reason)
+                    escape_arden_string_literal(reason)
                 ));
             }
         } else {
@@ -694,7 +694,7 @@ fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
             {
                 code.push_str(&format!(
                     "    println(\"      Reason: {}\");\n",
-                    escape_apex_string_literal(reason)
+                    escape_arden_string_literal(reason)
                 ));
             }
         } else {

@@ -1,12 +1,12 @@
 # Error Handling
 
-Apex provides robust error handling using the `Option<T>` and `Result<T, E>` types.
+Arden provides robust error handling using the `Option<T>` and `Result<T, E>` types.
 
 ## Option<T>
 
 Represents a value that might be present or missing.
 
-```apex
+```arden
 enum Option<T> {
     Some(T),
     None
@@ -15,7 +15,7 @@ enum Option<T> {
 
 Usage:
 
-```apex
+```arden
 function findParams(id: Integer): Option<String> {
     if (id == 0) {
         return Option.None;
@@ -34,7 +34,7 @@ function findParams(id: Integer): Option<String> {
 
 Represents a success (`Ok`) or failure (`Error`).
 
-```apex
+```arden
 enum Result<T, E> {
     Ok(T),
     Error(E)
@@ -43,7 +43,7 @@ enum Result<T, E> {
 
 Usage:
 
-```apex
+```arden
 function divide(a: Integer, b: Integer): Result<Integer, String> {
     if (b == 0) {
         return Result.Error("Division by zero");
@@ -62,7 +62,7 @@ function divide(a: Integer, b: Integer): Result<Integer, String> {
 
 The `?` operator simplifies error propagation. If a Result is `Error`, it returns early.
 
-```apex
+```arden
 function computation(): Result<Integer, String> {
     val: Integer = divide(10, 2)?; // Unwraps or returns Error
     val2: Integer = divide(val, 0)?; // Returns Error("Division by zero")
@@ -70,7 +70,7 @@ function computation(): Result<Integer, String> {
 }
 ```
 
-`apex check` validates `?` at the function boundary:
+`arden check` validates `?` at the function boundary:
 - `Option<T>?` requires the enclosing function to return `Option<...>`
 - `Result<T, E>?` requires the enclosing function to return `Result<..., E-compatible>`
 - nested lambda bodies are checked against their own lambda return context, not the outer function's `Option`/`Result` return type

@@ -34,7 +34,7 @@ export function Home() {
     useEffect(() => {
         const controller = new AbortController();
 
-        fetch('https://api.github.com/repos/TheRemyyy/apex-compiler/releases/latest', {
+        fetch('https://api.github.com/repos/TheRemyyy/arden/releases/latest', {
             signal: controller.signal,
             headers: {
                 Accept: 'application/vnd.github+json',
@@ -61,14 +61,15 @@ export function Home() {
         <div className="min-h-screen overflow-x-hidden bg-[#0a0a0a] text-zinc-100">
             <section className="mx-auto grid w-full max-w-6xl gap-14 overflow-hidden px-6 pb-24 pt-36 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="min-w-0 space-y-8">
-                    <div className="inline-flex items-center rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-medium text-zinc-300">
-                        Apex {latestVersion}
+                    <div className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-medium text-zinc-300">
+                        <img src="/logo.png" alt="" className="h-4 w-4 rounded-sm" aria-hidden="true" />
+                        Arden {latestVersion}
                     </div>
                     <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-white md:text-6xl break-words">
                         Build systems software with speed, safety, and less friction.
                     </h1>
                     <p className="max-w-2xl text-lg leading-relaxed text-zinc-300 break-words">
-                        Apex is a modern systems language built on LLVM. It gives teams low-level control and practical tooling without turning everyday development into a fight.
+                        Arden is a modern systems language built on LLVM. It gives teams low-level control and practical tooling without turning everyday development into a fight.
                     </p>
                     <div className="flex flex-wrap gap-3 pt-2">
                         <Link to="/docs/overview" className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 text-sm font-semibold text-black transition hover:bg-zinc-200">
@@ -76,7 +77,7 @@ export function Home() {
                             <ArrowRight size={16} />
                         </Link>
                         <a
-                            href="https://github.com/TheRemyyy/apex-compiler"
+                            href="https://github.com/TheRemyyy/arden"
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex h-11 items-center rounded-lg border border-zinc-700 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800"
@@ -116,7 +117,7 @@ export function Home() {
                     <div className="max-w-2xl">
                         <h2 className="text-3xl font-semibold text-white md:text-4xl">Pragmatic by design</h2>
                         <p className="mt-4 text-base leading-relaxed text-zinc-300">
-                            Apex focuses on the boring hard parts: predictable behavior, native output, and developer velocity. No inflated visual noise, no framework theater.
+                            Arden focuses on the boring hard parts: predictable behavior, native output, and developer velocity. No inflated visual noise, no framework theater.
                         </p>
                     </div>
                     <ul className="space-y-3">
@@ -159,6 +160,5 @@ function FeatureRow({ icon: Icon, title, desc }: { icon: LucideIcon; title: stri
         </article>
     );
 }
-
 
 

@@ -4,7 +4,7 @@ Mathematical functions and constants. All functions are available as static meth
 
 Import requirement:
 
-```apex
+```arden
 import std.math.*;
 ```
 
@@ -12,7 +12,7 @@ Calls like `Math.abs(...)` are import-checked and require `std.math` to be impor
 
 Typed function-value aliases work too:
 
-```apex
+```arden
 import std.math.abs as abs;
 
 f: (Integer) -> Integer = abs;
@@ -20,7 +20,7 @@ f: (Integer) -> Integer = abs;
 
 Direct `Math.*` members can also be stored as typed function values:
 
-```apex
+```arden
 root: (Integer) -> Float = Math.sqrt;
 rand: () -> Float = Math.random;
 pow_ints: (Integer, Integer) -> Float = Math.pow;

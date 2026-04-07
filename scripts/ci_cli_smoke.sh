@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-COMPILER_INPUT="${APEX_COMPILER_PATH:-${REPO_ROOT}/target/release/apex-compiler}"
+COMPILER_INPUT="${APEX_COMPILER_PATH:-${REPO_ROOT}/target/release/arden}"
 if [[ "${COMPILER_INPUT}" = /* ]]; then
   COMPILER="${COMPILER_INPUT}"
 else
@@ -87,31 +87,31 @@ assert_output_artifact_exists() {
 }
 
 PROJECT_DIR="${TMP_DIR}/sample_project"
-UGLY_FILE="${TMP_DIR}/ugly.apex"
-LINT_FILE="${TMP_DIR}/linty.apex"
-TEST_FILE="${TMP_DIR}/sample_test.apex"
-IGNORE_ESC_FILE="${TMP_DIR}/ignore_escape_test.apex"
-ESCAPE_FILE="${TMP_DIR}/escapes.apex"
+UGLY_FILE="${TMP_DIR}/ugly.arden"
+LINT_FILE="${TMP_DIR}/linty.arden"
+TEST_FILE="${TMP_DIR}/sample_test.arden"
+IGNORE_ESC_FILE="${TMP_DIR}/ignore_escape_test.arden"
+ESCAPE_FILE="${TMP_DIR}/escapes.arden"
 ESCAPE_OUT="${TMP_DIR}/escapes_bin"
 ESCAPE_STDOUT="${TMP_DIR}/escapes.stdout"
 EXAMPLE_STDOUT="${TMP_DIR}/example.stdout"
-RANGE_FLOAT_FILE="${TMP_DIR}/range_float.apex"
-RANGE_ZERO_RUNTIME_FILE="${TMP_DIR}/range_zero_runtime.apex"
+RANGE_FLOAT_FILE="${TMP_DIR}/range_float.arden"
+RANGE_ZERO_RUNTIME_FILE="${TMP_DIR}/range_zero_runtime.arden"
 HEADER_FILE="${TMP_DIR}/sample.h"
-BINDINGS_FILE="${TMP_DIR}/bindings.apex"
+BINDINGS_FILE="${TMP_DIR}/bindings.arden"
 OUT_FILE="${TMP_DIR}/ugly_bin"
-NESTED_FIELD_FILE="${TMP_DIR}/nested_field_assign.apex"
+NESTED_FIELD_FILE="${TMP_DIR}/nested_field_assign.arden"
 NESTED_FIELD_OUT="${TMP_DIR}/nested_field_assign_bin"
 SHARED_PROJECT="${TMP_DIR}/shared_project"
 STATIC_PROJECT="${TMP_DIR}/static_project"
 BORROW_ERR_OUT="${TMP_DIR}/borrow_err.out"
-BORROW_USE_AFTER_MOVE_FILE="${TMP_DIR}/borrow_use_after_move.apex"
-BORROW_MOVE_WHILE_BORROWED_FILE="${TMP_DIR}/borrow_move_while_borrowed.apex"
-BORROW_DOUBLE_MUT_FILE="${TMP_DIR}/borrow_double_mut.apex"
-BORROW_SCOPE_RELEASE_FILE="${TMP_DIR}/borrow_scope_release.apex"
-BORROW_REBORROW_AFTER_SCOPE_FILE="${TMP_DIR}/borrow_reborrow_after_scope.apex"
-BORROW_LAMBDA_MOVE_FILE="${TMP_DIR}/borrow_lambda_move.apex"
-BORROW_COMPOUND_BORROWED_FILE="${TMP_DIR}/borrow_compound_borrowed.apex"
+BORROW_USE_AFTER_MOVE_FILE="${TMP_DIR}/borrow_use_after_move.arden"
+BORROW_MOVE_WHILE_BORROWED_FILE="${TMP_DIR}/borrow_move_while_borrowed.arden"
+BORROW_DOUBLE_MUT_FILE="${TMP_DIR}/borrow_double_mut.arden"
+BORROW_SCOPE_RELEASE_FILE="${TMP_DIR}/borrow_scope_release.arden"
+BORROW_REBORROW_AFTER_SCOPE_FILE="${TMP_DIR}/borrow_reborrow_after_scope.arden"
+BORROW_LAMBDA_MOVE_FILE="${TMP_DIR}/borrow_lambda_move.arden"
+BORROW_COMPOUND_BORROWED_FILE="${TMP_DIR}/borrow_compound_borrowed.arden"
 PROJECT_TYPECHECK_DIR="${TMP_DIR}/project_typecheck"
 PROJECT_STDLIB_ALIAS_DIR="${TMP_DIR}/project_stdlib_alias"
 PROJECT_TABLE_CFG_DIR="${TMP_DIR}/project_table_cfg"
@@ -189,7 +189,7 @@ EOF_TEST
 
 "${COMPILER}" test --list --path "${TEST_FILE}" >/dev/null
 "${COMPILER}" test --path "${TEST_FILE}" >/dev/null
-"${COMPILER}" test --path "${REPO_ROOT}/examples/24_test_attributes.apex" >"${BORROW_ERR_OUT}" 2>&1
+"${COMPILER}" test --path "${REPO_ROOT}/examples/24_test_attributes.arden" >"${BORROW_ERR_OUT}" 2>&1
 grep -q "Total:   10" "${BORROW_ERR_OUT}"
 grep -q "Ignored: 2" "${BORROW_ERR_OUT}"
 
@@ -229,16 +229,16 @@ if actual != expected:
     )
 PY
 
-"${COMPILER}" run "${REPO_ROOT}/examples/35_visibility_enforcement.apex" >"${EXAMPLE_STDOUT}"
+"${COMPILER}" run "${REPO_ROOT}/examples/35_visibility_enforcement.arden" >"${EXAMPLE_STDOUT}"
 grep -Fq 'Account: Standard, balance=150' "${EXAMPLE_STDOUT}"
 grep -Fq 'Premium owner code=77' "${EXAMPLE_STDOUT}"
-"${COMPILER}" run "${REPO_ROOT}/examples/36_inheritance_extends.apex" >"${EXAMPLE_STDOUT}"
+"${COMPILER}" run "${REPO_ROOT}/examples/36_inheritance_extends.arden" >"${EXAMPLE_STDOUT}"
 grep -Fq 'Animal(Buddy)' "${EXAMPLE_STDOUT}"
 grep -Fq 'sound=woof' "${EXAMPLE_STDOUT}"
-"${COMPILER}" run "${REPO_ROOT}/examples/37_interfaces_contracts.apex" >"${EXAMPLE_STDOUT}"
-grep -Fq 'name=Apex Language' "${EXAMPLE_STDOUT}"
-grep -Fq 'Book: Apex Language' "${EXAMPLE_STDOUT}"
-"${COMPILER}" run "${REPO_ROOT}/examples/38_import_aliases.apex" >"${EXAMPLE_STDOUT}"
+"${COMPILER}" run "${REPO_ROOT}/examples/37_interfaces_contracts.arden" >"${EXAMPLE_STDOUT}"
+grep -Fq 'name=Arden Language' "${EXAMPLE_STDOUT}"
+grep -Fq 'Book: Arden Language' "${EXAMPLE_STDOUT}"
+"${COMPILER}" run "${REPO_ROOT}/examples/38_import_aliases.arden" >"${EXAMPLE_STDOUT}"
 grep -Fq 'abs=42, upper=APEX' "${EXAMPLE_STDOUT}"
 
 cat <<'EOF_RANGE_FLOAT' > "${RANGE_FLOAT_FILE}"
@@ -385,15 +385,15 @@ fi
 grep -q "Cannot assign to 'x' while mutably borrowed" "${BORROW_ERR_OUT}"
 
 mkdir -p "${PROJECT_TYPECHECK_DIR}/src"
-cat <<'EOF_PROJECT_CFG' > "${PROJECT_TYPECHECK_DIR}/apex.toml"
+cat <<'EOF_PROJECT_CFG' > "${PROJECT_TYPECHECK_DIR}/arden.toml"
 name = "project_typecheck"
 version = "0.1.0"
-entry = "src/main.apex"
-files = ["src/main.apex", "src/util.apex"]
+entry = "src/main.arden"
+files = ["src/main.arden", "src/util.arden"]
 output = "project_typecheck"
 opt_level = "0"
 EOF_PROJECT_CFG
-cat <<'EOF_PROJECT_MAIN' > "${PROJECT_TYPECHECK_DIR}/src/main.apex"
+cat <<'EOF_PROJECT_MAIN' > "${PROJECT_TYPECHECK_DIR}/src/main.arden"
 import std.io.*;
 import util.*;
 function main(): None {
@@ -401,7 +401,7 @@ function main(): None {
     return None;
 }
 EOF_PROJECT_MAIN
-cat <<'EOF_PROJECT_UTIL' > "${PROJECT_TYPECHECK_DIR}/src/util.apex"
+cat <<'EOF_PROJECT_UTIL' > "${PROJECT_TYPECHECK_DIR}/src/util.arden"
 package util;
 function helper(): Integer {
     return "bad";
@@ -414,15 +414,15 @@ fi
 grep -q "mismatch" "${BORROW_ERR_OUT}"
 
 mkdir -p "${PROJECT_STDLIB_ALIAS_DIR}/src"
-cat <<'EOF_ALIAS_CFG' > "${PROJECT_STDLIB_ALIAS_DIR}/apex.toml"
+cat <<'EOF_ALIAS_CFG' > "${PROJECT_STDLIB_ALIAS_DIR}/arden.toml"
 name = "project_stdlib_alias"
 version = "0.1.0"
-entry = "src/main.apex"
-files = ["src/main.apex"]
+entry = "src/main.arden"
+files = ["src/main.arden"]
 output = "project_stdlib_alias"
 opt_level = "0"
 EOF_ALIAS_CFG
-cat <<'EOF_ALIAS_MAIN' > "${PROJECT_STDLIB_ALIAS_DIR}/src/main.apex"
+cat <<'EOF_ALIAS_MAIN' > "${PROJECT_STDLIB_ALIAS_DIR}/src/main.arden"
 import std.io as io;
 import std.math as math;
 function main(): None {
@@ -433,16 +433,16 @@ EOF_ALIAS_MAIN
 (cd "${PROJECT_STDLIB_ALIAS_DIR}" && "${COMPILER}" check >/dev/null)
 
 mkdir -p "${PROJECT_TABLE_CFG_DIR}/src"
-cat <<'EOF_PROJECT_TABLE_CFG' > "${PROJECT_TABLE_CFG_DIR}/apex.toml"
+cat <<'EOF_PROJECT_TABLE_CFG' > "${PROJECT_TABLE_CFG_DIR}/arden.toml"
 [project]
 name = "project_table_cfg"
 version = "0.1.0"
-entry = "src/main.apex"
-files = ["src/main.apex"]
+entry = "src/main.arden"
+files = ["src/main.arden"]
 output = "project_table_cfg"
 opt_level = "0"
 EOF_PROJECT_TABLE_CFG
-cat <<'EOF_PROJECT_TABLE_MAIN' > "${PROJECT_TABLE_CFG_DIR}/src/main.apex"
+cat <<'EOF_PROJECT_TABLE_MAIN' > "${PROJECT_TABLE_CFG_DIR}/src/main.arden"
 import std.io.*;
 function main(): None {
     println("ok");
@@ -463,7 +463,7 @@ single_root.mkdir(parents=True, exist_ok=True)
 
 
 def run_single(name: str, source: str, expect_ok: bool, required: list[str] | None = None) -> None:
-    path = single_root / f"{name}.apex"
+    path = single_root / f"{name}.arden"
     path.write_text(source)
     proc = subprocess.run([compiler, "check", str(path)], capture_output=True, text=True)
     output = (proc.stdout or "") + (proc.stderr or "")
@@ -481,7 +481,7 @@ def run_single(name: str, source: str, expect_ok: bool, required: list[str] | No
 
 
 def run_single_error_count(name: str, source: str, needle: str, expected_count: int) -> None:
-    path = single_root / f"{name}.apex"
+    path = single_root / f"{name}.arden"
     path.write_text(source)
     proc = subprocess.run([compiler, "check", str(path)], capture_output=True, text=True)
     output = (proc.stdout or "") + (proc.stderr or "")
@@ -493,7 +493,7 @@ def run_single_error_count(name: str, source: str, needle: str, expected_count: 
 
 
 def run_compile_stdout(name: str, source: str, expected_stdout: str) -> None:
-    path = single_root / f"{name}.apex"
+    path = single_root / f"{name}.arden"
     out_bin = single_root / f"{name}.bin"
     path.write_text(source)
     compile_proc = subprocess.run(
@@ -513,7 +513,7 @@ def run_compile_stdout(name: str, source: str, expected_stdout: str) -> None:
 
 
 def run_fmt_preserves_prefix(name: str, source: str, prefix: str) -> None:
-    path = single_root / f"{name}.apex"
+    path = single_root / f"{name}.arden"
     path.write_text(source)
     fmt = subprocess.run([compiler, "fmt", str(path)], capture_output=True, text=True)
     if fmt.returncode != 0:
@@ -527,7 +527,7 @@ def run_fmt_preserves_prefix(name: str, source: str, prefix: str) -> None:
 
 
 def run_lint(name: str, source: str, expect_ok: bool, forbidden: list[str] | None = None) -> None:
-    path = single_root / f"{name}.apex"
+    path = single_root / f"{name}.arden"
     path.write_text(source)
     proc = subprocess.run([compiler, "lint", str(path)], capture_output=True, text=True)
     output = (proc.stdout or "") + (proc.stderr or "")
@@ -545,7 +545,7 @@ def run_lint(name: str, source: str, expect_ok: bool, forbidden: list[str] | Non
 
 
 def run_fix_then_check(name: str, source: str) -> None:
-    path = single_root / f"{name}.apex"
+    path = single_root / f"{name}.arden"
     path.write_text(source)
     fix_proc = subprocess.run([compiler, "fix", str(path)], capture_output=True, text=True)
     if fix_proc.returncode != 0:
@@ -558,7 +558,7 @@ def run_fix_then_check(name: str, source: str) -> None:
 
 
 def run_fix_preserves_prefix(name: str, source: str, prefix: str) -> None:
-    path = single_root / f"{name}.apex"
+    path = single_root / f"{name}.arden"
     path.write_text(source)
     fix_proc = subprocess.run([compiler, "fix", str(path)], capture_output=True, text=True)
     if fix_proc.returncode != 0:
@@ -575,7 +575,7 @@ def run_fix_preserves_prefix(name: str, source: str, prefix: str) -> None:
 def run_single_fmt_roundtrip(
     name: str, source: str, expect_ok: bool, required: list[str] | None = None
 ) -> None:
-    path = single_root / f"{name}.apex"
+    path = single_root / f"{name}.arden"
     path.write_text(source)
     fmt = subprocess.run([compiler, "fmt", str(path)], capture_output=True, text=True)
     if fmt.returncode != 0:
@@ -584,7 +584,7 @@ def run_single_fmt_roundtrip(
 
 
 def run_compile(name: str, source: str, expect_ok: bool) -> None:
-    path = single_root / f"{name}.apex"
+    path = single_root / f"{name}.arden"
     out = single_root / f"{name}.bin"
     path.write_text(source)
     proc = subprocess.run(
@@ -607,12 +607,12 @@ def run_project(name: str, files: dict[str, str], expect_ok: bool, required: lis
 
     file_list = sorted(files.keys())
     toml_files = ", ".join([f"\"src/{f}\"" for f in file_list])
-    (project_root / "apex.toml").write_text(
+    (project_root / "arden.toml").write_text(
         "\n".join(
             [
                 f"name = \"{name}\"",
                 "version = \"0.1.0\"",
-                "entry = \"src/main.apex\"",
+                "entry = \"src/main.arden\"",
                 f"files = [{toml_files}]",
                 f"output = \"{name}\"",
                 "opt_level = \"0\"",
@@ -1204,11 +1204,11 @@ function main(): None {
 )
 run_fix_preserves_prefix(
     "fix_preserves_shebang_prefix",
-    """#!/usr/bin/env apex
+    """#!/usr/bin/env arden
 import std.io.*;
 function main(): None { println("ok"); return None; }
 """,
-    "#!/usr/bin/env apex\n",
+    "#!/usr/bin/env arden\n",
 )
 run_single_fmt_roundtrip(
     "fmt_match_expr_statement_roundtrip",
@@ -1225,7 +1225,7 @@ function main(): None {
 )
 run_single_fmt_roundtrip(
     "fmt_preserves_shebang_roundtrip",
-    """#!/usr/bin/env apex
+    """#!/usr/bin/env arden
 import std.io.*;
 function main(): None {
     println("ok");
@@ -1236,14 +1236,14 @@ function main(): None {
 )
 run_fmt_preserves_prefix(
     "fmt_preserves_shebang_prefix",
-    """#!/usr/bin/env apex
+    """#!/usr/bin/env arden
 import std.io.*;
 function main(): None {
     println("ok");
     return None;
 }
 """,
-    "#!/usr/bin/env apex\n",
+    "#!/usr/bin/env arden\n",
 )
 run_single(
     "async_borrow_capture_blocks_move",
@@ -1333,7 +1333,7 @@ function main(): None {
 run_project(
     "stdlib_alias_project_ok",
     {
-        "main.apex": """
+        "main.arden": """
 import std.io as io;
 import std.math as math;
 function main(): None {
@@ -1347,7 +1347,7 @@ function main(): None {
 run_project(
     "stdlib_alias_shadow_var_error",
     {
-        "main.apex": """
+        "main.arden": """
 import std.io as io;
 function main(): None {
     io: Integer = 1;
@@ -1362,7 +1362,7 @@ function main(): None {
 run_project(
     "project_cross_file_type_error",
     {
-        "main.apex": """
+        "main.arden": """
 import std.io.*;
 import util.*;
 function main(): None {
@@ -1370,7 +1370,7 @@ function main(): None {
     return None;
 }
 """,
-        "util.apex": """
+        "util.arden": """
 package util;
 function helper(): Integer {
     return "bad";
@@ -1432,7 +1432,7 @@ function main(): None {{
             bulk_cases.append((f"bulk_fail_borrow_{i:03d}", src, False, ["while borrowed"]))
 
 for name, src, expect_ok, required in bulk_cases:
-    path = bulk_root / f"{name}.apex"
+    path = bulk_root / f"{name}.arden"
     path.write_text(src)
     proc = subprocess.run([compiler, "check", str(path)], capture_output=True, text=True)
     output = (proc.stdout or "") + (proc.stderr or "")
@@ -1451,7 +1451,7 @@ print("ci smoke regression bundle: explicit + 100 generated cases passed")
 PY
 
 "${COMPILER}" new shared_project --path "${SHARED_PROJECT}" >/dev/null
-python3 - <<'PY' "${SHARED_PROJECT}/apex.toml"
+python3 - <<'PY' "${SHARED_PROJECT}/arden.toml"
 from pathlib import Path
 import sys
 
@@ -1466,7 +1466,7 @@ assert_output_artifact_exists "${SHARED_PROJECT}/shared_project" "shared"
 popd >/dev/null
 
 "${COMPILER}" new static_project --path "${STATIC_PROJECT}" >/dev/null
-python3 - <<'PY' "${STATIC_PROJECT}/apex.toml"
+python3 - <<'PY' "${STATIC_PROJECT}/arden.toml"
 from pathlib import Path
 import sys
 

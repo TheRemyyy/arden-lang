@@ -1,6 +1,6 @@
-# Apex Overview
+# Arden Overview
 
-Apex is a systems programming language focused on safety, performance, and practical ergonomics.
+Arden is a systems programming language focused on safety, performance, and practical ergonomics.
 
 ## Core Principles
 

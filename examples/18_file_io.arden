@@ -9,7 +9,7 @@ function main(): None {
     println("=== File I/O Tests ===");
 
     filename: String = "test_file.txt";
-    content: String = "Hello, File System!\nThis is written from Apex.";
+    content: String = "Hello, File System!\nThis is written from Arden.";
 
     // 1. Write file
     println("Writing to {filename}...");

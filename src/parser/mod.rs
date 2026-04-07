@@ -1,4 +1,4 @@
-//! Apex Parser - Recursive descent parser
+//! Arden Parser - Recursive descent parser
 //!
 //! Production-ready parser with full language support
 
@@ -1463,7 +1463,7 @@ impl<'src> Parser<'src> {
             };
             self.eat(&Token::RParen)?;
 
-            // In Apex, function types MUST have -> ReturnType
+            // In Arden, function types MUST have -> ReturnType
             self.eat(&Token::Arrow)?;
             let ret = self.parse_type()?;
             return Ok(Type::Function(params, Box::new(ret)));

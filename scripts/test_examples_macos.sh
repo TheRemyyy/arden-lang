@@ -7,10 +7,10 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}" || exit 1
 
 echo "========================================"
-echo "     Apex Compiler Test Runner (macOS)"
+echo "     Arden Test Runner (macOS)"
 echo "========================================"
 echo
-COMPILER_INPUT="${APEX_COMPILER_PATH:-${REPO_ROOT}/target/release/apex-compiler}"
+COMPILER_INPUT="${APEX_COMPILER_PATH:-${REPO_ROOT}/target/release/arden}"
 if [[ "${COMPILER_INPUT}" = /* ]]; then
   COMPILER="${COMPILER_INPUT}"
 else
@@ -39,7 +39,7 @@ echo "[2/5] Running single-file examples..."
 echo
 
 shopt -s nullglob
-for file in "${REPO_ROOT}"/examples/*.apex; do
+for file in "${REPO_ROOT}"/examples/*.arden; do
   echo "----------------------------------------"
   echo "Testing ${file}..."
   if "${COMPILER}" run "${file}"; then
@@ -60,7 +60,7 @@ run_project_test() {
   echo "${title}"
   echo
 
-  if [[ -f "${project_dir}/apex.toml" ]]; then
+  if [[ -f "${project_dir}/arden.toml" ]]; then
     if (cd "${project_dir}" && "${COMPILER}" run); then
       echo "[PASS] ${project_name}"
       PASS_COUNT=$((PASS_COUNT + 1))

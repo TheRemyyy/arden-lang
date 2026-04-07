@@ -8,7 +8,7 @@ import std.io as io;
 function main(): None {
     io.println("=== Import Aliases ===");
     value: Integer = math.abs(-42);
-    text: String = str.upper("apex");
+    text: String = str.upper("arden");
     io.println("abs={value}, upper={text}");
     return None;
 }

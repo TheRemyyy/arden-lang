@@ -1,5 +1,5 @@
 // Application: Data Structures Demo
-// Implementing common data structures in Apex
+// Implementing common data structures in Arden
 
 import std.io.*;
 import std.string.*;

@@ -213,7 +213,7 @@ pub(crate) fn make_temp_project_root(tag: &str) -> PathBuf {
         .canonicalize()
         .unwrap_or_else(|_| std::env::temp_dir());
     let temp_root = base_temp.join(format!(
-        "apex-project-smoke-{}-{}-{}",
+        "arden-project-smoke-{}-{}-{}",
         tag,
         std::process::id(),
         SystemTime::now()
@@ -264,7 +264,7 @@ pub(crate) fn write_test_project_config(root: &Path, files: &[&str], entry: &str
         "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"{}\"\nfiles = [{}]\noutput = \"{}\"\n",
         entry, files_toml, output
     );
-    fs::write(root.join("apex.toml"), config).expect("write apex.toml");
+    fs::write(root.join("arden.toml"), config).expect("write arden.toml");
 }
 
 pub(crate) fn collect_project_symbol_maps(parsed_files: &[ParsedProjectUnit]) -> ProjectSymbolMaps {

@@ -1058,7 +1058,7 @@ function main(): Integer {
 #[test]
 fn data_pipeline_tagged_container_growth_chains_survive_codegen() {
     let temp_root = make_temp_project_root("data-pipeline-tagged-container-runtime");
-    let source_path = temp_root.join("data_pipeline_tagged_container_runtime.apex");
+    let source_path = temp_root.join("data_pipeline_tagged_container_runtime.arden");
     let output_path = temp_root.join("data_pipeline_tagged_container_runtime");
     let source = r#"
             class Row {
@@ -1102,7 +1102,7 @@ fn data_pipeline_tagged_container_growth_chains_survive_codegen() {
 #[test]
 fn batch_style_tagged_container_mutation_chain_survives_codegen() {
     let temp_root = make_temp_project_root("batch-style-tagged-mutation-runtime");
-    let source_path = temp_root.join("batch_style_tagged_mutation_runtime.apex");
+    let source_path = temp_root.join("batch_style_tagged_mutation_runtime.arden");
     let output_path = temp_root.join("batch_style_tagged_mutation_runtime");
     let source = r#"
             class Row {
@@ -1144,7 +1144,7 @@ fn batch_style_tagged_container_mutation_chain_survives_codegen() {
 #[test]
 fn forward_declared_generic_class_enum_payload_survives_codegen() {
     let temp_root = make_temp_project_root("forward-declared-generic-enum-payload-runtime");
-    let source_path = temp_root.join("forward_declared_generic_enum_payload_runtime.apex");
+    let source_path = temp_root.join("forward_declared_generic_enum_payload_runtime.arden");
     let output_path = temp_root.join("forward_declared_generic_enum_payload_runtime");
     let source = r#"
             enum Choice {
@@ -1182,7 +1182,7 @@ fn forward_declared_generic_class_enum_payload_survives_codegen() {
 #[test]
 fn forward_declared_generic_class_method_chain_survives_codegen() {
     let temp_root = make_temp_project_root("forward-declared-generic-method-chain-runtime");
-    let source_path = temp_root.join("forward_declared_generic_method_chain_runtime.apex");
+    let source_path = temp_root.join("forward_declared_generic_method_chain_runtime.arden");
     let output_path = temp_root.join("forward_declared_generic_method_chain_runtime");
     let source = r#"
             enum Choice {
@@ -1222,7 +1222,7 @@ fn forward_declared_generic_class_method_chain_survives_codegen() {
 #[test]
 fn bound_generic_method_value_survives_codegen() {
     let temp_root = make_temp_project_root("bound-generic-method-value-runtime");
-    let source_path = temp_root.join("bound_generic_method_value_runtime.apex");
+    let source_path = temp_root.join("bound_generic_method_value_runtime.arden");
     let output_path = temp_root.join("bound_generic_method_value_runtime");
     let source = r#"
             class Box<T> {
@@ -1409,7 +1409,7 @@ function main(): Integer {
 #[test]
 fn unicode_string_keyed_tagged_container_updates_survive_runtime() {
     let temp_root = make_temp_project_root("unicode-tagged-container-update-runtime");
-    let source_path = temp_root.join("unicode_tagged_container_update_runtime.apex");
+    let source_path = temp_root.join("unicode_tagged_container_update_runtime.arden");
     let output_path = temp_root.join("unicode_tagged_container_update_runtime");
     let source = r#"
             class Boxed {
@@ -1454,7 +1454,7 @@ fn unicode_string_keyed_tagged_container_updates_survive_runtime() {
 #[test]
 fn string_keyed_tagged_set_growth_remove_contains_survives_runtime() {
     let temp_root = make_temp_project_root("string-keyed-tagged-set-runtime");
-    let source_path = temp_root.join("string_keyed_tagged_set_runtime.apex");
+    let source_path = temp_root.join("string_keyed_tagged_set_runtime.arden");
     let output_path = temp_root.join("string_keyed_tagged_set_runtime");
     let source = r#"
             function main(): Integer {
@@ -1486,7 +1486,7 @@ fn string_keyed_tagged_set_growth_remove_contains_survives_runtime() {
 #[test]
 fn mixed_unicode_ascii_string_error_keys_survive_map_runtime() {
     let temp_root = make_temp_project_root("mixed-unicode-ascii-string-error-map-runtime");
-    let source_path = temp_root.join("mixed_unicode_ascii_string_error_map_runtime.apex");
+    let source_path = temp_root.join("mixed_unicode_ascii_string_error_map_runtime.arden");
     let output_path = temp_root.join("mixed_unicode_ascii_string_error_map_runtime");
     let source = r#"
             function main(): Integer {
@@ -1529,7 +1529,7 @@ fn mixed_unicode_ascii_string_error_keys_survive_map_runtime() {
 #[test]
 fn mixed_ascii_unicode_string_error_object_values_survive_runtime() {
     let temp_root = make_temp_project_root("mixed-ascii-unicode-string-error-object-runtime");
-    let source_path = temp_root.join("mixed_ascii_unicode_string_error_object_runtime.apex");
+    let source_path = temp_root.join("mixed_ascii_unicode_string_error_object_runtime.arden");
     let output_path = temp_root.join("mixed_ascii_unicode_string_error_object_runtime");
     let source = r#"
             class Boxed {
@@ -1618,7 +1618,7 @@ function main(): Integer {
 #[test]
 fn nested_tagged_updates_match_values_and_chains_survive_runtime() {
     let temp_root = make_temp_project_root("nested-tagged-updates-match-values-runtime");
-    let source_path = temp_root.join("nested_tagged_updates_match_values_runtime.apex");
+    let source_path = temp_root.join("nested_tagged_updates_match_values_runtime.arden");
     let output_path = temp_root.join("nested_tagged_updates_match_values_runtime");
     let source = r#"
             class Boxed {
@@ -1728,7 +1728,7 @@ function classify(value: Result<Option<Integer>, String>, cond: Boolean): Intege
 #[test]
 fn nested_tagged_match_get_chain_survives_runtime() {
     let temp_root = make_temp_project_root("nested-tagged-match-get-chain-runtime");
-    let source_path = temp_root.join("nested_tagged_match_get_chain_runtime.apex");
+    let source_path = temp_root.join("nested_tagged_match_get_chain_runtime.arden");
     let output_path = temp_root.join("nested_tagged_match_get_chain_runtime");
     let source = r#"
             class Boxed {
@@ -1858,7 +1858,7 @@ function main(): Integer {
 #[test]
 fn repeated_update_tagged_pipeline_match_get_equality_and_chain_survives_runtime() {
     let temp_root = make_temp_project_root("repeated-update-tagged-pipeline-runtime");
-    let source_path = temp_root.join("repeated_update_tagged_pipeline_runtime.apex");
+    let source_path = temp_root.join("repeated_update_tagged_pipeline_runtime.arden");
     let output_path = temp_root.join("repeated_update_tagged_pipeline_runtime");
     let source = r#"
             class Boxed {
@@ -1914,7 +1914,7 @@ fn repeated_update_tagged_pipeline_match_get_equality_and_chain_survives_runtime
 #[test]
 fn repeated_update_tagged_match_value_chain_survives_runtime() {
     let temp_root = make_temp_project_root("repeated-update-tagged-match-value-runtime");
-    let source_path = temp_root.join("repeated_update_tagged_match_value_runtime.apex");
+    let source_path = temp_root.join("repeated_update_tagged_match_value_runtime.arden");
     let output_path = temp_root.join("repeated_update_tagged_match_value_runtime");
     let source = r#"
             class Boxed {
@@ -2046,7 +2046,7 @@ function main(): Integer {
 #[test]
 fn repeated_update_match_receiver_equality_chain_survives_runtime() {
     let temp_root = make_temp_project_root("repeated-update-match-receiver-equality-runtime");
-    let source_path = temp_root.join("repeated_update_match_receiver_equality_runtime.apex");
+    let source_path = temp_root.join("repeated_update_match_receiver_equality_runtime.arden");
     let output_path = temp_root.join("repeated_update_match_receiver_equality_runtime");
     let source = r#"
             class Boxed {
@@ -2106,7 +2106,7 @@ fn repeated_update_match_receiver_equality_chain_survives_runtime() {
 #[test]
 fn repeated_update_boolean_join_match_receiver_survives_runtime() {
     let temp_root = make_temp_project_root("repeated-update-boolean-join-runtime");
-    let source_path = temp_root.join("repeated_update_boolean_join_runtime.apex");
+    let source_path = temp_root.join("repeated_update_boolean_join_runtime.arden");
     let output_path = temp_root.join("repeated_update_boolean_join_runtime");
     let source = r#"
             class Boxed {
@@ -2165,7 +2165,7 @@ fn repeated_update_boolean_join_match_receiver_survives_runtime() {
 #[test]
 fn repeated_update_tagged_set_boolean_join_chain_survives_runtime() {
     let temp_root = make_temp_project_root("repeated-update-tagged-set-boolean-join-runtime");
-    let source_path = temp_root.join("repeated_update_tagged_set_boolean_join_runtime.apex");
+    let source_path = temp_root.join("repeated_update_tagged_set_boolean_join_runtime.arden");
     let output_path = temp_root.join("repeated_update_tagged_set_boolean_join_runtime");
     let source = r#"
             class Boxed {
@@ -2298,7 +2298,7 @@ function main(): Integer {
 #[test]
 fn combined_map_set_tagged_pipeline_survives_runtime() {
     let temp_root = make_temp_project_root("combined-map-set-tagged-runtime");
-    let source_path = temp_root.join("combined_map_set_tagged_runtime.apex");
+    let source_path = temp_root.join("combined_map_set_tagged_runtime.arden");
     let output_path = temp_root.join("combined_map_set_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -2359,7 +2359,7 @@ fn combined_map_set_tagged_pipeline_survives_runtime() {
 #[test]
 fn combined_map_set_repeated_update_equality_chain_survives_runtime() {
     let temp_root = make_temp_project_root("combined-map-set-repeated-update-equality-runtime");
-    let source_path = temp_root.join("combined_map_set_repeated_update_equality_runtime.apex");
+    let source_path = temp_root.join("combined_map_set_repeated_update_equality_runtime.arden");
     let output_path = temp_root.join("combined_map_set_repeated_update_equality_runtime");
     let source = r#"
             class Boxed {
@@ -2423,7 +2423,7 @@ fn combined_map_set_repeated_update_equality_chain_survives_runtime() {
 #[test]
 fn tagged_membership_branch_match_value_equality_survives_runtime() {
     let temp_root = make_temp_project_root("tagged-membership-branch-match-value-runtime");
-    let source_path = temp_root.join("tagged_membership_branch_match_value_runtime.apex");
+    let source_path = temp_root.join("tagged_membership_branch_match_value_runtime.arden");
     let output_path = temp_root.join("tagged_membership_branch_match_value_runtime");
     let source = r#"
             class Boxed {
@@ -2487,7 +2487,7 @@ fn tagged_membership_branch_match_value_equality_survives_runtime() {
 #[test]
 fn multi_function_tagged_pipeline_returned_values_and_chains_survive_runtime() {
     let temp_root = make_temp_project_root("multi-function-tagged-pipeline-runtime");
-    let source_path = temp_root.join("multi_function_tagged_pipeline_runtime.apex");
+    let source_path = temp_root.join("multi_function_tagged_pipeline_runtime.arden");
     let output_path = temp_root.join("multi_function_tagged_pipeline_runtime");
     let source = r#"
             class Boxed {
@@ -2635,7 +2635,7 @@ function main(): Integer {
 #[test]
 fn multi_helper_tagged_runtime_pipeline_survives_codegen() {
     let temp_root = make_temp_project_root("multi-helper-tagged-runtime");
-    let source_path = temp_root.join("multi_helper_tagged_runtime.apex");
+    let source_path = temp_root.join("multi_helper_tagged_runtime.arden");
     let output_path = temp_root.join("multi_helper_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -2785,7 +2785,7 @@ function main(): Integer {
 #[test]
 fn fresh_nested_tagged_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("fresh-nested-tagged-runtime");
-    let source_path = temp_root.join("fresh_nested_tagged_runtime.apex");
+    let source_path = temp_root.join("fresh_nested_tagged_runtime.arden");
     let output_path = temp_root.join("fresh_nested_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -2925,7 +2925,7 @@ function main(): Integer {
 #[test]
 fn deeper_multi_helper_nested_tagged_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("deeper-multi-helper-nested-tagged-runtime");
-    let source_path = temp_root.join("deeper_multi_helper_nested_tagged_runtime.apex");
+    let source_path = temp_root.join("deeper_multi_helper_nested_tagged_runtime.arden");
     let output_path = temp_root.join("deeper_multi_helper_nested_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -3082,7 +3082,7 @@ function main(): Integer {
 #[test]
 fn fresh_multi_stage_tagged_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("fresh-multi-stage-tagged-runtime");
-    let source_path = temp_root.join("fresh_multi_stage_tagged_runtime.apex");
+    let source_path = temp_root.join("fresh_multi_stage_tagged_runtime.arden");
     let output_path = temp_root.join("fresh_multi_stage_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -3153,7 +3153,7 @@ fn fresh_multi_stage_tagged_runtime_stressor_survives_codegen() {
 #[test]
 fn scalar_observation_nested_tagged_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("scalar-observation-nested-tagged-runtime");
-    let source_path = temp_root.join("scalar_observation_nested_tagged_runtime.apex");
+    let source_path = temp_root.join("scalar_observation_nested_tagged_runtime.arden");
     let output_path = temp_root.join("scalar_observation_nested_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -3294,7 +3294,7 @@ function main(): Integer {
 #[test]
 fn fresh_scalar_join_tagged_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("fresh-scalar-join-tagged-runtime");
-    let source_path = temp_root.join("fresh_scalar_join_tagged_runtime.apex");
+    let source_path = temp_root.join("fresh_scalar_join_tagged_runtime.arden");
     let output_path = temp_root.join("fresh_scalar_join_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -3433,7 +3433,7 @@ function main(): Integer {
 #[test]
 fn three_helper_scalar_tagged_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("three-helper-scalar-tagged-runtime");
-    let source_path = temp_root.join("three_helper_scalar_tagged_runtime.apex");
+    let source_path = temp_root.join("three_helper_scalar_tagged_runtime.arden");
     let output_path = temp_root.join("three_helper_scalar_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -3587,7 +3587,7 @@ function main(): Integer {
 #[test]
 fn fresh_three_helper_repeated_update_scalar_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("fresh-three-helper-repeated-update-scalar-runtime");
-    let source_path = temp_root.join("fresh_three_helper_repeated_update_scalar_runtime.apex");
+    let source_path = temp_root.join("fresh_three_helper_repeated_update_scalar_runtime.arden");
     let output_path = temp_root.join("fresh_three_helper_repeated_update_scalar_runtime");
     let source = r#"
             class Boxed {
@@ -3742,7 +3742,7 @@ function main(): Integer {
 #[test]
 fn independent_lookup_nested_tagged_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("independent-lookup-nested-tagged-runtime");
-    let source_path = temp_root.join("independent_lookup_nested_tagged_runtime.apex");
+    let source_path = temp_root.join("independent_lookup_nested_tagged_runtime.arden");
     let output_path = temp_root.join("independent_lookup_nested_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -3887,7 +3887,7 @@ function main(): Integer {
 #[test]
 fn parameterized_scalar_lookup_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("parameterized-scalar-lookup-runtime");
-    let source_path = temp_root.join("parameterized_scalar_lookup_runtime.apex");
+    let source_path = temp_root.join("parameterized_scalar_lookup_runtime.arden");
     let output_path = temp_root.join("parameterized_scalar_lookup_runtime");
     let source = r#"
             class Boxed {
@@ -4032,7 +4032,7 @@ function main(): Integer {
 #[test]
 fn parameterized_multi_key_scalar_join_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("parameterized-multi-key-scalar-join-runtime");
-    let source_path = temp_root.join("parameterized_multi_key_scalar_join_runtime.apex");
+    let source_path = temp_root.join("parameterized_multi_key_scalar_join_runtime.arden");
     let output_path = temp_root.join("parameterized_multi_key_scalar_join_runtime");
     let source = r#"
             class Boxed {
@@ -4177,7 +4177,7 @@ function main(): Integer {
 #[test]
 fn fresh_multi_key_repeated_update_scalar_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("fresh-multi-key-repeated-update-scalar-runtime");
-    let source_path = temp_root.join("fresh_multi_key_repeated_update_scalar_runtime.apex");
+    let source_path = temp_root.join("fresh_multi_key_repeated_update_scalar_runtime.arden");
     let output_path = temp_root.join("fresh_multi_key_repeated_update_scalar_runtime");
     let source = r#"
             class Boxed {
@@ -4322,7 +4322,7 @@ function main(): Integer {
 #[test]
 fn new_multi_key_nested_join_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("new-multi-key-nested-join-runtime");
-    let source_path = temp_root.join("new_multi_key_nested_join_runtime.apex");
+    let source_path = temp_root.join("new_multi_key_nested_join_runtime.arden");
     let output_path = temp_root.join("new_multi_key_nested_join_runtime");
     let source = r#"
             class Boxed {
@@ -4470,7 +4470,7 @@ function main(): Integer {
 #[test]
 fn static_constructor_comparison_multi_key_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("static-constructor-comparison-multi-key-runtime");
-    let source_path = temp_root.join("static_constructor_comparison_multi_key_runtime.apex");
+    let source_path = temp_root.join("static_constructor_comparison_multi_key_runtime.arden");
     let output_path = temp_root.join("static_constructor_comparison_multi_key_runtime");
     let source = r#"
             class Boxed {
@@ -4531,7 +4531,7 @@ fn static_constructor_comparison_multi_key_runtime_stressor_survives_codegen() {
 #[test]
 fn fresh_scalar_only_tagged_runtime_stressor_survives_codegen() {
     let temp_root = make_temp_project_root("fresh-scalar-only-tagged-runtime");
-    let source_path = temp_root.join("fresh_scalar_only_tagged_runtime.apex");
+    let source_path = temp_root.join("fresh_scalar_only_tagged_runtime.arden");
     let output_path = temp_root.join("fresh_scalar_only_tagged_runtime");
     let source = r#"
             class Boxed {
@@ -4686,7 +4686,7 @@ function main(): Integer {
 #[test]
 fn source_driven_nested_tagged_storage_path_survives_runtime() {
     let temp_root = make_temp_project_root("source-driven-nested-tagged-storage-runtime");
-    let source_path = temp_root.join("source_driven_nested_tagged_storage_runtime.apex");
+    let source_path = temp_root.join("source_driven_nested_tagged_storage_runtime.arden");
     let output_path = temp_root.join("source_driven_nested_tagged_storage_runtime");
     let source = r#"
             class Boxed {
@@ -4751,7 +4751,7 @@ fn source_driven_nested_tagged_storage_path_survives_runtime() {
 #[test]
 fn source_driven_set_remove_shift_scalar_observation_survives_runtime() {
     let temp_root = make_temp_project_root("source-driven-set-remove-shift-runtime");
-    let source_path = temp_root.join("source_driven_set_remove_shift_runtime.apex");
+    let source_path = temp_root.join("source_driven_set_remove_shift_runtime.arden");
     let output_path = temp_root.join("source_driven_set_remove_shift_runtime");
     let source = r#"
             function main(): Integer {
@@ -4793,7 +4793,7 @@ fn source_driven_set_remove_shift_scalar_observation_survives_runtime() {
 #[test]
 fn source_driven_multi_overwrite_tagged_map_runtime_survives_codegen() {
     let temp_root = make_temp_project_root("source-driven-multi-overwrite-tagged-map-runtime");
-    let source_path = temp_root.join("source_driven_multi_overwrite_tagged_map_runtime.apex");
+    let source_path = temp_root.join("source_driven_multi_overwrite_tagged_map_runtime.arden");
     let output_path = temp_root.join("source_driven_multi_overwrite_tagged_map_runtime");
     let source = r#"
             class Boxed {
@@ -4858,7 +4858,7 @@ fn source_driven_multi_overwrite_tagged_map_runtime_survives_codegen() {
 #[test]
 fn source_driven_set_add_remove_readd_scalar_observation_survives_runtime() {
     let temp_root = make_temp_project_root("source-driven-set-readd-runtime");
-    let source_path = temp_root.join("source_driven_set_readd_runtime.apex");
+    let source_path = temp_root.join("source_driven_set_readd_runtime.arden");
     let output_path = temp_root.join("source_driven_set_readd_runtime");
     let source = r#"
             function main(): Integer {

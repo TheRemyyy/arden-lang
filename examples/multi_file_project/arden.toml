@@ -1,10 +1,10 @@
 name = "multi_file_project"
 version = "1.0.0"
-entry = "src/main.apex"
+entry = "src/main.arden"
 files = [
-    "src/math_utils.apex",
-    "src/string_utils.apex",
-    "src/main.apex"
+    "src/math_utils.arden",
+    "src/string_utils.arden",
+    "src/main.arden"
 ]
 output = "multi_file_project"
 opt_level = "3"

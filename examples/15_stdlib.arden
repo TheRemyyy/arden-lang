@@ -1,5 +1,5 @@
 // Test 15: Standard Library Functions
-// Tests: all built-in functions in Apex
+// Tests: all built-in functions in Arden
 
 import std.io.*;
 import std.math.*;

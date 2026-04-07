@@ -7,13 +7,13 @@ for %%I in ("%SCRIPT_DIR%..") do set "REPO_ROOT=%%~fI"
 pushd "%REPO_ROOT%" >nul
 
 echo ========================================
-echo      Apex Compiler Test Runner
+echo      Arden Test Runner
 echo ========================================
 
 if defined APEX_COMPILER_PATH (
     set "COMPILER=%APEX_COMPILER_PATH%"
 ) else (
-    set "COMPILER=%REPO_ROOT%\target\release\apex-compiler.exe"
+    set "COMPILER=%REPO_ROOT%\target\release\arden.exe"
 )
 
 echo.
@@ -43,7 +43,7 @@ echo.
 echo [2/5] Running Single-File Examples...
 echo.
 
-for %%f in ("%REPO_ROOT%\examples\*.apex") do (
+for %%f in ("%REPO_ROOT%\examples\*.arden") do (
     echo ----------------------------------------
     echo Testing %%f...
 
@@ -63,7 +63,7 @@ echo.
 echo [3/5] Testing Multi-File Project (Basic)...
 echo.
 
-if exist "%REPO_ROOT%\examples\multi_file_project\apex.toml" (
+if exist "%REPO_ROOT%\examples\multi_file_project\arden.toml" (
     pushd "%REPO_ROOT%\examples\multi_file_project" >nul
     "%COMPILER%" run
     set TEST_EXIT=!ERRORLEVEL!
@@ -85,7 +85,7 @@ echo.
 echo [4/5] Testing Java-Style Namespace Project...
 echo.
 
-if exist "%REPO_ROOT%\examples\multi_file_depth_project\apex.toml" (
+if exist "%REPO_ROOT%\examples\multi_file_depth_project\arden.toml" (
     pushd "%REPO_ROOT%\examples\multi_file_depth_project" >nul
     "%COMPILER%" run
     set TEST_EXIT=!ERRORLEVEL!
@@ -107,7 +107,7 @@ echo.
 echo [5/5] Testing No-Import Project (Global Scope)...
 echo.
 
-if exist "%REPO_ROOT%\examples\test_no_import\apex.toml" (
+if exist "%REPO_ROOT%\examples\test_no_import\arden.toml" (
     pushd "%REPO_ROOT%\examples\test_no_import" >nul
     "%COMPILER%" run
     set TEST_EXIT=!ERRORLEVEL!

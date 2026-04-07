@@ -829,6 +829,7 @@ impl<'a> ImportChecker<'a> {
             || self
                 .resolve_user_call_in_namespace_path(&namespace_path, member)
                 .is_some()
+            || crate::ast::builtin_exact_import_alias_canonical(&full_path).is_some()
         {
             return Some(());
         }

@@ -4,7 +4,7 @@ Interfaces define a contract that classes can implement.
 
 ## Definition
 
-```apex
+```arden
 interface Printable {
     function print_me(): None;
 }
@@ -14,7 +14,7 @@ interface Printable {
 
 Classes implement interfaces explicitly via `implements`. The compiler validates that required methods exist with compatible signatures.
 
-```apex
+```arden
 class Book implements Printable {
     title: String;
     
@@ -33,7 +33,7 @@ class Book implements Printable {
 
 Interfaces can extend other interfaces.
 
-```apex
+```arden
 interface Named extends Printable {
     function get_name(): String;
 }
@@ -41,7 +41,7 @@ interface Named extends Printable {
 
 Generic interfaces can also be referenced directly in `implements` and `extends` clauses.
 
-```apex
+```arden
 interface Reader<T> {
     function read(): T;
 }
@@ -61,11 +61,11 @@ Project builds also rewrite alias-qualified generic interface types in ordinary 
 
 You can use interfaces as types.
 
-```apex
+```arden
 function display(item: Printable): None {
     item.print_me();
     return None;
 }
 ```
 
-See `examples/37_interfaces_contracts.apex` for a full contract + interface-typed-parameter example.
+See `examples/37_interfaces_contracts.arden` for a full contract + interface-typed-parameter example.

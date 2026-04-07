@@ -13,7 +13,7 @@ Longer format strings are supported without truncating or corrupting the returne
 
 Uses standard C `strftime` format specifiers.
 
-```apex
+```arden
 // Default format (HH:MM:SS)
 currentTime: String = Time.now("");
 
@@ -25,7 +25,7 @@ today: String = Time.now("%Y-%m-%d");
 
 Returns the current Unix timestamp (number of seconds since January 1, 1970).
 
-```apex
+```arden
 timestamp: Integer = Time.unix();
 ```
 
@@ -33,9 +33,9 @@ timestamp: Integer = Time.unix();
 
 Suspends the execution of the current thread for the specified number of milliseconds.
 
-Negative millisecond values are invalid. Constant negative arguments are rejected during `apex check`, and dynamic negative values fail fast at runtime with a direct diagnostic.
+Negative millisecond values are invalid. Constant negative arguments are rejected during `arden check`, and dynamic negative values fail fast at runtime with a direct diagnostic.
 
-```apex
+```arden
 import std.io.*;
 
 println("Waiting...");

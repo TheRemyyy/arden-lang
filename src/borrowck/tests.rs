@@ -33,7 +33,7 @@ fn formatting_handles_inverted_spans_without_panicking() {
         note: None,
     }];
 
-    let rendered = format_borrow_errors(&errors, "let x = 1;\n", "sample.apex");
+    let rendered = format_borrow_errors(&errors, "let x = 1;\n", "sample.arden");
 
     assert!(rendered.contains("broken span"), "{rendered}");
 }

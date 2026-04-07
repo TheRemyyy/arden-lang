@@ -4,7 +4,7 @@
 
 Conditional execution.
 
-```apex
+```arden
 if (condition) {
     // ...
 } else if (other_condition) {
@@ -16,7 +16,7 @@ if (condition) {
 
 Example:
 
-```apex
+```arden
 x: Integer = 10;
 if (x > 5) {
     println("Large");
@@ -31,7 +31,7 @@ if (x > 5) {
 
 Executes as long as the condition is true.
 
-```apex
+```arden
 mut i: Integer = 0;
 while (i < 5) {
     println("{i}");
@@ -45,7 +45,7 @@ Iterates over a range or collection.
 
 **Range iteration:**
 
-```apex
+```arden
 // 'in 5' creates a range from 0 to 4
 for (i in 5) {
     println("Iteration {i}");
@@ -74,7 +74,7 @@ See [Range Types](../features/ranges.md) for more details on ranges.
 
 **Collection iteration:**
 
-```apex
+```arden
 numbers: List<Integer> = List<Integer>();
 // ... add items ...
 for (n in numbers) {
@@ -101,7 +101,7 @@ for (ch in view) {
 
 The `match` statement is a powerful control flow operator.
 
-```apex
+```arden
 val: Integer = 2;
 match (val) {
     1 => { println("One"); }

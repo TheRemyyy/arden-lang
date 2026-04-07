@@ -18,16 +18,16 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: apex-compiler.exe
-            asset_name: apex-compiler-windows-x64.exe
+            artifact_name: arden.exe
+            asset_name: arden-windows-x64.exe
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: apex-compiler
-            asset_name: apex-compiler-linux-x64
+            artifact_name: arden
+            asset_name: arden-linux-x64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: apex-compiler
-            asset_name: apex-compiler-macos-arm64
+            artifact_name: arden
+            asset_name: arden-macos-arm64
 
     steps:
       - name: Checkout code
@@ -42,7 +42,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: actions/cache@v4
         with:
-          path: C:\apex-toolchains\llvm-21.1.8
+          path: C:\arden-toolchains\llvm-21.1.8
           key: ${{ runner.os }}-llvm-21.1.8-x64
 
       - uses: ./.github/actions/install-llvm
@@ -99,20 +99,20 @@ jobs:
           draft: false 
           prerelease: false 
           files: |
-            all-artifacts/apex-compiler-windows-x64.exe
-            all-artifacts/apex-compiler-linux-x64
-            all-artifacts/apex-compiler-macos-arm64
+            all-artifacts/arden-windows-x64.exe
+            all-artifacts/arden-linux-x64
+            all-artifacts/arden-macos-arm64
           body: |
-            ## Apex Programming Language Compiler
+            ## Arden
             
             ### Available Downloads
-            - **Windows**: `apex-compiler-windows-x64.exe` (x64 MSVC)
-            - **Linux**: `apex-compiler-linux-x64` (x64 GNU)
-            - **macOS (Apple Silicon)**: `apex-compiler-macos-arm64`
+            - **Windows**: `arden-windows-x64.exe` (x64 MSVC)
+            - **Linux**: `arden-linux-x64` (x64 GNU)
+            - **macOS (Apple Silicon)**: `arden-macos-arm64`
             
             ### Installation
             Download the binary for your platform and ensure you have **LLVM 21** installed on your system for linking.
-            Linux Apex builds require `mold`.
-            macOS and Windows Apex builds require LLVM `lld`.
+            Linux Arden builds require `mold`.
+            macOS and Windows Arden builds require LLVM `lld`.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

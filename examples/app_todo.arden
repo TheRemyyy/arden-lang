@@ -1,5 +1,5 @@
 // Application: Todo List Manager
-// A task management app demonstrating Apex features
+// A task management app demonstrating Arden features
 
 import std.io.*;
 

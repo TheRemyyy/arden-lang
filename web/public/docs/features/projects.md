@@ -1,43 +1,43 @@
 # Multi-File Projects
 
-Apex supports organizing code into multi-file projects using a project configuration file.
+Arden supports organizing code into multi-file projects using a project configuration file.
 
 ## Project Structure
 
-An Apex project consists of:
+An Arden project consists of:
 
 ```
 my_project/
-├── apex.toml          # Project configuration
+├── arden.toml          # Project configuration
 ├── src/               # Source directory
-│   ├── main.apex      # Entry point
-│   ├── utils.apex     # Utility functions
-│   └── lib.apex       # Library code
+│   ├── main.arden      # Entry point
+│   ├── utils.arden     # Utility functions
+│   └── lib.arden       # Library code
 └── README.md          # Documentation
 ```
 
 ## Creating a New Project
 
 ```bash
-apex new my_project
+arden new my_project
 cd my_project
-apex run
+arden run
 ```
 
 This creates:
-- `apex.toml` - Project configuration
-- `src/main.apex` - Entry point with `main()` function
+- `arden.toml` - Project configuration
+- `src/main.arden` - Entry point with `main()` function
 - `README.md` - Project documentation
 
-## Project Configuration (apex.toml)
+## Project Configuration (arden.toml)
 
 ```toml
 name = "my_project"
 version = "1.0.0"
-entry = "src/main.apex"
+entry = "src/main.arden"
 files = [
-    "src/utils.apex",
-    "src/main.apex"
+    "src/utils.arden",
+    "src/main.arden"
 ]
 output = "my_project"
 opt_level = "3"
@@ -72,29 +72,29 @@ Path safety:
 ### Build Project
 
 ```bash
-apex build              # Debug build
-apex build --release    # Optimized build
+arden build              # Debug build
+arden build --release    # Optimized build
 ```
 
 ### Run Project
 
 ```bash
-apex run                # Build and run
-apex run --release      # Optimized build and run
-apex run arg1 arg2      # Pass arguments
+arden run                # Build and run
+arden run --release      # Optimized build and run
+arden run arg1 arg2      # Pass arguments
 ```
 
 ### Check Project
 
 ```bash
-apex check              # Check entry point
-apex check src/lib.apex # Check specific file
+arden check              # Check entry point
+arden check src/lib.arden # Check specific file
 ```
 
 ### Show Project Info
 
 ```bash
-apex info
+arden info
 ```
 
 Output:
@@ -102,7 +102,7 @@ Output:
 Project Information
   Name: my_project
   Version: 1.0.0
-  Entry: src/main.apex
+  Entry: src/main.arden
   Output: my_project
   Output Kind: Bin
   Opt Level: 3
@@ -110,21 +110,21 @@ Project Information
   Root: /path/to/project
 
 Source Files:
-  - src/utils.apex
-  - src/main.apex
+  - src/utils.arden
+  - src/main.arden
 ```
 
 ## Optimization Behavior
 
-- Project builds (`apex build`, `apex run` in a project) use `opt_level` from `apex.toml`.
+- Project builds (`arden build`, `arden run` in a project) use `opt_level` from `arden.toml`.
 - Valid values are: `0`, `1`, `2`, `3`, `s`, `z`, `fast`.
-- If `opt_level` is missing, Apex defaults to `3`.
-- If `opt_level` is present but invalid, Apex now rejects the config with a direct validation error instead of silently changing optimization behavior.
-- If `target` is set in `apex.toml`, Apex forwards it to Clang as `--target <triple>`.
+- If `opt_level` is missing, Arden defaults to `3`.
+- If `opt_level` is present but invalid, Arden now rejects the config with a direct validation error instead of silently changing optimization behavior.
+- If `target` is set in `arden.toml`, Arden forwards it to Clang as `--target <triple>`.
 - When `target` is set, host-native tuning flags are skipped to keep target/toolchain compatibility.
 - `output_kind = "shared"` emits a shared library, and `output_kind = "static"` emits a static archive.
-- `link_libs`, `link_search`, and `link_args` let project builds declare native link requirements in `apex.toml`.
-- Single-file mode (`apex compile file.apex`, `apex run file.apex`) defaults to maximum-performance settings.
+- `link_libs`, `link_search`, and `link_args` let project builds declare native link requirements in `arden.toml`.
+- Single-file mode (`arden compile file.arden`, `arden run file.arden`) defaults to maximum-performance settings.
 
 ## How It Works
 
@@ -140,13 +140,13 @@ Source Files:
 ## Best Practices
 
 1. **Organize by Functionality**: Group related functions into files
-   - `math.apex` - Mathematical functions
-   - `string.apex` - String utilities
-   - `io.apex` - Input/output operations
+   - `math.arden` - Mathematical functions
+   - `string.arden` - String utilities
+   - `io.arden` - Input/output operations
 
 2. **Use src/ Directory**: Keep source files organized in a directory
 
-3. **Entry Point**: Keep `main.apex` minimal, delegate to other modules
+3. **Entry Point**: Keep `main.arden` minimal, delegate to other modules
 
 4. **Documentation**: Add README.md to explain project structure
 
@@ -201,21 +201,21 @@ Namespace aliases now reach those same constructor-style single-file paths too. 
 The same explicit-generic pipeline now also finishes the second half of imported generic free-function aliases that return generic classes. Single-file and project flows like `import M.mk as mk; mk<Integer>(2).get()` now re-run generic class specialization after emitting the function `__spec__`, so the generated body constructs and calls the specialized class layout instead of mixing a specialized function wrapper with the unspecialized class ABI.
 
 ```toml
-# apex.toml
+# arden.toml
 name = "multi_file_demo"
 version = "1.0.0"
-entry = "src/main.apex"
+entry = "src/main.arden"
 files = [
-    "src/math_utils.apex",
-    "src/string_utils.apex",
-    "src/main.apex"
+    "src/math_utils.arden",
+    "src/string_utils.arden",
+    "src/main.arden"
 ]
 output = "multi_file_demo"
 output_kind = "bin"
 ```
 
-```apex
-// src/math_utils.apex
+```arden
+// src/math_utils.arden
 function factorial(n: Integer): Integer {
     if (n <= 1) {
         return 1;
@@ -223,7 +223,7 @@ function factorial(n: Integer): Integer {
     return n * factorial(n - 1);
 }
 
-// src/main.apex
+// src/main.arden
 import std.io.*;
 
 function main(): None {
@@ -238,8 +238,8 @@ function main(): None {
 You can still compile single files without a project:
 
 ```bash
-apex compile file.apex
-apex run file.apex
+arden compile file.arden
+arden run file.arden
 ```
 
-Note: When in a project directory, the compiler will warn you to use `apex build` instead.
+Note: When in a project directory, the compiler will warn you to use `arden build` instead.

@@ -1,8 +1,8 @@
 name = "test_no_import"
 version = "1.0.0"
-entry = "src/main.apex"
+entry = "src/main.arden"
 files = [
-    "src/utils.apex",
-    "src/main.apex"
+    "src/utils.arden",
+    "src/main.arden"
 ]
 output = "test_no_import"

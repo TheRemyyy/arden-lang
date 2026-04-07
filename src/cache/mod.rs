@@ -18,12 +18,12 @@ use std::time::Instant;
 use std::time::UNIX_EPOCH;
 use twox_hash::XxHash64;
 pub(crate) fn project_cache_file(project_root: &Path) -> PathBuf {
-    project_root.join(".apexcache").join("build_fingerprint")
+    project_root.join(".ardencache").join("build_fingerprint")
 }
 
 pub(crate) fn semantic_project_cache_file(project_root: &Path) -> PathBuf {
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("semantic_build_fingerprint")
 }
 
@@ -745,7 +745,7 @@ pub(crate) fn parsed_file_cache_path(project_root: &Path, file: &Path) -> PathBu
     let mut hasher = stable_hasher();
     file.hash(&mut hasher);
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("parsed")
         .join(format!("{:016x}.json", hasher.finish()))
 }
@@ -863,7 +863,7 @@ pub(crate) fn import_check_cache_path(project_root: &Path, file: &Path) -> PathB
     let mut hasher = stable_hasher();
     file.hash(&mut hasher);
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("import_check")
         .join(format!("{:016x}.json", hasher.finish()))
 }
@@ -915,7 +915,7 @@ pub(crate) fn save_import_check_cache_hit(
 
 pub(crate) fn dependency_graph_cache_path(project_root: &Path) -> PathBuf {
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("dependency_graph")
         .join("latest.json")
 }
@@ -957,7 +957,7 @@ pub(crate) fn save_dependency_graph_cache(
 
 pub(crate) fn semantic_summary_cache_path(project_root: &Path) -> PathBuf {
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("semantic_summary")
         .join("latest.json")
 }
@@ -999,7 +999,7 @@ pub(crate) fn save_semantic_summary_cache(
 
 pub(crate) fn typecheck_summary_cache_path(project_root: &Path) -> PathBuf {
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("typecheck_summary")
         .join("latest.json")
 }
@@ -1115,7 +1115,7 @@ pub(crate) fn rewritten_file_cache_path(project_root: &Path, file: &Path) -> Pat
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     file.hash(&mut hasher);
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("rewritten")
         .join(format!("{:016x}.json", hasher.finish()))
 }
@@ -1641,7 +1641,7 @@ pub(crate) fn object_cache_object_path(project_root: &Path, file: &Path) -> Path
     let mut hasher = stable_hasher();
     file.hash(&mut hasher);
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("objects")
         .join(format!("{:016x}.{}", hasher.finish(), object_ext()))
 }
@@ -1650,7 +1650,7 @@ pub(crate) fn object_cache_meta_path(project_root: &Path, file: &Path) -> PathBu
     let mut hasher = stable_hasher();
     file.hash(&mut hasher);
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("objects")
         .join(format!("{:016x}.json", hasher.finish()))
 }
@@ -1707,11 +1707,11 @@ pub(crate) fn object_shard_cache_paths(
     let key = object_shard_cache_key(files);
     ObjectShardCachePaths {
         object_path: project_root
-            .join(".apexcache")
+            .join(".ardencache")
             .join("object_shards")
             .join(format!("{key}.{}", object_ext())),
         meta_path: project_root
-            .join(".apexcache")
+            .join(".ardencache")
             .join("object_shards")
             .join(format!("{key}.json")),
     }
@@ -1719,7 +1719,7 @@ pub(crate) fn object_shard_cache_paths(
 
 pub(crate) fn link_manifest_cache_path(project_root: &Path) -> PathBuf {
     project_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("link")
         .join("latest.json")
 }

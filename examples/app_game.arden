@@ -1,5 +1,5 @@
 // Application: Number Guessing Game
-// A simple game demonstrating Apex features
+// A simple game demonstrating Arden features
 
 import std.io.*;
 import std.math.*;

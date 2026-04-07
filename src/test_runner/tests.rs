@@ -80,10 +80,10 @@ fn injects_stdio_import_when_block_comment_mentions_it() {
 
 #[test]
 fn injects_stdio_import_after_shebang() {
-    let source = "#!/usr/bin/env apex\nfunction helper(): None { return None; }\n";
+    let source = "#!/usr/bin/env arden\nfunction helper(): None { return None; }\n";
     let rewritten = ensure_test_runner_imports(source);
     assert!(
-        rewritten.starts_with("#!/usr/bin/env apex\nimport std.io.*;\n\n"),
+        rewritten.starts_with("#!/usr/bin/env arden\nimport std.io.*;\n\n"),
         "{rewritten}"
     );
 }

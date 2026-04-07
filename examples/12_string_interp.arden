@@ -8,7 +8,7 @@ function main(): None {
     println("=== String Interpolation Tests ===");
 
     // Basic variable interpolation
-    name: String = "Apex";
+    name: String = "Arden";
     greeting: String = "Hello, {name}!";
     println(greeting);
 

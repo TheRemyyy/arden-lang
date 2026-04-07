@@ -132,11 +132,11 @@ return None;
 
 #[test]
 fn preserves_shebang_line() {
-    let source = r#"#!/usr/bin/env apex
+    let source = r#"#!/usr/bin/env arden
 function main(): None { return None; }
 "#;
     let formatted = format_source(source).expect("format succeeds");
-    assert!(formatted.starts_with("#!/usr/bin/env apex\n"));
+    assert!(formatted.starts_with("#!/usr/bin/env arden\n"));
 }
 
 #[test]

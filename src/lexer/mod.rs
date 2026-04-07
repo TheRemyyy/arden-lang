@@ -1,4 +1,4 @@
-//! Apex Lexer - Tokenizes source code using Logos
+//! Arden Lexer - Tokenizes source code using Logos
 //!
 //! Production-ready lexer with full language support
 
@@ -409,14 +409,14 @@ mod tests {
 
     #[test]
     fn skips_unix_shebang_line() {
-        let tokens = tokenize("#!/usr/bin/env apex\nfunction main(): None { return None; }")
+        let tokens = tokenize("#!/usr/bin/env arden\nfunction main(): None { return None; }")
             .expect("tokenization succeeds");
         assert!(matches!(tokens.first(), Some((Token::Function, _))));
     }
 
     #[test]
     fn preserves_absolute_spans_after_shebang() {
-        let source = "#!/usr/bin/env apex\nfunction main(): None { return None; }";
+        let source = "#!/usr/bin/env arden\nfunction main(): None { return None; }";
         let tokens = tokenize(source).expect("tokenization succeeds");
         let (token, span) = tokens.first().expect("function token should exist");
         assert!(matches!(token, Token::Function));

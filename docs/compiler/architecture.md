@@ -1,6 +1,6 @@
 # Compiler Architecture
 
-This document describes the internal architecture of the Apex compiler.
+This document describes the internal architecture of the Arden.
 
 ## Pipeline
 
@@ -9,7 +9,7 @@ This document describes the internal architecture of the Apex compiler.
 3. **Type Checking** (`typeck.rs`): Traverses the AST to validate types, resolve names, and ensure type safety.
 4. **Borrow Checking** (`borrowck.rs`): Analyses ownership and lifetimes to ensure memory safety without GC.
 5. **Code Generation** (`codegen/core.rs`, `codegen/types.rs`, `codegen/util.rs`): Lowers the AST into LLVM IR (Intermediate Representation).
-6. **Linking**: LLVM IR is compiled to object files and linked through Clang. Apex uses an explicit per-platform linker policy with no fallback: Linux requires `mold`, while macOS and Windows require LLVM `lld`. Build caches are fingerprinted with that enforced linker mode. Windows CI now also installs a known-good CMake via `lukka/get-cmake` before `vcpkg install`, preventing tool bootstrap drift from breaking libxml2 setup when the preconfigured vcpkg CMake URL goes stale. Cross-platform smoke/test harnesses now canonicalize temporary roots before path-sensitive validation runs, keeping CLI security checks strict without letting `/var` vs `/private/var` aliases masquerade as symlink escapes.
+6. **Linking**: LLVM IR is compiled to object files and linked through Clang. Arden uses an explicit per-platform linker policy with no fallback: Linux requires `mold`, while macOS and Windows require LLVM `lld`. Build caches are fingerprinted with that enforced linker mode. Windows CI now also installs a known-good CMake via `lukka/get-cmake` before `vcpkg install`, preventing tool bootstrap drift from breaking libxml2 setup when the preconfigured vcpkg CMake URL goes stale. Cross-platform smoke/test harnesses now canonicalize temporary roots before path-sensitive validation runs, keeping CLI security checks strict without letting `/var` vs `/private/var` aliases masquerade as symlink escapes.
 
 Project rewrite and semantic passes now normalize namespace-alias constructor/type paths for module-scoped classes as well. That keeps expressions like `u.Box<Integer>(...)` and `u.M.Box<Integer>(...)` aligned with the same prefixed owner symbols used by dependency indexing, typechecking, and filtered codegen.
 Codegen now also keeps synthesized user-generic class specializations (`...__spec__...`) alive through filtered declaration passes and can infer object types from constructor results, function-returned objects, and `try`-unwrapped objects when lowering method/field chains.
@@ -41,47 +41,47 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
 
 ## Build Caching
 
-- **Project fingerprint cache** (`.apexcache/build_fingerprint`):
+- **Project fingerprint cache** (`.ardencache/build_fingerprint`):
   - Hashes project config + source metadata + build-mode flags.
-  - If unchanged and output artifact exists, `apex build` exits early (`Up to date ...`).
-- **Parsed file cache** (`.apexcache/parsed/*.json`):
+  - If unchanged and output artifact exists, `arden build` exits early (`Up to date ...`).
+- **Parsed file cache** (`.ardencache/parsed/*.json`):
   - Stores parsed AST + namespace/import metadata keyed by source fingerprint.
   - On incremental edits, unchanged files bypass tokenization/parsing and reuse cached AST.
   - Cached parse entries now also persist extracted symbol/reference metadata (`function_names`, dependency references, qualified symbol paths, import-check fingerprint), so warm builds do not rewalk unchanged ASTs just to rebuild compiler bookkeeping.
   - Nested module declarations now contribute prefixed class/enum metadata alongside function metadata, so project rewrite and dependency/index data can resolve module-scoped types like `M__Box` consistently.
   - Uses a fast unchanged-file check from cached file metadata (`len + modified time`) before reading full file contents.
   - If metadata changed but file content hash is still identical, the cached parse result is still reused safely.
-- **Rewritten file cache** (`.apexcache/rewritten/*.json`):
+- **Rewritten file cache** (`.ardencache/rewritten/*.json`):
   - Stores namespace-rewritten AST fragments keyed by semantic fingerprint + per-file rewrite-context fingerprint.
   - On incremental edits, files whose semantics and relevant namespace/import context did not change bypass rewrite and are stitched directly into combined AST.
-- **Import-check cache** (`.apexcache/import_check/*.json`):
+- **Import-check cache** (`.ardencache/import_check/*.json`):
   - Stores successful import-check results keyed by a narrower import/reference fingerprint plus per-file import/rewrite context fingerprint.
   - Rewrite/import context now prefers exact owner-file API fingerprints for actually used imported symbols instead of hashing whole namespaces whenever that can be resolved safely.
   - Same-namespace symbol usage now also hashes exact owner-file API fingerprints instead of pessimistically hashing the whole current namespace.
   - Body-only rewrites that do not change imports or referenced symbols can now reuse import-check results instead of invalidating on every semantic-body fingerprint change.
-  - Namespace and wildcard imports fall back to namespace fingerprints only when Apex cannot narrow the dependency to exact owner files.
+  - Namespace and wildcard imports fall back to namespace fingerprints only when Arden cannot narrow the dependency to exact owner files.
   - Fingerprint inputs are serialized in deterministic sorted order so hot rebuild reuse is stable across runs instead of depending on hash iteration order.
   - Unchanged files can now skip repeated import-check traversal on hot rebuilds with fewer false invalidations from unrelated namespace churn.
-- **Dependency graph cache** (`.apexcache/dependency_graph/latest.json`):
+- **Dependency graph cache** (`.ardencache/dependency_graph/latest.json`):
   - Stores per-file semantic/API fingerprints plus direct file dependencies resolved from same-namespace access and explicit imports.
   - Same-namespace edges are derived from AST symbol references (calls, constructions, type references, module roots) instead of treating every file in a namespace as mutually dependent.
   - Wildcard imports and namespace aliases now try to resolve only the owner files of actually used imported symbols instead of depending on every file in the imported namespace by default.
   - Supports explicit `body-only` vs `API` change classification and reverse-dependent impact tracking between builds.
-- **Semantic summary cache** (`.apexcache/semantic_summary/latest.json`):
+- **Semantic summary cache** (`.ardencache/semantic_summary/latest.json`):
   - Stores inferred function effect summaries and class mutating-method summaries from successful semantic passes.
   - Stores both per-file ownership metadata and per-component summary membership.
   - Unchanged files can seed impacted-file type/borrow checking without re-walking all unaffected bodies.
   - Entire unchanged dependency-graph components can now skip type checking and borrow checking even when some other project component changed in the same build.
-- **Object file cache** (`.apexcache/objects/*.{o|obj}` + `*.json`):
+- **Object file cache** (`.ardencache/objects/*.{o|obj}` + `*.json`):
   - Stores per-file compiled objects keyed by semantic fingerprint + per-file rewrite-context fingerprint + build options (`opt_level`, `target`, compiler version, linker mode).
   - On incremental edits, unchanged files reuse cached object files and final build performs fast relink from cached + rebuilt objects.
   - Object cache misses now emit object files directly from LLVM target machines, avoiding the old textual IR `.ll` -> `clang -c` round-trip.
   - LLVM target registries for direct object emission are initialized once per process, so parallel object rebuilds do not repeatedly pay startup cost.
-- **Link manifest cache** (`.apexcache/link/latest.json`):
+- **Link manifest cache** (`.ardencache/link/latest.json`):
   - Records the ordered object input list plus final link configuration for the last successful build.
-  - If a rebuild produces zero object cache misses and the manifest still matches, Apex skips the final linker invocation entirely and reuses the existing output artifact.
-  - When linking does run, Apex now passes large object input sets through a response file to keep Clang + linker startup overhead bounded on large projects.
-- **Semantic build fingerprint cache** (`.apexcache/semantic_build_fingerprint`):
+  - If a rebuild produces zero object cache misses and the manifest still matches, Arden skips the final linker invocation entirely and reuses the existing output artifact.
+  - When linking does run, Arden now passes large object input sets through a response file to keep Clang + linker startup overhead bounded on large projects.
+- **Semantic build fingerprint cache** (`.ardencache/semantic_build_fingerprint`):
   - Hashes canonicalized AST content instead of raw file text.
   - Comment-only / whitespace-only edits can now stop after parse/cache validation and return `Up to date ... (semantic cache)` without object rebuild or relink.
 - **Per-file rewrite invalidation**:
@@ -97,10 +97,10 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
   - Semantic delta checking and object-cache miss codegen reuse that projected AST instead of regenerating body-stripped declarations repeatedly.
 - **Codegen generic-specialization fast path**:
   - Object and full-program codegen now first checks whether the AST actually contains explicit generic call sites.
-  - If none exist, Apex skips the generic-specialization rewrite pass entirely instead of cloning and rewalking the whole codegen input.
+  - If none exist, Arden skips the generic-specialization rewrite pass entirely instead of cloning and rewalking the whole codegen input.
 - **Declaration-closure pruning for filtered codegen**:
   - Per-file object rebuilds no longer blanket-declare every symbol from the slim codegen program.
-  - Apex now computes a declaration closure from the changed file's active symbols plus transitive API-visible references of dependency files, so filtered codegen only predeclares symbols that can actually be reached.
+  - Arden now computes a declaration closure from the changed file's active symbols plus transitive API-visible references of dependency files, so filtered codegen only predeclares symbols that can actually be reached.
   - Dependency API projection inputs are trimmed to that same closure, so object-miss codegen also stops carrying unrelated stub declarations through the front of the pipeline.
   - Qualified import paths used through namespace aliases (for example `import util as u; f = u.add1`) now seed that closure too, so imported function values and alias-qualified calls pull in the right owner declarations during filtered object rebuilds.
   - Alias-qualified class/module references (for example `u.Box(...)`) now seed dependency edges and declaration closure entries too, so constructor/object codegen sees the owning type declarations instead of treating alias-rooted constructors as isolated files.
@@ -257,7 +257,7 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
 - Project rewrite now also recurses through expression-only containers like `if` expressions, `match` expressions, async blocks, `await`, string interpolation, `require`, borrow/deref, `try`, and range endpoints, so alias/function rewriting no longer silently stops at those expression boundaries.
 - Payload-less enum variants now lower as first-class enum values in project mode, including direct forms like `E.A` and alias-qualified forms like `Enum.A` and `u.E.A`, instead of falling through field-access code paths.
 - Higher-order codegen now handles `try`-unwrapped and dereferenced function values as indirect callees, so expressions like `(choose()?)(1)` and `(*f)(1)` use the same closure-call lowering path as other function values.
-- Formatter precedence now preserves dereferenced and `try`-unwrapped function-value callees too, so `apex fmt` does not rewrite `(*f)(1)` into `*f(1)` or `(choose()?)(1)` into `choose()?(1)`.
+- Formatter precedence now preserves dereferenced and `try`-unwrapped function-value callees too, so `arden fmt` does not rewrite `(*f)(1)` into `*f(1)` or `(choose()?)(1)` into `choose()?(1)`.
 - Async soundness is stricter now: async blocks/functions may not return values containing borrowed references, async functions may not accept borrowed-reference-containing parameters, and async blocks may not capture outer variables whose types already contain borrowed references.
 - Extern functions remain callable, but `src/typeck.rs` now rejects them as first-class values up front, so expressions like `f = puts` fail in semantic analysis instead of surviving to a late backend error.
   - Match patterns now also accept qualified enum variant names, so forms like `Enum.A(v)` and `util.E.B(w)` survive parse, typecheck, formatting, and codegen instead of failing on the first `.` token or dropping payload bindings in backend lowering.
@@ -265,7 +265,7 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
   - `src/typeck.rs` now parses function-type strings nested inside generic wrappers during normalization/substitution, so wrapper types containing function values compare correctly.
   - `src/typeck.rs` now recognizes `Option.some/none` and `Result.ok/error` as frontend static constructors instead of treating `Option`/`Result` as undefined variables.
 - `src/project_rewrite.rs` now rewrites bare function identifiers used as values in project mode, and the rewrite cache schema was bumped so old pre-fix rewrites are dropped.
-- The rewrite cache schema is bumped whenever alias/type rewriting changes in a cache-incompatible way, preventing stale `.apexcache` entries from reintroducing fixed project-rewrite bugs.
+- The rewrite cache schema is bumped whenever alias/type rewriting changes in a cache-incompatible way, preventing stale `.ardencache` entries from reintroducing fixed project-rewrite bugs.
 
 ## Directory Structure
 
@@ -275,7 +275,7 @@ Runtime unwrap failure diagnostics now emit real newline-terminated panic messag
 - `src/parser.rs`: Parser implementation.
 - `src/typeck.rs`: Type checker implementation.
 - `src/borrowck.rs`: Borrow checker implementation.
-- `src/formatter.rs`: AST-driven source formatter used by `apex fmt`.
+- `src/formatter.rs`: AST-driven source formatter used by `arden fmt`.
 - `src/test_runner.rs`: Test discovery and generated runner pipeline; now recurses nested modules for `@Test` and lifecycle hooks.
 - `src/bindgen.rs`: Lightweight C header bridge; now keeps pointer-return prototypes and rejects whole function-pointer-param signatures instead of emitting truncated bindings.
 - `src/codegen/mod.rs`: Codegen module entry.

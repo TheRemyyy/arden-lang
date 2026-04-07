@@ -1,12 +1,12 @@
 # Functions
 
-Functions are the building blocks of Apex programs.
+Functions are the building blocks of Arden programs.
 
 ## Definition
 
 A function is defined using the `function` keyword.
 
-```apex
+```arden
 function name(param1: Type1, param2: Type2): ReturnType {
     // body...
     return value;
@@ -15,7 +15,7 @@ function name(param1: Type1, param2: Type2): ReturnType {
 
 Example:
 
-```apex
+```arden
 function add(a: Integer, b: Integer): Integer {
     return a + b;
 }
@@ -25,7 +25,7 @@ function add(a: Integer, b: Integer): Integer {
 
 If a function does not return a meaningful value, it should return `None` and the return type should be `None`.
 
-```apex
+```arden
 function greet(): None {
     println("Hello");
     return None;
@@ -34,11 +34,11 @@ function greet(): None {
 
 ## Lambdas (Anonymous Functions)
 
-Apex supports lambda expressions for concise function definition.
+Arden supports lambda expressions for concise function definition.
 
 Type: `(ParamTypes) -> ReturnType`
 
-```apex
+```arden
 // Implicit return
 square: (Integer) -> Integer = (x: Integer) => x * x;
 
@@ -56,7 +56,7 @@ complex: (Integer) -> Integer = (x: Integer) => {
 
 Functions can take other functions as arguments or return them.
 
-```apex
+```arden
 function callTwice(f: (Integer) -> None, val: Integer): None {
     f(val);
     f(val);
@@ -74,7 +74,7 @@ typed_id: (Integer) -> Integer = id<Integer>;
 
 Lambdas can capture variables from their enclosing environment.
 
-```apex
+```arden
 offset: Integer = 10;
 adder: (Integer) -> Integer = (x: Integer) => x + offset;
 ```
@@ -83,7 +83,7 @@ adder: (Integer) -> Integer = (x: Integer) => x + offset;
 
 Use `extern function` to declare C ABI symbols and call native libraries.
 
-```apex
+```arden
 extern function puts(msg: String): Integer;
 
 function main(): None {
@@ -92,24 +92,24 @@ function main(): None {
 }
 ```
 
-Reference example: `examples/27_extern_c_interop.apex`.
+Reference example: `examples/27_extern_c_interop.arden`.
 
 Variadic C signatures are supported:
 
-```apex
+```arden
 extern function printf(fmt: String, ...): Integer;
 ```
 
-Reference example: `examples/30_extern_variadic_printf.apex`.
+Reference example: `examples/30_extern_variadic_printf.arden`.
 
 You can also specify ABI and link name explicitly:
 
-```apex
+```arden
 extern(c, "puts") function c_puts(msg: String): Integer;
 extern(system, "printf") function sys_printf(fmt: String, ...): Integer;
 ```
 
-Reference example: `examples/31_extern_abi_link_name.apex`.
+Reference example: `examples/31_extern_abi_link_name.arden`.
 
 Current extern FFI-safe signature types are:
 - `Integer`
@@ -120,8 +120,8 @@ Current extern FFI-safe signature types are:
 - `Ptr<T>` (raw pointer interop)
 - `None`
 
-For robust integrations, prefer a safe Apex wrapper around raw extern calls.
-Reference example: `examples/32_extern_safe_wrapper.apex`.
+For robust integrations, prefer a safe Arden wrapper around raw extern calls.
+Reference example: `examples/32_extern_safe_wrapper.arden`.
 
 ## Effect Attributes
 
@@ -138,7 +138,7 @@ You can annotate functions with effect attributes:
 `@Pure` forbids effectful calls. If a function declares effect attributes, calls requiring
 missing effects produce type-check errors.
 
-For functions without explicit effect attributes, Apex infers required effects from the call graph.
+For functions without explicit effect attributes, Arden infers required effects from the call graph.
 Use `@Any` to explicitly opt into permissive mode for integration-heavy code.
 
-Reference example: `examples/26_effect_system.apex`.
+Reference example: `examples/26_effect_system.arden`.

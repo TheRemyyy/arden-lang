@@ -1,10 +1,10 @@
 # Enums
 
-Enums allow you to define a type by enumerating its possible variants. Apex enums are algebraic data types, meaning they can hold data.
+Enums allow you to define a type by enumerating its possible variants. Arden enums are algebraic data types, meaning they can hold data.
 
 ## Basic Enums
 
-```apex
+```arden
 enum Color {
     Red,
     Green,
@@ -14,7 +14,7 @@ enum Color {
 
 ## Enums with Data
 
-```apex
+```arden
 enum Message {
     Quit,
     Move(x: Integer, y: Integer),
@@ -27,7 +27,7 @@ enum Message {
 
 You use `match` to extract data from enums.
 
-```apex
+```arden
 msg: Message = Message.Write("Hello");
 
 match (msg) {

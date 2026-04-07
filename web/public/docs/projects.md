@@ -6,7 +6,7 @@ Project support is documented in detail in:
 
 Quick summary:
 
-- Apex projects are configured with `apex.toml`.
+- Arden projects are configured with `arden.toml`.
 - Source files are listed explicitly in `files`.
 - Project `opt_level` controls final binary optimization (`0/1/2/3/s/z/fast`, default `3`).
 - Single-file compile/run defaults to maximum-performance optimization.

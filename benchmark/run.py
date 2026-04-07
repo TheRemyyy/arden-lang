@@ -102,7 +102,7 @@ BENCHMARKS: List[BenchmarkSpec] = [
     ),
 ]
 
-LANGUAGES = ("apex", "rust", "go")
+LANGUAGES = ("arden", "rust", "go")
 SYNTHETIC_MEGA_GRAPH_CONFIG = SyntheticGraphConfig(
     file_count=1400,
     funcs_per_file=96,
@@ -164,7 +164,7 @@ def parse_checksum(output: str) -> int:
     return int(line)
 
 
-def compile_apex(
+def compile_arden(
     root: Path,
     bench: str,
     out: Path,
@@ -172,13 +172,13 @@ def compile_apex(
     opt_level: str,
     target: str | None,
 ) -> None:
-    compiler = root / "target" / "release" / "apex-compiler"
+    compiler = root / "target" / "release" / "arden"
     if not compiler.exists():
         raise RuntimeError(
-            f"Apex compiler missing at {compiler}. Build it first or run without --no-build."
+            f"Arden missing at {compiler}. Build it first or run without --no-build."
         )
 
-    src = root / "benchmark" / "apex" / f"{bench}.apex"
+    src = root / "benchmark" / "arden" / f"{bench}.arden"
     cmd = [
         str(compiler),
         "compile",
@@ -193,7 +193,7 @@ def compile_apex(
         cmd.extend(["--target", target])
     proc = run_cmd(cmd, root, env=build_env)
     if proc.returncode != 0:
-        raise RuntimeError(f"Failed to compile Apex benchmark {bench}:\n{proc.stderr}")
+        raise RuntimeError(f"Failed to compile Arden benchmark {bench}:\n{proc.stderr}")
 
 
 def compile_rust(root: Path, bench: str, out: Path) -> None:
@@ -232,7 +232,7 @@ def timed_compile_with_retry(lang: str, job: Dict, retries: int = 1) -> TimedCom
         except RuntimeError as exc:
             msg = str(exc)
             transient_ll_missing = (
-                lang == "apex"
+                lang == "arden"
                 and ".ll" in msg
                 and "no such file or directory" in msg.lower()
             )
@@ -290,7 +290,7 @@ def parse_build_timings(output: str) -> Dict[str, Dict]:
     return timings
 
 
-def summarize_apex_phase_timings(samples: List[Dict[str, Dict]]) -> List[Dict]:
+def summarize_arden_phase_timings(samples: List[Dict[str, Dict]]) -> List[Dict]:
     if not samples:
         return []
 
@@ -360,13 +360,13 @@ def generate_compile_project_10_files(
         shutil.rmtree(generated_root)
     generated_root.mkdir(parents=True, exist_ok=True)
 
-    apex_dir = generated_root / "apex"
-    apex_src = apex_dir / "src"
-    apex_src.mkdir(parents=True, exist_ok=True)
-    apex_files = []
-    apex_part_files: List[Path] = []
-    apex_core = apex_src / "core.apex"
-    apex_core.write_text(
+    arden_dir = generated_root / "arden"
+    arden_src = arden_dir / "src"
+    arden_src.mkdir(parents=True, exist_ok=True)
+    arden_files = []
+    arden_part_files: List[Path] = []
+    arden_core = arden_src / "core.arden"
+    arden_core.write_text(
         "\n".join(
             [
                 "import std.io.*;",
@@ -379,11 +379,11 @@ def generate_compile_project_10_files(
         ),
         encoding="utf-8",
     )
-    apex_files.append("src/core.apex")
+    arden_files.append("src/core.arden")
     for i in range(file_count):
         part = f"part_{i:02d}"
-        apex_files.append(f"src/{part}.apex")
-        apex_part_files.append(apex_src / f"{part}.apex")
+        arden_files.append(f"src/{part}.arden")
+        arden_part_files.append(arden_src / f"{part}.arden")
         lines: List[str] = ["import std.io.*;", ""]
         for j in range(funcs_per_file):
             lines.append(
@@ -396,24 +396,24 @@ def generate_compile_project_10_files(
             lines.append(f"    y = {part}_f{j:03d}(y);")
         lines.append("    return y;")
         lines.append("}")
-        (apex_src / f"{part}.apex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        (arden_src / f"{part}.arden").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     main_lines: List[str] = ["import std.io.*;", "", "function main(): None {", "    mut acc: Integer = 0;"]
     for i in range(file_count):
         main_lines.append(f"    acc = part_{i:02d}_apply(acc);")
     main_lines.extend(['    println(to_string(acc));', "    return None;", "}"])
-    (apex_src / "main.apex").write_text("\n".join(main_lines) + "\n", encoding="utf-8")
-    apex_files.append("src/main.apex")
+    (arden_src / "main.arden").write_text("\n".join(main_lines) + "\n", encoding="utf-8")
+    arden_files.append("src/main.arden")
 
     toml_lines = [
         f'name = "{bench_name}"',
         'version = "0.1.0"',
-        'entry = "src/main.apex"',
+        'entry = "src/main.arden"',
         "files = [",
     ]
-    toml_lines.extend([f'    "{f}",' for f in apex_files])
+    toml_lines.extend([f'    "{f}",' for f in arden_files])
     toml_lines.extend(["]", f'output = "{bench_name}"', 'opt_level = "3"'])
-    (apex_dir / "apex.toml").write_text("\n".join(toml_lines) + "\n", encoding="utf-8")
+    (arden_dir / "arden.toml").write_text("\n".join(toml_lines) + "\n", encoding="utf-8")
 
     rust_dir = generated_root / "rust"
     rust_dir.mkdir(parents=True, exist_ok=True)
@@ -478,20 +478,20 @@ def generate_compile_project_10_files(
         encoding="utf-8",
     )
 
-    apex_mutate_sources = pick_mutation_targets(apex_part_files, mutate_count, mutation_profile)
+    arden_mutate_sources = pick_mutation_targets(arden_part_files, mutate_count, mutation_profile)
     rust_mutate_sources = pick_mutation_targets(rust_part_files, mutate_count, mutation_profile)
     go_mutate_sources = pick_mutation_targets(go_part_files, mutate_count, mutation_profile)
     if mutation_profile == "central":
-        apex_mutate_sources = [apex_core]
+        arden_mutate_sources = [arden_core]
         rust_mutate_sources = [rust_dir / "core.rs"]
         go_mutate_sources = [go_dir / "core.go"]
 
     return {
-        "apex": {
-            "project_dir": apex_dir,
-            "binary": apex_dir / bench_name,
-            "mutate_source": apex_mutate_sources[0],
-            "mutate_sources": apex_mutate_sources,
+        "arden": {
+            "project_dir": arden_dir,
+            "binary": arden_dir / bench_name,
+            "mutate_source": arden_mutate_sources[0],
+            "mutate_sources": arden_mutate_sources,
         },
         "rust": {
             "project_dir": rust_dir,
@@ -563,24 +563,24 @@ def generate_compile_project_synthetic_graph(
     group_count = (file_count + group_size - 1) // group_size
     group_names = [f"group_{i:02d}" for i in range(group_count)]
 
-    apex_dir = generated_root / "apex"
-    apex_src = apex_dir / "src"
-    apex_src.mkdir(parents=True, exist_ok=True)
+    arden_dir = generated_root / "arden"
+    arden_src = arden_dir / "src"
+    arden_src.mkdir(parents=True, exist_ok=True)
     rust_dir = generated_root / "rust"
     rust_dir.mkdir(parents=True, exist_ok=True)
     go_dir = generated_root / "go"
     go_dir.mkdir(parents=True, exist_ok=True)
 
-    apex_files = ["src/core.apex"]
-    apex_part_files: List[Path] = []
+    arden_files = ["src/core.arden"]
+    arden_part_files: List[Path] = []
     rust_part_files: List[Path] = []
     go_part_files: List[Path] = []
-    apex_group_plans: List[Dict] = []
+    arden_group_plans: List[Dict] = []
     rust_group_plans: List[Dict] = []
     go_group_plans: List[Dict] = []
 
-    apex_core = apex_src / "core.apex"
-    apex_core.write_text(
+    arden_core = arden_src / "core.arden"
+    arden_core.write_text(
         "\n".join(
             [
                 "function core_mix(x: Integer, k: Integer): Integer {",
@@ -632,8 +632,8 @@ def generate_compile_project_synthetic_graph(
     for group_idx, group_name in enumerate(group_names):
         group_salt = 1000 + group_idx * 37
 
-        apex_group_file = apex_src / f"{group_name}.apex"
-        apex_group_file.write_text(
+        arden_group_file = arden_src / f"{group_name}.arden"
+        arden_group_file.write_text(
             "\n".join(
                 [
                     f"// MUTATION_SURFACE_{group_name.upper()}",
@@ -645,7 +645,7 @@ def generate_compile_project_synthetic_graph(
             ),
             encoding="utf-8",
         )
-        apex_files.append(f"src/{group_name}.apex")
+        arden_files.append(f"src/{group_name}.arden")
 
         rust_group_file = rust_dir / f"{group_name}.rs"
         rust_group_file.write_text(
@@ -677,8 +677,8 @@ def generate_compile_project_synthetic_graph(
             encoding="utf-8",
         )
 
-        apex_group_plans.append(
-            {"group_name": group_name, "group_index": group_idx, "call_salt": group_salt, "surface_files": [apex_group_file], "caller_files": []}
+        arden_group_plans.append(
+            {"group_name": group_name, "group_index": group_idx, "call_salt": group_salt, "surface_files": [arden_group_file], "caller_files": []}
         )
         rust_group_plans.append(
             {"group_name": group_name, "group_index": group_idx, "call_salt": group_salt, "surface_files": [rust_group_file], "caller_files": []}
@@ -693,43 +693,43 @@ def generate_compile_project_synthetic_graph(
         group_name = group_names[group_idx]
         group_salt = 1000 + group_idx * 37
 
-        apex_files.append(f"src/{part}.apex")
-        apex_part_file = apex_src / f"{part}.apex"
-        apex_part_files.append(apex_part_file)
-        apex_group_plans[group_idx]["caller_files"].append(apex_part_file)
-        apex_lines: List[str] = []
+        arden_files.append(f"src/{part}.arden")
+        arden_part_file = arden_src / f"{part}.arden"
+        arden_part_files.append(arden_part_file)
+        arden_group_plans[group_idx]["caller_files"].append(arden_part_file)
+        arden_lines: List[str] = []
         for j in range(funcs_per_file):
-            apex_lines.append(
+            arden_lines.append(
                 f"function {part}_f{j:03d}(x: Integer): Integer {{ return core_mix(x, {i + j + 1}); }}"
             )
-        apex_lines.extend(["", f"function {part}_apply(x: Integer): Integer {{", "    mut y: Integer = x;"])
+        arden_lines.extend(["", f"function {part}_apply(x: Integer): Integer {{", "    mut y: Integer = x;"])
         for j in range(funcs_per_file):
-            apex_lines.append(f"    y = {part}_f{j:03d}(y);")
-        apex_lines.append(f"    y = {group_name}_bridge(y, {group_salt}); // MUTATION_CALL_{group_name.upper()}")
-        apex_lines.extend(["    return y;", "}"])
-        apex_lines.extend(["", f"function {part}_chain(x: Integer): Integer {{", f"    mut y: Integer = {part}_apply(x);"])
+            arden_lines.append(f"    y = {part}_f{j:03d}(y);")
+        arden_lines.append(f"    y = {group_name}_bridge(y, {group_salt}); // MUTATION_CALL_{group_name.upper()}")
+        arden_lines.extend(["    return y;", "}"])
+        arden_lines.extend(["", f"function {part}_chain(x: Integer): Integer {{", f"    mut y: Integer = {part}_apply(x);"])
         for j in range(0, funcs_per_file, 3):
-            apex_lines.append(f"    y = {part}_f{j:03d}(y);")
-        apex_lines.extend(["    return y;", "}"])
-        apex_lines.extend(["", f"function {part}_wire(x: Integer): Integer {{", f"    mut y: Integer = {part}_chain(x);"])
+            arden_lines.append(f"    y = {part}_f{j:03d}(y);")
+        arden_lines.extend(["    return y;", "}"])
+        arden_lines.extend(["", f"function {part}_wire(x: Integer): Integer {{", f"    mut y: Integer = {part}_chain(x);"])
         for dep in deps:
             dep_part = part_names[dep]
-            apex_lines.append(f"    y = core_fold(y, {dep_part}_apply(x), {i + dep + 1});")
+            arden_lines.append(f"    y = core_fold(y, {dep_part}_apply(x), {i + dep + 1});")
         for dep in deps:
             dep_part = part_names[dep]
-            apex_lines.append(f"    y = core_fold(y, {dep_part}_wire(x), {i + dep + 33});")
-        apex_lines.extend(["    return y;", "}"])
-        apex_lines.extend(["", f"function {part}_fanout(x: Integer): Integer {{", f"    mut y: Integer = {part}_wire(x);"])
+            arden_lines.append(f"    y = core_fold(y, {dep_part}_wire(x), {i + dep + 33});")
+        arden_lines.extend(["    return y;", "}"])
+        arden_lines.extend(["", f"function {part}_fanout(x: Integer): Integer {{", f"    mut y: Integer = {part}_wire(x);"])
         for dep in deps:
             dep_part = part_names[dep]
-            apex_lines.append(f"    y = core_fold(y, {dep_part}_chain(x), {i + dep + 65});")
-        apex_lines.extend(["    return y;", "}"])
-        apex_lines.extend(["", f"function {part}_signature(seed: Integer): Integer {{", f"    mut y: Integer = {part}_fanout(seed);"])
+            arden_lines.append(f"    y = core_fold(y, {dep_part}_chain(x), {i + dep + 65});")
+        arden_lines.extend(["    return y;", "}"])
+        arden_lines.extend(["", f"function {part}_signature(seed: Integer): Integer {{", f"    mut y: Integer = {part}_fanout(seed);"])
         for dep in deps:
             dep_part = part_names[dep]
-            apex_lines.append(f"    y = core_fold(y, {dep_part}_apply(seed), {i + dep + 97});")
-        apex_lines.extend(["    return y;", "}"])
-        apex_part_file.write_text("\n".join(apex_lines) + "\n", encoding="utf-8")
+            arden_lines.append(f"    y = core_fold(y, {dep_part}_apply(seed), {i + dep + 97});")
+        arden_lines.extend(["    return y;", "}"])
+        arden_part_file.write_text("\n".join(arden_lines) + "\n", encoding="utf-8")
 
         rust_part_file = rust_dir / f"{part}.rs"
         rust_part_files.append(rust_part_file)
@@ -810,12 +810,12 @@ def generate_compile_project_synthetic_graph(
     for part in part_names:
         main_lines.append(f"    acc = {part}_apply(acc);")
     main_lines.extend(['    println(to_string(acc));', "    return None;", "}"])
-    (apex_src / "main.apex").write_text("\n".join(main_lines) + "\n", encoding="utf-8")
-    apex_files.append("src/main.apex")
-    toml_lines = [f'name = "{bench_name}"', 'version = "0.1.0"', 'entry = "src/main.apex"', "files = ["]
-    toml_lines.extend([f'    "{f}",' for f in apex_files])
+    (arden_src / "main.arden").write_text("\n".join(main_lines) + "\n", encoding="utf-8")
+    arden_files.append("src/main.arden")
+    toml_lines = [f'name = "{bench_name}"', 'version = "0.1.0"', 'entry = "src/main.arden"', "files = ["]
+    toml_lines.extend([f'    "{f}",' for f in arden_files])
     toml_lines.extend(["]", f'output = "{bench_name}"', 'opt_level = "3"'])
-    (apex_dir / "apex.toml").write_text("\n".join(toml_lines) + "\n", encoding="utf-8")
+    (arden_dir / "arden.toml").write_text("\n".join(toml_lines) + "\n", encoding="utf-8")
 
     rust_main = ["mod core;"]
     for group_name in group_names:
@@ -834,7 +834,7 @@ def generate_compile_project_synthetic_graph(
     go_main.extend(["    fmt.Println(acc)", "}"])
     (go_dir / "main.go").write_text("\n".join(go_main) + "\n", encoding="utf-8")
 
-    apex_mutate_sources = pick_mutation_targets(apex_part_files, effective_mutate_count, "batch_spread")
+    arden_mutate_sources = pick_mutation_targets(arden_part_files, effective_mutate_count, "batch_spread")
     rust_mutate_sources = pick_mutation_targets(rust_part_files, effective_mutate_count, "batch_spread")
     go_mutate_sources = pick_mutation_targets(go_part_files, effective_mutate_count, "batch_spread")
 
@@ -849,15 +849,15 @@ def generate_compile_project_synthetic_graph(
         return [plans[i] for i in sorted(indices)]
 
     return {
-        "apex": {
-            "project_dir": apex_dir,
-            "binary": apex_dir / bench_name,
-            "mutate_source": apex_mutate_sources[0],
-            "mutate_sources": apex_mutate_sources,
+        "arden": {
+            "project_dir": arden_dir,
+            "binary": arden_dir / bench_name,
+            "mutate_source": arden_mutate_sources[0],
+            "mutate_sources": arden_mutate_sources,
             "mixed_leaf_sources": pick_mutation_targets(
-                apex_part_files, config.mixed_leaf_edits, "batch_spread"
+                arden_part_files, config.mixed_leaf_edits, "batch_spread"
             ),
-            "mixed_groups": spread_group_plans(apex_group_plans, config.mixed_group_edits),
+            "mixed_groups": spread_group_plans(arden_group_plans, config.mixed_group_edits),
         },
         "rust": {
             "project_dir": rust_dir,
@@ -886,22 +886,22 @@ def make_compile_jobs(
     root: Path,
     compile_projects: Dict[str, Dict[str, Path]],
     build_env: Dict[str, str],
-    apex_timings: bool,
+    arden_timings: bool,
 ) -> Dict[str, Dict]:
-    compiler = root / "target" / "release" / "apex-compiler"
-    apex_cmd = [str(compiler), "build", "--no-check"]
-    if apex_timings:
-        apex_cmd.append("--timings")
+    compiler = root / "target" / "release" / "arden"
+    arden_cmd = [str(compiler), "build", "--no-check"]
+    if arden_timings:
+        arden_cmd.append("--timings")
     return {
-        "apex": {
-            "cmd": apex_cmd,
-            "cwd": compile_projects["apex"]["project_dir"],
+        "arden": {
+            "cmd": arden_cmd,
+            "cwd": compile_projects["arden"]["project_dir"],
             "env": build_env,
-            "binary": exe_path(compile_projects["apex"]["binary"]),
-            "mutate_source": compile_projects["apex"]["mutate_source"],
-            "mutate_sources": compile_projects["apex"].get("mutate_sources", []),
-            "mixed_leaf_sources": compile_projects["apex"].get("mixed_leaf_sources", []),
-            "mixed_groups": compile_projects["apex"].get("mixed_groups", []),
+            "binary": exe_path(compile_projects["arden"]["binary"]),
+            "mutate_source": compile_projects["arden"]["mutate_source"],
+            "mutate_sources": compile_projects["arden"].get("mutate_sources", []),
+            "mixed_leaf_sources": compile_projects["arden"].get("mixed_leaf_sources", []),
+            "mixed_groups": compile_projects["arden"].get("mixed_groups", []),
         },
         "rust": {
             "cmd": [
@@ -975,7 +975,7 @@ def apply_mixed_invalidation_changes(lang: str, job: Dict, marker: str) -> None:
         salt = int(group["call_salt"])
         extra = 5000 + group["group_index"] * 13 + idx
 
-        if lang == "apex":
+        if lang == "arden":
             replace_once(
                 Path(group["surface_files"][0]),
                 f"function {group_name}_bridge(x: Integer, salt: Integer): Integer {{",
@@ -1052,10 +1052,10 @@ def clean_compile_artifacts(lang: str, job: Dict) -> None:
     if binary.exists():
         binary.unlink()
 
-    if lang == "apex":
-        apex_cache_dir = Path(job["cwd"]) / ".apexcache"
-        if apex_cache_dir.exists():
-            shutil.rmtree(apex_cache_dir)
+    if lang == "arden":
+        arden_cache_dir = Path(job["cwd"]) / ".ardencache"
+        if arden_cache_dir.exists():
+            shutil.rmtree(arden_cache_dir)
 
     if lang == "go":
         go_cache_dir = job.get("go_cache_dir")
@@ -1077,9 +1077,9 @@ def build_markdown(result: Dict) -> str:
     lines.append(f"- Generated: `{result['generated_at']}`")
     lines.append(f"- Repeats: `{result['repeats']}`")
     lines.append(f"- Warmup runs: `{result['warmup']}`")
-    lines.append(f"- Apex opt level: `{result.get('apex_opt_level', 'n/a')}`")
-    lines.append(f"- Apex target: `{result.get('apex_target') or 'native/default'}`")
-    lines.append(f"- Apex phase timings: `{'enabled' if result.get('apex_timings') else 'disabled'}`")
+    lines.append(f"- Arden opt level: `{result.get('arden_opt_level', 'n/a')}`")
+    lines.append(f"- Arden target: `{result.get('arden_target') or 'native/default'}`")
+    lines.append(f"- Arden phase timings: `{'enabled' if result.get('arden_timings') else 'disabled'}`")
     lines.append(f"- Compile mode: `{result.get('compile_mode', 'n/a')}`")
     lines.append("")
 
@@ -1120,17 +1120,17 @@ def build_markdown(result: Dict) -> str:
                     f"{format_seconds(stats['stddev_s'])} | {format_seconds(stats['max_s'])} |"
                 )
         lines.append("")
-        lines.append("| Relative to Apex (mean) | Value |")
+        lines.append("| Relative to Arden (mean) | Value |")
         lines.append("|---|---:|")
         for lang in LANGUAGES:
-            if lang == "apex":
+            if lang == "arden":
                 continue
             lines.append(
-                f"| {lang.capitalize()} speedup | {bench['speedup_vs_apex'][lang]:.3f}x |"
+                f"| {lang.capitalize()} speedup | {bench['speedup_vs_arden'][lang]:.3f}x |"
             )
         lines.append("")
 
-        for section in bench.get("apex_phase_timing_sections") or []:
+        for section in bench.get("arden_phase_timing_sections") or []:
             lines.append(f"{section['label']} (`--timings`, mean of measured runs):")
             lines.append("")
             lines.append("| Phase | Mean (ms) | Last counters |")
@@ -1170,19 +1170,19 @@ def detect_llvm_prefix() -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run Apex vs Rust vs Go benchmarks")
+    parser = argparse.ArgumentParser(description="Run Arden vs Rust vs Go benchmarks")
     parser.add_argument("--repeats", type=int, default=5, help="Timed runs per benchmark/language")
     parser.add_argument("--warmup", type=int, default=1, help="Warmup runs per benchmark/language")
     parser.add_argument(
-        "--apex-opt-level",
+        "--arden-opt-level",
         choices=["0", "1", "2", "3", "s", "z", "fast"],
         default="3",
-        help="Optimization level passed to `apex compile --opt-level`",
+        help="Optimization level passed to `arden compile --opt-level`",
     )
     parser.add_argument(
-        "--apex-target",
+        "--arden-target",
         default=None,
-        help="Optional target triple passed to `apex compile --target`",
+        help="Optional target triple passed to `arden compile --target`",
     )
     parser.add_argument(
         "--bench",
@@ -1193,7 +1193,7 @@ def main() -> int:
     parser.add_argument(
         "--no-build",
         action="store_true",
-        help="Skip building apex compiler with cargo build --release",
+        help="Skip building arden compiler with cargo build --release",
     )
     parser.add_argument(
         "--compile-mode",
@@ -1207,9 +1207,9 @@ def main() -> int:
         help="Include opt-in heavy runtime/compile benchmarks in the default suite.",
     )
     parser.add_argument(
-        "--apex-timings",
+        "--arden-timings",
         action="store_true",
-        help="Pass --timings to Apex project builds and record per-phase timing breakdowns in reports.",
+        help="Pass --timings to Arden project builds and record per-phase timing breakdowns in reports.",
     )
     args = parser.parse_args()
 
@@ -1236,7 +1236,7 @@ def main() -> int:
     if not args.no_build:
         proc = run_cmd(["cargo", "build", "--release"], root, env=build_env)
         if proc.returncode != 0:
-            raise RuntimeError(f"Failed to build Apex compiler:\n{proc.stderr}")
+            raise RuntimeError(f"Failed to build Arden:\n{proc.stderr}")
 
     selected = [
         b
@@ -1272,9 +1272,9 @@ def main() -> int:
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S %Z"),
         "repeats": args.repeats,
         "warmup": args.warmup,
-        "apex_opt_level": args.apex_opt_level,
-        "apex_target": args.apex_target,
-        "apex_timings": args.apex_timings,
+        "arden_opt_level": args.arden_opt_level,
+        "arden_target": args.arden_target,
+        "arden_timings": args.arden_timings,
         "compile_mode": "mixed" if args.bench is None else args.compile_mode,
         "benchmarks": [],
     }
@@ -1286,18 +1286,18 @@ def main() -> int:
 
         if spec.kind == "runtime":
             binaries = {
-                "apex": exe_path(bin_dir / f"{spec.name}_apex"),
+                "arden": exe_path(bin_dir / f"{spec.name}_arden"),
                 "rust": exe_path(bin_dir / f"{spec.name}_rust"),
                 "go": exe_path(bin_dir / f"{spec.name}_go"),
             }
 
-            compile_apex(
+            compile_arden(
                 root,
                 spec.name,
-                binaries["apex"],
+                binaries["arden"],
                 build_env,
-                args.apex_opt_level,
-                args.apex_target,
+                args.arden_opt_level,
+                args.arden_target,
             )
             compile_rust(root, spec.name, binaries["rust"])
             compile_go(root, spec.name, binaries["go"])
@@ -1350,12 +1350,12 @@ def main() -> int:
                 )
             else:
                 compile_projects = generate_compile_project_10_files(root, base_name)
-            compile_jobs = make_compile_jobs(root, compile_projects, build_env, args.apex_timings)
+            compile_jobs = make_compile_jobs(root, compile_projects, build_env, args.arden_timings)
 
             for lang in LANGUAGES:
                 print(f"Compiling {lang}...")
                 job = compile_jobs[lang]
-                apex_timing_samples: List[Dict[str, Dict]] = []
+                arden_timing_samples: List[Dict[str, Dict]] = []
 
                 for _ in range(args.warmup):
                     if compile_mode == "cold":
@@ -1368,10 +1368,10 @@ def main() -> int:
                         clean_compile_artifacts(lang, job)
                     compile_result = timed_compile_with_retry(lang, job)
                     samples.append(compile_result.elapsed_s)
-                    if lang == "apex" and args.apex_timings:
-                        apex_timing_samples.append(parse_build_timings(compile_result.stdout))
+                    if lang == "arden" and args.arden_timings:
+                        arden_timing_samples.append(parse_build_timings(compile_result.stdout))
 
-                # Defensive guard for rare transient linker artifact misses in Apex cold mode.
+                # Defensive guard for rare transient linker artifact misses in Arden cold mode.
                 if not Path(job["binary"]).exists():
                     timed_compile_with_retry(lang, job, retries=2)
                 checksum = run_checksum(job["binary"], job["cwd"])
@@ -1389,9 +1389,9 @@ def main() -> int:
                     "stats": stats,
                     "metric": "compile",
                 }
-                if lang == "apex" and args.apex_timings:
-                    lang_data[lang]["phase_timings"] = summarize_apex_phase_timings(
-                        apex_timing_samples
+                if lang == "arden" and args.arden_timings:
+                    lang_data[lang]["phase_timings"] = summarize_arden_phase_timings(
+                        arden_timing_samples
                     )
             benchmark_compile_mode = compile_mode
         elif spec.kind == "incremental":
@@ -1402,8 +1402,8 @@ def main() -> int:
                 first_samples: List[float] = []
                 second_samples: List[float] = []
                 checksums: List[int] = []
-                apex_first_phase_samples: List[Dict[str, Dict]] = []
-                apex_second_phase_samples: List[Dict[str, Dict]] = []
+                arden_first_phase_samples: List[Dict[str, Dict]] = []
+                arden_second_phase_samples: List[Dict[str, Dict]] = []
 
                 cycles = args.warmup + args.repeats
                 for i in range(cycles):
@@ -1411,7 +1411,7 @@ def main() -> int:
                         root, spec.name, mutation_profile=mutation_profile
                     )
                     cycle_jobs = make_compile_jobs(
-                        root, cycle_projects, build_env, args.apex_timings
+                        root, cycle_projects, build_env, args.arden_timings
                     )
                     job = cycle_jobs[lang]
 
@@ -1430,11 +1430,11 @@ def main() -> int:
                         first_samples.append(first_result.elapsed_s)
                         second_samples.append(second_result.elapsed_s)
                         checksums.append(checksum)
-                        if lang == "apex" and args.apex_timings:
-                            apex_first_phase_samples.append(
+                        if lang == "arden" and args.arden_timings:
+                            arden_first_phase_samples.append(
                                 parse_build_timings(first_result.stdout)
                             )
-                            apex_second_phase_samples.append(
+                            arden_second_phase_samples.append(
                                 parse_build_timings(second_result.stdout)
                             )
 
@@ -1462,12 +1462,12 @@ def main() -> int:
                     "stats": second_stats,
                     "metric": "incremental_compile_second",
                 }
-                if lang == "apex" and args.apex_timings:
-                    lang_data[lang]["phase_timings_first"] = summarize_apex_phase_timings(
-                        apex_first_phase_samples
+                if lang == "arden" and args.arden_timings:
+                    lang_data[lang]["phase_timings_first"] = summarize_arden_phase_timings(
+                        arden_first_phase_samples
                     )
-                    lang_data[lang]["phase_timings_second"] = summarize_apex_phase_timings(
-                        apex_second_phase_samples
+                    lang_data[lang]["phase_timings_second"] = summarize_arden_phase_timings(
+                        arden_second_phase_samples
                     )
             phase_one_label = "full compile mean (s)"
             phase_two_label = "rebuild mean (s)"
@@ -1479,8 +1479,8 @@ def main() -> int:
                 first_samples: List[float] = []
                 second_samples: List[float] = []
                 checksums: List[int] = []
-                apex_first_phase_samples: List[Dict[str, Dict]] = []
-                apex_second_phase_samples: List[Dict[str, Dict]] = []
+                arden_first_phase_samples: List[Dict[str, Dict]] = []
+                arden_second_phase_samples: List[Dict[str, Dict]] = []
 
                 cycles = args.warmup + args.repeats
                 for i in range(cycles):
@@ -1488,7 +1488,7 @@ def main() -> int:
                         root, spec.name
                     )
                     cycle_jobs = make_compile_jobs(
-                        root, cycle_projects, build_env, args.apex_timings
+                        root, cycle_projects, build_env, args.arden_timings
                     )
                     job = cycle_jobs[lang]
 
@@ -1507,11 +1507,11 @@ def main() -> int:
                         first_samples.append(first_result.elapsed_s)
                         second_samples.append(second_result.elapsed_s)
                         checksums.append(checksum)
-                        if lang == "apex" and args.apex_timings:
-                            apex_first_phase_samples.append(
+                        if lang == "arden" and args.arden_timings:
+                            arden_first_phase_samples.append(
                                 parse_build_timings(first_result.stdout)
                             )
-                            apex_second_phase_samples.append(
+                            arden_second_phase_samples.append(
                                 parse_build_timings(second_result.stdout)
                             )
 
@@ -1539,12 +1539,12 @@ def main() -> int:
                     "stats": second_stats,
                     "metric": "incremental_compile_second",
                 }
-                if lang == "apex" and args.apex_timings:
-                    lang_data[lang]["phase_timings_first"] = summarize_apex_phase_timings(
-                        apex_first_phase_samples
+                if lang == "arden" and args.arden_timings:
+                    lang_data[lang]["phase_timings_first"] = summarize_arden_phase_timings(
+                        arden_first_phase_samples
                     )
-                    lang_data[lang]["phase_timings_second"] = summarize_apex_phase_timings(
-                        apex_second_phase_samples
+                    lang_data[lang]["phase_timings_second"] = summarize_arden_phase_timings(
+                        arden_second_phase_samples
                     )
             phase_one_label = "cold full build mean (s)"
             phase_two_label = "hot rebuild after 10 edits mean (s)"
@@ -1557,8 +1557,8 @@ def main() -> int:
                 first_samples: List[float] = []
                 second_samples: List[float] = []
                 checksums: List[int] = []
-                apex_first_phase_samples: List[Dict[str, Dict]] = []
-                apex_second_phase_samples: List[Dict[str, Dict]] = []
+                arden_first_phase_samples: List[Dict[str, Dict]] = []
+                arden_second_phase_samples: List[Dict[str, Dict]] = []
 
                 cycles = args.warmup + args.repeats
                 for i in range(cycles):
@@ -1566,7 +1566,7 @@ def main() -> int:
                         root, spec.name, graph_config, mutate_count=graph_config.mutate_count
                     )
                     cycle_jobs = make_compile_jobs(
-                        root, cycle_projects, build_env, args.apex_timings
+                        root, cycle_projects, build_env, args.arden_timings
                     )
                     job = cycle_jobs[lang]
 
@@ -1585,11 +1585,11 @@ def main() -> int:
                         first_samples.append(first_result.elapsed_s)
                         second_samples.append(second_result.elapsed_s)
                         checksums.append(checksum)
-                        if lang == "apex" and args.apex_timings:
-                            apex_first_phase_samples.append(
+                        if lang == "arden" and args.arden_timings:
+                            arden_first_phase_samples.append(
                                 parse_build_timings(first_result.stdout)
                             )
-                            apex_second_phase_samples.append(
+                            arden_second_phase_samples.append(
                                 parse_build_timings(second_result.stdout)
                             )
 
@@ -1617,12 +1617,12 @@ def main() -> int:
                     "stats": second_stats,
                     "metric": "incremental_compile_second",
                 }
-                if lang == "apex" and args.apex_timings:
-                    lang_data[lang]["phase_timings_first"] = summarize_apex_phase_timings(
-                        apex_first_phase_samples
+                if lang == "arden" and args.arden_timings:
+                    lang_data[lang]["phase_timings_first"] = summarize_arden_phase_timings(
+                        arden_first_phase_samples
                     )
-                    lang_data[lang]["phase_timings_second"] = summarize_apex_phase_timings(
-                        apex_second_phase_samples
+                    lang_data[lang]["phase_timings_second"] = summarize_arden_phase_timings(
+                        arden_second_phase_samples
                     )
             phase_one_label = "cold full build mean (s)"
             phase_two_label = f"hot rebuild after {graph_config.mutate_count} edits mean (s)"
@@ -1635,8 +1635,8 @@ def main() -> int:
                 first_samples: List[float] = []
                 second_samples: List[float] = []
                 checksums: List[int] = []
-                apex_first_phase_samples: List[Dict[str, Dict]] = []
-                apex_second_phase_samples: List[Dict[str, Dict]] = []
+                arden_first_phase_samples: List[Dict[str, Dict]] = []
+                arden_second_phase_samples: List[Dict[str, Dict]] = []
 
                 cycles = args.warmup + args.repeats
                 for i in range(cycles):
@@ -1644,7 +1644,7 @@ def main() -> int:
                         root, spec.name, graph_config, mutate_count=graph_config.mutate_count
                     )
                     cycle_jobs = make_compile_jobs(
-                        root, cycle_projects, build_env, args.apex_timings
+                        root, cycle_projects, build_env, args.arden_timings
                     )
                     job = cycle_jobs[lang]
 
@@ -1662,11 +1662,11 @@ def main() -> int:
                         first_samples.append(first_result.elapsed_s)
                         second_samples.append(second_result.elapsed_s)
                         checksums.append(checksum)
-                        if lang == "apex" and args.apex_timings:
-                            apex_first_phase_samples.append(
+                        if lang == "arden" and args.arden_timings:
+                            arden_first_phase_samples.append(
                                 parse_build_timings(first_result.stdout)
                             )
-                            apex_second_phase_samples.append(
+                            arden_second_phase_samples.append(
                                 parse_build_timings(second_result.stdout)
                             )
 
@@ -1694,12 +1694,12 @@ def main() -> int:
                     "stats": second_stats,
                     "metric": "incremental_compile_second",
                 }
-                if lang == "apex" and args.apex_timings:
-                    lang_data[lang]["phase_timings_first"] = summarize_apex_phase_timings(
-                        apex_first_phase_samples
+                if lang == "arden" and args.arden_timings:
+                    lang_data[lang]["phase_timings_first"] = summarize_arden_phase_timings(
+                        arden_first_phase_samples
                     )
-                    lang_data[lang]["phase_timings_second"] = summarize_apex_phase_timings(
-                        apex_second_phase_samples
+                    lang_data[lang]["phase_timings_second"] = summarize_arden_phase_timings(
+                        arden_second_phase_samples
                     )
             phase_one_label = "cold full build mean (s)"
             phase_two_label = (
@@ -1710,27 +1710,27 @@ def main() -> int:
         else:
             raise RuntimeError(f"Unsupported benchmark kind: {spec.kind}")
 
-        apex_mean = lang_data["apex"]["stats"]["mean_s"]
+        arden_mean = lang_data["arden"]["stats"]["mean_s"]
         speedups = {
-            lang: apex_mean / lang_data[lang]["stats"]["mean_s"]
+            lang: arden_mean / lang_data[lang]["stats"]["mean_s"]
             for lang in LANGUAGES
-            if lang != "apex"
+            if lang != "arden"
         }
-        apex_phase_timing_sections: List[Dict] = []
-        apex_compile_phase_timings = lang_data["apex"].get("phase_timings")
-        if apex_compile_phase_timings:
-            apex_phase_timing_sections.append(
-                {"label": "Apex build phase timings", "phases": apex_compile_phase_timings}
+        arden_phase_timing_sections: List[Dict] = []
+        arden_compile_phase_timings = lang_data["arden"].get("phase_timings")
+        if arden_compile_phase_timings:
+            arden_phase_timing_sections.append(
+                {"label": "Arden build phase timings", "phases": arden_compile_phase_timings}
             )
-        apex_first_phase_timings = lang_data["apex"].get("phase_timings_first")
-        if apex_first_phase_timings:
-            apex_phase_timing_sections.append(
-                {"label": f"Apex {phase_one_label}", "phases": apex_first_phase_timings}
+        arden_first_phase_timings = lang_data["arden"].get("phase_timings_first")
+        if arden_first_phase_timings:
+            arden_phase_timing_sections.append(
+                {"label": f"Arden {phase_one_label}", "phases": arden_first_phase_timings}
             )
-        apex_second_phase_timings = lang_data["apex"].get("phase_timings_second")
-        if apex_second_phase_timings:
-            apex_phase_timing_sections.append(
-                {"label": f"Apex {phase_two_label}", "phases": apex_second_phase_timings}
+        arden_second_phase_timings = lang_data["arden"].get("phase_timings_second")
+        if arden_second_phase_timings:
+            arden_phase_timing_sections.append(
+                {"label": f"Arden {phase_two_label}", "phases": arden_second_phase_timings}
             )
 
         report["benchmarks"].append(
@@ -1743,8 +1743,8 @@ def main() -> int:
                 "phase_two_label": phase_two_label if spec.kind in ("incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph", "incremental_batch_extreme_graph", "incremental_mixed_extreme_graph") else None,
                 "ratio_label": ratio_label if spec.kind in ("incremental", "incremental_batch", "incremental_batch_synthetic_mega_graph", "incremental_mixed_synthetic_mega_graph", "incremental_batch_extreme_graph", "incremental_mixed_extreme_graph") else None,
                 "languages": lang_data,
-                "speedup_vs_apex": speedups,
-                "apex_phase_timing_sections": apex_phase_timing_sections,
+                "speedup_vs_arden": speedups,
+                "arden_phase_timing_sections": arden_phase_timing_sections,
             }
         )
 

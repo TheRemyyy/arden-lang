@@ -16,7 +16,7 @@ if (-not (Test-Path $bashScript)) {
 $compilerInput = if ($env:APEX_COMPILER_PATH) {
     $env:APEX_COMPILER_PATH
 } else {
-    Join-Path $repoRoot "target\release\apex-compiler.exe"
+    Join-Path $repoRoot "target\release\arden.exe"
 }
 
 if (-not [System.IO.Path]::IsPathRooted($compilerInput)) {
@@ -50,7 +50,7 @@ if (-not $repoRootUnix) {
 }
 
 $ciSkip = if ($env:CI_SKIP_COMPILER_BUILD) { $env:CI_SKIP_COMPILER_BUILD } else { "0" }
-$logPath = Join-Path $env:RUNNER_TEMP "apex-ci-smoke-windows.log"
+$logPath = Join-Path $env:RUNNER_TEMP "arden-ci-smoke-windows.log"
 $bashRun = @"
 set -euo pipefail
 cd '$repoRootUnix'

@@ -8,7 +8,7 @@ use std::os::unix::ffi::OsStringExt;
 #[test]
 fn compile_source_runs_unique_interface_method_dispatch_runtime() {
     let temp_root = make_temp_project_root("interface-method-dispatch-runtime");
-    let source_path = temp_root.join("interface_method_dispatch_runtime.apex");
+    let source_path = temp_root.join("interface_method_dispatch_runtime.arden");
     let output_path = temp_root.join("interface_method_dispatch_runtime");
     let source = r#"
             interface Named {
@@ -42,7 +42,7 @@ fn compile_source_runs_unique_interface_method_dispatch_runtime() {
 #[test]
 fn compile_source_rejects_module_local_import_alias_leaking_to_top_level() {
     let temp_root = make_temp_project_root("module-local-import-alias-leak-top-level");
-    let source_path = temp_root.join("module_local_import_alias_leak_top_level.apex");
+    let source_path = temp_root.join("module_local_import_alias_leak_top_level.arden");
     let output_path = temp_root.join("module_local_import_alias_leak_top_level");
     let source = r#"
             import std.io.*;
@@ -79,7 +79,7 @@ fn compile_source_rejects_module_local_import_alias_leaking_to_top_level() {
 #[test]
 fn compile_source_runs_unique_interface_bound_method_value_runtime() {
     let temp_root = make_temp_project_root("interface-bound-method-value-runtime");
-    let source_path = temp_root.join("interface_bound_method_value_runtime.apex");
+    let source_path = temp_root.join("interface_bound_method_value_runtime.arden");
     let output_path = temp_root.join("interface_bound_method_value_runtime");
     let source = r#"
             interface Named {
@@ -114,7 +114,7 @@ fn compile_source_runs_unique_interface_bound_method_value_runtime() {
 #[test]
 fn compile_source_no_check_rejects_interface_method_wrong_arity_before_runtime() {
     let temp_root = make_temp_project_root("no-check-interface-method-wrong-arity");
-    let source_path = temp_root.join("no_check_interface_method_wrong_arity.apex");
+    let source_path = temp_root.join("no_check_interface_method_wrong_arity.arden");
     let output_path = temp_root.join("no_check_interface_method_wrong_arity");
     let source = r#"
             interface Reader {
@@ -148,7 +148,7 @@ fn compile_source_no_check_rejects_interface_method_wrong_arity_before_runtime()
 #[test]
 fn compile_source_no_check_rejects_missing_interface_method_before_runtime() {
     let temp_root = make_temp_project_root("no-check-missing-interface-method");
-    let source_path = temp_root.join("no_check_missing_interface_method.apex");
+    let source_path = temp_root.join("no_check_missing_interface_method.arden");
     let output_path = temp_root.join("no_check_missing_interface_method");
     let source = r#"
             interface Reader {
@@ -188,7 +188,7 @@ fn compile_source_no_check_rejects_missing_interface_method_before_runtime() {
 #[test]
 fn compile_source_no_check_rejects_missing_interface_bound_method_before_runtime() {
     let temp_root = make_temp_project_root("no-check-missing-interface-bound-method");
-    let source_path = temp_root.join("no_check_missing_interface_bound_method.apex");
+    let source_path = temp_root.join("no_check_missing_interface_bound_method.arden");
     let output_path = temp_root.join("no_check_missing_interface_bound_method");
     let source = r#"
             interface Reader {
@@ -229,7 +229,7 @@ fn compile_source_no_check_rejects_missing_interface_bound_method_before_runtime
 #[test]
 fn compile_source_no_check_rejects_interface_dispatch_to_non_implementor_before_runtime() {
     let temp_root = make_temp_project_root("no-check-interface-non-implementor-dispatch");
-    let source_path = temp_root.join("no_check_interface_non_implementor_dispatch.apex");
+    let source_path = temp_root.join("no_check_interface_non_implementor_dispatch.arden");
     let output_path = temp_root.join("no_check_interface_non_implementor_dispatch");
     let source = r#"
             interface Reader {
@@ -266,7 +266,7 @@ fn compile_source_no_check_rejects_interface_dispatch_to_non_implementor_before_
 #[test]
 fn compile_source_no_check_rejects_interface_bound_method_from_non_implementor_before_runtime() {
     let temp_root = make_temp_project_root("no-check-interface-non-implementor-bound-method");
-    let source_path = temp_root.join("no_check_interface_non_implementor_bound_method.apex");
+    let source_path = temp_root.join("no_check_interface_non_implementor_bound_method.arden");
     let output_path = temp_root.join("no_check_interface_non_implementor_bound_method");
     let source = r#"
             interface Reader {
@@ -304,7 +304,7 @@ fn compile_source_no_check_rejects_interface_bound_method_from_non_implementor_b
 #[test]
 fn compile_source_no_check_rejects_interface_bound_method_function_value_signature_mismatch() {
     let temp_root = make_temp_project_root("no-check-interface-bound-method-signature-mismatch");
-    let source_path = temp_root.join("no_check_interface_bound_method_signature_mismatch.apex");
+    let source_path = temp_root.join("no_check_interface_bound_method_signature_mismatch.arden");
     let output_path = temp_root.join("no_check_interface_bound_method_signature_mismatch");
     let source = r#"
             interface Named {
@@ -338,7 +338,7 @@ fn compile_source_no_check_rejects_interface_bound_method_function_value_signatu
 #[test]
 fn compile_source_runs_generic_bound_constructor_method_dispatch_runtime() {
     let temp_root = make_temp_project_root("generic-bound-constructor-dispatch-runtime");
-    let source_path = temp_root.join("generic_bound_constructor_dispatch_runtime.apex");
+    let source_path = temp_root.join("generic_bound_constructor_dispatch_runtime.arden");
     let output_path = temp_root.join("generic_bound_constructor_dispatch_runtime");
     let source = r#"
             interface Named {
@@ -380,7 +380,7 @@ fn compile_source_runs_generic_bound_constructor_method_dispatch_runtime() {
 #[test]
 fn compile_source_runs_multi_bound_interface_method_dispatch_runtime() {
     let temp_root = make_temp_project_root("multi-bound-interface-method-dispatch-runtime");
-    let source_path = temp_root.join("multi_bound_interface_method_dispatch_runtime.apex");
+    let source_path = temp_root.join("multi_bound_interface_method_dispatch_runtime.arden");
     let output_path = temp_root.join("multi_bound_interface_method_dispatch_runtime");
     let source = r#"
             interface A { function a(): Integer; }
@@ -416,7 +416,7 @@ fn compile_source_runs_multi_bound_interface_method_dispatch_runtime() {
 #[test]
 fn compile_source_runs_multi_bound_interface_bound_method_runtime() {
     let temp_root = make_temp_project_root("multi-bound-interface-bound-method-runtime");
-    let source_path = temp_root.join("multi_bound_interface_bound_method_runtime.apex");
+    let source_path = temp_root.join("multi_bound_interface_bound_method_runtime.arden");
     let output_path = temp_root.join("multi_bound_interface_bound_method_runtime");
     let source = r#"
             interface A { function a(): Integer; }
@@ -453,7 +453,7 @@ fn compile_source_runs_multi_bound_interface_bound_method_runtime() {
 #[test]
 fn compile_source_runs_generic_interface_implements_runtime() {
     let temp_root = make_temp_project_root("generic-interface-implements-runtime");
-    let source_path = temp_root.join("generic_interface_implements_runtime.apex");
+    let source_path = temp_root.join("generic_interface_implements_runtime.arden");
     let output_path = temp_root.join("generic_interface_implements_runtime");
     let source = r#"
             interface I<T> {
@@ -485,7 +485,7 @@ fn compile_source_runs_generic_interface_implements_runtime() {
 #[test]
 fn compile_source_runs_specialized_parent_interface_method_runtime() {
     let temp_root = make_temp_project_root("specialized-parent-interface-runtime");
-    let source_path = temp_root.join("specialized_parent_interface_runtime.apex");
+    let source_path = temp_root.join("specialized_parent_interface_runtime.arden");
     let output_path = temp_root.join("specialized_parent_interface_runtime");
     let source = r#"
             interface Reader<T> {
@@ -520,7 +520,7 @@ fn compile_source_runs_specialized_parent_interface_method_runtime() {
 #[test]
 fn compile_source_runs_async_block_tail_expression_runtime() {
     let temp_root = make_temp_project_root("async-block-tail-expression-runtime");
-    let source_path = temp_root.join("async_block_tail_expression_runtime.apex");
+    let source_path = temp_root.join("async_block_tail_expression_runtime.arden");
     let output_path = temp_root.join("async_block_tail_expression_runtime");
     let source = r#"
             function main(): Integer {
@@ -544,7 +544,7 @@ fn compile_source_runs_async_block_tail_expression_runtime() {
 #[test]
 fn compile_source_runs_async_block_negative_tail_expression_runtime() {
     let temp_root = make_temp_project_root("async-block-negative-tail-expression-runtime");
-    let source_path = temp_root.join("async_block_negative_tail_expression_runtime.apex");
+    let source_path = temp_root.join("async_block_negative_tail_expression_runtime.arden");
     let output_path = temp_root.join("async_block_negative_tail_expression_runtime");
     let source = r#"
             function main(): Integer {
@@ -568,7 +568,7 @@ fn compile_source_runs_async_block_negative_tail_expression_runtime() {
 #[test]
 fn compile_source_runs_async_block_binary_tail_expression_runtime() {
     let temp_root = make_temp_project_root("async-block-binary-tail-expression-runtime");
-    let source_path = temp_root.join("async_block_binary_tail_expression_runtime.apex");
+    let source_path = temp_root.join("async_block_binary_tail_expression_runtime.arden");
     let output_path = temp_root.join("async_block_binary_tail_expression_runtime");
     let source = r#"
             function main(): Integer {
@@ -592,7 +592,7 @@ fn compile_source_runs_async_block_binary_tail_expression_runtime() {
 #[test]
 fn compile_source_runs_async_block_function_value_tail_expression_runtime() {
     let temp_root = make_temp_project_root("async-block-function-value-tail-runtime");
-    let source_path = temp_root.join("async_block_function_value_tail_runtime.apex");
+    let source_path = temp_root.join("async_block_function_value_tail_runtime.arden");
     let output_path = temp_root.join("async_block_function_value_tail_runtime");
     let source = r#"
             function inc(x: Integer): Integer { return x + 1; }
@@ -619,7 +619,7 @@ fn compile_source_runs_async_block_function_value_tail_expression_runtime() {
 #[test]
 fn compile_source_runs_async_block_unit_enum_value_tail_expression_runtime() {
     let temp_root = make_temp_project_root("async-block-unit-enum-tail-runtime");
-    let source_path = temp_root.join("async_block_unit_enum_tail_runtime.apex");
+    let source_path = temp_root.join("async_block_unit_enum_tail_runtime.arden");
     let output_path = temp_root.join("async_block_unit_enum_tail_runtime");
     let source = r#"
             enum E { A, B }
@@ -649,7 +649,7 @@ fn compile_source_runs_async_block_unit_enum_value_tail_expression_runtime() {
 #[test]
 fn compile_source_runs_builtin_and_reference_async_block_tail_expression_runtime() {
     let temp_root = make_temp_project_root("async-block-builtin-tail-runtime");
-    let source_path = temp_root.join("async_block_builtin_tail_runtime.apex");
+    let source_path = temp_root.join("async_block_builtin_tail_runtime.arden");
     let output_path = temp_root.join("async_block_builtin_tail_runtime");
     let source = r#"
             import std.string.*;
@@ -722,7 +722,7 @@ fn compile_source_runs_builtin_and_reference_async_block_tail_expression_runtime
 #[test]
 fn compile_source_supports_implicit_default_class_constructor() {
     let temp_root = make_temp_project_root("implicit-default-ctor");
-    let source_path = temp_root.join("implicit_ctor.apex");
+    let source_path = temp_root.join("implicit_ctor.arden");
     let output_path = temp_root.join("implicit_ctor");
     let source = r#"
             class C {
@@ -747,7 +747,7 @@ fn compile_source_supports_implicit_default_class_constructor() {
 #[test]
 fn compile_source_supports_explicit_generic_method_calls() {
     let temp_root = make_temp_project_root("generic-method-codegen");
-    let source_path = temp_root.join("generic_method.apex");
+    let source_path = temp_root.join("generic_method.arden");
     let output_path = temp_root.join("generic_method");
     let source = r#"
             class C {
@@ -772,7 +772,7 @@ fn compile_source_supports_explicit_generic_method_calls() {
 #[test]
 fn compile_source_supports_generic_class_instance_method_calls() {
     let temp_root = make_temp_project_root("generic-class-method-codegen");
-    let source_path = temp_root.join("generic_class_method.apex");
+    let source_path = temp_root.join("generic_class_method.arden");
     let output_path = temp_root.join("generic_class_method");
     let source = r#"
             class Boxed<T> {
@@ -799,7 +799,7 @@ fn compile_source_supports_generic_class_instance_method_calls() {
 #[test]
 fn compile_source_runs_generic_class_instance_methods() {
     let temp_root = make_temp_project_root("generic-class-method-runtime");
-    let source_path = temp_root.join("generic_class_runtime.apex");
+    let source_path = temp_root.join("generic_class_runtime.arden");
     let output_path = temp_root.join("generic_class_runtime");
     let source = r#"
             class Boxed<T> {
@@ -829,7 +829,7 @@ fn compile_source_runs_generic_class_instance_methods() {
 #[test]
 fn compile_source_runs_method_calls_on_function_returned_objects() {
     let temp_root = make_temp_project_root("function-return-method-runtime");
-    let source_path = temp_root.join("function_return_method_runtime.apex");
+    let source_path = temp_root.join("function_return_method_runtime.arden");
     let output_path = temp_root.join("function_return_method_runtime");
     let source = r#"
             class Boxed<T> {
@@ -862,7 +862,7 @@ fn compile_source_runs_method_calls_on_function_returned_objects() {
 #[test]
 fn compile_source_runs_method_calls_on_try_unwrapped_objects() {
     let temp_root = make_temp_project_root("try-object-method-runtime");
-    let source_path = temp_root.join("try_object_method_runtime.apex");
+    let source_path = temp_root.join("try_object_method_runtime.arden");
     let output_path = temp_root.join("try_object_method_runtime");
     let source = r#"
             class Boxed<T> {
@@ -900,7 +900,7 @@ fn compile_source_runs_method_calls_on_try_unwrapped_objects() {
 #[test]
 fn compile_source_runs_method_calls_on_awaited_objects_without_extra_parentheses() {
     let temp_root = make_temp_project_root("await-object-method-runtime");
-    let source_path = temp_root.join("await_object_method_runtime.apex");
+    let source_path = temp_root.join("await_object_method_runtime.arden");
     let output_path = temp_root.join("await_object_method_runtime");
     let source = r#"
             class Boxed<T> {
@@ -938,7 +938,7 @@ fn compile_source_runs_method_calls_on_awaited_objects_without_extra_parentheses
 #[test]
 fn compile_source_fails_fast_on_negative_await_timeout() {
     let temp_root = make_temp_project_root("await-timeout-negative-runtime");
-    let source_path = temp_root.join("await_timeout_negative_runtime.apex");
+    let source_path = temp_root.join("await_timeout_negative_runtime.arden");
     let output_path = temp_root.join("await_timeout_negative_runtime");
     let source = r#"
             async function work(): Integer {
@@ -968,7 +968,7 @@ fn compile_source_fails_fast_on_negative_await_timeout() {
 #[test]
 fn compile_source_prints_clean_option_unwrap_panic_message() {
     let temp_root = make_temp_project_root("option-unwrap-panic-message-runtime");
-    let source_path = temp_root.join("option_unwrap_panic_message_runtime.apex");
+    let source_path = temp_root.join("option_unwrap_panic_message_runtime.arden");
     let output_path = temp_root.join("option_unwrap_panic_message_runtime");
     let source = r#"
             function main(): Integer {
@@ -994,7 +994,7 @@ fn compile_source_prints_clean_option_unwrap_panic_message() {
 #[test]
 fn compile_source_prints_clean_result_unwrap_panic_message() {
     let temp_root = make_temp_project_root("result-unwrap-panic-message-runtime");
-    let source_path = temp_root.join("result_unwrap_panic_message_runtime.apex");
+    let source_path = temp_root.join("result_unwrap_panic_message_runtime.arden");
     let output_path = temp_root.join("result_unwrap_panic_message_runtime");
     let source = r#"
             function main(): Integer {
@@ -1020,7 +1020,7 @@ fn compile_source_prints_clean_result_unwrap_panic_message() {
 #[test]
 fn compile_source_prints_clean_integer_division_by_zero_runtime_error() {
     let temp_root = make_temp_project_root("integer-division-by-zero-runtime");
-    let source_path = temp_root.join("integer_division_by_zero_runtime.apex");
+    let source_path = temp_root.join("integer_division_by_zero_runtime.arden");
     let output_path = temp_root.join("integer_division_by_zero_runtime");
     let source = r#"
             function main(): Integer {
@@ -1046,7 +1046,7 @@ fn compile_source_prints_clean_integer_division_by_zero_runtime_error() {
 #[test]
 fn compile_source_prints_clean_integer_modulo_by_zero_runtime_error() {
     let temp_root = make_temp_project_root("integer-modulo-by-zero-runtime");
-    let source_path = temp_root.join("integer_modulo_by_zero_runtime.apex");
+    let source_path = temp_root.join("integer_modulo_by_zero_runtime.arden");
     let output_path = temp_root.join("integer_modulo_by_zero_runtime");
     let source = r#"
             function main(): Integer {
@@ -1072,7 +1072,7 @@ fn compile_source_prints_clean_integer_modulo_by_zero_runtime_error() {
 #[test]
 fn compile_source_fails_fast_on_negative_time_sleep() {
     let temp_root = make_temp_project_root("time-sleep-negative-runtime");
-    let source_path = temp_root.join("time_sleep_negative_runtime.apex");
+    let source_path = temp_root.join("time_sleep_negative_runtime.arden");
     let output_path = temp_root.join("time_sleep_negative_runtime");
     let source = r#"
             import std.time.*;
@@ -1104,7 +1104,7 @@ fn compile_source_fails_fast_on_negative_time_sleep() {
 #[test]
 fn compile_source_fails_fast_on_negative_args_get_index() {
     let temp_root = make_temp_project_root("args-get-negative-runtime");
-    let source_path = temp_root.join("args_get_negative_runtime.apex");
+    let source_path = temp_root.join("args_get_negative_runtime.arden");
     let output_path = temp_root.join("args_get_negative_runtime");
     let source = r#"
             import std.args.*;
@@ -1136,7 +1136,7 @@ fn compile_source_fails_fast_on_negative_args_get_index() {
 #[test]
 fn compile_source_fails_fast_on_out_of_bounds_args_get_index() {
     let temp_root = make_temp_project_root("args-get-oob-runtime");
-    let source_path = temp_root.join("args_get_oob_runtime.apex");
+    let source_path = temp_root.join("args_get_oob_runtime.arden");
     let output_path = temp_root.join("args_get_oob_runtime");
     let source = r#"
             import std.args.*;
@@ -1168,7 +1168,7 @@ fn compile_source_fails_fast_on_out_of_bounds_args_get_index() {
 #[test]
 fn compile_source_fails_fast_on_file_read_with_nul_bytes() {
     let temp_root = make_temp_project_root("file-read-nul-byte-runtime");
-    let source_path = temp_root.join("file_read_nul_byte_runtime.apex");
+    let source_path = temp_root.join("file_read_nul_byte_runtime.arden");
     let output_path = temp_root.join("file_read_nul_byte_runtime");
     let input_path = temp_root.join("payload.bin");
     let source = r#"
@@ -1202,7 +1202,7 @@ fn compile_source_fails_fast_on_file_read_with_nul_bytes() {
 #[test]
 fn compile_source_fails_fast_on_file_read_with_invalid_utf8() {
     let temp_root = make_temp_project_root("file-read-invalid-utf8-runtime");
-    let source_path = temp_root.join("file_read_invalid_utf8_runtime.apex");
+    let source_path = temp_root.join("file_read_invalid_utf8_runtime.arden");
     let output_path = temp_root.join("file_read_invalid_utf8_runtime");
     let input_path = temp_root.join("payload.bin");
     let source = r#"
@@ -1237,7 +1237,7 @@ fn compile_source_fails_fast_on_file_read_with_invalid_utf8() {
 #[test]
 fn compile_source_reports_file_write_failure_when_flush_fails() {
     let temp_root = make_temp_project_root("file-write-dev-full-runtime");
-    let source_path = temp_root.join("file_write_dev_full_runtime.apex");
+    let source_path = temp_root.join("file_write_dev_full_runtime.arden");
     let output_path = temp_root.join("file_write_dev_full_runtime");
     let source = r#"
             import std.fs.*;
@@ -1263,7 +1263,7 @@ fn compile_source_reports_file_write_failure_when_flush_fails() {
 #[test]
 fn compile_source_reports_file_exists_false_for_directories() {
     let temp_root = make_temp_project_root("file-exists-directory-runtime");
-    let source_path = temp_root.join("file_exists_directory_runtime.apex");
+    let source_path = temp_root.join("file_exists_directory_runtime.arden");
     let output_path = temp_root.join("file_exists_directory_runtime");
     let directory_path = temp_root.join("dir");
     let source = r#"
@@ -1291,7 +1291,7 @@ fn compile_source_reports_file_exists_false_for_directories() {
 #[test]
 fn compile_source_reports_file_delete_false_for_directories() {
     let temp_root = make_temp_project_root("file-delete-directory-runtime");
-    let source_path = temp_root.join("file_delete_directory_runtime.apex");
+    let source_path = temp_root.join("file_delete_directory_runtime.arden");
     let output_path = temp_root.join("file_delete_directory_runtime");
     let directory_path = temp_root.join("dir");
     let source = r#"
@@ -1321,7 +1321,7 @@ fn compile_source_reports_file_delete_false_for_directories() {
 #[test]
 fn compile_source_fails_fast_on_file_read_from_fifo() {
     let temp_root = make_temp_project_root("file-read-fifo-runtime");
-    let source_path = temp_root.join("file_read_fifo_runtime.apex");
+    let source_path = temp_root.join("file_read_fifo_runtime.arden");
     let output_path = temp_root.join("file_read_fifo_runtime");
     let fifo_path = temp_root.join("pipe");
     let source = r#"
@@ -1374,7 +1374,7 @@ fn compile_source_fails_fast_on_file_read_from_fifo() {
 #[test]
 fn compile_source_runs_if_expression_generic_constructor_branches() {
     let temp_root = make_temp_project_root("ifexpr-generic-ctor-runtime");
-    let source_path = temp_root.join("ifexpr_generic_ctor_runtime.apex");
+    let source_path = temp_root.join("ifexpr_generic_ctor_runtime.arden");
     let output_path = temp_root.join("ifexpr_generic_ctor_runtime");
     let source = r#"
             class Boxed<T> {
@@ -1407,7 +1407,7 @@ fn compile_source_runs_if_expression_generic_constructor_branches() {
 #[test]
 fn compile_source_runs_method_calls_on_if_expression_objects() {
     let temp_root = make_temp_project_root("ifexpr-object-method-runtime");
-    let source_path = temp_root.join("ifexpr_object_method_runtime.apex");
+    let source_path = temp_root.join("ifexpr_object_method_runtime.arden");
     let output_path = temp_root.join("ifexpr_object_method_runtime");
     let source = r#"
             class Boxed<T> {
@@ -1436,7 +1436,7 @@ fn compile_source_runs_method_calls_on_if_expression_objects() {
 #[test]
 fn compile_source_runs_field_access_on_match_expression_objects() {
     let temp_root = make_temp_project_root("match-object-field-runtime");
-    let source_path = temp_root.join("match_object_field_runtime.apex");
+    let source_path = temp_root.join("match_object_field_runtime.arden");
     let output_path = temp_root.join("match_object_field_runtime");
     let source = r#"
             class Boxed<T> {
@@ -1464,7 +1464,7 @@ fn compile_source_runs_field_access_on_match_expression_objects() {
 #[test]
 fn compile_source_runs_method_calls_on_indexed_objects() {
     let temp_root = make_temp_project_root("index-object-method-runtime");
-    let source_path = temp_root.join("index_object_method_runtime.apex");
+    let source_path = temp_root.join("index_object_method_runtime.arden");
     let output_path = temp_root.join("index_object_method_runtime");
     let source = r#"
             class Boxed<T> {
@@ -1495,7 +1495,7 @@ fn compile_source_runs_method_calls_on_indexed_objects() {
 #[test]
 fn compile_source_runs_field_access_on_indexed_objects() {
     let temp_root = make_temp_project_root("index-object-field-runtime");
-    let source_path = temp_root.join("index_object_field_runtime.apex");
+    let source_path = temp_root.join("index_object_field_runtime.arden");
     let output_path = temp_root.join("index_object_field_runtime");
     let source = r#"
             class Boxed<T> {
@@ -1525,7 +1525,7 @@ fn compile_source_runs_field_access_on_indexed_objects() {
 #[test]
 fn compile_source_runs_borrowed_read_accesses_runtime() {
     let temp_root = make_temp_project_root("borrowed-read-access-runtime");
-    let source_path = temp_root.join("borrowed_read_access_runtime.apex");
+    let source_path = temp_root.join("borrowed_read_access_runtime.arden");
     let output_path = temp_root.join("borrowed_read_access_runtime");
     let source = r#"
             class Boxed {
@@ -1575,7 +1575,7 @@ fn compile_source_runs_borrowed_read_accesses_runtime() {
 #[test]
 fn compile_source_runs_borrowed_class_read_access_runtime() {
     let temp_root = make_temp_project_root("borrowed-class-read-access-runtime");
-    let source_path = temp_root.join("borrowed_class_read_access_runtime.apex");
+    let source_path = temp_root.join("borrowed_class_read_access_runtime.arden");
     let output_path = temp_root.join("borrowed_class_read_access_runtime");
     let source = r#"
             class Boxed {
@@ -1608,7 +1608,7 @@ fn compile_source_runs_borrowed_class_read_access_runtime() {
 #[test]
 fn compile_source_runs_borrowed_list_read_access_runtime() {
     let temp_root = make_temp_project_root("borrowed-list-read-access-runtime");
-    let source_path = temp_root.join("borrowed_list_read_access_runtime.apex");
+    let source_path = temp_root.join("borrowed_list_read_access_runtime.arden");
     let output_path = temp_root.join("borrowed_list_read_access_runtime");
     let source = r#"
             function main(): Integer {
@@ -1637,7 +1637,7 @@ fn compile_source_runs_borrowed_list_read_access_runtime() {
 #[test]
 fn compile_source_runs_borrowed_string_index_runtime() {
     let temp_root = make_temp_project_root("borrowed-string-index-runtime");
-    let source_path = temp_root.join("borrowed_string_index_runtime.apex");
+    let source_path = temp_root.join("borrowed_string_index_runtime.arden");
     let output_path = temp_root.join("borrowed_string_index_runtime");
     let source = r#"
             function main(): Integer {
@@ -1662,7 +1662,7 @@ fn compile_source_runs_borrowed_string_index_runtime() {
 #[test]
 fn compile_source_runs_borrowed_map_read_access_runtime() {
     let temp_root = make_temp_project_root("borrowed-map-read-access-runtime");
-    let source_path = temp_root.join("borrowed_map_read_access_runtime.apex");
+    let source_path = temp_root.join("borrowed_map_read_access_runtime.arden");
     let output_path = temp_root.join("borrowed_map_read_access_runtime");
     let source = r#"
             function main(): Integer {
@@ -1691,7 +1691,7 @@ fn compile_source_runs_borrowed_map_read_access_runtime() {
 #[test]
 fn compile_source_runs_borrowed_map_object_field_reads_runtime() {
     let temp_root = make_temp_project_root("borrowed-map-object-field-reads-runtime");
-    let source_path = temp_root.join("borrowed_map_object_field_reads_runtime.apex");
+    let source_path = temp_root.join("borrowed_map_object_field_reads_runtime.arden");
     let output_path = temp_root.join("borrowed_map_object_field_reads_runtime");
     let source = r#"
             class Boxed {
@@ -1724,7 +1724,7 @@ fn compile_source_runs_borrowed_map_object_field_reads_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_builtin_methods_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-builtin-methods-runtime");
-    let source_path = temp_root.join("mutable_borrowed_builtin_methods_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_builtin_methods_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_builtin_methods_runtime");
     let source = r#"
             function main(): Integer {
@@ -1757,7 +1757,7 @@ fn compile_source_runs_mutable_borrowed_builtin_methods_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_nested_builtin_field_methods_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-nested-builtin-field-runtime");
-    let source_path = temp_root.join("mutable_borrowed_nested_builtin_field_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_nested_builtin_field_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_nested_builtin_field_runtime");
     let source = r#"
             class Bag {
@@ -1810,7 +1810,7 @@ fn compile_source_runs_mutable_borrowed_nested_builtin_field_methods_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_map_methods_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-map-runtime");
-    let source_path = temp_root.join("mutable_borrowed_map_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_map_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_map_runtime");
     let source = r#"
             function main(): Integer {
@@ -1836,7 +1836,7 @@ fn compile_source_runs_mutable_borrowed_map_methods_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_set_methods_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-set-runtime");
-    let source_path = temp_root.join("mutable_borrowed_set_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_set_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_set_runtime");
     let source = r#"
             function main(): Integer {
@@ -1863,7 +1863,7 @@ fn compile_source_runs_mutable_borrowed_set_methods_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_range_methods_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-range-runtime");
-    let source_path = temp_root.join("mutable_borrowed_range_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_range_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_range_runtime");
     let source = r#"
             function main(): Integer {
@@ -1889,7 +1889,7 @@ fn compile_source_runs_mutable_borrowed_range_methods_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_range_next_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-range-next-runtime");
-    let source_path = temp_root.join("mutable_borrowed_range_next_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_range_next_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_range_next_runtime");
     let source = r#"
             function main(): Integer {
@@ -1916,7 +1916,7 @@ fn compile_source_runs_mutable_borrowed_range_next_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_range_has_next_after_next_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-range-has-next-runtime");
-    let source_path = temp_root.join("mutable_borrowed_range_has_next_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_range_has_next_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_range_has_next_runtime");
     let source = r#"
             function main(): Integer {
@@ -1943,7 +1943,7 @@ fn compile_source_runs_mutable_borrowed_range_has_next_after_next_runtime() {
 #[test]
 fn compile_source_runs_borrowed_range_has_next_runtime() {
     let temp_root = make_temp_project_root("borrowed-range-has-next-runtime");
-    let source_path = temp_root.join("borrowed_range_has_next_runtime.apex");
+    let source_path = temp_root.join("borrowed_range_has_next_runtime.arden");
     let output_path = temp_root.join("borrowed_range_has_next_runtime");
     let source = r#"
             function main(): Integer {
@@ -1968,7 +1968,7 @@ fn compile_source_runs_borrowed_range_has_next_runtime() {
 #[test]
 fn compile_source_runs_borrowed_task_methods_runtime() {
     let temp_root = make_temp_project_root("borrowed-task-methods-runtime");
-    let source_path = temp_root.join("borrowed_task_methods_runtime.apex");
+    let source_path = temp_root.join("borrowed_task_methods_runtime.arden");
     let output_path = temp_root.join("borrowed_task_methods_runtime");
     let source = r#"
             async function work(): Integer {
@@ -2000,7 +2000,7 @@ fn compile_source_runs_borrowed_task_methods_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_task_cancel_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-task-cancel-runtime");
-    let source_path = temp_root.join("mutable_borrowed_task_cancel_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_task_cancel_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_task_cancel_runtime");
     let source = r#"
             async function work(): Integer {
@@ -2030,7 +2030,7 @@ fn compile_source_runs_mutable_borrowed_task_cancel_runtime() {
 #[test]
 fn compile_source_runs_canceled_task_string_length_runtime() {
     let temp_root = make_temp_project_root("canceled-task-string-length-runtime");
-    let source_path = temp_root.join("canceled_task_string_length_runtime.apex");
+    let source_path = temp_root.join("canceled_task_string_length_runtime.arden");
     let output_path = temp_root.join("canceled_task_string_length_runtime");
     let source = r#"
             import std.time.*;
@@ -2065,7 +2065,7 @@ fn compile_source_runs_canceled_task_string_length_runtime() {
 #[test]
 fn compile_source_runs_canceled_task_string_equality_runtime() {
     let temp_root = make_temp_project_root("canceled-task-string-equality-runtime");
-    let source_path = temp_root.join("canceled_task_string_equality_runtime.apex");
+    let source_path = temp_root.join("canceled_task_string_equality_runtime.arden");
     let output_path = temp_root.join("canceled_task_string_equality_runtime");
     let source = r#"
             import std.time.*;
@@ -2100,7 +2100,7 @@ fn compile_source_runs_canceled_task_string_equality_runtime() {
 #[test]
 fn compile_source_runs_canceled_task_object_field_runtime() {
     let temp_root = make_temp_project_root("canceled-task-object-field-runtime");
-    let source_path = temp_root.join("canceled_task_object_field_runtime.apex");
+    let source_path = temp_root.join("canceled_task_object_field_runtime.arden");
     let output_path = temp_root.join("canceled_task_object_field_runtime");
     let source = r#"
             import std.time.*;
@@ -2142,7 +2142,7 @@ fn compile_source_runs_canceled_task_object_field_runtime() {
 #[test]
 fn compile_source_runs_canceled_task_object_string_method_runtime() {
     let temp_root = make_temp_project_root("canceled-task-object-string-method-runtime");
-    let source_path = temp_root.join("canceled_task_object_string_method_runtime.apex");
+    let source_path = temp_root.join("canceled_task_object_string_method_runtime.arden");
     let output_path = temp_root.join("canceled_task_object_string_method_runtime");
     let source = r#"
             import std.time.*;
@@ -2187,7 +2187,7 @@ fn compile_source_runs_canceled_task_object_string_method_runtime() {
 #[test]
 fn compile_source_runs_canceled_task_nested_object_method_runtime() {
     let temp_root = make_temp_project_root("canceled-task-nested-object-method-runtime");
-    let source_path = temp_root.join("canceled_task_nested_object_method_runtime.apex");
+    let source_path = temp_root.join("canceled_task_nested_object_method_runtime.arden");
     let output_path = temp_root.join("canceled_task_nested_object_method_runtime");
     let source = r#"
             import std.time.*;
@@ -2239,7 +2239,7 @@ fn compile_source_runs_canceled_task_nested_object_method_runtime() {
 #[test]
 fn compile_source_runs_canceled_task_recursive_object_string_method_runtime() {
     let temp_root = make_temp_project_root("canceled-task-recursive-object-string-runtime");
-    let source_path = temp_root.join("canceled_task_recursive_object_string_runtime.apex");
+    let source_path = temp_root.join("canceled_task_recursive_object_string_runtime.arden");
     let output_path = temp_root.join("canceled_task_recursive_object_string_runtime");
     let source = r#"
             import std.time.*;
@@ -2287,7 +2287,8 @@ fn compile_source_runs_canceled_task_recursive_object_string_method_runtime() {
 fn compile_source_runs_canceled_task_mutually_recursive_object_string_method_runtime() {
     let temp_root =
         make_temp_project_root("canceled-task-mutually-recursive-object-string-runtime");
-    let source_path = temp_root.join("canceled_task_mutually_recursive_object_string_runtime.apex");
+    let source_path =
+        temp_root.join("canceled_task_mutually_recursive_object_string_runtime.arden");
     let output_path = temp_root.join("canceled_task_mutually_recursive_object_string_runtime");
     let source = r#"
             import std.time.*;
@@ -2343,7 +2344,7 @@ fn compile_source_runs_canceled_task_mutually_recursive_object_string_method_run
 #[test]
 fn compile_source_runs_canceled_task_result_error_string_match_runtime() {
     let temp_root = make_temp_project_root("canceled-task-result-error-string-match-runtime");
-    let source_path = temp_root.join("canceled_task_result_error_string_match_runtime.apex");
+    let source_path = temp_root.join("canceled_task_result_error_string_match_runtime.arden");
     let output_path = temp_root.join("canceled_task_result_error_string_match_runtime");
     let source = r#"
             import std.time.*;
@@ -2382,7 +2383,8 @@ fn compile_source_runs_canceled_task_result_error_string_match_runtime() {
 fn compile_source_runs_canceled_task_object_result_error_string_match_runtime() {
     let temp_root =
         make_temp_project_root("canceled-task-object-result-error-string-match-runtime");
-    let source_path = temp_root.join("canceled_task_object_result_error_string_match_runtime.apex");
+    let source_path =
+        temp_root.join("canceled_task_object_result_error_string_match_runtime.arden");
     let output_path = temp_root.join("canceled_task_object_result_error_string_match_runtime");
     let source = r#"
             import std.time.*;
@@ -2430,7 +2432,7 @@ fn compile_source_runs_canceled_task_object_result_error_string_match_runtime() 
 #[test]
 fn compile_source_runs_canceled_task_object_result_error_class_match_runtime() {
     let temp_root = make_temp_project_root("canceled-task-object-result-error-class-match-runtime");
-    let source_path = temp_root.join("canceled_task_object_result_error_class_match_runtime.apex");
+    let source_path = temp_root.join("canceled_task_object_result_error_class_match_runtime.arden");
     let output_path = temp_root.join("canceled_task_object_result_error_class_match_runtime");
     let source = r#"
             import std.time.*;
@@ -2488,7 +2490,7 @@ fn compile_source_runs_canceled_task_object_result_error_class_match_runtime() {
 #[test]
 fn compile_source_runs_block_expression_assignment_runtime() {
     let temp_root = make_temp_project_root("block-expression-assignment-runtime");
-    let source_path = temp_root.join("block_expression_assignment_runtime.apex");
+    let source_path = temp_root.join("block_expression_assignment_runtime.arden");
     let output_path = temp_root.join("block_expression_assignment_runtime");
     let source = r#"
             function main(): Integer {
@@ -2515,7 +2517,7 @@ fn compile_source_runs_block_expression_assignment_runtime() {
 #[test]
 fn compile_source_runs_block_expression_method_receiver_runtime() {
     let temp_root = make_temp_project_root("block-expression-method-receiver-runtime");
-    let source_path = temp_root.join("block_expression_method_receiver_runtime.apex");
+    let source_path = temp_root.join("block_expression_method_receiver_runtime.arden");
     let output_path = temp_root.join("block_expression_method_receiver_runtime");
     let source = r#"
             class Boxed {
@@ -2551,7 +2553,7 @@ fn compile_source_runs_block_expression_method_receiver_runtime() {
 #[test]
 fn compile_source_runs_block_expression_match_binding_receiver_runtime() {
     let temp_root = make_temp_project_root("block-expression-match-binding-receiver-runtime");
-    let source_path = temp_root.join("block_expression_match_binding_receiver_runtime.apex");
+    let source_path = temp_root.join("block_expression_match_binding_receiver_runtime.arden");
     let output_path = temp_root.join("block_expression_match_binding_receiver_runtime");
     let source = r#"
             class Boxed {
@@ -2590,7 +2592,7 @@ fn compile_source_runs_block_expression_match_binding_receiver_runtime() {
 #[test]
 fn compile_source_runs_canceled_task_range_has_next_runtime() {
     let temp_root = make_temp_project_root("canceled-task-range-has-next-runtime");
-    let source_path = temp_root.join("canceled_task_range_has_next_runtime.apex");
+    let source_path = temp_root.join("canceled_task_range_has_next_runtime.arden");
     let output_path = temp_root.join("canceled_task_range_has_next_runtime");
     let source = r#"
             import std.time.*;
@@ -2625,7 +2627,7 @@ fn compile_source_runs_canceled_task_range_has_next_runtime() {
 #[test]
 fn compile_source_runs_borrowed_field_reference_runtime() {
     let temp_root = make_temp_project_root("borrowed-field-reference-runtime");
-    let source_path = temp_root.join("borrowed_field_reference_runtime.apex");
+    let source_path = temp_root.join("borrowed_field_reference_runtime.arden");
     let output_path = temp_root.join("borrowed_field_reference_runtime");
     let source = r#"
             class Boxed {
@@ -2659,7 +2661,7 @@ fn compile_source_runs_borrowed_field_reference_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_field_reference_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-field-reference-runtime");
-    let source_path = temp_root.join("mutable_borrowed_field_reference_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_field_reference_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_field_reference_runtime");
     let source = r#"
             class Boxed {
@@ -2695,7 +2697,7 @@ fn compile_source_runs_mutable_borrowed_field_reference_runtime() {
 #[test]
 fn compile_source_runs_borrowed_float_list_index_arithmetic_runtime() {
     let temp_root = make_temp_project_root("borrowed-float-list-index-arithmetic-runtime");
-    let source_path = temp_root.join("borrowed_float_list_index_arithmetic_runtime.apex");
+    let source_path = temp_root.join("borrowed_float_list_index_arithmetic_runtime.arden");
     let output_path = temp_root.join("borrowed_float_list_index_arithmetic_runtime");
     let source = r#"
             function main(): Integer {
@@ -2722,7 +2724,7 @@ fn compile_source_runs_borrowed_float_list_index_arithmetic_runtime() {
 #[test]
 fn compile_source_runs_borrowed_float_list_index_interpolation_runtime() {
     let temp_root = make_temp_project_root("borrowed-float-list-index-interp-runtime");
-    let source_path = temp_root.join("borrowed_float_list_index_interp_runtime.apex");
+    let source_path = temp_root.join("borrowed_float_list_index_interp_runtime.arden");
     let output_path = temp_root.join("borrowed_float_list_index_interp_runtime");
     let source = r#"
             function main(): Integer {
@@ -2749,7 +2751,7 @@ fn compile_source_runs_borrowed_float_list_index_interpolation_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_list_index_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-list-index-assignment-runtime");
-    let source_path = temp_root.join("mutable_borrowed_list_index_assignment_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_list_index_assignment_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_list_index_assignment_runtime");
     let source = r#"
             function main(): Integer {
@@ -2776,7 +2778,7 @@ fn compile_source_runs_mutable_borrowed_list_index_assignment_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_map_index_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-map-index-assignment-runtime");
-    let source_path = temp_root.join("mutable_borrowed_map_index_assignment_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_map_index_assignment_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_map_index_assignment_runtime");
     let source = r#"
             function main(): Integer {
@@ -2802,7 +2804,7 @@ fn compile_source_runs_mutable_borrowed_map_index_assignment_runtime() {
 #[test]
 fn compile_source_runs_mutable_borrowed_nested_index_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-nested-index-assignment-runtime");
-    let source_path = temp_root.join("mutable_borrowed_nested_index_assignment_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_nested_index_assignment_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_nested_index_assignment_runtime");
     let source = r#"
             class Bag {
@@ -2844,7 +2846,7 @@ fn compile_source_runs_mutable_borrowed_nested_index_assignment_runtime() {
 #[test]
 fn compile_source_runs_method_with_mutating_builtin_field_runtime() {
     let temp_root = make_temp_project_root("method-with-mutating-builtin-field-runtime");
-    let source_path = temp_root.join("method_with_mutating_builtin_field_runtime.apex");
+    let source_path = temp_root.join("method_with_mutating_builtin_field_runtime.arden");
     let output_path = temp_root.join("method_with_mutating_builtin_field_runtime");
     let source = r#"
             class Bag {
@@ -2878,7 +2880,7 @@ fn compile_source_runs_method_with_mutating_builtin_field_runtime() {
 #[test]
 fn compile_source_runs_local_deref_assignment_runtime() {
     let temp_root = make_temp_project_root("local-deref-assignment-runtime");
-    let source_path = temp_root.join("local_deref_assignment_runtime.apex");
+    let source_path = temp_root.join("local_deref_assignment_runtime.arden");
     let output_path = temp_root.join("local_deref_assignment_runtime");
     let source = r#"
             function main(): Integer {
@@ -2904,7 +2906,7 @@ fn compile_source_runs_local_deref_assignment_runtime() {
 #[test]
 fn compile_source_runs_direct_mutable_reference_assignment_runtime() {
     let temp_root = make_temp_project_root("direct-mutable-reference-assignment-runtime");
-    let source_path = temp_root.join("direct_mutable_reference_assignment_runtime.apex");
+    let source_path = temp_root.join("direct_mutable_reference_assignment_runtime.arden");
     let output_path = temp_root.join("direct_mutable_reference_assignment_runtime");
     let source = r#"
             function write_ref(r: &mut Integer): None {
@@ -2935,7 +2937,7 @@ fn compile_source_runs_direct_mutable_reference_assignment_runtime() {
 #[test]
 fn compile_source_runs_inline_mutable_reference_assignment_runtime() {
     let temp_root = make_temp_project_root("inline-mutable-reference-assignment-runtime");
-    let source_path = temp_root.join("inline_mutable_reference_assignment_runtime.apex");
+    let source_path = temp_root.join("inline_mutable_reference_assignment_runtime.arden");
     let output_path = temp_root.join("inline_mutable_reference_assignment_runtime");
     let source = r#"
             function write_ref(r: &mut Integer): None {
@@ -2966,7 +2968,7 @@ fn compile_source_runs_inline_mutable_reference_assignment_runtime() {
 #[test]
 fn compile_source_runs_option_unwrap_method_chains_on_call_results() {
     let temp_root = make_temp_project_root("option-call-unwrap-method-runtime");
-    let source_path = temp_root.join("option_call_unwrap_method_runtime.apex");
+    let source_path = temp_root.join("option_call_unwrap_method_runtime.arden");
     let output_path = temp_root.join("option_call_unwrap_method_runtime");
     let source = r#"
             class Boxed<T> {
@@ -2999,7 +3001,7 @@ fn compile_source_runs_option_unwrap_method_chains_on_call_results() {
 #[test]
 fn compile_source_runs_list_methods_on_call_results() {
     let temp_root = make_temp_project_root("list-call-method-runtime");
-    let source_path = temp_root.join("list_call_method_runtime.apex");
+    let source_path = temp_root.join("list_call_method_runtime.arden");
     let output_path = temp_root.join("list_call_method_runtime");
     let source = r#"
             function make(): List<Integer> {
@@ -3029,7 +3031,7 @@ fn compile_source_runs_list_methods_on_call_results() {
 #[test]
 fn compile_source_runs_range_methods_on_call_results() {
     let temp_root = make_temp_project_root("range-call-method-runtime");
-    let source_path = temp_root.join("range_call_method_runtime.apex");
+    let source_path = temp_root.join("range_call_method_runtime.arden");
     let output_path = temp_root.join("range_call_method_runtime");
     let source = r#"
             function mk(): Range<Integer> {
@@ -3056,7 +3058,7 @@ fn compile_source_runs_range_methods_on_call_results() {
 #[test]
 fn compile_source_runs_set_methods_on_call_results() {
     let temp_root = make_temp_project_root("set-call-method-runtime");
-    let source_path = temp_root.join("set_call_method_runtime.apex");
+    let source_path = temp_root.join("set_call_method_runtime.arden");
     let output_path = temp_root.join("set_call_method_runtime");
     let source = r#"
             function build(): Set<Integer> {
@@ -3085,7 +3087,7 @@ fn compile_source_runs_set_methods_on_call_results() {
 #[test]
 fn compile_source_runs_set_remove_on_call_results() {
     let temp_root = make_temp_project_root("set-remove-call-method-runtime");
-    let source_path = temp_root.join("set_remove_call_method_runtime.apex");
+    let source_path = temp_root.join("set_remove_call_method_runtime.arden");
     let output_path = temp_root.join("set_remove_call_method_runtime");
     let source = r#"
             function build(): Set<Integer> {
@@ -3114,7 +3116,7 @@ fn compile_source_runs_set_remove_on_call_results() {
 #[test]
 fn compile_source_runs_set_contains_on_option_values() {
     let temp_root = make_temp_project_root("set-option-contains-runtime");
-    let source_path = temp_root.join("set_option_contains_runtime.apex");
+    let source_path = temp_root.join("set_option_contains_runtime.arden");
     let output_path = temp_root.join("set_option_contains_runtime");
     let source = r#"
             function main(): Integer {
@@ -3139,7 +3141,7 @@ fn compile_source_runs_set_contains_on_option_values() {
 #[test]
 fn compile_source_runs_set_contains_on_result_values() {
     let temp_root = make_temp_project_root("set-result-contains-runtime");
-    let source_path = temp_root.join("set_result_contains_runtime.apex");
+    let source_path = temp_root.join("set_result_contains_runtime.arden");
     let output_path = temp_root.join("set_result_contains_runtime");
     let source = r#"
             function main(): Integer {
@@ -3164,7 +3166,7 @@ fn compile_source_runs_set_contains_on_result_values() {
 #[test]
 fn compile_source_runs_map_methods_on_call_results() {
     let temp_root = make_temp_project_root("map-call-method-runtime");
-    let source_path = temp_root.join("map_call_method_runtime.apex");
+    let source_path = temp_root.join("map_call_method_runtime.arden");
     let output_path = temp_root.join("map_call_method_runtime");
     let source = r#"
             function build(): Map<Integer, Integer> {
@@ -3193,7 +3195,7 @@ fn compile_source_runs_map_methods_on_call_results() {
 #[test]
 fn compile_source_runs_map_growth_past_initial_capacity() {
     let temp_root = make_temp_project_root("map-growth-runtime");
-    let source_path = temp_root.join("map_growth_runtime.apex");
+    let source_path = temp_root.join("map_growth_runtime.arden");
     let output_path = temp_root.join("map_growth_runtime");
     let source = r#"
             function build(): Map<Integer, Integer> {
@@ -3231,7 +3233,7 @@ fn compile_source_runs_map_growth_past_initial_capacity() {
 #[test]
 fn compile_source_runs_map_option_growth_for_earlier_keys() {
     let temp_root = make_temp_project_root("map-option-growth-earlier-runtime");
-    let source_path = temp_root.join("map_option_growth_earlier_runtime.apex");
+    let source_path = temp_root.join("map_option_growth_earlier_runtime.arden");
     let output_path = temp_root.join("map_option_growth_earlier_runtime");
     let source = r#"
             function main(): Integer {
@@ -3260,7 +3262,7 @@ fn compile_source_runs_map_option_growth_for_earlier_keys() {
 #[test]
 fn compile_source_runs_map_option_updates_after_growth() {
     let temp_root = make_temp_project_root("map-option-update-runtime");
-    let source_path = temp_root.join("map_option_update_runtime.apex");
+    let source_path = temp_root.join("map_option_update_runtime.arden");
     let output_path = temp_root.join("map_option_update_runtime");
     let source = r#"
             function main(): Integer {
@@ -3290,7 +3292,7 @@ fn compile_source_runs_map_option_updates_after_growth() {
 #[test]
 fn compile_source_runs_set_option_remove_after_growth() {
     let temp_root = make_temp_project_root("set-option-remove-runtime");
-    let source_path = temp_root.join("set_option_remove_runtime.apex");
+    let source_path = temp_root.join("set_option_remove_runtime.arden");
     let output_path = temp_root.join("set_option_remove_runtime");
     let source = r#"
             function main(): Integer {
@@ -3320,7 +3322,7 @@ fn compile_source_runs_set_option_remove_after_growth() {
 #[test]
 fn compile_source_runs_map_result_growth_with_integer_error_keys() {
     let temp_root = make_temp_project_root("map-result-growth-runtime");
-    let source_path = temp_root.join("map_result_growth_runtime.apex");
+    let source_path = temp_root.join("map_result_growth_runtime.arden");
     let output_path = temp_root.join("map_result_growth_runtime");
     let source = r#"
             function main(): Integer {
@@ -3349,7 +3351,7 @@ fn compile_source_runs_map_result_growth_with_integer_error_keys() {
 #[test]
 fn compile_source_runs_set_result_error_contains_after_growth() {
     let temp_root = make_temp_project_root("set-result-error-growth-runtime");
-    let source_path = temp_root.join("set_result_error_growth_runtime.apex");
+    let source_path = temp_root.join("set_result_error_growth_runtime.arden");
     let output_path = temp_root.join("set_result_error_growth_runtime");
     let source = r#"
             function main(): Integer {
@@ -3378,7 +3380,7 @@ fn compile_source_runs_set_result_error_contains_after_growth() {
 #[test]
 fn compile_source_runs_map_nested_result_option_growth_and_updates() {
     let temp_root = make_temp_project_root("map-nested-result-option-growth-runtime");
-    let source_path = temp_root.join("map_nested_result_option_growth_runtime.apex");
+    let source_path = temp_root.join("map_nested_result_option_growth_runtime.arden");
     let output_path = temp_root.join("map_nested_result_option_growth_runtime");
     let source = r#"
             function key(i: Integer): Result<Option<Integer>, Integer> {
@@ -3418,7 +3420,7 @@ fn compile_source_runs_map_nested_result_option_growth_and_updates() {
 #[test]
 fn compile_source_runs_result_error_with_non_integer_ok_type() {
     let temp_root = make_temp_project_root("result-error-layout-runtime");
-    let source_path = temp_root.join("result_error_layout_runtime.apex");
+    let source_path = temp_root.join("result_error_layout_runtime.arden");
     let output_path = temp_root.join("result_error_layout_runtime");
     let source = r#"
             function bad(): Result<Float, String> {
@@ -3446,7 +3448,7 @@ fn compile_source_runs_result_error_with_non_integer_ok_type() {
 #[test]
 fn compile_source_runs_map_with_class_pointer_keys() {
     let temp_root = make_temp_project_root("map-class-key-runtime");
-    let source_path = temp_root.join("map_class_key_runtime.apex");
+    let source_path = temp_root.join("map_class_key_runtime.arden");
     let output_path = temp_root.join("map_class_key_runtime");
     let source = r#"
             class Boxed {
@@ -3479,7 +3481,7 @@ fn compile_source_runs_map_with_class_pointer_keys() {
 #[test]
 fn compile_source_runs_set_with_class_pointer_keys() {
     let temp_root = make_temp_project_root("set-class-key-runtime");
-    let source_path = temp_root.join("set_class_key_runtime.apex");
+    let source_path = temp_root.join("set_class_key_runtime.arden");
     let output_path = temp_root.join("set_class_key_runtime");
     let source = r#"
             class Boxed {
@@ -3512,7 +3514,7 @@ fn compile_source_runs_set_with_class_pointer_keys() {
 #[test]
 fn compile_source_runs_map_with_nested_option_class_keys() {
     let temp_root = make_temp_project_root("map-option-class-key-runtime");
-    let source_path = temp_root.join("map_option_class_key_runtime.apex");
+    let source_path = temp_root.join("map_option_class_key_runtime.arden");
     let output_path = temp_root.join("map_option_class_key_runtime");
     let source = r#"
             class Boxed {
@@ -3545,7 +3547,7 @@ fn compile_source_runs_map_with_nested_option_class_keys() {
 #[test]
 fn compile_source_runs_map_with_multi_variant_enum_keys() {
     let temp_root = make_temp_project_root("map-enum-key-runtime");
-    let source_path = temp_root.join("map_enum_key_runtime.apex");
+    let source_path = temp_root.join("map_enum_key_runtime.arden");
     let output_path = temp_root.join("map_enum_key_runtime");
     let source = r#"
             enum E {
@@ -3576,7 +3578,7 @@ fn compile_source_runs_map_with_multi_variant_enum_keys() {
 #[test]
 fn compile_source_runs_set_with_multi_variant_enum_keys() {
     let temp_root = make_temp_project_root("set-enum-key-runtime");
-    let source_path = temp_root.join("set_enum_key_runtime.apex");
+    let source_path = temp_root.join("set_enum_key_runtime.arden");
     let output_path = temp_root.join("set_enum_key_runtime");
     let source = r#"
             enum E {
@@ -3607,7 +3609,7 @@ fn compile_source_runs_set_with_multi_variant_enum_keys() {
 #[test]
 fn compile_source_runs_option_is_some_in_condition() {
     let temp_root = make_temp_project_root("option-is-some-condition-runtime");
-    let source_path = temp_root.join("option_is_some_condition_runtime.apex");
+    let source_path = temp_root.join("option_is_some_condition_runtime.arden");
     let output_path = temp_root.join("option_is_some_condition_runtime");
     let source = r#"
             function choose(): Option<Integer> {
@@ -3634,7 +3636,7 @@ fn compile_source_runs_option_is_some_in_condition() {
 #[test]
 fn compile_source_runs_result_is_ok_in_condition() {
     let temp_root = make_temp_project_root("result-is-ok-condition-runtime");
-    let source_path = temp_root.join("result_is_ok_condition_runtime.apex");
+    let source_path = temp_root.join("result_is_ok_condition_runtime.arden");
     let output_path = temp_root.join("result_is_ok_condition_runtime");
     let source = r#"
             function choose(): Result<Integer, String> {
@@ -3661,7 +3663,7 @@ fn compile_source_runs_result_is_ok_in_condition() {
 #[test]
 fn compile_source_runs_string_length_on_literal_receiver() {
     let temp_root = make_temp_project_root("string-length-literal-runtime");
-    let source_path = temp_root.join("string_length_literal_runtime.apex");
+    let source_path = temp_root.join("string_length_literal_runtime.arden");
     let output_path = temp_root.join("string_length_literal_runtime");
     let source = r#"
             function main(): Integer {
@@ -3684,7 +3686,7 @@ fn compile_source_runs_string_length_on_literal_receiver() {
 #[test]
 fn compile_source_runs_string_length_on_concatenation_receiver() {
     let temp_root = make_temp_project_root("string-length-concat-runtime");
-    let source_path = temp_root.join("string_length_concat_runtime.apex");
+    let source_path = temp_root.join("string_length_concat_runtime.arden");
     let output_path = temp_root.join("string_length_concat_runtime");
     let source = r#"
             function main(): Integer {
@@ -3707,7 +3709,7 @@ fn compile_source_runs_string_length_on_concatenation_receiver() {
 #[test]
 fn compile_source_runs_string_length_on_interpolation_receiver() {
     let temp_root = make_temp_project_root("string-length-interp-runtime");
-    let source_path = temp_root.join("string_length_interp_runtime.apex");
+    let source_path = temp_root.join("string_length_interp_runtime.arden");
     let output_path = temp_root.join("string_length_interp_runtime");
     let source = r#"
             function main(): Integer {
@@ -3730,7 +3732,7 @@ fn compile_source_runs_string_length_on_interpolation_receiver() {
 #[test]
 fn compile_source_runs_field_access_on_list_get_object_results() {
     let temp_root = make_temp_project_root("list-get-object-field-runtime");
-    let source_path = temp_root.join("list_get_object_field_runtime.apex");
+    let source_path = temp_root.join("list_get_object_field_runtime.arden");
     let output_path = temp_root.join("list_get_object_field_runtime");
     let source = r#"
             class Boxed {
@@ -3760,7 +3762,7 @@ fn compile_source_runs_field_access_on_list_get_object_results() {
 #[test]
 fn compile_source_runs_field_access_on_map_get_object_results() {
     let temp_root = make_temp_project_root("map-get-object-field-runtime");
-    let source_path = temp_root.join("map_get_object_field_runtime.apex");
+    let source_path = temp_root.join("map_get_object_field_runtime.arden");
     let output_path = temp_root.join("map_get_object_field_runtime");
     let source = r#"
             class Boxed {
@@ -3790,7 +3792,7 @@ fn compile_source_runs_field_access_on_map_get_object_results() {
 #[test]
 fn compile_source_fails_fast_on_missing_map_get_object_results() {
     let temp_root = make_temp_project_root("map-get-missing-object-runtime");
-    let source_path = temp_root.join("map_get_missing_object_runtime.apex");
+    let source_path = temp_root.join("map_get_missing_object_runtime.arden");
     let output_path = temp_root.join("map_get_missing_object_runtime");
     let source = r#"
             class Boxed {
@@ -3819,7 +3821,7 @@ fn compile_source_fails_fast_on_missing_map_get_object_results() {
 #[test]
 fn compile_source_runs_field_access_on_map_index_object_results() {
     let temp_root = make_temp_project_root("map-index-object-field-runtime");
-    let source_path = temp_root.join("map_index_object_field_runtime.apex");
+    let source_path = temp_root.join("map_index_object_field_runtime.arden");
     let output_path = temp_root.join("map_index_object_field_runtime");
     let source = r#"
             class Boxed {
@@ -3849,7 +3851,7 @@ fn compile_source_runs_field_access_on_map_index_object_results() {
 #[test]
 fn compile_source_runs_map_index_assignment_with_string_keys() {
     let temp_root = make_temp_project_root("map-index-assign-runtime");
-    let source_path = temp_root.join("map_index_assign_runtime.apex");
+    let source_path = temp_root.join("map_index_assign_runtime.arden");
     let output_path = temp_root.join("map_index_assign_runtime");
     let source = r#"
             function main(): Integer {
@@ -3874,7 +3876,7 @@ fn compile_source_runs_map_index_assignment_with_string_keys() {
 #[test]
 fn compile_source_runs_list_index_assignment_on_function_returned_list() {
     let temp_root = make_temp_project_root("list-index-assign-call-runtime");
-    let source_path = temp_root.join("list_index_assign_call_runtime.apex");
+    let source_path = temp_root.join("list_index_assign_call_runtime.arden");
     let output_path = temp_root.join("list_index_assign_call_runtime");
     let source = r#"
             function make(): List<Integer> {
@@ -3904,7 +3906,7 @@ fn compile_source_runs_list_index_assignment_on_function_returned_list() {
 #[test]
 fn compile_source_runs_list_index_compound_assignment_without_double_evaluation() {
     let temp_root = make_temp_project_root("list-index-compound-assign-call-runtime");
-    let source_path = temp_root.join("list_index_compound_assign_call_runtime.apex");
+    let source_path = temp_root.join("list_index_compound_assign_call_runtime.arden");
     let output_path = temp_root.join("list_index_compound_assign_call_runtime");
     let source = r#"
             class Factory {
@@ -3940,7 +3942,7 @@ fn compile_source_runs_list_index_compound_assignment_without_double_evaluation(
 #[test]
 fn compile_source_runs_field_compound_assignment_without_double_evaluation() {
     let temp_root = make_temp_project_root("field-compound-assign-call-runtime");
-    let source_path = temp_root.join("field_compound_assign_call_runtime.apex");
+    let source_path = temp_root.join("field_compound_assign_call_runtime.arden");
     let output_path = temp_root.join("field_compound_assign_call_runtime");
     let source = r#"
             class Boxed {
@@ -3979,7 +3981,7 @@ fn compile_source_runs_field_compound_assignment_without_double_evaluation() {
 #[test]
 fn compile_source_runs_map_index_compound_assignment_without_double_evaluation() {
     let temp_root = make_temp_project_root("map-index-compound-assign-call-runtime");
-    let source_path = temp_root.join("map_index_compound_assign_call_runtime.apex");
+    let source_path = temp_root.join("map_index_compound_assign_call_runtime.arden");
     let output_path = temp_root.join("map_index_compound_assign_call_runtime");
     let source = r#"
             class Factory {
@@ -4015,7 +4017,7 @@ fn compile_source_runs_map_index_compound_assignment_without_double_evaluation()
 #[test]
 fn compile_source_runs_field_map_index_assignment_on_function_value_call_result() {
     let temp_root = make_temp_project_root("field-map-index-assign-function-value-runtime");
-    let source_path = temp_root.join("field_map_index_assign_function_value_runtime.apex");
+    let source_path = temp_root.join("field_map_index_assign_function_value_runtime.arden");
     let output_path = temp_root.join("field_map_index_assign_function_value_runtime");
     let source = r#"
             class Box {
@@ -4053,7 +4055,8 @@ fn compile_source_runs_field_map_index_assignment_on_function_value_call_result(
 fn compile_source_runs_field_map_index_compound_assignment_on_function_value_call_result() {
     let temp_root =
         make_temp_project_root("field-map-index-compound-assign-function-value-runtime");
-    let source_path = temp_root.join("field_map_index_compound_assign_function_value_runtime.apex");
+    let source_path =
+        temp_root.join("field_map_index_compound_assign_function_value_runtime.arden");
     let output_path = temp_root.join("field_map_index_compound_assign_function_value_runtime");
     let source = r#"
             class Box {
@@ -4094,7 +4097,7 @@ fn compile_source_runs_field_map_index_compound_assignment_on_function_value_cal
 #[test]
 fn compile_source_runs_map_index_compound_assignment_without_double_key_evaluation() {
     let temp_root = make_temp_project_root("map-index-compound-assign-key-runtime");
-    let source_path = temp_root.join("map_index_compound_assign_key_runtime.apex");
+    let source_path = temp_root.join("map_index_compound_assign_key_runtime.arden");
     let output_path = temp_root.join("map_index_compound_assign_key_runtime");
     let source = r#"
             class Counter {
@@ -4130,7 +4133,7 @@ fn compile_source_runs_map_index_compound_assignment_without_double_key_evaluati
 #[test]
 fn compile_source_runs_mutable_borrowed_list_index_compound_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-list-index-compound-runtime");
-    let source_path = temp_root.join("mutable_borrowed_list_index_compound_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_list_index_compound_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_list_index_compound_runtime");
     let source = r#"
             function main(): Integer {
@@ -4157,7 +4160,7 @@ fn compile_source_runs_mutable_borrowed_list_index_compound_assignment_runtime()
 #[test]
 fn compile_source_runs_mutable_borrowed_map_index_compound_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-borrowed-map-index-compound-runtime");
-    let source_path = temp_root.join("mutable_borrowed_map_index_compound_runtime.apex");
+    let source_path = temp_root.join("mutable_borrowed_map_index_compound_runtime.arden");
     let output_path = temp_root.join("mutable_borrowed_map_index_compound_runtime");
     let source = r#"
             function main(): Integer {
@@ -4184,7 +4187,7 @@ fn compile_source_runs_mutable_borrowed_map_index_compound_assignment_runtime() 
 #[test]
 fn compile_source_runs_mod_compound_assignment_runtime() {
     let temp_root = make_temp_project_root("mod-compound-assign-runtime");
-    let source_path = temp_root.join("mod_compound_assign_runtime.apex");
+    let source_path = temp_root.join("mod_compound_assign_runtime.arden");
     let output_path = temp_root.join("mod_compound_assign_runtime");
     let source = r#"
             function main(): Integer {
@@ -4209,7 +4212,7 @@ fn compile_source_runs_mod_compound_assignment_runtime() {
 #[test]
 fn compile_source_runs_float_mod_runtime() {
     let temp_root = make_temp_project_root("float-mod-runtime");
-    let source_path = temp_root.join("float_mod_runtime.apex");
+    let source_path = temp_root.join("float_mod_runtime.arden");
     let output_path = temp_root.join("float_mod_runtime");
     let source = r#"
             function main(): Integer {
@@ -4233,7 +4236,7 @@ fn compile_source_runs_float_mod_runtime() {
 #[test]
 fn compile_source_runs_float_mod_compound_assignment_runtime() {
     let temp_root = make_temp_project_root("float-mod-compound-assign-runtime");
-    let source_path = temp_root.join("float_mod_compound_assign_runtime.apex");
+    let source_path = temp_root.join("float_mod_compound_assign_runtime.arden");
     let output_path = temp_root.join("float_mod_compound_assign_runtime");
     let source = r#"
             function main(): Integer {
@@ -4258,7 +4261,7 @@ fn compile_source_runs_float_mod_compound_assignment_runtime() {
 #[test]
 fn compile_source_runs_integer_rhs_to_float_compound_assignment_runtime() {
     let temp_root = make_temp_project_root("int-to-float-compound-assign-runtime");
-    let source_path = temp_root.join("int_to_float_compound_assign_runtime.apex");
+    let source_path = temp_root.join("int_to_float_compound_assign_runtime.arden");
     let output_path = temp_root.join("int_to_float_compound_assign_runtime");
     let source = r#"
             function main(): Integer {
@@ -4284,7 +4287,7 @@ fn compile_source_runs_integer_rhs_to_float_compound_assignment_runtime() {
 #[test]
 fn compile_source_runs_mod_compound_assignment_without_double_key_evaluation() {
     let temp_root = make_temp_project_root("mod-compound-assign-key-runtime");
-    let source_path = temp_root.join("mod_compound_assign_key_runtime.apex");
+    let source_path = temp_root.join("mod_compound_assign_key_runtime.arden");
     let output_path = temp_root.join("mod_compound_assign_key_runtime");
     let source = r#"
             class Counter {
@@ -4320,7 +4323,7 @@ fn compile_source_runs_mod_compound_assignment_without_double_key_evaluation() {
 #[test]
 fn compile_source_runs_mixed_numeric_arithmetic_runtime() {
     let temp_root = make_temp_project_root("mixed-numeric-arithmetic-runtime");
-    let source_path = temp_root.join("mixed_numeric_arithmetic_runtime.apex");
+    let source_path = temp_root.join("mixed_numeric_arithmetic_runtime.arden");
     let output_path = temp_root.join("mixed_numeric_arithmetic_runtime");
     let source = r#"
             function main(): Integer {
@@ -4347,7 +4350,7 @@ fn compile_source_runs_mixed_numeric_arithmetic_runtime() {
 #[test]
 fn compile_source_runs_mixed_numeric_equality_runtime() {
     let temp_root = make_temp_project_root("mixed-numeric-equality-runtime");
-    let source_path = temp_root.join("mixed_numeric_equality_runtime.apex");
+    let source_path = temp_root.join("mixed_numeric_equality_runtime.arden");
     let output_path = temp_root.join("mixed_numeric_equality_runtime");
     let source = r#"
             function main(): Integer {
@@ -4374,7 +4377,7 @@ fn compile_source_runs_mixed_numeric_equality_runtime() {
 #[test]
 fn compile_source_runs_mixed_numeric_branch_and_math_runtime() {
     let temp_root = make_temp_project_root("mixed-numeric-branch-math-runtime");
-    let source_path = temp_root.join("mixed_numeric_branch_math_runtime.apex");
+    let source_path = temp_root.join("mixed_numeric_branch_math_runtime.arden");
     let output_path = temp_root.join("mixed_numeric_branch_math_runtime");
     let source = r#"
             import std.math.*;
@@ -4402,7 +4405,7 @@ fn compile_source_runs_mixed_numeric_branch_and_math_runtime() {
 #[test]
 fn compile_source_runs_mixed_numeric_match_expression_runtime() {
     let temp_root = make_temp_project_root("mixed-numeric-match-runtime");
-    let source_path = temp_root.join("mixed_numeric_match_runtime.apex");
+    let source_path = temp_root.join("mixed_numeric_match_runtime.arden");
     let output_path = temp_root.join("mixed_numeric_match_runtime");
     let source = r#"
             enum Kind {
@@ -4435,7 +4438,7 @@ fn compile_source_runs_mixed_numeric_match_expression_runtime() {
 #[test]
 fn compile_source_runs_mixed_numeric_assert_runtime() {
     let temp_root = make_temp_project_root("mixed-numeric-assert-runtime");
-    let source_path = temp_root.join("mixed_numeric_assert_runtime.apex");
+    let source_path = temp_root.join("mixed_numeric_assert_runtime.arden");
     let output_path = temp_root.join("mixed_numeric_assert_runtime");
     let source = r#"
             function main(): Integer {
@@ -4462,7 +4465,7 @@ fn compile_source_runs_mixed_numeric_assert_runtime() {
 #[test]
 fn compile_source_runs_mixed_numeric_match_literal_runtime() {
     let temp_root = make_temp_project_root("mixed-numeric-match-literal-runtime");
-    let source_path = temp_root.join("mixed_numeric_match_literal_runtime.apex");
+    let source_path = temp_root.join("mixed_numeric_match_literal_runtime.arden");
     let output_path = temp_root.join("mixed_numeric_match_literal_runtime");
     let source = r#"
             function main(): Integer {
@@ -4493,7 +4496,7 @@ fn compile_source_runs_mixed_numeric_match_literal_runtime() {
 #[test]
 fn compile_source_runs_integer_argument_to_float_parameter_runtime() {
     let temp_root = make_temp_project_root("int-to-float-param-runtime");
-    let source_path = temp_root.join("int_to_float_param_runtime.apex");
+    let source_path = temp_root.join("int_to_float_param_runtime.arden");
     let output_path = temp_root.join("int_to_float_param_runtime");
     let source = r#"
             function echo(value: Float): Float {
@@ -4521,7 +4524,7 @@ fn compile_source_runs_integer_argument_to_float_parameter_runtime() {
 #[test]
 fn compile_source_runs_integer_argument_to_float_method_and_constructor_runtime() {
     let temp_root = make_temp_project_root("int-to-float-method-ctor-runtime");
-    let source_path = temp_root.join("int_to_float_method_ctor_runtime.apex");
+    let source_path = temp_root.join("int_to_float_method_ctor_runtime.arden");
     let output_path = temp_root.join("int_to_float_method_ctor_runtime");
     let source = r#"
             class Boxed {
@@ -4556,7 +4559,7 @@ fn compile_source_runs_integer_argument_to_float_method_and_constructor_runtime(
 #[test]
 fn compile_source_runs_integer_argument_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("int-to-float-function-value-runtime");
-    let source_path = temp_root.join("int_to_float_function_value_runtime.apex");
+    let source_path = temp_root.join("int_to_float_function_value_runtime.arden");
     let output_path = temp_root.join("int_to_float_function_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -4581,7 +4584,7 @@ fn compile_source_runs_integer_argument_to_float_function_value_runtime() {
 #[test]
 fn compile_source_runs_integer_argument_to_float_module_local_function_call_runtime() {
     let temp_root = make_temp_project_root("int-to-float-module-local-function-call-runtime");
-    let source_path = temp_root.join("int_to_float_module_local_function_call_runtime.apex");
+    let source_path = temp_root.join("int_to_float_module_local_function_call_runtime.arden");
     let output_path = temp_root.join("int_to_float_module_local_function_call_runtime");
     let source = r#"
             module Mathy {
@@ -4611,7 +4614,7 @@ fn compile_source_runs_integer_argument_to_float_module_local_function_call_runt
 #[test]
 fn compile_source_runs_integer_argument_to_float_nested_module_function_call_runtime() {
     let temp_root = make_temp_project_root("int-to-float-nested-module-function-call-runtime");
-    let source_path = temp_root.join("int_to_float_nested_module_function_call_runtime.apex");
+    let source_path = temp_root.join("int_to_float_nested_module_function_call_runtime.arden");
     let output_path = temp_root.join("int_to_float_nested_module_function_call_runtime");
     let source = r#"
             module Mathy {
@@ -4643,7 +4646,7 @@ fn compile_source_runs_integer_argument_to_float_nested_module_function_call_run
 #[test]
 fn compile_source_runs_integer_argument_to_float_exact_import_alias_call_runtime() {
     let temp_root = make_temp_project_root("int-to-float-exact-import-alias-call-runtime");
-    let source_path = temp_root.join("int_to_float_exact_import_alias_call_runtime.apex");
+    let source_path = temp_root.join("int_to_float_exact_import_alias_call_runtime.arden");
     let output_path = temp_root.join("int_to_float_exact_import_alias_call_runtime");
     let source = r#"
             module Mathy {
@@ -4675,7 +4678,7 @@ fn compile_source_runs_integer_argument_to_float_exact_import_alias_call_runtime
 #[test]
 fn compile_source_runs_integer_argument_to_float_enum_payload_variant_runtime() {
     let temp_root = make_temp_project_root("int-to-float-enum-payload-variant-runtime");
-    let source_path = temp_root.join("int_to_float_enum_payload_variant_runtime.apex");
+    let source_path = temp_root.join("int_to_float_enum_payload_variant_runtime.arden");
     let output_path = temp_root.join("int_to_float_enum_payload_variant_runtime");
     let source = r#"
             enum Metric {
@@ -4707,7 +4710,7 @@ fn compile_source_runs_integer_argument_to_float_enum_payload_variant_runtime() 
 #[test]
 fn compile_source_runs_integer_argument_to_float_nested_enum_payload_variant_runtime() {
     let temp_root = make_temp_project_root("int-to-float-nested-enum-payload-variant-runtime");
-    let source_path = temp_root.join("int_to_float_nested_enum_payload_variant_runtime.apex");
+    let source_path = temp_root.join("int_to_float_nested_enum_payload_variant_runtime.arden");
     let output_path = temp_root.join("int_to_float_nested_enum_payload_variant_runtime");
     let source = r#"
             module Metrics {
@@ -4741,7 +4744,7 @@ fn compile_source_runs_integer_argument_to_float_nested_enum_payload_variant_run
 #[test]
 fn compile_source_runs_integer_argument_to_float_container_methods_runtime() {
     let temp_root = make_temp_project_root("int-to-float-container-methods-runtime");
-    let source_path = temp_root.join("int_to_float_container_methods_runtime.apex");
+    let source_path = temp_root.join("int_to_float_container_methods_runtime.arden");
     let output_path = temp_root.join("int_to_float_container_methods_runtime");
     let source = r#"
             function main(): Integer {
@@ -4774,7 +4777,7 @@ fn compile_source_runs_integer_argument_to_float_container_methods_runtime() {
 #[test]
 fn compile_source_runs_integer_assignment_into_float_containers_runtime() {
     let temp_root = make_temp_project_root("int-to-float-container-assign-runtime");
-    let source_path = temp_root.join("int_to_float_container_assign_runtime.apex");
+    let source_path = temp_root.join("int_to_float_container_assign_runtime.arden");
     let output_path = temp_root.join("int_to_float_container_assign_runtime");
     let source = r#"
             class Boxed {
@@ -4815,7 +4818,7 @@ fn compile_source_runs_integer_assignment_into_float_containers_runtime() {
 #[test]
 fn compile_source_runs_integer_assignment_into_float_fields_runtime() {
     let temp_root = make_temp_project_root("int-to-float-field-assign-runtime");
-    let source_path = temp_root.join("int_to_float_field_assign_runtime.apex");
+    let source_path = temp_root.join("int_to_float_field_assign_runtime.arden");
     let output_path = temp_root.join("int_to_float_field_assign_runtime");
     let source = r#"
             class Boxed {
@@ -4847,7 +4850,7 @@ fn compile_source_runs_integer_assignment_into_float_fields_runtime() {
 #[test]
 fn compile_source_runs_integer_arguments_to_float_math_unary_runtime() {
     let temp_root = make_temp_project_root("int-to-float-math-unary-runtime");
-    let source_path = temp_root.join("int_to_float_math_unary_runtime.apex");
+    let source_path = temp_root.join("int_to_float_math_unary_runtime.arden");
     let output_path = temp_root.join("int_to_float_math_unary_runtime");
     let source = r#"
             import std.math.*;
@@ -4875,7 +4878,7 @@ fn compile_source_runs_integer_arguments_to_float_math_unary_runtime() {
 #[test]
 fn compile_source_rejects_integer_payloads_for_float_option_and_result() {
     let temp_root = make_temp_project_root("reject-int-to-float-option-result");
-    let source_path = temp_root.join("reject_int_to_float_option_result.apex");
+    let source_path = temp_root.join("reject_int_to_float_option_result.arden");
     let output_path = temp_root.join("reject_int_to_float_option_result");
     let source = r#"
             function main(): Integer {
@@ -4905,7 +4908,7 @@ fn compile_source_rejects_integer_payloads_for_float_option_and_result() {
 #[test]
 fn compile_source_rejects_invalid_to_int_and_to_float_argument_types() {
     let temp_root = make_temp_project_root("invalid-to-int-to-float-types");
-    let source_path = temp_root.join("invalid_to_int_to_float_types.apex");
+    let source_path = temp_root.join("invalid_to_int_to_float_types.arden");
     let output_path = temp_root.join("invalid_to_int_to_float_types");
     let source = r#"
             function main(): Integer {
@@ -4926,7 +4929,7 @@ fn compile_source_rejects_invalid_to_int_and_to_float_argument_types() {
 #[test]
 fn compile_source_runs_string_to_int_conversion_runtime() {
     let temp_root = make_temp_project_root("string-to-int-runtime");
-    let source_path = temp_root.join("string_to_int_runtime.apex");
+    let source_path = temp_root.join("string_to_int_runtime.arden");
     let output_path = temp_root.join("string_to_int_runtime");
     let source = r#"
             function main(): Integer {
@@ -4951,7 +4954,7 @@ fn compile_source_runs_string_to_int_conversion_runtime() {
 #[test]
 fn compile_source_runs_to_string_on_option_runtime() {
     let temp_root = make_temp_project_root("to-string-option-runtime");
-    let source_path = temp_root.join("to_string_option_runtime.apex");
+    let source_path = temp_root.join("to_string_option_runtime.arden");
     let output_path = temp_root.join("to_string_option_runtime");
     let source = r#"
             import std.string.*;
@@ -4977,7 +4980,7 @@ fn compile_source_runs_to_string_on_option_runtime() {
 #[test]
 fn compile_source_runs_to_string_on_direct_option_none_runtime() {
     let temp_root = make_temp_project_root("to-string-direct-option-none-runtime");
-    let source_path = temp_root.join("to_string_direct_option_none_runtime.apex");
+    let source_path = temp_root.join("to_string_direct_option_none_runtime.arden");
     let output_path = temp_root.join("to_string_direct_option_none_runtime");
     let source = r#"
             import std.string.*;
@@ -5003,7 +5006,7 @@ fn compile_source_runs_to_string_on_direct_option_none_runtime() {
 #[test]
 fn compile_source_runs_to_string_on_nested_direct_option_runtime() {
     let temp_root = make_temp_project_root("to-string-nested-direct-option-runtime");
-    let source_path = temp_root.join("to_string_nested_direct_option_runtime.apex");
+    let source_path = temp_root.join("to_string_nested_direct_option_runtime.arden");
     let output_path = temp_root.join("to_string_nested_direct_option_runtime");
     let source = r#"
             import std.string.*;
@@ -5029,7 +5032,7 @@ fn compile_source_runs_to_string_on_nested_direct_option_runtime() {
 #[test]
 fn compile_source_runs_to_string_on_result_runtime() {
     let temp_root = make_temp_project_root("to-string-result-runtime");
-    let source_path = temp_root.join("to_string_result_runtime.apex");
+    let source_path = temp_root.join("to_string_result_runtime.arden");
     let output_path = temp_root.join("to_string_result_runtime");
     let source = r#"
             import std.string.*;
@@ -5056,7 +5059,7 @@ fn compile_source_runs_to_string_on_result_runtime() {
 #[test]
 fn compile_source_runs_to_string_on_direct_result_ok_runtime() {
     let temp_root = make_temp_project_root("to-string-direct-result-ok-runtime");
-    let source_path = temp_root.join("to_string_direct_result_ok_runtime.apex");
+    let source_path = temp_root.join("to_string_direct_result_ok_runtime.arden");
     let output_path = temp_root.join("to_string_direct_result_ok_runtime");
     let source = r#"
             import std.string.*;
@@ -5082,7 +5085,7 @@ fn compile_source_runs_to_string_on_direct_result_ok_runtime() {
 #[test]
 fn compile_source_runs_to_string_on_direct_result_error_with_option_none_runtime() {
     let temp_root = make_temp_project_root("to-string-direct-result-error-option-none-runtime");
-    let source_path = temp_root.join("to_string_direct_result_error_option_none_runtime.apex");
+    let source_path = temp_root.join("to_string_direct_result_error_option_none_runtime.arden");
     let output_path = temp_root.join("to_string_direct_result_error_option_none_runtime");
     let source = r#"
             import std.string.*;
@@ -5108,7 +5111,7 @@ fn compile_source_runs_to_string_on_direct_result_error_with_option_none_runtime
 #[test]
 fn compile_source_runs_to_string_on_char_runtime() {
     let temp_root = make_temp_project_root("to-string-char-runtime");
-    let source_path = temp_root.join("to_string_char_runtime.apex");
+    let source_path = temp_root.join("to_string_char_runtime.arden");
     let output_path = temp_root.join("to_string_char_runtime");
     let source = r#"
             import std.string.*;
@@ -5135,7 +5138,7 @@ fn compile_source_runs_to_string_on_char_runtime() {
 #[test]
 fn compile_source_runs_to_string_on_unicode_char_runtime() {
     let temp_root = make_temp_project_root("to-string-unicode-char-runtime");
-    let source_path = temp_root.join("to_string_unicode_char_runtime.apex");
+    let source_path = temp_root.join("to_string_unicode_char_runtime.arden");
     let output_path = temp_root.join("to_string_unicode_char_runtime");
     let source = r#"
             import std.string.*;
@@ -5162,7 +5165,7 @@ fn compile_source_runs_to_string_on_unicode_char_runtime() {
 #[test]
 fn compile_source_runs_str_ends_with_false_for_longer_suffix_runtime() {
     let temp_root = make_temp_project_root("str-ends-with-longer-suffix-runtime");
-    let source_path = temp_root.join("str_ends_with_longer_suffix_runtime.apex");
+    let source_path = temp_root.join("str_ends_with_longer_suffix_runtime.arden");
     let output_path = temp_root.join("str_ends_with_longer_suffix_runtime");
     let source = r#"
             import std.string.*;
@@ -5188,7 +5191,7 @@ fn compile_source_runs_str_ends_with_false_for_longer_suffix_runtime() {
 #[test]
 fn compile_source_runs_string_interpolation_on_option_runtime() {
     let temp_root = make_temp_project_root("string-interpolation-option-runtime");
-    let source_path = temp_root.join("string_interpolation_option_runtime.apex");
+    let source_path = temp_root.join("string_interpolation_option_runtime.arden");
     let output_path = temp_root.join("string_interpolation_option_runtime");
     let source = r#"
             function main(): Integer {
@@ -5212,7 +5215,7 @@ fn compile_source_runs_string_interpolation_on_option_runtime() {
 #[test]
 fn compile_source_runs_string_interpolation_on_direct_option_none_runtime() {
     let temp_root = make_temp_project_root("string-interpolation-direct-option-none-runtime");
-    let source_path = temp_root.join("string_interpolation_direct_option_none_runtime.apex");
+    let source_path = temp_root.join("string_interpolation_direct_option_none_runtime.arden");
     let output_path = temp_root.join("string_interpolation_direct_option_none_runtime");
     let source = r#"
             function main(): Integer {
@@ -5238,7 +5241,7 @@ fn compile_source_runs_string_interpolation_on_direct_result_error_with_option_n
     let temp_root =
         make_temp_project_root("string-interpolation-direct-result-error-option-none-runtime");
     let source_path =
-        temp_root.join("string_interpolation_direct_result_error_option_none_runtime.apex");
+        temp_root.join("string_interpolation_direct_result_error_option_none_runtime.arden");
     let output_path =
         temp_root.join("string_interpolation_direct_result_error_option_none_runtime");
     let source = r#"
@@ -5263,7 +5266,7 @@ fn compile_source_runs_string_interpolation_on_direct_result_error_with_option_n
 #[test]
 fn compile_source_runs_string_interpolation_on_result_runtime() {
     let temp_root = make_temp_project_root("string-interpolation-result-runtime");
-    let source_path = temp_root.join("string_interpolation_result_runtime.apex");
+    let source_path = temp_root.join("string_interpolation_result_runtime.arden");
     let output_path = temp_root.join("string_interpolation_result_runtime");
     let source = r#"
             function main(): Integer {
@@ -5288,7 +5291,7 @@ fn compile_source_runs_string_interpolation_on_result_runtime() {
 #[test]
 fn compile_source_runs_string_interpolation_on_direct_result_runtime() {
     let temp_root = make_temp_project_root("string-interpolation-direct-result-runtime");
-    let source_path = temp_root.join("string_interpolation_direct_result_runtime.apex");
+    let source_path = temp_root.join("string_interpolation_direct_result_runtime.arden");
     let output_path = temp_root.join("string_interpolation_direct_result_runtime");
     let source = r#"
             function main(): Integer {
@@ -5312,7 +5315,7 @@ fn compile_source_runs_string_interpolation_on_direct_result_runtime() {
 #[test]
 fn compile_source_reports_only_primary_error_for_invalid_interpolation_expr() {
     let temp_root = make_temp_project_root("string-interpolation-primary-error-runtime");
-    let source_path = temp_root.join("string_interpolation_primary_error_runtime.apex");
+    let source_path = temp_root.join("string_interpolation_primary_error_runtime.arden");
     let output_path = temp_root.join("string_interpolation_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5339,7 +5342,7 @@ fn compile_source_reports_only_primary_error_for_invalid_interpolation_expr() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_method_receiver() {
     let temp_root = make_temp_project_root("unknown-method-receiver-primary-error-runtime");
-    let source_path = temp_root.join("unknown_method_receiver_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_method_receiver_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_method_receiver_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5360,7 +5363,7 @@ fn compile_source_reports_only_primary_error_for_unknown_method_receiver() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_to_string_arg() {
     let temp_root = make_temp_project_root("unknown-to-string-arg-primary-error-runtime");
-    let source_path = temp_root.join("unknown_to_string_arg_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_to_string_arg_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_to_string_arg_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5381,7 +5384,7 @@ fn compile_source_reports_only_primary_error_for_unknown_to_string_arg() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_print_arg() {
     let temp_root = make_temp_project_root("unknown-print-arg-primary-error-runtime");
-    let source_path = temp_root.join("unknown_print_arg_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_print_arg_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_print_arg_primary_error_runtime");
     let source = r#"
             import std.io.print;
@@ -5404,7 +5407,7 @@ fn compile_source_reports_only_primary_error_for_unknown_print_arg() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_arithmetic_operand() {
     let temp_root = make_temp_project_root("unknown-arithmetic-operand-primary-error-runtime");
-    let source_path = temp_root.join("unknown_arithmetic_operand_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_arithmetic_operand_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_arithmetic_operand_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5428,7 +5431,7 @@ fn compile_source_reports_only_primary_error_for_unknown_arithmetic_operand() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_comparison_operand() {
     let temp_root = make_temp_project_root("unknown-comparison-operand-primary-error-runtime");
-    let source_path = temp_root.join("unknown_comparison_operand_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_comparison_operand_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_comparison_operand_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5449,7 +5452,7 @@ fn compile_source_reports_only_primary_error_for_unknown_comparison_operand() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_logical_operand() {
     let temp_root = make_temp_project_root("unknown-logical-operand-primary-error-runtime");
-    let source_path = temp_root.join("unknown_logical_operand_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_logical_operand_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_logical_operand_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5473,7 +5476,7 @@ fn compile_source_reports_only_primary_error_for_unknown_logical_operand() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_indexed_object() {
     let temp_root = make_temp_project_root("unknown-indexed-object-primary-error-runtime");
-    let source_path = temp_root.join("unknown_indexed_object_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_indexed_object_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_indexed_object_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5494,7 +5497,7 @@ fn compile_source_reports_only_primary_error_for_unknown_indexed_object() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_string_index() {
     let temp_root = make_temp_project_root("unknown-string-index-primary-error-runtime");
-    let source_path = temp_root.join("unknown_string_index_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_string_index_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_string_index_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5518,7 +5521,7 @@ fn compile_source_reports_only_primary_error_for_unknown_string_index() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_list_get_index() {
     let temp_root = make_temp_project_root("unknown-list-get-index-primary-error-runtime");
-    let source_path = temp_root.join("unknown_list_get_index_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_list_get_index_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_list_get_index_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5540,7 +5543,7 @@ fn compile_source_reports_only_primary_error_for_unknown_list_get_index() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_list_set_index() {
     let temp_root = make_temp_project_root("unknown-list-set-index-primary-error-runtime");
-    let source_path = temp_root.join("unknown_list_set_index_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_list_set_index_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_list_set_index_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5562,7 +5565,7 @@ fn compile_source_reports_only_primary_error_for_unknown_list_set_index() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_await_operand() {
     let temp_root = make_temp_project_root("unknown-await-operand-primary-error-runtime");
-    let source_path = temp_root.join("unknown_await_operand_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_await_operand_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_await_operand_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5586,7 +5589,7 @@ fn compile_source_reports_only_primary_error_for_unknown_await_operand() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_require_condition() {
     let temp_root = make_temp_project_root("unknown-require-condition-primary-error-runtime");
-    let source_path = temp_root.join("unknown_require_condition_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_require_condition_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_require_condition_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5610,7 +5613,7 @@ fn compile_source_reports_only_primary_error_for_unknown_require_condition() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_if_condition() {
     let temp_root = make_temp_project_root("unknown-if-condition-primary-error-runtime");
-    let source_path = temp_root.join("unknown_if_condition_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_if_condition_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_if_condition_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5631,7 +5634,7 @@ fn compile_source_reports_only_primary_error_for_unknown_if_condition() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_range_argument() {
     let temp_root = make_temp_project_root("unknown-range-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_range_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_range_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_range_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5655,7 +5658,7 @@ fn compile_source_reports_only_primary_error_for_unknown_range_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_exit_argument() {
     let temp_root = make_temp_project_root("unknown-exit-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_exit_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_exit_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_exit_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5676,7 +5679,7 @@ fn compile_source_reports_only_primary_error_for_unknown_exit_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_fail_argument() {
     let temp_root = make_temp_project_root("unknown-fail-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_fail_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_fail_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_fail_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5697,7 +5700,7 @@ fn compile_source_reports_only_primary_error_for_unknown_fail_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_assert_argument() {
     let temp_root = make_temp_project_root("unknown-assert-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_assert_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_assert_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_assert_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5721,7 +5724,7 @@ fn compile_source_reports_only_primary_error_for_unknown_assert_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_assert_true_argument() {
     let temp_root = make_temp_project_root("unknown-assert-true-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_assert_true_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_assert_true_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_assert_true_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5742,7 +5745,7 @@ fn compile_source_reports_only_primary_error_for_unknown_assert_true_argument() 
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_assert_false_argument() {
     let temp_root = make_temp_project_root("unknown-assert-false-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_assert_false_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_assert_false_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_assert_false_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -5763,7 +5766,7 @@ fn compile_source_reports_only_primary_error_for_unknown_assert_false_argument()
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_str_len_argument() {
     let temp_root = make_temp_project_root("unknown-str-len-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_str_len_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_str_len_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_str_len_argument_primary_error_runtime");
     let source = r#"
             import std.string.*;
@@ -5786,7 +5789,7 @@ fn compile_source_reports_only_primary_error_for_unknown_str_len_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_str_contains_argument() {
     let temp_root = make_temp_project_root("unknown-str-contains-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_str_contains_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_str_contains_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_str_contains_argument_primary_error_runtime");
     let source = r#"
             import std.string.*;
@@ -5813,7 +5816,8 @@ fn compile_source_reports_only_primary_error_for_unknown_str_contains_argument()
 fn compile_source_reports_only_primary_error_for_unknown_str_starts_with_argument() {
     let temp_root =
         make_temp_project_root("unknown-str-starts-with-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_str_starts_with_argument_primary_error_runtime.apex");
+    let source_path =
+        temp_root.join("unknown_str_starts_with_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_str_starts_with_argument_primary_error_runtime");
     let source = r#"
             import std.string.*;
@@ -5839,7 +5843,7 @@ fn compile_source_reports_only_primary_error_for_unknown_str_starts_with_argumen
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_str_ends_with_argument() {
     let temp_root = make_temp_project_root("unknown-str-ends-with-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_str_ends_with_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_str_ends_with_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_str_ends_with_argument_primary_error_runtime");
     let source = r#"
             import std.string.*;
@@ -5865,7 +5869,7 @@ fn compile_source_reports_only_primary_error_for_unknown_str_ends_with_argument(
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_str_compare_argument() {
     let temp_root = make_temp_project_root("unknown-str-compare-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_str_compare_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_str_compare_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_str_compare_argument_primary_error_runtime");
     let source = r#"
             import std.string.*;
@@ -5891,7 +5895,7 @@ fn compile_source_reports_only_primary_error_for_unknown_str_compare_argument() 
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_str_concat_argument() {
     let temp_root = make_temp_project_root("unknown-str-concat-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_str_concat_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_str_concat_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_str_concat_argument_primary_error_runtime");
     let source = r#"
             import std.string.*;
@@ -5917,7 +5921,7 @@ fn compile_source_reports_only_primary_error_for_unknown_str_concat_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_str_upper_argument() {
     let temp_root = make_temp_project_root("unknown-str-upper-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_str_upper_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_str_upper_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_str_upper_argument_primary_error_runtime");
     let source = r#"
             import std.string.*;
@@ -5940,7 +5944,7 @@ fn compile_source_reports_only_primary_error_for_unknown_str_upper_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_str_trim_argument() {
     let temp_root = make_temp_project_root("unknown-str-trim-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_str_trim_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_str_trim_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_str_trim_argument_primary_error_runtime");
     let source = r#"
             import std.string.*;
@@ -5963,7 +5967,7 @@ fn compile_source_reports_only_primary_error_for_unknown_str_trim_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_file_read_argument() {
     let temp_root = make_temp_project_root("unknown-file-read-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_file_read_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_file_read_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_file_read_argument_primary_error_runtime");
     let source = r#"
             import std.fs.*;
@@ -5986,7 +5990,7 @@ fn compile_source_reports_only_primary_error_for_unknown_file_read_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_file_exists_argument() {
     let temp_root = make_temp_project_root("unknown-file-exists-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_file_exists_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_file_exists_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_file_exists_argument_primary_error_runtime");
     let source = r#"
             import std.fs.*;
@@ -6009,7 +6013,7 @@ fn compile_source_reports_only_primary_error_for_unknown_file_exists_argument() 
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_file_delete_argument() {
     let temp_root = make_temp_project_root("unknown-file-delete-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_file_delete_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_file_delete_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_file_delete_argument_primary_error_runtime");
     let source = r#"
             import std.fs.*;
@@ -6032,7 +6036,7 @@ fn compile_source_reports_only_primary_error_for_unknown_file_delete_argument() 
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_file_write_path() {
     let temp_root = make_temp_project_root("unknown-file-write-path-primary-error-runtime");
-    let source_path = temp_root.join("unknown_file_write_path_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_file_write_path_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_file_write_path_primary_error_runtime");
     let source = r#"
             import std.fs.*;
@@ -6055,7 +6059,7 @@ fn compile_source_reports_only_primary_error_for_unknown_file_write_path() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_await_timeout_argument() {
     let temp_root = make_temp_project_root("unknown-await-timeout-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_await_timeout_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_await_timeout_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_await_timeout_argument_primary_error_runtime");
     let source = r#"
             async function work(): Task<Integer> { return 1; }
@@ -6081,7 +6085,7 @@ fn compile_source_reports_only_primary_error_for_unknown_await_timeout_argument(
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_args_get_argument() {
     let temp_root = make_temp_project_root("unknown-args-get-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_args_get_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_args_get_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_args_get_argument_primary_error_runtime");
     let source = r#"
             import std.args.*;
@@ -6104,7 +6108,7 @@ fn compile_source_reports_only_primary_error_for_unknown_args_get_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_time_now_argument() {
     let temp_root = make_temp_project_root("unknown-time-now-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_time_now_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_time_now_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_time_now_argument_primary_error_runtime");
     let source = r#"
             import std.time.*;
@@ -6127,7 +6131,7 @@ fn compile_source_reports_only_primary_error_for_unknown_time_now_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_time_sleep_argument() {
     let temp_root = make_temp_project_root("unknown-time-sleep-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_time_sleep_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_time_sleep_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_time_sleep_argument_primary_error_runtime");
     let source = r#"
             import std.time.*;
@@ -6153,7 +6157,7 @@ fn compile_source_reports_only_primary_error_for_unknown_time_sleep_argument() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_system_getenv_argument() {
     let temp_root = make_temp_project_root("unknown-system-getenv-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_system_getenv_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_system_getenv_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_system_getenv_argument_primary_error_runtime");
     let source = r#"
             import std.system.*;
@@ -6179,7 +6183,7 @@ fn compile_source_reports_only_primary_error_for_unknown_system_getenv_argument(
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_system_shell_argument() {
     let temp_root = make_temp_project_root("unknown-system-shell-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_system_shell_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_system_shell_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_system_shell_argument_primary_error_runtime");
     let source = r#"
             import std.system.*;
@@ -6205,7 +6209,7 @@ fn compile_source_reports_only_primary_error_for_unknown_system_shell_argument()
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_system_exec_argument() {
     let temp_root = make_temp_project_root("unknown-system-exec-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_system_exec_argument_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_system_exec_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_system_exec_argument_primary_error_runtime");
     let source = r#"
             import std.system.*;
@@ -6231,7 +6235,7 @@ fn compile_source_reports_only_primary_error_for_unknown_system_exec_argument() 
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_unary_neg_operand() {
     let temp_root = make_temp_project_root("unknown-unary-neg-operand-primary-error-runtime");
-    let source_path = temp_root.join("unknown_unary_neg_operand_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_unary_neg_operand_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_unary_neg_operand_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -6252,7 +6256,7 @@ fn compile_source_reports_only_primary_error_for_unknown_unary_neg_operand() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_unary_not_operand() {
     let temp_root = make_temp_project_root("unknown-unary-not-operand-primary-error-runtime");
-    let source_path = temp_root.join("unknown_unary_not_operand_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_unary_not_operand_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_unary_not_operand_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -6276,7 +6280,7 @@ fn compile_source_reports_only_primary_error_for_unknown_unary_not_operand() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_try_operand() {
     let temp_root = make_temp_project_root("unknown-try-operand-primary-error-runtime");
-    let source_path = temp_root.join("unknown_try_operand_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_try_operand_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_try_operand_primary_error_runtime");
     let source = r#"
             function helper(): Option<Integer> {
@@ -6305,7 +6309,7 @@ fn compile_source_reports_only_primary_error_for_unknown_try_operand() {
 #[test]
 fn compile_source_reports_only_primary_error_for_unknown_deref_operand() {
     let temp_root = make_temp_project_root("unknown-deref-operand-primary-error-runtime");
-    let source_path = temp_root.join("unknown_deref_operand_primary_error_runtime.apex");
+    let source_path = temp_root.join("unknown_deref_operand_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_deref_operand_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -6331,7 +6335,7 @@ fn compile_source_reports_only_primary_error_for_unknown_list_constructor_argume
     let temp_root =
         make_temp_project_root("unknown-list-constructor-argument-primary-error-runtime");
     let source_path =
-        temp_root.join("unknown_list_constructor_argument_primary_error_runtime.apex");
+        temp_root.join("unknown_list_constructor_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_list_constructor_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -6356,7 +6360,8 @@ fn compile_source_reports_only_primary_error_for_unknown_list_constructor_argume
 fn compile_source_reports_only_primary_error_for_unknown_map_constructor_argument() {
     let temp_root =
         make_temp_project_root("unknown-map-constructor-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_map_constructor_argument_primary_error_runtime.apex");
+    let source_path =
+        temp_root.join("unknown_map_constructor_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_map_constructor_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -6381,7 +6386,8 @@ fn compile_source_reports_only_primary_error_for_unknown_map_constructor_argumen
 fn compile_source_reports_only_primary_error_for_unknown_set_constructor_argument() {
     let temp_root =
         make_temp_project_root("unknown-set-constructor-argument-primary-error-runtime");
-    let source_path = temp_root.join("unknown_set_constructor_argument_primary_error_runtime.apex");
+    let source_path =
+        temp_root.join("unknown_set_constructor_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_set_constructor_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -6407,7 +6413,7 @@ fn compile_source_reports_only_primary_error_for_unknown_option_constructor_argu
     let temp_root =
         make_temp_project_root("unknown-option-constructor-argument-primary-error-runtime");
     let source_path =
-        temp_root.join("unknown_option_constructor_argument_primary_error_runtime.apex");
+        temp_root.join("unknown_option_constructor_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_option_constructor_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -6433,7 +6439,7 @@ fn compile_source_reports_only_primary_error_for_unknown_result_constructor_argu
     let temp_root =
         make_temp_project_root("unknown-result-constructor-argument-primary-error-runtime");
     let source_path =
-        temp_root.join("unknown_result_constructor_argument_primary_error_runtime.apex");
+        temp_root.join("unknown_result_constructor_argument_primary_error_runtime.arden");
     let output_path = temp_root.join("unknown_result_constructor_argument_primary_error_runtime");
     let source = r#"
             function main(): None {
@@ -6457,7 +6463,7 @@ fn compile_source_reports_only_primary_error_for_unknown_result_constructor_argu
 #[test]
 fn compile_source_no_check_rejects_invalid_list_constructor_arity_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-list-ctor-arity");
-    let source_path = temp_root.join("no_check_invalid_list_ctor_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_list_ctor_arity.arden");
     let output_path = temp_root.join("no_check_invalid_list_ctor_arity");
     let source = r#"
             function main(): Integer {
@@ -6480,7 +6486,7 @@ fn compile_source_no_check_rejects_invalid_list_constructor_arity_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_integer_list_capacity_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-list-capacity-type");
-    let source_path = temp_root.join("no_check_invalid_list_capacity_type.apex");
+    let source_path = temp_root.join("no_check_invalid_list_capacity_type.arden");
     let output_path = temp_root.join("no_check_invalid_list_capacity_type");
     let source = r#"
             function main(): Integer {
@@ -6503,7 +6509,7 @@ fn compile_source_no_check_rejects_non_integer_list_capacity_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_invalid_map_constructor_arity_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-map-ctor-arity");
-    let source_path = temp_root.join("no_check_invalid_map_ctor_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_map_ctor_arity.arden");
     let output_path = temp_root.join("no_check_invalid_map_ctor_arity");
     let source = r#"
             function main(): Integer {
@@ -6526,7 +6532,7 @@ fn compile_source_no_check_rejects_invalid_map_constructor_arity_in_codegen() {
 #[test]
 fn compile_source_no_check_reports_undefined_variable_for_unknown_method_receiver() {
     let temp_root = make_temp_project_root("no-check-unknown-method-receiver-primary-error");
-    let source_path = temp_root.join("no_check_unknown_method_receiver_primary_error.apex");
+    let source_path = temp_root.join("no_check_unknown_method_receiver_primary_error.arden");
     let output_path = temp_root.join("no_check_unknown_method_receiver_primary_error");
     let source = r#"
             function main(): Integer {
@@ -6550,7 +6556,7 @@ fn compile_source_no_check_reports_undefined_variable_for_unknown_method_receive
 #[test]
 fn compile_source_no_check_rejects_module_local_import_alias_leaking_to_top_level() {
     let temp_root = make_temp_project_root("no-check-module-local-import-alias-leak");
-    let source_path = temp_root.join("no_check_module_local_import_alias_leak.apex");
+    let source_path = temp_root.join("no_check_module_local_import_alias_leak.arden");
     let output_path = temp_root.join("no_check_module_local_import_alias_leak");
     let source = r#"
             module Inner {
@@ -6579,7 +6585,7 @@ fn compile_source_no_check_rejects_module_local_import_alias_leaking_to_top_leve
 #[test]
 fn compile_source_no_check_rejects_module_local_wildcard_import_leaking_to_top_level() {
     let temp_root = make_temp_project_root("no-check-module-local-wildcard-import-leak");
-    let source_path = temp_root.join("no_check_module_local_wildcard_import_leak.apex");
+    let source_path = temp_root.join("no_check_module_local_wildcard_import_leak.arden");
     let output_path = temp_root.join("no_check_module_local_wildcard_import_leak");
     let source = r#"
             module Inner {
@@ -6607,7 +6613,7 @@ fn compile_source_no_check_rejects_module_local_wildcard_import_leaking_to_top_l
 #[test]
 fn compile_source_no_check_reports_undefined_variable_for_unknown_field_root() {
     let temp_root = make_temp_project_root("no-check-unknown-field-root-primary-error");
-    let source_path = temp_root.join("no_check_unknown_field_root_primary_error.apex");
+    let source_path = temp_root.join("no_check_unknown_field_root_primary_error.arden");
     let output_path = temp_root.join("no_check_unknown_field_root_primary_error");
     let source = r#"
             function main(): Integer {
@@ -6627,7 +6633,7 @@ fn compile_source_no_check_reports_undefined_variable_for_unknown_field_root() {
 #[test]
 fn compile_source_no_check_rejects_nested_undefined_root_before_read_or_method_diagnostic() {
     let temp_root = make_temp_project_root("no-check-nested-undefined-root-read-method");
-    let read_source_path = temp_root.join("no_check_nested_undefined_root_read.apex");
+    let read_source_path = temp_root.join("no_check_nested_undefined_root_read.arden");
     let read_output_path = temp_root.join("no_check_nested_undefined_root_read");
     let read_source = r#"
             function main(): None {
@@ -6652,7 +6658,7 @@ fn compile_source_no_check_rejects_nested_undefined_root_before_read_or_method_d
         "{read_err}"
     );
 
-    let method_source_path = temp_root.join("no_check_nested_undefined_root_method.apex");
+    let method_source_path = temp_root.join("no_check_nested_undefined_root_method.arden");
     let method_output_path = temp_root.join("no_check_nested_undefined_root_method");
     let method_source = r#"
             function main(): None {
@@ -6683,7 +6689,7 @@ fn compile_source_no_check_rejects_nested_undefined_root_before_read_or_method_d
 #[test]
 fn compile_source_no_check_reports_undefined_function_for_unknown_direct_call() {
     let temp_root = make_temp_project_root("no-check-unknown-direct-call-primary-error");
-    let source_path = temp_root.join("no_check_unknown_direct_call_primary_error.apex");
+    let source_path = temp_root.join("no_check_unknown_direct_call_primary_error.arden");
     let output_path = temp_root.join("no_check_unknown_direct_call_primary_error");
     let source = r#"
             function main(): Integer {
@@ -6703,7 +6709,7 @@ fn compile_source_no_check_reports_undefined_function_for_unknown_direct_call() 
 #[test]
 fn compile_source_no_check_reports_undefined_variable_for_unknown_function_value() {
     let temp_root = make_temp_project_root("no-check-unknown-function-value-primary-error");
-    let source_path = temp_root.join("no_check_unknown_function_value_primary_error.apex");
+    let source_path = temp_root.join("no_check_unknown_function_value_primary_error.arden");
     let output_path = temp_root.join("no_check_unknown_function_value_primary_error");
     let source = r#"
             function main(): None {
@@ -6724,7 +6730,7 @@ fn compile_source_no_check_reports_undefined_variable_for_unknown_function_value
 #[test]
 fn compile_source_no_check_rejects_literal_call_with_non_function_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-literal-call-non-function-type");
-    let source_path = temp_root.join("no_check_literal_call_non_function_type.apex");
+    let source_path = temp_root.join("no_check_literal_call_non_function_type.arden");
     let output_path = temp_root.join("no_check_literal_call_non_function_type");
     let source = r#"
             function main(): Integer {
@@ -6747,7 +6753,7 @@ fn compile_source_no_check_rejects_literal_call_with_non_function_type_diagnosti
 #[test]
 fn compile_source_rejects_exact_import_alias_non_function_call_with_type_diagnostic() {
     let temp_root = make_temp_project_root("checked-exact-import-alias-call-non-function-type");
-    let source_path = temp_root.join("checked_exact_import_alias_call_non_function_type.apex");
+    let source_path = temp_root.join("checked_exact_import_alias_call_non_function_type.arden");
     let output_path = temp_root.join("checked_exact_import_alias_call_non_function_type");
     let source = r#"
             import std.system.cwd as CurrentDir;
@@ -6777,7 +6783,7 @@ fn compile_source_rejects_exact_import_integer_alias_non_function_call_with_type
     let temp_root =
         make_temp_project_root("checked-exact-import-integer-alias-call-non-function-type");
     let source_path =
-        temp_root.join("checked_exact_import_integer_alias_call_non_function_type.apex");
+        temp_root.join("checked_exact_import_integer_alias_call_non_function_type.arden");
     let output_path = temp_root.join("checked_exact_import_integer_alias_call_non_function_type");
     let source = r#"
             import std.args.count as ArgCount;
@@ -6801,7 +6807,7 @@ fn compile_source_rejects_exact_import_integer_alias_non_function_call_with_type
 #[test]
 fn compile_source_no_check_rejects_local_non_function_call_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-local-call-non-function-type");
-    let source_path = temp_root.join("no_check_local_call_non_function_type.apex");
+    let source_path = temp_root.join("no_check_local_call_non_function_type.arden");
     let output_path = temp_root.join("no_check_local_call_non_function_type");
     let source = r#"
             function main(): Integer {
@@ -6825,7 +6831,7 @@ fn compile_source_no_check_rejects_local_non_function_call_with_type_diagnostic(
 #[test]
 fn compile_source_no_check_rejects_exact_import_alias_non_function_call_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-exact-import-alias-call-non-function-type");
-    let source_path = temp_root.join("no_check_exact_import_alias_call_non_function_type.apex");
+    let source_path = temp_root.join("no_check_exact_import_alias_call_non_function_type.arden");
     let output_path = temp_root.join("no_check_exact_import_alias_call_non_function_type");
     let source = r#"
             import std.system.cwd as CurrentDir;
@@ -6851,7 +6857,7 @@ fn compile_source_no_check_rejects_exact_import_alias_non_function_call_with_typ
 fn compile_source_no_check_rejects_module_local_non_function_call_with_user_facing_type_diagnostic()
 {
     let temp_root = make_temp_project_root("no-check-module-local-call-non-function-type");
-    let source_path = temp_root.join("no_check_module_local_call_non_function_type.apex");
+    let source_path = temp_root.join("no_check_module_local_call_non_function_type.arden");
     let output_path = temp_root.join("no_check_module_local_call_non_function_type");
     let source = r#"
             module M {
@@ -6882,7 +6888,7 @@ fn compile_source_no_check_rejects_module_local_non_function_call_with_user_faci
 #[test]
 fn compile_source_no_check_runs_module_local_constructor_in_single_file_mode() {
     let temp_root = make_temp_project_root("no-check-module-local-constructor-runtime");
-    let source_path = temp_root.join("no_check_module_local_constructor_runtime.apex");
+    let source_path = temp_root.join("no_check_module_local_constructor_runtime.arden");
     let output_path = temp_root.join("no_check_module_local_constructor_runtime");
     let source = r#"
             module M {
@@ -6919,7 +6925,7 @@ fn compile_source_no_check_runs_module_local_constructor_in_single_file_mode() {
 #[test]
 fn compile_source_no_check_runs_current_package_namespace_alias_constructor() {
     let temp_root = make_temp_project_root("no-check-current-package-namespace-alias-ctor");
-    let source_path = temp_root.join("no_check_current_package_namespace_alias_ctor.apex");
+    let source_path = temp_root.join("no_check_current_package_namespace_alias_ctor.arden");
     let output_path = temp_root.join("no_check_current_package_namespace_alias_ctor");
     let source = r#"
             package app;
@@ -6956,7 +6962,7 @@ fn compile_source_no_check_runs_current_package_namespace_alias_constructor() {
 #[test]
 fn compile_source_no_check_runs_current_package_exact_import_class_alias_constructor() {
     let temp_root = make_temp_project_root("no-check-current-package-exact-alias-ctor");
-    let source_path = temp_root.join("no_check_current_package_exact_alias_ctor.apex");
+    let source_path = temp_root.join("no_check_current_package_exact_alias_ctor.arden");
     let output_path = temp_root.join("no_check_current_package_exact_alias_ctor");
     let source = r#"
             package app;
@@ -6993,7 +6999,7 @@ fn compile_source_no_check_runs_current_package_exact_import_class_alias_constru
 #[test]
 fn compile_source_no_check_runs_current_package_exact_import_generic_class_alias_constructor() {
     let temp_root = make_temp_project_root("no-check-current-package-exact-generic-alias-ctor");
-    let source_path = temp_root.join("no_check_current_package_exact_generic_alias_ctor.apex");
+    let source_path = temp_root.join("no_check_current_package_exact_generic_alias_ctor.arden");
     let output_path = temp_root.join("no_check_current_package_exact_generic_alias_ctor");
     let source = r#"
             package app;
@@ -7033,7 +7039,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_generic_class_al
     let temp_root =
         make_temp_project_root("no-check-current-package-exact-generic-alias-non-function");
     let source_path =
-        temp_root.join("no_check_current_package_exact_generic_alias_non_function.apex");
+        temp_root.join("no_check_current_package_exact_generic_alias_non_function.arden");
     let output_path = temp_root.join("no_check_current_package_exact_generic_alias_non_function");
     let source = r#"
             package app;
@@ -7070,7 +7076,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_generic_class_al
 fn compile_source_no_check_rejects_current_package_exact_import_generic_class_alias_index_with_user_facing_type(
 ) {
     let temp_root = make_temp_project_root("no-check-current-package-exact-generic-alias-index");
-    let source_path = temp_root.join("no_check_current_package_exact_generic_alias_index.apex");
+    let source_path = temp_root.join("no_check_current_package_exact_generic_alias_index.arden");
     let output_path = temp_root.join("no_check_current_package_exact_generic_alias_index");
     let source = r#"
             package app;
@@ -7104,7 +7110,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_generic_class_al
 fn compile_source_no_check_rejects_current_package_exact_import_generic_class_alias_println_with_user_facing_type(
 ) {
     let temp_root = make_temp_project_root("no-check-current-package-exact-generic-alias-println");
-    let source_path = temp_root.join("no_check_current_package_exact_generic_alias_println.apex");
+    let source_path = temp_root.join("no_check_current_package_exact_generic_alias_println.arden");
     let output_path = temp_root.join("no_check_current_package_exact_generic_alias_println");
     let source = r#"
             package app;
@@ -7141,7 +7147,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_list_generic_cla
     let temp_root =
         make_temp_project_root("no-check-current-package-exact-list-generic-alias-index");
     let source_path =
-        temp_root.join("no_check_current_package_exact_list_generic_alias_index.apex");
+        temp_root.join("no_check_current_package_exact_list_generic_alias_index.arden");
     let output_path = temp_root.join("no_check_current_package_exact_list_generic_alias_index");
     let source = r#"
             package app;
@@ -7180,7 +7186,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_option_generic_c
     let temp_root =
         make_temp_project_root("no-check-current-package-exact-option-generic-alias-println");
     let source_path =
-        temp_root.join("no_check_current_package_exact_option_generic_alias_println.apex");
+        temp_root.join("no_check_current_package_exact_option_generic_alias_println.arden");
     let output_path = temp_root.join("no_check_current_package_exact_option_generic_alias_println");
     let source = r#"
             package app;
@@ -7216,7 +7222,8 @@ fn compile_source_no_check_rejects_current_package_exact_import_map_generic_clas
 ) {
     let temp_root =
         make_temp_project_root("no-check-current-package-exact-map-generic-alias-index");
-    let source_path = temp_root.join("no_check_current_package_exact_map_generic_alias_index.apex");
+    let source_path =
+        temp_root.join("no_check_current_package_exact_map_generic_alias_index.arden");
     let output_path = temp_root.join("no_check_current_package_exact_map_generic_alias_index");
     let source = r#"
             package app;
@@ -7255,7 +7262,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_result_generic_c
     let temp_root =
         make_temp_project_root("no-check-current-package-exact-result-generic-alias-println");
     let source_path =
-        temp_root.join("no_check_current_package_exact_result_generic_alias_println.apex");
+        temp_root.join("no_check_current_package_exact_result_generic_alias_println.arden");
     let output_path = temp_root.join("no_check_current_package_exact_result_generic_alias_println");
     let source = r#"
             package app;
@@ -7292,7 +7299,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_function_generic
     let temp_root =
         make_temp_project_root("no-check-current-package-exact-function-generic-alias-index");
     let source_path =
-        temp_root.join("no_check_current_package_exact_function_generic_alias_index.apex");
+        temp_root.join("no_check_current_package_exact_function_generic_alias_index.arden");
     let output_path = temp_root.join("no_check_current_package_exact_function_generic_alias_index");
     let source = r#"
             package app;
@@ -7335,8 +7342,8 @@ fn compile_source_no_check_rejects_current_package_exact_import_nested_map_resul
     let temp_root = make_temp_project_root(
         "no-check-current-package-exact-nested-map-result-generic-alias-index",
     );
-    let source_path =
-        temp_root.join("no_check_current_package_exact_nested_map_result_generic_alias_index.apex");
+    let source_path = temp_root
+        .join("no_check_current_package_exact_nested_map_result_generic_alias_index.arden");
     let output_path =
         temp_root.join("no_check_current_package_exact_nested_map_result_generic_alias_index");
     let source = r#"
@@ -7380,7 +7387,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_list_function_ge
         "no-check-current-package-exact-list-function-generic-alias-println",
     );
     let source_path =
-        temp_root.join("no_check_current_package_exact_list_function_generic_alias_println.apex");
+        temp_root.join("no_check_current_package_exact_list_function_generic_alias_println.arden");
     let output_path =
         temp_root.join("no_check_current_package_exact_list_function_generic_alias_println");
     let source = r#"
@@ -7422,7 +7429,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_nested_named_gen
         "no-check-current-package-exact-nested-named-generic-map-result-class-alias-index",
     );
     let source_path = temp_root.join(
-        "no_check_current_package_exact_nested_named_generic_map_result_class_alias_index.apex",
+        "no_check_current_package_exact_nested_named_generic_map_result_class_alias_index.arden",
     );
     let output_path = temp_root
         .join("no_check_current_package_exact_nested_named_generic_map_result_class_alias_index");
@@ -7472,7 +7479,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_named_generic_pa
     let temp_root =
         make_temp_project_root("no-check-current-package-exact-named-generic-payload-alias-index");
     let source_path =
-        temp_root.join("no_check_current_package_exact_named_generic_payload_alias_index.apex");
+        temp_root.join("no_check_current_package_exact_named_generic_payload_alias_index.arden");
     let output_path =
         temp_root.join("no_check_current_package_exact_named_generic_payload_alias_index");
     let source = r#"
@@ -7518,7 +7525,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_underscored_name
         "no-check-current-package-exact-underscored-named-generic-payload-alias-index",
     );
     let source_path = temp_root
-        .join("no_check_current_package_exact_underscored_named_generic_payload_alias_index.apex");
+        .join("no_check_current_package_exact_underscored_named_generic_payload_alias_index.arden");
     let output_path = temp_root
         .join("no_check_current_package_exact_underscored_named_generic_payload_alias_index");
     let source = r#"
@@ -7564,7 +7571,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_underscored_two_
         "no-check-current-package-exact-underscored-two-arg-named-generic-payload-alias-index",
     );
     let source_path = temp_root.join(
-        "no_check_current_package_exact_underscored_two_arg_named_generic_payload_alias_index.apex",
+        "no_check_current_package_exact_underscored_two_arg_named_generic_payload_alias_index.arden",
     );
     let output_path = temp_root.join(
         "no_check_current_package_exact_underscored_two_arg_named_generic_payload_alias_index",
@@ -7619,7 +7626,7 @@ fn compile_source_no_check_rejects_current_package_exact_import_underscored_two_
 #[test]
 fn compile_source_no_check_rejects_field_non_function_call_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-field-call-non-function-type");
-    let source_path = temp_root.join("no_check_field_call_non_function_type.apex");
+    let source_path = temp_root.join("no_check_field_call_non_function_type.arden");
     let output_path = temp_root.join("no_check_field_call_non_function_type");
     let source = r#"
             class Box {
@@ -7653,7 +7660,7 @@ fn compile_source_no_check_rejects_field_non_function_call_with_type_diagnostic(
 #[test]
 fn compile_source_no_check_rejects_integer_indexing_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-integer-index-type");
-    let source_path = temp_root.join("no_check_integer_index_type.apex");
+    let source_path = temp_root.join("no_check_integer_index_type.arden");
     let output_path = temp_root.join("no_check_integer_index_type");
     let source = r#"
             function main(): Integer {
@@ -7674,7 +7681,7 @@ fn compile_source_no_check_rejects_integer_indexing_with_type_diagnostic() {
 #[test]
 fn compile_source_no_check_rejects_class_indexing_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-class-index-type");
-    let source_path = temp_root.join("no_check_class_index_type.apex");
+    let source_path = temp_root.join("no_check_class_index_type.arden");
     let output_path = temp_root.join("no_check_class_index_type");
     let source = r#"
             class Box {
@@ -7702,7 +7709,7 @@ fn compile_source_no_check_rejects_class_indexing_with_type_diagnostic() {
 #[test]
 fn compile_source_no_check_rejects_module_local_class_indexing_with_user_facing_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-module-local-class-index-type");
-    let source_path = temp_root.join("no_check_module_local_class_index_type.apex");
+    let source_path = temp_root.join("no_check_module_local_class_index_type.arden");
     let output_path = temp_root.join("no_check_module_local_class_index_type");
     let source = r#"
             module M {
@@ -7735,7 +7742,7 @@ fn compile_source_no_check_rejects_module_local_class_indexing_with_user_facing_
 #[test]
 fn compile_source_no_check_rejects_integer_index_assignment_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-integer-index-assign-type");
-    let source_path = temp_root.join("no_check_integer_index_assign_type.apex");
+    let source_path = temp_root.join("no_check_integer_index_assign_type.arden");
     let output_path = temp_root.join("no_check_integer_index_assign_type");
     let source = r#"
             function main(): None {
@@ -7757,7 +7764,7 @@ fn compile_source_no_check_rejects_integer_index_assignment_with_type_diagnostic
 #[test]
 fn compile_source_no_check_rejects_class_index_assignment_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-class-index-assign-type");
-    let source_path = temp_root.join("no_check_class_index_assign_type.apex");
+    let source_path = temp_root.join("no_check_class_index_assign_type.arden");
     let output_path = temp_root.join("no_check_class_index_assign_type");
     let source = r#"
             class Box {
@@ -7787,7 +7794,7 @@ fn compile_source_no_check_rejects_class_index_assignment_with_type_diagnostic()
 fn compile_source_no_check_rejects_module_local_class_index_assignment_with_user_facing_type_diagnostic(
 ) {
     let temp_root = make_temp_project_root("no-check-module-local-class-index-assign-type");
-    let source_path = temp_root.join("no_check_module_local_class_index_assign_type.apex");
+    let source_path = temp_root.join("no_check_module_local_class_index_assign_type.arden");
     let output_path = temp_root.join("no_check_module_local_class_index_assign_type");
     let source = r#"
             module M {
@@ -7816,7 +7823,7 @@ fn compile_source_no_check_rejects_module_local_class_index_assignment_with_user
 #[test]
 fn compile_source_no_check_rejects_integer_deref_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-integer-deref-type");
-    let source_path = temp_root.join("no_check_integer_deref_type.apex");
+    let source_path = temp_root.join("no_check_integer_deref_type.arden");
     let output_path = temp_root.join("no_check_integer_deref_type");
     let source = r#"
             function main(): Integer {
@@ -7840,7 +7847,7 @@ fn compile_source_no_check_rejects_integer_deref_with_type_diagnostic() {
 #[test]
 fn compile_source_no_check_rejects_literal_deref_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-literal-deref-type");
-    let source_path = temp_root.join("no_check_literal_deref_type.apex");
+    let source_path = temp_root.join("no_check_literal_deref_type.arden");
     let output_path = temp_root.join("no_check_literal_deref_type");
     let source = r#"
             function main(): Integer {
@@ -7863,7 +7870,7 @@ fn compile_source_no_check_rejects_literal_deref_with_type_diagnostic() {
 #[test]
 fn compile_source_no_check_rejects_exact_import_alias_deref_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-exact-import-alias-deref-type");
-    let source_path = temp_root.join("no_check_exact_import_alias_deref_type.apex");
+    let source_path = temp_root.join("no_check_exact_import_alias_deref_type.arden");
     let output_path = temp_root.join("no_check_exact_import_alias_deref_type");
     let source = r#"
             import std.system.cwd as CurrentDir;
@@ -7888,7 +7895,7 @@ fn compile_source_no_check_rejects_exact_import_alias_deref_with_type_diagnostic
 #[test]
 fn compile_source_no_check_rejects_module_local_deref_with_user_facing_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-module-local-deref-type");
-    let source_path = temp_root.join("no_check_module_local_deref_type.apex");
+    let source_path = temp_root.join("no_check_module_local_deref_type.arden");
     let output_path = temp_root.join("no_check_module_local_deref_type");
     let source = r#"
             module M {
@@ -7922,7 +7929,7 @@ fn compile_source_no_check_rejects_module_local_deref_with_user_facing_type_diag
 #[test]
 fn compile_source_no_check_rejects_integer_deref_assignment_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-integer-deref-assign-type");
-    let source_path = temp_root.join("no_check_integer_deref_assign_type.apex");
+    let source_path = temp_root.join("no_check_integer_deref_assign_type.arden");
     let output_path = temp_root.join("no_check_integer_deref_assign_type");
     let source = r#"
             function main(): None {
@@ -7947,7 +7954,7 @@ fn compile_source_no_check_rejects_integer_deref_assignment_with_type_diagnostic
 #[test]
 fn compile_source_no_check_rejects_try_on_non_option_result_type() {
     let temp_root = make_temp_project_root("no-check-invalid-try-non-result-type");
-    let source_path = temp_root.join("no_check_invalid_try_non_result_type.apex");
+    let source_path = temp_root.join("no_check_invalid_try_non_result_type.arden");
     let output_path = temp_root.join("no_check_invalid_try_non_result_type");
     let source = r#"
             function main(): None {
@@ -7973,7 +7980,7 @@ fn compile_source_no_check_rejects_try_on_non_option_result_type() {
 fn compile_source_no_check_rejects_try_on_module_local_non_option_result_type_with_user_facing_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-try-module-local-non-result");
-    let source_path = temp_root.join("no_check_invalid_try_module_local_non_result.apex");
+    let source_path = temp_root.join("no_check_invalid_try_module_local_non_result.arden");
     let output_path = temp_root.join("no_check_invalid_try_module_local_non_result");
     let source = r#"
             module M {
@@ -8007,7 +8014,7 @@ fn compile_source_no_check_rejects_try_on_module_local_non_option_result_type_wi
 #[test]
 fn compile_source_no_check_preserves_box_constructor_payload_in_codegen() {
     let temp_root = make_temp_project_root("no-check-box-payload-runtime");
-    let source_path = temp_root.join("no_check_box_payload_runtime.apex");
+    let source_path = temp_root.join("no_check_box_payload_runtime.arden");
     let output_path = temp_root.join("no_check_box_payload_runtime");
     let source = r#"
             function main(): Integer {
@@ -8031,7 +8038,7 @@ fn compile_source_no_check_preserves_box_constructor_payload_in_codegen() {
 #[test]
 fn compile_source_no_check_preserves_rc_constructor_payload_in_codegen() {
     let temp_root = make_temp_project_root("no-check-rc-payload-runtime");
-    let source_path = temp_root.join("no_check_rc_payload_runtime.apex");
+    let source_path = temp_root.join("no_check_rc_payload_runtime.arden");
     let output_path = temp_root.join("no_check_rc_payload_runtime");
     let source = r#"
             function main(): Integer {
@@ -8055,7 +8062,7 @@ fn compile_source_no_check_preserves_rc_constructor_payload_in_codegen() {
 #[test]
 fn compile_source_no_check_preserves_arc_constructor_payload_in_codegen() {
     let temp_root = make_temp_project_root("no-check-arc-payload-runtime");
-    let source_path = temp_root.join("no_check_arc_payload_runtime.apex");
+    let source_path = temp_root.join("no_check_arc_payload_runtime.arden");
     let output_path = temp_root.join("no_check_arc_payload_runtime");
     let source = r#"
             function main(): Integer {
@@ -8079,7 +8086,7 @@ fn compile_source_no_check_preserves_arc_constructor_payload_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_assignment_to_immutable_variable_in_codegen() {
     let temp_root = make_temp_project_root("no-check-immutable-local-assign");
-    let source_path = temp_root.join("no_check_immutable_local_assign.apex");
+    let source_path = temp_root.join("no_check_immutable_local_assign.arden");
     let output_path = temp_root.join("no_check_immutable_local_assign");
     let source = r#"
             function main(): Integer {
@@ -8103,7 +8110,7 @@ fn compile_source_no_check_rejects_assignment_to_immutable_variable_in_codegen()
 #[test]
 fn compile_source_no_check_rejects_assignment_through_immutable_reference_in_codegen() {
     let temp_root = make_temp_project_root("no-check-immutable-ref-assign");
-    let source_path = temp_root.join("no_check_immutable_ref_assign.apex");
+    let source_path = temp_root.join("no_check_immutable_ref_assign.arden");
     let output_path = temp_root.join("no_check_immutable_ref_assign");
     let source = r#"
             function main(): Integer {
@@ -8129,7 +8136,7 @@ fn compile_source_no_check_rejects_assignment_through_immutable_reference_in_cod
 #[test]
 fn compile_source_no_check_rejects_deref_assignment_through_immutable_reference_in_codegen() {
     let temp_root = make_temp_project_root("no-check-immutable-deref-assign");
-    let source_path = temp_root.join("no_check_immutable_deref_assign.apex");
+    let source_path = temp_root.join("no_check_immutable_deref_assign.arden");
     let output_path = temp_root.join("no_check_immutable_deref_assign");
     let source = r#"
             function main(): Integer {
@@ -8154,7 +8161,7 @@ fn compile_source_no_check_rejects_deref_assignment_through_immutable_reference_
 #[test]
 fn compile_source_runs_mutable_function_parameter_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-function-parameter-assignment-runtime");
-    let source_path = temp_root.join("mutable_function_parameter_assignment_runtime.apex");
+    let source_path = temp_root.join("mutable_function_parameter_assignment_runtime.arden");
     let output_path = temp_root.join("mutable_function_parameter_assignment_runtime");
     let source = r#"
             function bump(mut value: Integer): Integer {
@@ -8182,7 +8189,7 @@ fn compile_source_runs_mutable_function_parameter_assignment_runtime() {
 #[test]
 fn compile_source_runs_mutable_method_parameter_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-method-parameter-assignment-runtime");
-    let source_path = temp_root.join("mutable_method_parameter_assignment_runtime.apex");
+    let source_path = temp_root.join("mutable_method_parameter_assignment_runtime.arden");
     let output_path = temp_root.join("mutable_method_parameter_assignment_runtime");
     let source = r#"
             class Counter {
@@ -8213,7 +8220,7 @@ fn compile_source_runs_mutable_method_parameter_assignment_runtime() {
 #[test]
 fn compile_source_runs_mutable_constructor_parameter_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-constructor-parameter-assignment-runtime");
-    let source_path = temp_root.join("mutable_constructor_parameter_assignment_runtime.apex");
+    let source_path = temp_root.join("mutable_constructor_parameter_assignment_runtime.arden");
     let output_path = temp_root.join("mutable_constructor_parameter_assignment_runtime");
     let source = r#"
             class Boxed {
@@ -8246,7 +8253,7 @@ fn compile_source_runs_mutable_constructor_parameter_assignment_runtime() {
 #[test]
 fn compile_source_runs_mutable_async_parameter_assignment_runtime() {
     let temp_root = make_temp_project_root("mutable-async-parameter-assignment-runtime");
-    let source_path = temp_root.join("mutable_async_parameter_assignment_runtime.apex");
+    let source_path = temp_root.join("mutable_async_parameter_assignment_runtime.arden");
     let output_path = temp_root.join("mutable_async_parameter_assignment_runtime");
     let source = r#"
             async function bump(mut value: Integer): Integer {
@@ -8274,7 +8281,7 @@ fn compile_source_runs_mutable_async_parameter_assignment_runtime() {
 #[test]
 fn compile_source_no_check_rejects_invalid_integer_boolean_addition_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-int-bool-add");
-    let source_path = temp_root.join("no_check_invalid_int_bool_add.apex");
+    let source_path = temp_root.join("no_check_invalid_int_bool_add.arden");
     let output_path = temp_root.join("no_check_invalid_int_bool_add");
     let source = r#"
             function main(): Integer {
@@ -8296,7 +8303,7 @@ fn compile_source_no_check_rejects_invalid_integer_boolean_addition_in_codegen()
 #[test]
 fn compile_source_no_check_rejects_invalid_integer_boolean_equality_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-int-bool-eq");
-    let source_path = temp_root.join("no_check_invalid_int_bool_eq.apex");
+    let source_path = temp_root.join("no_check_invalid_int_bool_eq.arden");
     let output_path = temp_root.join("no_check_invalid_int_bool_eq");
     let source = r#"
             function main(): Integer {
@@ -8315,7 +8322,7 @@ fn compile_source_no_check_rejects_invalid_integer_boolean_equality_in_codegen()
 #[test]
 fn compile_source_no_check_rejects_invalid_boolean_comparison_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-bool-comparison");
-    let source_path = temp_root.join("no_check_invalid_bool_comparison.apex");
+    let source_path = temp_root.join("no_check_invalid_bool_comparison.arden");
     let output_path = temp_root.join("no_check_invalid_bool_comparison");
     let source = r#"
             function main(): Integer {
@@ -8337,7 +8344,7 @@ fn compile_source_no_check_rejects_invalid_boolean_comparison_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_invalid_integer_logical_and_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-int-logical-and");
-    let source_path = temp_root.join("no_check_invalid_int_logical_and.apex");
+    let source_path = temp_root.join("no_check_invalid_int_logical_and.arden");
     let output_path = temp_root.join("no_check_invalid_int_logical_and");
     let source = r#"
             function main(): Integer {
@@ -8359,7 +8366,7 @@ fn compile_source_no_check_rejects_invalid_integer_logical_and_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_invalid_interpolated_integer_boolean_addition_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-interp-int-bool-add");
-    let source_path = temp_root.join("no_check_invalid_interp_int_bool_add.apex");
+    let source_path = temp_root.join("no_check_invalid_interp_int_bool_add.arden");
     let output_path = temp_root.join("no_check_invalid_interp_int_bool_add");
     let source = r#"
             function main(): None {
@@ -8382,7 +8389,7 @@ fn compile_source_no_check_rejects_invalid_interpolated_integer_boolean_addition
 #[test]
 fn compile_source_no_check_rejects_invalid_unary_negation_on_boolean_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-unary-neg-bool");
-    let source_path = temp_root.join("no_check_invalid_unary_neg_bool.apex");
+    let source_path = temp_root.join("no_check_invalid_unary_neg_bool.arden");
     let output_path = temp_root.join("no_check_invalid_unary_neg_bool");
     let source = r#"
             function main(): Integer {
@@ -8404,7 +8411,7 @@ fn compile_source_no_check_rejects_invalid_unary_negation_on_boolean_in_codegen(
 #[test]
 fn compile_source_no_check_rejects_invalid_unary_not_on_integer_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-unary-not-int");
-    let source_path = temp_root.join("no_check_invalid_unary_not_int.apex");
+    let source_path = temp_root.join("no_check_invalid_unary_not_int.arden");
     let output_path = temp_root.join("no_check_invalid_unary_not_int");
     let source = r#"
             function main(): Integer {
@@ -8426,7 +8433,7 @@ fn compile_source_no_check_rejects_invalid_unary_not_on_integer_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_module_local_invalid_unary_neg_with_user_facing_type_name() {
     let temp_root = make_temp_project_root("no-check-invalid-unary-neg-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_unary_neg_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_unary_neg_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_unary_neg_module_local_type");
     let source = r#"
             module M {
@@ -8460,7 +8467,7 @@ fn compile_source_no_check_rejects_module_local_invalid_unary_neg_with_user_faci
 #[test]
 fn compile_source_no_check_rejects_module_local_invalid_unary_not_with_user_facing_type_name() {
     let temp_root = make_temp_project_root("no-check-invalid-unary-not-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_unary_not_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_unary_not_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_unary_not_module_local_type");
     let source = r#"
             module M {
@@ -8494,7 +8501,7 @@ fn compile_source_no_check_rejects_module_local_invalid_unary_not_with_user_faci
 #[test]
 fn compile_source_no_check_rejects_non_boolean_if_statement_condition_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-if-stmt-condition");
-    let source_path = temp_root.join("no_check_invalid_if_stmt_condition.apex");
+    let source_path = temp_root.join("no_check_invalid_if_stmt_condition.arden");
     let output_path = temp_root.join("no_check_invalid_if_stmt_condition");
     let source = r#"
             function main(): Integer {
@@ -8517,7 +8524,7 @@ fn compile_source_no_check_rejects_non_boolean_if_statement_condition_in_codegen
 #[test]
 fn compile_source_no_check_rejects_non_boolean_if_expression_condition_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-if-expr-condition");
-    let source_path = temp_root.join("no_check_invalid_if_expr_condition.apex");
+    let source_path = temp_root.join("no_check_invalid_if_expr_condition.arden");
     let output_path = temp_root.join("no_check_invalid_if_expr_condition");
     let source = r#"
             function main(): Integer {
@@ -8539,7 +8546,7 @@ fn compile_source_no_check_rejects_non_boolean_if_expression_condition_in_codege
 #[test]
 fn compile_source_no_check_rejects_non_boolean_while_condition_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-while-condition");
-    let source_path = temp_root.join("no_check_invalid_while_condition.apex");
+    let source_path = temp_root.join("no_check_invalid_while_condition.arden");
     let output_path = temp_root.join("no_check_invalid_while_condition");
     let source = r#"
             function main(): Integer {
@@ -8562,7 +8569,7 @@ fn compile_source_no_check_rejects_non_boolean_while_condition_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_boolean_require_condition_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-require-condition");
-    let source_path = temp_root.join("no_check_invalid_require_condition.apex");
+    let source_path = temp_root.join("no_check_invalid_require_condition.arden");
     let output_path = temp_root.join("no_check_invalid_require_condition");
     let source = r#"
             function main(): None {
@@ -8585,7 +8592,7 @@ fn compile_source_no_check_rejects_non_boolean_require_condition_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_boolean_require_without_message_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-require-no-msg-condition");
-    let source_path = temp_root.join("no_check_invalid_require_no_msg_condition.apex");
+    let source_path = temp_root.join("no_check_invalid_require_no_msg_condition.arden");
     let output_path = temp_root.join("no_check_invalid_require_no_msg_condition");
     let source = r#"
             function main(): None {
@@ -8608,7 +8615,7 @@ fn compile_source_no_check_rejects_non_boolean_require_without_message_in_codege
 #[test]
 fn compile_source_no_check_rejects_non_boolean_assert_condition_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-assert-condition");
-    let source_path = temp_root.join("no_check_invalid_assert_condition.apex");
+    let source_path = temp_root.join("no_check_invalid_assert_condition.arden");
     let output_path = temp_root.join("no_check_invalid_assert_condition");
     let source = r#"
             function main(): None {
@@ -8631,7 +8638,7 @@ fn compile_source_no_check_rejects_non_boolean_assert_condition_in_codegen() {
 #[test]
 fn compile_source_checked_rejects_non_boolean_assert_condition() {
     let temp_root = make_temp_project_root("checked-invalid-assert-condition");
-    let source_path = temp_root.join("checked_invalid_assert_condition.apex");
+    let source_path = temp_root.join("checked_invalid_assert_condition.arden");
     let output_path = temp_root.join("checked_invalid_assert_condition");
     let source = r#"
             function main(): None {
@@ -8651,7 +8658,7 @@ fn compile_source_checked_rejects_non_boolean_assert_condition() {
 #[test]
 fn compile_source_no_check_rejects_non_boolean_assert_true_condition_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-assert-true-condition");
-    let source_path = temp_root.join("no_check_invalid_assert_true_condition.apex");
+    let source_path = temp_root.join("no_check_invalid_assert_true_condition.arden");
     let output_path = temp_root.join("no_check_invalid_assert_true_condition");
     let source = r#"
             function main(): None {
@@ -8675,7 +8682,7 @@ fn compile_source_no_check_rejects_non_boolean_assert_true_condition_in_codegen(
 fn compile_source_no_check_rejects_module_local_non_boolean_assert_true_condition_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-assert-true-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_assert_true_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_assert_true_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_assert_true_module_local_type");
     let source = r#"
             module M {
@@ -8706,7 +8713,7 @@ fn compile_source_no_check_rejects_module_local_non_boolean_assert_true_conditio
 #[test]
 fn compile_source_checked_rejects_non_boolean_assert_true_condition() {
     let temp_root = make_temp_project_root("checked-invalid-assert-true-condition");
-    let source_path = temp_root.join("checked_invalid_assert_true_condition.apex");
+    let source_path = temp_root.join("checked_invalid_assert_true_condition.arden");
     let output_path = temp_root.join("checked_invalid_assert_true_condition");
     let source = r#"
             function main(): None {
@@ -8726,7 +8733,7 @@ fn compile_source_checked_rejects_non_boolean_assert_true_condition() {
 #[test]
 fn compile_source_no_check_rejects_non_boolean_assert_false_condition_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-assert-false-condition");
-    let source_path = temp_root.join("no_check_invalid_assert_false_condition.apex");
+    let source_path = temp_root.join("no_check_invalid_assert_false_condition.arden");
     let output_path = temp_root.join("no_check_invalid_assert_false_condition");
     let source = r#"
             function main(): None {
@@ -8750,7 +8757,7 @@ fn compile_source_no_check_rejects_non_boolean_assert_false_condition_in_codegen
 fn compile_source_no_check_rejects_module_local_non_boolean_assert_false_condition_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-assert-false-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_assert_false_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_assert_false_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_assert_false_module_local_type");
     let source = r#"
             module M {
@@ -8781,7 +8788,7 @@ fn compile_source_no_check_rejects_module_local_non_boolean_assert_false_conditi
 #[test]
 fn compile_source_checked_rejects_non_boolean_assert_false_condition() {
     let temp_root = make_temp_project_root("checked-invalid-assert-false-condition");
-    let source_path = temp_root.join("checked_invalid_assert_false_condition.apex");
+    let source_path = temp_root.join("checked_invalid_assert_false_condition.arden");
     let output_path = temp_root.join("checked_invalid_assert_false_condition");
     let source = r#"
             function main(): None {
@@ -8801,7 +8808,7 @@ fn compile_source_checked_rejects_non_boolean_assert_false_condition() {
 #[test]
 fn compile_source_no_check_rejects_assert_eq_on_incompatible_types_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-assert-eq-types");
-    let source_path = temp_root.join("no_check_invalid_assert_eq_types.apex");
+    let source_path = temp_root.join("no_check_invalid_assert_eq_types.arden");
     let output_path = temp_root.join("no_check_invalid_assert_eq_types");
     let source = r#"
             function main(): None {
@@ -8821,7 +8828,7 @@ fn compile_source_no_check_rejects_assert_eq_on_incompatible_types_in_codegen() 
 #[test]
 fn compile_source_no_check_rejects_assert_ne_on_incompatible_types_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-assert-ne-types");
-    let source_path = temp_root.join("no_check_invalid_assert_ne_types.apex");
+    let source_path = temp_root.join("no_check_invalid_assert_ne_types.arden");
     let output_path = temp_root.join("no_check_invalid_assert_ne_types");
     let source = r#"
             function main(): None {
@@ -8841,7 +8848,7 @@ fn compile_source_no_check_rejects_assert_ne_on_incompatible_types_in_codegen() 
 #[test]
 fn compile_source_no_check_rejects_non_integer_string_index_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-string-index-type");
-    let source_path = temp_root.join("no_check_invalid_string_index_type.apex");
+    let source_path = temp_root.join("no_check_invalid_string_index_type.arden");
     let output_path = temp_root.join("no_check_invalid_string_index_type");
     let source = r#"
             function main(): Integer {
@@ -8864,7 +8871,7 @@ fn compile_source_no_check_rejects_non_integer_string_index_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_integer_list_index_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-list-index-type");
-    let source_path = temp_root.join("no_check_invalid_list_index_type.apex");
+    let source_path = temp_root.join("no_check_invalid_list_index_type.arden");
     let output_path = temp_root.join("no_check_invalid_list_index_type");
     let source = r#"
             function main(): Integer {
@@ -8890,7 +8897,7 @@ fn compile_source_no_check_rejects_non_integer_list_index_in_codegen() {
 fn compile_source_no_check_rejects_module_local_non_integer_list_index_with_user_facing_type_name()
 {
     let temp_root = make_temp_project_root("no-check-invalid-list-index-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_list_index_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_list_index_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_list_index_module_local_type");
     let source = r#"
             module M {
@@ -8919,7 +8926,7 @@ fn compile_source_no_check_rejects_module_local_non_integer_list_index_with_user
 #[test]
 fn compile_source_no_check_rejects_non_integer_list_index_assignment_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-list-index-assignment-type");
-    let source_path = temp_root.join("no_check_invalid_list_index_assignment_type.apex");
+    let source_path = temp_root.join("no_check_invalid_list_index_assignment_type.arden");
     let output_path = temp_root.join("no_check_invalid_list_index_assignment_type");
     let source = r#"
             function main(): None {
@@ -8944,7 +8951,7 @@ fn compile_source_no_check_rejects_non_integer_list_index_assignment_in_codegen(
 #[test]
 fn compile_source_no_check_rejects_non_integer_for_loop_sugar_iterable_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-for-loop-sugar-iterable");
-    let source_path = temp_root.join("no_check_invalid_for_loop_sugar_iterable.apex");
+    let source_path = temp_root.join("no_check_invalid_for_loop_sugar_iterable.arden");
     let output_path = temp_root.join("no_check_invalid_for_loop_sugar_iterable");
     let source = r#"
             function main(): Integer {
@@ -8968,7 +8975,7 @@ fn compile_source_no_check_rejects_non_integer_for_loop_sugar_iterable_in_codege
 fn compile_source_no_check_rejects_module_local_non_integer_for_loop_sugar_iterable_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-for-loop-sugar-module-local-iterable");
-    let source_path = temp_root.join("no_check_invalid_for_loop_sugar_module_local_iterable.apex");
+    let source_path = temp_root.join("no_check_invalid_for_loop_sugar_module_local_iterable.arden");
     let output_path = temp_root.join("no_check_invalid_for_loop_sugar_module_local_iterable");
     let source = r#"
             module M {
@@ -8997,7 +9004,7 @@ fn compile_source_no_check_rejects_module_local_non_integer_for_loop_sugar_itera
 #[test]
 fn compile_source_no_check_rejects_invalid_range_argument_types_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-range-argument-types");
-    let source_path = temp_root.join("no_check_invalid_range_argument_types.apex");
+    let source_path = temp_root.join("no_check_invalid_range_argument_types.arden");
     let output_path = temp_root.join("no_check_invalid_range_argument_types");
     let source = r#"
             function main(): Integer {
@@ -9020,7 +9027,7 @@ fn compile_source_no_check_rejects_invalid_range_argument_types_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_integer_exit_code_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-exit-code-type");
-    let source_path = temp_root.join("no_check_invalid_exit_code_type.apex");
+    let source_path = temp_root.join("no_check_invalid_exit_code_type.arden");
     let output_path = temp_root.join("no_check_invalid_exit_code_type");
     let source = r#"
             function main(): None {
@@ -9040,7 +9047,7 @@ fn compile_source_no_check_rejects_non_integer_exit_code_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_integer_time_sleep_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-time-sleep-type");
-    let source_path = temp_root.join("no_check_invalid_time_sleep_type.apex");
+    let source_path = temp_root.join("no_check_invalid_time_sleep_type.arden");
     let output_path = temp_root.join("no_check_invalid_time_sleep_type");
     let source = r#"
             import std.time.*;
@@ -9065,7 +9072,7 @@ fn compile_source_no_check_rejects_non_integer_time_sleep_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_integer_args_get_index_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-args-get-index-type");
-    let source_path = temp_root.join("no_check_invalid_args_get_index_type.apex");
+    let source_path = temp_root.join("no_check_invalid_args_get_index_type.arden");
     let output_path = temp_root.join("no_check_invalid_args_get_index_type");
     let source = r#"
             import std.args.*;
@@ -9087,7 +9094,7 @@ fn compile_source_no_check_rejects_non_integer_args_get_index_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_system_shell_command_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-system-shell-command-type");
-    let source_path = temp_root.join("no_check_invalid_system_shell_command_type.apex");
+    let source_path = temp_root.join("no_check_invalid_system_shell_command_type.arden");
     let output_path = temp_root.join("no_check_invalid_system_shell_command_type");
     let source = r#"
             import std.system.*;
@@ -9111,7 +9118,7 @@ fn compile_source_no_check_rejects_non_string_system_shell_command_in_codegen() 
 #[test]
 fn compile_source_no_check_rejects_non_string_file_exists_path_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-file-exists-path-type");
-    let source_path = temp_root.join("no_check_invalid_file_exists_path_type.apex");
+    let source_path = temp_root.join("no_check_invalid_file_exists_path_type.arden");
     let output_path = temp_root.join("no_check_invalid_file_exists_path_type");
     let source = r#"
             import std.file.*;
@@ -9136,7 +9143,7 @@ fn compile_source_no_check_rejects_non_string_file_exists_path_in_codegen() {
 fn compile_source_no_check_rejects_module_local_non_string_file_exists_path_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-file-exists-module-local-path");
-    let source_path = temp_root.join("no_check_invalid_file_exists_module_local_path.apex");
+    let source_path = temp_root.join("no_check_invalid_file_exists_module_local_path.arden");
     let output_path = temp_root.join("no_check_invalid_file_exists_module_local_path");
     let source = r#"
             import std.file.*;
@@ -9168,7 +9175,7 @@ fn compile_source_no_check_rejects_module_local_non_string_file_exists_path_with
 #[test]
 fn compile_source_no_check_rejects_non_string_file_read_path_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-file-read-path-type");
-    let source_path = temp_root.join("no_check_invalid_file_read_path_type.apex");
+    let source_path = temp_root.join("no_check_invalid_file_read_path_type.arden");
     let output_path = temp_root.join("no_check_invalid_file_read_path_type");
     let source = r#"
             import std.file.*;
@@ -9194,7 +9201,7 @@ fn compile_source_no_check_rejects_non_string_file_read_path_in_codegen() {
 fn compile_source_no_check_rejects_module_local_non_string_file_read_path_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-file-read-module-local-path");
-    let source_path = temp_root.join("no_check_invalid_file_read_module_local_path.apex");
+    let source_path = temp_root.join("no_check_invalid_file_read_module_local_path.arden");
     let output_path = temp_root.join("no_check_invalid_file_read_module_local_path");
     let source = r#"
             import std.file.*;
@@ -9230,7 +9237,7 @@ fn compile_source_no_check_rejects_module_local_non_string_file_read_path_with_u
 #[test]
 fn compile_source_no_check_rejects_non_string_file_delete_path_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-file-delete-path-type");
-    let source_path = temp_root.join("no_check_invalid_file_delete_path_type.apex");
+    let source_path = temp_root.join("no_check_invalid_file_delete_path_type.arden");
     let output_path = temp_root.join("no_check_invalid_file_delete_path_type");
     let source = r#"
             import std.file.*;
@@ -9256,7 +9263,7 @@ fn compile_source_no_check_rejects_non_string_file_delete_path_in_codegen() {
 fn compile_source_no_check_rejects_module_local_non_string_file_delete_path_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-file-delete-module-local-path");
-    let source_path = temp_root.join("no_check_invalid_file_delete_module_local_path.apex");
+    let source_path = temp_root.join("no_check_invalid_file_delete_module_local_path.arden");
     let output_path = temp_root.join("no_check_invalid_file_delete_module_local_path");
     let source = r#"
             import std.file.*;
@@ -9289,7 +9296,7 @@ fn compile_source_no_check_rejects_module_local_non_string_file_delete_path_with
 #[test]
 fn compile_source_no_check_rejects_non_string_file_write_path_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-file-write-path-type");
-    let source_path = temp_root.join("no_check_invalid_file_write_path_type.apex");
+    let source_path = temp_root.join("no_check_invalid_file_write_path_type.arden");
     let output_path = temp_root.join("no_check_invalid_file_write_path_type");
     let source = r#"
             import std.file.*;
@@ -9311,7 +9318,7 @@ fn compile_source_no_check_rejects_non_string_file_write_path_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_file_write_content_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-file-write-content-type");
-    let source_path = temp_root.join("no_check_invalid_file_write_content_type.apex");
+    let source_path = temp_root.join("no_check_invalid_file_write_content_type.arden");
     let output_path = temp_root.join("no_check_invalid_file_write_content_type");
     let source = r#"
             import std.file.*;
@@ -9333,7 +9340,7 @@ fn compile_source_no_check_rejects_non_string_file_write_content_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_time_now_format_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-time-now-format-type");
-    let source_path = temp_root.join("no_check_invalid_time_now_format_type.apex");
+    let source_path = temp_root.join("no_check_invalid_time_now_format_type.arden");
     let output_path = temp_root.join("no_check_invalid_time_now_format_type");
     let source = r#"
             import std.time.*;
@@ -9355,7 +9362,7 @@ fn compile_source_no_check_rejects_non_string_time_now_format_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_system_getenv_name_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-system-getenv-name-type");
-    let source_path = temp_root.join("no_check_invalid_system_getenv_name_type.apex");
+    let source_path = temp_root.join("no_check_invalid_system_getenv_name_type.arden");
     let output_path = temp_root.join("no_check_invalid_system_getenv_name_type");
     let source = r#"
             import std.system.*;
@@ -9380,7 +9387,7 @@ fn compile_source_no_check_rejects_non_string_system_getenv_name_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_system_exec_command_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-system-exec-command-type");
-    let source_path = temp_root.join("no_check_invalid_system_exec_command_type.apex");
+    let source_path = temp_root.join("no_check_invalid_system_exec_command_type.arden");
     let output_path = temp_root.join("no_check_invalid_system_exec_command_type");
     let source = r#"
             import std.system.*;
@@ -9405,7 +9412,7 @@ fn compile_source_no_check_rejects_non_string_system_exec_command_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_fail_message_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-fail-message-type");
-    let source_path = temp_root.join("no_check_invalid_fail_message_type.apex");
+    let source_path = temp_root.join("no_check_invalid_fail_message_type.arden");
     let output_path = temp_root.join("no_check_invalid_fail_message_type");
     let source = r#"
             function main(): None {
@@ -9425,7 +9432,7 @@ fn compile_source_no_check_rejects_non_string_fail_message_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_require_message_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-require-message-type");
-    let source_path = temp_root.join("no_check_invalid_require_message_type.apex");
+    let source_path = temp_root.join("no_check_invalid_require_message_type.arden");
     let output_path = temp_root.join("no_check_invalid_require_message_type");
     let source = r#"
             function main(): None {
@@ -9449,7 +9456,7 @@ fn compile_source_no_check_rejects_non_string_require_message_in_codegen() {
 fn compile_source_no_check_rejects_module_local_non_string_require_message_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-require-module-local-message");
-    let source_path = temp_root.join("no_check_invalid_require_module_local_message.apex");
+    let source_path = temp_root.join("no_check_invalid_require_module_local_message.arden");
     let output_path = temp_root.join("no_check_invalid_require_module_local_message");
     let source = r#"
             module M {
@@ -9480,7 +9487,7 @@ fn compile_source_no_check_rejects_module_local_non_string_require_message_with_
 #[test]
 fn compile_source_no_check_rejects_non_string_str_len_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-str-len-argument-type");
-    let source_path = temp_root.join("no_check_invalid_str_len_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_len_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_len_argument_type");
     let source = r#"
             import std.str.*;
@@ -9505,7 +9512,7 @@ fn compile_source_no_check_rejects_non_string_str_len_argument_in_codegen() {
 fn compile_source_no_check_rejects_module_local_non_string_str_len_argument_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-str-len-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_str_len_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_len_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_len_module_local_type");
     let source = r#"
             import std.str.*;
@@ -9537,7 +9544,7 @@ fn compile_source_no_check_rejects_module_local_non_string_str_len_argument_with
 #[test]
 fn compile_source_no_check_rejects_non_string_str_compare_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-str-compare-argument-type");
-    let source_path = temp_root.join("no_check_invalid_str_compare_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_compare_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_compare_argument_type");
     let source = r#"
             import std.str.*;
@@ -9562,7 +9569,7 @@ fn compile_source_no_check_rejects_non_string_str_compare_argument_in_codegen() 
 #[test]
 fn compile_source_no_check_rejects_non_string_str_concat_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-str-concat-argument-type");
-    let source_path = temp_root.join("no_check_invalid_str_concat_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_concat_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_concat_argument_type");
     let source = r#"
             import std.str.*;
@@ -9587,7 +9594,7 @@ fn compile_source_no_check_rejects_non_string_str_concat_argument_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_str_upper_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-str-upper-argument-type");
-    let source_path = temp_root.join("no_check_invalid_str_upper_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_upper_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_upper_argument_type");
     let source = r#"
             import std.str.*;
@@ -9609,7 +9616,7 @@ fn compile_source_no_check_rejects_non_string_str_upper_argument_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_str_lower_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-str-lower-argument-type");
-    let source_path = temp_root.join("no_check_invalid_str_lower_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_lower_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_lower_argument_type");
     let source = r#"
             import std.str.*;
@@ -9631,7 +9638,7 @@ fn compile_source_no_check_rejects_non_string_str_lower_argument_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_str_trim_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-str-trim-argument-type");
-    let source_path = temp_root.join("no_check_invalid_str_trim_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_trim_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_trim_argument_type");
     let source = r#"
             import std.str.*;
@@ -9653,7 +9660,7 @@ fn compile_source_no_check_rejects_non_string_str_trim_argument_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_non_string_str_contains_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-str-contains-argument-type");
-    let source_path = temp_root.join("no_check_invalid_str_contains_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_contains_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_contains_argument_type");
     let source = r#"
             import std.str.*;
@@ -9678,7 +9685,7 @@ fn compile_source_no_check_rejects_non_string_str_contains_argument_in_codegen()
 #[test]
 fn compile_source_no_check_rejects_non_string_str_starts_with_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-str-starts-with-argument-type");
-    let source_path = temp_root.join("no_check_invalid_str_starts_with_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_starts_with_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_starts_with_argument_type");
     let source = r#"
             import std.str.*;
@@ -9703,7 +9710,7 @@ fn compile_source_no_check_rejects_non_string_str_starts_with_argument_in_codege
 #[test]
 fn compile_source_no_check_rejects_non_string_str_ends_with_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-str-ends-with-argument-type");
-    let source_path = temp_root.join("no_check_invalid_str_ends_with_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_str_ends_with_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_str_ends_with_argument_type");
     let source = r#"
             import std.str.*;
@@ -9728,7 +9735,7 @@ fn compile_source_no_check_rejects_non_string_str_ends_with_argument_in_codegen(
 #[test]
 fn compile_source_no_check_rejects_non_numeric_to_float_string_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-to-float-string-argument-type");
-    let source_path = temp_root.join("no_check_invalid_to_float_string_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_to_float_string_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_to_float_string_argument_type");
     let source = r#"
             function main(): Float {
@@ -9750,7 +9757,7 @@ fn compile_source_no_check_rejects_non_numeric_to_float_string_argument_in_codeg
 #[test]
 fn compile_source_no_check_rejects_non_numeric_to_float_boolean_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-to-float-boolean-argument-type");
-    let source_path = temp_root.join("no_check_invalid_to_float_boolean_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_to_float_boolean_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_to_float_boolean_argument_type");
     let source = r#"
             function main(): Float {
@@ -9773,7 +9780,7 @@ fn compile_source_no_check_rejects_non_numeric_to_float_boolean_argument_in_code
 fn compile_source_no_check_rejects_module_local_non_numeric_to_float_argument_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-to-float-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_to_float_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_to_float_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_to_float_module_local_type");
     let source = r#"
             module M {
@@ -9803,7 +9810,7 @@ fn compile_source_no_check_rejects_module_local_non_numeric_to_float_argument_wi
 #[test]
 fn compile_source_no_check_rejects_non_supported_to_int_boolean_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-to-int-boolean-argument-type");
-    let source_path = temp_root.join("no_check_invalid_to_int_boolean_argument_type.apex");
+    let source_path = temp_root.join("no_check_invalid_to_int_boolean_argument_type.arden");
     let output_path = temp_root.join("no_check_invalid_to_int_boolean_argument_type");
     let source = r#"
             function main(): Integer {
@@ -9826,7 +9833,7 @@ fn compile_source_no_check_rejects_non_supported_to_int_boolean_argument_in_code
 fn compile_source_no_check_rejects_module_local_non_supported_to_int_argument_with_user_facing_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-to-int-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_to_int_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_to_int_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_to_int_module_local_type");
     let source = r#"
             module M {
@@ -9856,7 +9863,7 @@ fn compile_source_no_check_rejects_module_local_non_supported_to_int_argument_wi
 #[test]
 fn compile_source_no_check_rejects_zero_range_step_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-range-zero-step");
-    let source_path = temp_root.join("no_check_invalid_range_zero_step.apex");
+    let source_path = temp_root.join("no_check_invalid_range_zero_step.arden");
     let output_path = temp_root.join("no_check_invalid_range_zero_step");
     let source = r#"
             function main(): Integer {
@@ -9876,7 +9883,7 @@ fn compile_source_no_check_rejects_zero_range_step_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_negative_time_sleep_constant_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-time-sleep-negative-constant");
-    let source_path = temp_root.join("no_check_invalid_time_sleep_negative_constant.apex");
+    let source_path = temp_root.join("no_check_invalid_time_sleep_negative_constant.arden");
     let output_path = temp_root.join("no_check_invalid_time_sleep_negative_constant");
     let source = r#"
             import std.time.*;
@@ -9901,7 +9908,7 @@ fn compile_source_no_check_rejects_negative_time_sleep_constant_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_negative_args_get_constant_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-args-get-negative-constant");
-    let source_path = temp_root.join("no_check_invalid_args_get_negative_constant.apex");
+    let source_path = temp_root.join("no_check_invalid_args_get_negative_constant.arden");
     let output_path = temp_root.join("no_check_invalid_args_get_negative_constant");
     let source = r#"
             import std.args.*;
@@ -9923,7 +9930,7 @@ fn compile_source_no_check_rejects_negative_args_get_constant_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_negative_await_timeout_constant_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-await-timeout-negative-constant");
-    let source_path = temp_root.join("no_check_invalid_await_timeout_negative_constant.apex");
+    let source_path = temp_root.join("no_check_invalid_await_timeout_negative_constant.arden");
     let output_path = temp_root.join("no_check_invalid_await_timeout_negative_constant");
     let source = r#"
             async function work(): Task<Integer> {
@@ -9950,7 +9957,7 @@ fn compile_source_no_check_rejects_negative_await_timeout_constant_in_codegen() 
 #[test]
 fn compile_source_no_check_rejects_await_on_string_literal_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-await-string-literal");
-    let source_path = temp_root.join("no_check_invalid_await_string_literal.apex");
+    let source_path = temp_root.join("no_check_invalid_await_string_literal.arden");
     let output_path = temp_root.join("no_check_invalid_await_string_literal");
     let source = r#"
             function main(): String {
@@ -9972,7 +9979,7 @@ fn compile_source_no_check_rejects_await_on_string_literal_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_await_on_string_local_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-await-string-local");
-    let source_path = temp_root.join("no_check_invalid_await_string_local.apex");
+    let source_path = temp_root.join("no_check_invalid_await_string_local.arden");
     let output_path = temp_root.join("no_check_invalid_await_string_local");
     let source = r#"
             function main(): String {
@@ -9995,7 +10002,7 @@ fn compile_source_no_check_rejects_await_on_string_local_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_await_on_box_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-await-box");
-    let source_path = temp_root.join("no_check_invalid_await_box.apex");
+    let source_path = temp_root.join("no_check_invalid_await_box.arden");
     let output_path = temp_root.join("no_check_invalid_await_box");
     let source = r#"
             function main(): Integer {
@@ -10018,7 +10025,7 @@ fn compile_source_no_check_rejects_await_on_box_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_await_on_module_local_box_with_user_facing_type_name() {
     let temp_root = make_temp_project_root("no-check-invalid-await-module-local-box");
-    let source_path = temp_root.join("no_check_invalid_await_module_local_box.apex");
+    let source_path = temp_root.join("no_check_invalid_await_module_local_box.arden");
     let output_path = temp_root.join("no_check_invalid_await_module_local_box");
     let source = r#"
             module M {
@@ -10052,7 +10059,7 @@ fn compile_source_no_check_rejects_await_on_module_local_box_with_user_facing_ty
 #[test]
 fn compile_source_no_check_rejects_println_on_unsupported_display_type_with_type_name() {
     let temp_root = make_temp_project_root("no-check-invalid-println-unsupported-display");
-    let source_path = temp_root.join("no_check_invalid_println_unsupported_display.apex");
+    let source_path = temp_root.join("no_check_invalid_println_unsupported_display.arden");
     let output_path = temp_root.join("no_check_invalid_println_unsupported_display");
     let source = r#"
             class Box {
@@ -10083,7 +10090,7 @@ fn compile_source_no_check_rejects_println_on_unsupported_display_type_with_type
 #[test]
 fn compile_source_no_check_rejects_interpolation_on_unsupported_display_type_with_type_name() {
     let temp_root = make_temp_project_root("no-check-invalid-interpolation-unsupported-display");
-    let source_path = temp_root.join("no_check_invalid_interpolation_unsupported_display.apex");
+    let source_path = temp_root.join("no_check_invalid_interpolation_unsupported_display.arden");
     let output_path = temp_root.join("no_check_invalid_interpolation_unsupported_display");
     let source = r#"
             class Box {
@@ -10118,7 +10125,7 @@ fn compile_source_no_check_rejects_interpolation_on_unsupported_display_type_wit
 fn compile_source_no_check_rejects_interpolation_on_module_local_unsupported_display_type_with_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-interpolation-module-local-display");
-    let source_path = temp_root.join("no_check_invalid_interpolation_module_local_display.apex");
+    let source_path = temp_root.join("no_check_invalid_interpolation_module_local_display.arden");
     let output_path = temp_root.join("no_check_invalid_interpolation_module_local_display");
     let source = r#"
             module M {
@@ -10155,7 +10162,7 @@ fn compile_source_no_check_rejects_interpolation_on_module_local_unsupported_dis
 fn compile_source_no_check_rejects_println_on_module_local_unsupported_display_type_with_type_name()
 {
     let temp_root = make_temp_project_root("no-check-invalid-println-module-local-display");
-    let source_path = temp_root.join("no_check_invalid_println_module_local_display.apex");
+    let source_path = temp_root.join("no_check_invalid_println_module_local_display.arden");
     let output_path = temp_root.join("no_check_invalid_println_module_local_display");
     let source = r#"
             import std.io.*;
@@ -10191,7 +10198,7 @@ fn compile_source_no_check_rejects_println_on_module_local_unsupported_display_t
 fn compile_source_no_check_rejects_to_string_on_module_local_unsupported_display_type_with_type_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-to-string-module-local-display");
-    let source_path = temp_root.join("no_check_invalid_to_string_module_local_display.apex");
+    let source_path = temp_root.join("no_check_invalid_to_string_module_local_display.arden");
     let output_path = temp_root.join("no_check_invalid_to_string_module_local_display");
     let source = r#"
             module M {
@@ -10227,7 +10234,7 @@ fn compile_source_no_check_rejects_to_string_on_module_local_unsupported_display
 #[test]
 fn compile_source_no_check_rejects_negative_list_index_constant_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-list-index-negative-constant");
-    let source_path = temp_root.join("no_check_invalid_list_index_negative_constant.apex");
+    let source_path = temp_root.join("no_check_invalid_list_index_negative_constant.arden");
     let output_path = temp_root.join("no_check_invalid_list_index_negative_constant");
     let source = r#"
             function main(): Integer {
@@ -10249,7 +10256,7 @@ fn compile_source_no_check_rejects_negative_list_index_constant_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_negative_string_index_constant_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-string-index-negative-constant");
-    let source_path = temp_root.join("no_check_invalid_string_index_negative_constant.apex");
+    let source_path = temp_root.join("no_check_invalid_string_index_negative_constant.arden");
     let output_path = temp_root.join("no_check_invalid_string_index_negative_constant");
     let source = r#"
             function main(): Char {
@@ -10269,7 +10276,7 @@ fn compile_source_no_check_rejects_negative_string_index_constant_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_negative_list_get_constant_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-list-get-negative-constant");
-    let source_path = temp_root.join("no_check_invalid_list_get_negative_constant.apex");
+    let source_path = temp_root.join("no_check_invalid_list_get_negative_constant.arden");
     let output_path = temp_root.join("no_check_invalid_list_get_negative_constant");
     let source = r#"
             function main(): Integer {
@@ -10291,7 +10298,7 @@ fn compile_source_no_check_rejects_negative_list_get_constant_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_negative_list_set_constant_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-list-set-negative-constant");
-    let source_path = temp_root.join("no_check_invalid_list_set_negative_constant.apex");
+    let source_path = temp_root.join("no_check_invalid_list_set_negative_constant.arden");
     let output_path = temp_root.join("no_check_invalid_list_set_negative_constant");
     let source = r#"
             function main(): None {
@@ -10314,7 +10321,7 @@ fn compile_source_no_check_rejects_negative_list_set_constant_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_negative_list_constructor_capacity_constant_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-list-constructor-negative-capacity");
-    let source_path = temp_root.join("no_check_invalid_list_constructor_negative_capacity.apex");
+    let source_path = temp_root.join("no_check_invalid_list_constructor_negative_capacity.arden");
     let output_path = temp_root.join("no_check_invalid_list_constructor_negative_capacity");
     let source = r#"
             function main(): Integer {
@@ -10337,7 +10344,7 @@ fn compile_source_no_check_rejects_negative_list_constructor_capacity_constant_i
 #[test]
 fn compile_source_no_check_rejects_constant_ascii_string_index_out_of_bounds_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-ascii-string-index-oob");
-    let source_path = temp_root.join("no_check_invalid_ascii_string_index_oob.apex");
+    let source_path = temp_root.join("no_check_invalid_ascii_string_index_oob.arden");
     let output_path = temp_root.join("no_check_invalid_ascii_string_index_oob");
     let source = r#"
             function main(): Char {
@@ -10356,7 +10363,7 @@ fn compile_source_no_check_rejects_constant_ascii_string_index_out_of_bounds_in_
 #[test]
 fn compile_source_no_check_rejects_constant_unicode_string_index_out_of_bounds_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-unicode-string-index-oob");
-    let source_path = temp_root.join("no_check_invalid_unicode_string_index_oob.apex");
+    let source_path = temp_root.join("no_check_invalid_unicode_string_index_oob.arden");
     let output_path = temp_root.join("no_check_invalid_unicode_string_index_oob");
     let source = r#"
             function main(): Char {
@@ -10375,7 +10382,7 @@ fn compile_source_no_check_rejects_constant_unicode_string_index_out_of_bounds_i
 #[test]
 fn compile_source_no_check_rejects_boolean_method_call_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-invalid-boolean-method-call");
-    let source_path = temp_root.join("no_check_invalid_boolean_method_call.apex");
+    let source_path = temp_root.join("no_check_invalid_boolean_method_call.arden");
     let output_path = temp_root.join("no_check_invalid_boolean_method_call");
     let source = r#"
             function main(): Integer {
@@ -10395,7 +10402,7 @@ fn compile_source_no_check_rejects_boolean_method_call_with_type_diagnostic() {
 #[test]
 fn compile_source_no_check_rejects_integer_method_call_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-invalid-integer-method-call");
-    let source_path = temp_root.join("no_check_invalid_integer_method_call.apex");
+    let source_path = temp_root.join("no_check_invalid_integer_method_call.arden");
     let output_path = temp_root.join("no_check_invalid_integer_method_call");
     let source = r#"
             function main(): Integer {
@@ -10415,7 +10422,7 @@ fn compile_source_no_check_rejects_integer_method_call_with_type_diagnostic() {
 #[test]
 fn compile_source_no_check_rejects_boolean_field_access_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-invalid-boolean-field-access");
-    let source_path = temp_root.join("no_check_invalid_boolean_field_access.apex");
+    let source_path = temp_root.join("no_check_invalid_boolean_field_access.arden");
     let output_path = temp_root.join("no_check_invalid_boolean_field_access");
     let source = r#"
             function main(): Integer {
@@ -10435,7 +10442,7 @@ fn compile_source_no_check_rejects_boolean_field_access_with_type_diagnostic() {
 #[test]
 fn compile_source_no_check_rejects_integer_field_access_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-invalid-integer-field-access");
-    let source_path = temp_root.join("no_check_invalid_integer_field_access.apex");
+    let source_path = temp_root.join("no_check_invalid_integer_field_access.arden");
     let output_path = temp_root.join("no_check_invalid_integer_field_access");
     let source = r#"
             function main(): Integer {
@@ -10455,7 +10462,7 @@ fn compile_source_no_check_rejects_integer_field_access_with_type_diagnostic() {
 #[test]
 fn compile_source_no_check_rejects_boolean_field_assignment_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-invalid-boolean-field-assignment");
-    let source_path = temp_root.join("no_check_invalid_boolean_field_assignment.apex");
+    let source_path = temp_root.join("no_check_invalid_boolean_field_assignment.arden");
     let output_path = temp_root.join("no_check_invalid_boolean_field_assignment");
     let source = r#"
             function main(): Integer {
@@ -10476,7 +10483,7 @@ fn compile_source_no_check_rejects_boolean_field_assignment_with_type_diagnostic
 #[test]
 fn compile_source_no_check_rejects_integer_field_assignment_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-invalid-integer-field-assignment");
-    let source_path = temp_root.join("no_check_invalid_integer_field_assignment.apex");
+    let source_path = temp_root.join("no_check_invalid_integer_field_assignment.arden");
     let output_path = temp_root.join("no_check_invalid_integer_field_assignment");
     let source = r#"
             function main(): Integer {
@@ -10497,7 +10504,7 @@ fn compile_source_no_check_rejects_integer_field_assignment_with_type_diagnostic
 #[test]
 fn compile_source_no_check_rejects_unknown_class_field_access_with_class_diagnostic() {
     let temp_root = make_temp_project_root("no-check-unknown-class-field-access");
-    let source_path = temp_root.join("no_check_unknown_class_field_access.apex");
+    let source_path = temp_root.join("no_check_unknown_class_field_access.arden");
     let output_path = temp_root.join("no_check_unknown_class_field_access");
     let source = r#"
             class Box {
@@ -10525,7 +10532,7 @@ fn compile_source_no_check_rejects_unknown_class_field_access_with_class_diagnos
 #[test]
 fn compile_source_no_check_rejects_unknown_class_field_assignment_with_class_diagnostic() {
     let temp_root = make_temp_project_root("no-check-unknown-class-field-assignment");
-    let source_path = temp_root.join("no_check_unknown_class_field_assignment.apex");
+    let source_path = temp_root.join("no_check_unknown_class_field_assignment.arden");
     let output_path = temp_root.join("no_check_unknown_class_field_assignment");
     let source = r#"
             class Box {
@@ -10554,7 +10561,7 @@ fn compile_source_no_check_rejects_unknown_class_field_assignment_with_class_dia
 #[test]
 fn compile_source_no_check_rejects_nested_unknown_field_before_index_assignment_diagnostic() {
     let temp_root = make_temp_project_root("no-check-nested-unknown-field-index-assignment");
-    let source_path = temp_root.join("no_check_nested_unknown_field_index_assignment.apex");
+    let source_path = temp_root.join("no_check_nested_unknown_field_index_assignment.arden");
     let output_path = temp_root.join("no_check_nested_unknown_field_index_assignment");
     let source = r#"
             class Inner {
@@ -10597,7 +10604,7 @@ fn compile_source_no_check_rejects_nested_unknown_field_before_index_assignment_
 #[test]
 fn compile_source_no_check_rejects_nested_deref_root_cause_diagnostic() {
     let temp_root = make_temp_project_root("no-check-nested-deref-root-cause");
-    let undef_source_path = temp_root.join("no_check_nested_deref_undefined_root.apex");
+    let undef_source_path = temp_root.join("no_check_nested_deref_undefined_root.arden");
     let undef_output_path = temp_root.join("no_check_nested_deref_undefined_root");
     let undef_source = r#"
             function main(): None {
@@ -10622,7 +10629,7 @@ fn compile_source_no_check_rejects_nested_deref_root_cause_diagnostic() {
         "{undef_err}"
     );
 
-    let missing_source_path = temp_root.join("no_check_nested_deref_missing_field.apex");
+    let missing_source_path = temp_root.join("no_check_nested_deref_missing_field.arden");
     let missing_output_path = temp_root.join("no_check_nested_deref_missing_field");
     let missing_source = r#"
             class Inner {
@@ -10671,7 +10678,7 @@ fn compile_source_no_check_rejects_nested_deref_root_cause_diagnostic() {
 #[test]
 fn compile_source_reports_unknown_class_method_with_class_diagnostic() {
     let temp_root = make_temp_project_root("unknown-class-method-diagnostic");
-    let source_path = temp_root.join("unknown_class_method_diagnostic.apex");
+    let source_path = temp_root.join("unknown_class_method_diagnostic.arden");
     let output_path = temp_root.join("unknown_class_method_diagnostic");
     let source = r#"
             class Box {
@@ -10700,7 +10707,7 @@ fn compile_source_reports_unknown_class_method_with_class_diagnostic() {
 #[test]
 fn compile_source_no_check_rejects_generic_missing_class_root_without_internal_codegen_error() {
     let temp_root = make_temp_project_root("no-check-generic-missing-class-root");
-    let source_path = temp_root.join("no_check_generic_missing_class_root.apex");
+    let source_path = temp_root.join("no_check_generic_missing_class_root.arden");
     let output_path = temp_root.join("no_check_generic_missing_class_root");
     let source = r#"
             class Box<T> {
@@ -10731,7 +10738,7 @@ fn compile_source_no_check_rejects_generic_missing_class_root_without_internal_c
 #[test]
 fn compile_source_no_check_rejects_generic_missing_function_call_without_internal_codegen_error() {
     let temp_root = make_temp_project_root("no-check-generic-missing-function-call");
-    let source_path = temp_root.join("no_check_generic_missing_function_call.apex");
+    let source_path = temp_root.join("no_check_generic_missing_function_call.arden");
     let output_path = temp_root.join("no_check_generic_missing_function_call");
     let source = r#"
             function main(): Integer {
@@ -10754,7 +10761,7 @@ fn compile_source_no_check_rejects_generic_missing_function_call_without_interna
 #[test]
 fn compile_source_no_check_rejects_generic_missing_method_call_without_internal_codegen_error() {
     let temp_root = make_temp_project_root("no-check-generic-missing-method-call");
-    let source_path = temp_root.join("no_check_generic_missing_method_call.apex");
+    let source_path = temp_root.join("no_check_generic_missing_method_call.arden");
     let output_path = temp_root.join("no_check_generic_missing_method_call");
     let source = r#"
             class Box {
@@ -10785,7 +10792,7 @@ fn compile_source_no_check_rejects_generic_missing_method_call_without_internal_
 #[test]
 fn compile_source_no_check_rejects_enum_variant_call_type_args_cleanly() {
     let temp_root = make_temp_project_root("no-check-enum-variant-call-type-args");
-    let source_path = temp_root.join("no_check_enum_variant_call_type_args.apex");
+    let source_path = temp_root.join("no_check_enum_variant_call_type_args.arden");
     let output_path = temp_root.join("no_check_enum_variant_call_type_args");
     let source = r#"
             enum Boxed { Wrap(Integer) }
@@ -10813,7 +10820,7 @@ fn compile_source_no_check_rejects_enum_variant_call_type_args_cleanly() {
 #[test]
 fn compile_source_no_check_rejects_enum_missing_method_with_user_facing_diagnostic() {
     let temp_root = make_temp_project_root("no-check-enum-missing-method-diagnostic");
-    let source_path = temp_root.join("no_check_enum_missing_method_diagnostic.apex");
+    let source_path = temp_root.join("no_check_enum_missing_method_diagnostic.arden");
     let output_path = temp_root.join("no_check_enum_missing_method_diagnostic");
     let source = r#"
             enum Boxed { Wrap(Integer) }
@@ -10842,7 +10849,7 @@ fn compile_source_no_check_rejects_enum_missing_method_with_user_facing_diagnost
 #[test]
 fn compile_source_no_check_rejects_imported_enum_variant_call_type_args_cleanly() {
     let temp_root = make_temp_project_root("no-check-imported-enum-variant-call-type-args");
-    let source_path = temp_root.join("no_check_imported_enum_variant_call_type_args.apex");
+    let source_path = temp_root.join("no_check_imported_enum_variant_call_type_args.arden");
     let output_path = temp_root.join("no_check_imported_enum_variant_call_type_args");
     let source = r#"
             enum Boxed { Wrap(Integer) }
@@ -10868,7 +10875,7 @@ fn compile_source_no_check_rejects_imported_enum_variant_call_type_args_cleanly(
 #[test]
 fn compile_source_no_check_runs_imported_enum_variant_alias_constructor_runtime() {
     let temp_root = make_temp_project_root("no-check-imported-enum-variant-alias-runtime");
-    let source_path = temp_root.join("no_check_imported_enum_variant_alias_runtime.apex");
+    let source_path = temp_root.join("no_check_imported_enum_variant_alias_runtime.arden");
     let output_path = temp_root.join("no_check_imported_enum_variant_alias_runtime");
     let source = r#"
             enum Boxed { Wrap(Integer) }
@@ -10895,7 +10902,7 @@ fn compile_source_no_check_runs_imported_enum_variant_alias_constructor_runtime(
 #[test]
 fn compile_source_no_check_runs_imported_option_some_alias_runtime() {
     let temp_root = make_temp_project_root("no-check-imported-option-some-alias-runtime");
-    let source_path = temp_root.join("no_check_imported_option_some_alias_runtime.apex");
+    let source_path = temp_root.join("no_check_imported_option_some_alias_runtime.arden");
     let output_path = temp_root.join("no_check_imported_option_some_alias_runtime");
     let source = r#"
             import Option.Some as Present;
@@ -10921,7 +10928,7 @@ fn compile_source_no_check_runs_imported_option_some_alias_runtime() {
 #[test]
 fn compile_source_no_check_runs_imported_option_some_alias_function_value_runtime() {
     let temp_root = make_temp_project_root("no-check-imported-option-some-alias-fn-value-runtime");
-    let source_path = temp_root.join("no_check_imported_option_some_alias_fn_value_runtime.apex");
+    let source_path = temp_root.join("no_check_imported_option_some_alias_fn_value_runtime.arden");
     let output_path = temp_root.join("no_check_imported_option_some_alias_fn_value_runtime");
     let source = r#"
             import Option.Some as Present;
@@ -10948,7 +10955,7 @@ fn compile_source_no_check_runs_imported_option_some_alias_function_value_runtim
 #[test]
 fn compile_source_no_check_runs_generic_class_constructor_function_value_runtime() {
     let temp_root = make_temp_project_root("no-check-generic-class-ctor-fn-value-runtime");
-    let source_path = temp_root.join("no_check_generic_class_ctor_fn_value_runtime.apex");
+    let source_path = temp_root.join("no_check_generic_class_ctor_fn_value_runtime.arden");
     let output_path = temp_root.join("no_check_generic_class_ctor_fn_value_runtime");
     let source = r#"
             class Box<T> {
@@ -10977,7 +10984,7 @@ fn compile_source_no_check_runs_generic_class_constructor_function_value_runtime
 #[test]
 fn compile_source_no_check_runs_imported_generic_class_constructor_function_value_runtime() {
     let temp_root = make_temp_project_root("no-check-imported-generic-class-ctor-fn-value-runtime");
-    let source_path = temp_root.join("no_check_imported_generic_class_ctor_fn_value_runtime.apex");
+    let source_path = temp_root.join("no_check_imported_generic_class_ctor_fn_value_runtime.arden");
     let output_path = temp_root.join("no_check_imported_generic_class_ctor_fn_value_runtime");
     let source = r#"
             class Box<T> {
@@ -11010,7 +11017,7 @@ fn compile_source_no_check_runs_imported_nested_generic_class_constructor_functi
     let temp_root =
         make_temp_project_root("no-check-imported-nested-generic-class-ctor-fn-value-runtime");
     let source_path =
-        temp_root.join("no_check_imported_nested_generic_class_ctor_fn_value_runtime.apex");
+        temp_root.join("no_check_imported_nested_generic_class_ctor_fn_value_runtime.arden");
     let output_path =
         temp_root.join("no_check_imported_nested_generic_class_ctor_fn_value_runtime");
     let source = r#"
@@ -11045,7 +11052,7 @@ fn compile_source_no_check_runs_imported_nested_generic_class_constructor_functi
 #[test]
 fn compile_source_no_check_runs_inferred_generic_class_constructor_function_value_runtime() {
     let temp_root = make_temp_project_root("no-check-inferred-generic-class-ctor-fn-value-runtime");
-    let source_path = temp_root.join("no_check_inferred_generic_class_ctor_fn_value_runtime.apex");
+    let source_path = temp_root.join("no_check_inferred_generic_class_ctor_fn_value_runtime.arden");
     let output_path = temp_root.join("no_check_inferred_generic_class_ctor_fn_value_runtime");
     let source = r#"
             class Box<T> {
@@ -11076,7 +11083,7 @@ fn compile_source_no_check_runs_exact_imported_nested_enum_variant_aliases_runti
     let temp_root =
         make_temp_project_root("no-check-exact-imported-nested-enum-variant-aliases-runtime");
     let source_path =
-        temp_root.join("no_check_exact_imported_nested_enum_variant_aliases_runtime.apex");
+        temp_root.join("no_check_exact_imported_nested_enum_variant_aliases_runtime.arden");
     let output_path = temp_root.join("no_check_exact_imported_nested_enum_variant_aliases_runtime");
     let source = r#"
             module util { enum Result { Ok(Integer), Error(String) } }
@@ -11107,7 +11114,7 @@ fn compile_source_no_check_runs_exact_imported_nested_enum_variant_aliases_runti
 #[test]
 fn compile_source_no_check_runs_imported_option_alias_match_runtime() {
     let temp_root = make_temp_project_root("no-check-imported-option-alias-match-runtime");
-    let source_path = temp_root.join("no_check_imported_option_alias_match_runtime.apex");
+    let source_path = temp_root.join("no_check_imported_option_alias_match_runtime.arden");
     let output_path = temp_root.join("no_check_imported_option_alias_match_runtime");
     let source = r#"
             import Option.Some as Present;
@@ -11140,7 +11147,7 @@ fn compile_source_no_check_runs_imported_inferred_generic_class_constructor_func
     let temp_root =
         make_temp_project_root("no-check-imported-inferred-generic-class-ctor-fn-value-runtime");
     let source_path =
-        temp_root.join("no_check_imported_inferred_generic_class_ctor_fn_value_runtime.apex");
+        temp_root.join("no_check_imported_inferred_generic_class_ctor_fn_value_runtime.arden");
     let output_path =
         temp_root.join("no_check_imported_inferred_generic_class_ctor_fn_value_runtime");
     let source = r#"
@@ -11179,7 +11186,7 @@ fn compile_source_no_check_runs_namespace_alias_inferred_generic_class_construct
         "no-check-namespace-alias-inferred-generic-class-ctor-fn-value-runtime",
     );
     let source_path = temp_root
-        .join("no_check_namespace_alias_inferred_generic_class_ctor_fn_value_runtime.apex");
+        .join("no_check_namespace_alias_inferred_generic_class_ctor_fn_value_runtime.arden");
     let output_path =
         temp_root.join("no_check_namespace_alias_inferred_generic_class_ctor_fn_value_runtime");
     let source = r#"
@@ -11219,7 +11226,7 @@ fn compile_source_no_check_runs_wildcard_imported_inferred_generic_class_constru
         "no-check-wildcard-imported-inferred-generic-class-ctor-fn-value-runtime",
     );
     let source_path = temp_root
-        .join("no_check_wildcard_imported_inferred_generic_class_ctor_fn_value_runtime.apex");
+        .join("no_check_wildcard_imported_inferred_generic_class_ctor_fn_value_runtime.arden");
     let output_path =
         temp_root.join("no_check_wildcard_imported_inferred_generic_class_ctor_fn_value_runtime");
     let source = r#"
@@ -11255,7 +11262,7 @@ fn compile_source_no_check_runs_wildcard_imported_inferred_generic_class_constru
 #[test]
 fn compile_source_no_check_runs_nested_generic_class_field_access_runtime() {
     let temp_root = make_temp_project_root("no-check-nested-generic-class-field-runtime");
-    let source_path = temp_root.join("no_check_nested_generic_class_field_runtime.apex");
+    let source_path = temp_root.join("no_check_nested_generic_class_field_runtime.arden");
     let output_path = temp_root.join("no_check_nested_generic_class_field_runtime");
     let source = r#"
             module M {
@@ -11285,7 +11292,7 @@ fn compile_source_no_check_runs_nested_generic_class_field_access_runtime() {
 #[test]
 fn compile_source_no_check_runs_nested_generic_class_method_runtime() {
     let temp_root = make_temp_project_root("no-check-nested-generic-class-method-runtime");
-    let source_path = temp_root.join("no_check_nested_generic_class_method_runtime.apex");
+    let source_path = temp_root.join("no_check_nested_generic_class_method_runtime.arden");
     let output_path = temp_root.join("no_check_nested_generic_class_method_runtime");
     let source = r#"
             module M {
@@ -11318,7 +11325,7 @@ fn compile_source_no_check_runs_wildcard_imported_nested_generic_class_field_acc
     let temp_root =
         make_temp_project_root("no-check-wildcard-imported-nested-generic-class-field-runtime");
     let source_path =
-        temp_root.join("no_check_wildcard_imported_nested_generic_class_field_runtime.apex");
+        temp_root.join("no_check_wildcard_imported_nested_generic_class_field_runtime.arden");
     let output_path =
         temp_root.join("no_check_wildcard_imported_nested_generic_class_field_runtime");
     let source = r#"
@@ -11353,7 +11360,7 @@ fn compile_source_no_check_runs_wildcard_imported_nested_generic_class_method_ru
     let temp_root =
         make_temp_project_root("no-check-wildcard-imported-nested-generic-class-method-runtime");
     let source_path =
-        temp_root.join("no_check_wildcard_imported_nested_generic_class_method_runtime.apex");
+        temp_root.join("no_check_wildcard_imported_nested_generic_class_method_runtime.arden");
     let output_path =
         temp_root.join("no_check_wildcard_imported_nested_generic_class_method_runtime");
     let source = r#"
@@ -11387,7 +11394,7 @@ fn compile_source_no_check_runs_wildcard_imported_nested_generic_class_method_ru
 #[test]
 fn compile_source_no_check_rejects_option_static_call_type_args_cleanly() {
     let temp_root = make_temp_project_root("no-check-option-static-call-type-args");
-    let source_path = temp_root.join("no_check_option_static_call_type_args.apex");
+    let source_path = temp_root.join("no_check_option_static_call_type_args.arden");
     let output_path = temp_root.join("no_check_option_static_call_type_args");
     let source = r#"
             function main(): Option<Integer> {
@@ -11414,7 +11421,7 @@ fn compile_source_no_check_rejects_option_static_call_type_args_cleanly() {
 #[test]
 fn compile_source_no_check_rejects_imported_option_some_alias_type_args_cleanly() {
     let temp_root = make_temp_project_root("no-check-imported-option-some-alias-type-args");
-    let source_path = temp_root.join("no_check_imported_option_some_alias_type_args.apex");
+    let source_path = temp_root.join("no_check_imported_option_some_alias_type_args.arden");
     let output_path = temp_root.join("no_check_imported_option_some_alias_type_args");
     let source = r#"
             import Option.Some as Present;
@@ -11439,7 +11446,7 @@ fn compile_source_no_check_rejects_imported_option_some_alias_type_args_cleanly(
 #[test]
 fn compile_source_no_check_rejects_result_static_call_type_args_cleanly() {
     let temp_root = make_temp_project_root("no-check-result-static-call-type-args");
-    let source_path = temp_root.join("no_check_result_static_call_type_args.apex");
+    let source_path = temp_root.join("no_check_result_static_call_type_args.arden");
     let output_path = temp_root.join("no_check_result_static_call_type_args");
     let source = r#"
             function main(): Result<Integer, String> {
@@ -11466,7 +11473,7 @@ fn compile_source_no_check_rejects_result_static_call_type_args_cleanly() {
 #[test]
 fn compile_source_no_check_rejects_explicit_type_args_on_non_function_field_call_cleanly() {
     let temp_root = make_temp_project_root("no-check-non-function-field-generic-call");
-    let source_path = temp_root.join("no_check_non_function_field_generic_call.apex");
+    let source_path = temp_root.join("no_check_non_function_field_generic_call.arden");
     let output_path = temp_root.join("no_check_non_function_field_generic_call");
     let source = r#"
             class Box {
@@ -11497,7 +11504,7 @@ fn compile_source_no_check_rejects_explicit_type_args_on_non_function_field_call
 #[test]
 fn compile_source_no_check_rejects_explicit_type_args_on_non_function_field_value_cleanly() {
     let temp_root = make_temp_project_root("no-check-non-function-field-generic-value");
-    let source_path = temp_root.join("no_check_non_function_field_generic_value.apex");
+    let source_path = temp_root.join("no_check_non_function_field_generic_value.arden");
     let output_path = temp_root.join("no_check_non_function_field_generic_value");
     let source = r#"
             class Box {
@@ -11531,7 +11538,7 @@ fn compile_source_no_check_rejects_explicit_type_args_on_non_function_field_valu
 #[test]
 fn compile_source_no_check_rejects_namespaced_non_function_field_call_with_demangled_class_name() {
     let temp_root = make_temp_project_root("no-check-namespaced-non-function-field-call");
-    let source_path = temp_root.join("no_check_namespaced_non_function_field_call.apex");
+    let source_path = temp_root.join("no_check_namespaced_non_function_field_call.arden");
     let output_path = temp_root.join("no_check_namespaced_non_function_field_call");
     let source = r#"
             module U {
@@ -11561,7 +11568,7 @@ fn compile_source_no_check_rejects_namespaced_non_function_field_call_with_deman
 #[test]
 fn compile_source_no_check_rejects_namespaced_non_function_field_value_with_demangled_class_name() {
     let temp_root = make_temp_project_root("no-check-namespaced-non-function-field-value");
-    let source_path = temp_root.join("no_check_namespaced_non_function_field_value.apex");
+    let source_path = temp_root.join("no_check_namespaced_non_function_field_value.arden");
     let output_path = temp_root.join("no_check_namespaced_non_function_field_value");
     let source = r#"
             module U {
@@ -11592,7 +11599,7 @@ fn compile_source_no_check_rejects_namespaced_non_function_field_value_with_dema
 #[test]
 fn compile_source_no_check_rejects_unknown_string_method_with_string_diagnostic() {
     let temp_root = make_temp_project_root("no-check-invalid-string-method-name");
-    let source_path = temp_root.join("no_check_invalid_string_method_name.apex");
+    let source_path = temp_root.join("no_check_invalid_string_method_name.arden");
     let output_path = temp_root.join("no_check_invalid_string_method_name");
     let source = r#"
             function main(): Integer {
@@ -11612,7 +11619,7 @@ fn compile_source_no_check_rejects_unknown_string_method_with_string_diagnostic(
 #[test]
 fn compile_source_no_check_rejects_list_method_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-list-method-arity");
-    let source_path = temp_root.join("no_check_invalid_list_method_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_list_method_arity.arden");
     let output_path = temp_root.join("no_check_invalid_list_method_arity");
     let source = r#"
             function main(): Integer {
@@ -11635,7 +11642,7 @@ fn compile_source_no_check_rejects_list_method_arity_mismatch_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_map_method_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-map-method-arity");
-    let source_path = temp_root.join("no_check_invalid_map_method_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_map_method_arity.arden");
     let output_path = temp_root.join("no_check_invalid_map_method_arity");
     let source = r#"
             function main(): Integer {
@@ -11658,7 +11665,7 @@ fn compile_source_no_check_rejects_map_method_arity_mismatch_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_set_method_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-set-method-arity");
-    let source_path = temp_root.join("no_check_invalid_set_method_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_set_method_arity.arden");
     let output_path = temp_root.join("no_check_invalid_set_method_arity");
     let source = r#"
             function main(): Integer {
@@ -11681,7 +11688,7 @@ fn compile_source_no_check_rejects_set_method_arity_mismatch_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_option_method_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-option-method-arity");
-    let source_path = temp_root.join("no_check_invalid_option_method_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_option_method_arity.arden");
     let output_path = temp_root.join("no_check_invalid_option_method_arity");
     let source = r#"
             function main(): Integer {
@@ -11704,7 +11711,7 @@ fn compile_source_no_check_rejects_option_method_arity_mismatch_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_result_method_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-result-method-arity");
-    let source_path = temp_root.join("no_check_invalid_result_method_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_result_method_arity.arden");
     let output_path = temp_root.join("no_check_invalid_result_method_arity");
     let source = r#"
             function main(): Integer {
@@ -11727,7 +11734,7 @@ fn compile_source_no_check_rejects_result_method_arity_mismatch_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_range_method_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-range-method-arity");
-    let source_path = temp_root.join("no_check_invalid_range_method_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_range_method_arity.arden");
     let output_path = temp_root.join("no_check_invalid_range_method_arity");
     let source = r#"
             function main(): Integer {
@@ -11750,7 +11757,7 @@ fn compile_source_no_check_rejects_range_method_arity_mismatch_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_option_none_constructor_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-option-none-arity");
-    let source_path = temp_root.join("no_check_invalid_option_none_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_option_none_arity.arden");
     let output_path = temp_root.join("no_check_invalid_option_none_arity");
     let source = r#"
             function main(): Integer {
@@ -11773,7 +11780,7 @@ fn compile_source_no_check_rejects_option_none_constructor_arity_mismatch_in_cod
 #[test]
 fn compile_source_no_check_rejects_stdlib_math_abs_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-math-abs-arity");
-    let source_path = temp_root.join("no_check_invalid_math_abs_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_math_abs_arity.arden");
     let output_path = temp_root.join("no_check_invalid_math_abs_arity");
     let source = r#"
             import std.math.*;
@@ -11797,7 +11804,7 @@ fn compile_source_no_check_rejects_stdlib_math_abs_arity_mismatch_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_stdlib_math_pi_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-math-pi-arity");
-    let source_path = temp_root.join("no_check_invalid_math_pi_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_math_pi_arity.arden");
     let output_path = temp_root.join("no_check_invalid_math_pi_arity");
     let source = r#"
             import std.math.*;
@@ -11821,7 +11828,7 @@ fn compile_source_no_check_rejects_stdlib_math_pi_arity_mismatch_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_exit_arity_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-exit-arity");
-    let source_path = temp_root.join("no_check_invalid_exit_arity.apex");
+    let source_path = temp_root.join("no_check_invalid_exit_arity.arden");
     let output_path = temp_root.join("no_check_invalid_exit_arity");
     let source = r#"
             function main(): Integer {
@@ -11841,7 +11848,7 @@ fn compile_source_no_check_rejects_exit_arity_mismatch_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_math_abs_boolean_argument_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-math-abs-boolean");
-    let source_path = temp_root.join("no_check_invalid_math_abs_boolean.apex");
+    let source_path = temp_root.join("no_check_invalid_math_abs_boolean.arden");
     let output_path = temp_root.join("no_check_invalid_math_abs_boolean");
     let source = r#"
             import std.math.*;
@@ -11866,7 +11873,7 @@ fn compile_source_no_check_rejects_math_abs_boolean_argument_in_codegen() {
 #[test]
 fn compile_source_no_check_rejects_math_min_boolean_arguments_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-math-min-boolean");
-    let source_path = temp_root.join("no_check_invalid_math_min_boolean.apex");
+    let source_path = temp_root.join("no_check_invalid_math_min_boolean.arden");
     let output_path = temp_root.join("no_check_invalid_math_min_boolean");
     let source = r#"
             import std.math.*;
@@ -11892,7 +11899,7 @@ fn compile_source_no_check_rejects_math_min_boolean_arguments_in_codegen() {
 fn compile_source_no_check_rejects_math_min_on_module_local_non_numeric_type_with_user_facing_name()
 {
     let temp_root = make_temp_project_root("no-check-invalid-math-min-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_math_min_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_math_min_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_math_min_module_local_type");
     let source = r#"
             import std.math.*;
@@ -11929,7 +11936,7 @@ fn compile_source_no_check_rejects_math_min_on_module_local_non_numeric_type_wit
 fn compile_source_no_check_rejects_math_max_on_module_local_non_numeric_type_with_user_facing_name()
 {
     let temp_root = make_temp_project_root("no-check-invalid-math-max-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_math_max_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_math_max_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_math_max_module_local_type");
     let source = r#"
             import std.math.*;
@@ -11966,7 +11973,7 @@ fn compile_source_no_check_rejects_math_max_on_module_local_non_numeric_type_wit
 fn compile_source_no_check_rejects_logical_operator_on_module_local_non_boolean_type_with_user_facing_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-logical-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_logical_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_logical_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_logical_module_local_type");
     let source = r#"
             module M {
@@ -12000,7 +12007,7 @@ fn compile_source_no_check_rejects_logical_operator_on_module_local_non_boolean_
 #[test]
 fn compile_source_no_check_rejects_invalid_to_float_function_value_signature() {
     let temp_root = make_temp_project_root("no-check-invalid-to-float-fn-value-signature");
-    let source_path = temp_root.join("no_check_invalid_to_float_fn_value_signature.apex");
+    let source_path = temp_root.join("no_check_invalid_to_float_fn_value_signature.arden");
     let output_path = temp_root.join("no_check_invalid_to_float_fn_value_signature");
     let source = r#"
             function main(): Integer {
@@ -12024,7 +12031,7 @@ fn compile_source_no_check_rejects_invalid_to_float_function_value_signature() {
 #[test]
 fn compile_source_no_check_rejects_invalid_assert_true_function_value_signature() {
     let temp_root = make_temp_project_root("no-check-invalid-assert-true-fn-value-signature");
-    let source_path = temp_root.join("no_check_invalid_assert_true_fn_value_signature.apex");
+    let source_path = temp_root.join("no_check_invalid_assert_true_fn_value_signature.arden");
     let output_path = temp_root.join("no_check_invalid_assert_true_fn_value_signature");
     let source = r#"
             function main(): Integer {
@@ -12048,7 +12055,7 @@ fn compile_source_no_check_rejects_invalid_assert_true_function_value_signature(
 #[test]
 fn compile_source_no_check_rejects_match_literal_type_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-match-literal-type");
-    let source_path = temp_root.join("no_check_invalid_match_literal_type.apex");
+    let source_path = temp_root.join("no_check_invalid_match_literal_type.arden");
     let output_path = temp_root.join("no_check_invalid_match_literal_type");
     let source = r#"
             function main(): Integer {
@@ -12074,7 +12081,7 @@ fn compile_source_no_check_rejects_match_literal_type_mismatch_in_codegen() {
 fn compile_source_no_check_rejects_module_local_match_literal_type_mismatch_with_user_facing_name()
 {
     let temp_root = make_temp_project_root("no-check-invalid-match-literal-module-local-type");
-    let source_path = temp_root.join("no_check_invalid_match_literal_module_local_type.apex");
+    let source_path = temp_root.join("no_check_invalid_match_literal_module_local_type.arden");
     let output_path = temp_root.join("no_check_invalid_match_literal_module_local_type");
     let source = r#"
             module M {
@@ -12107,7 +12114,7 @@ fn compile_source_no_check_rejects_module_local_match_literal_type_mismatch_with
 #[test]
 fn compile_source_no_check_rejects_match_expr_variant_type_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-match-expr-variant-type");
-    let source_path = temp_root.join("no_check_invalid_match_expr_variant_type.apex");
+    let source_path = temp_root.join("no_check_invalid_match_expr_variant_type.arden");
     let output_path = temp_root.join("no_check_invalid_match_expr_variant_type");
     let source = r#"
             function main(): Integer {
@@ -12133,7 +12140,7 @@ fn compile_source_no_check_rejects_match_expr_variant_type_mismatch_in_codegen()
 fn compile_source_no_check_rejects_module_local_match_expr_variant_type_mismatch_with_user_facing_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-match-expr-module-local-variant-type");
-    let source_path = temp_root.join("no_check_invalid_match_expr_module_local_variant_type.apex");
+    let source_path = temp_root.join("no_check_invalid_match_expr_module_local_variant_type.arden");
     let output_path = temp_root.join("no_check_invalid_match_expr_module_local_variant_type");
     let source = r#"
             module M {
@@ -12164,7 +12171,7 @@ fn compile_source_no_check_rejects_module_local_match_expr_variant_type_mismatch
 #[test]
 fn compile_source_no_check_rejects_match_stmt_variant_type_mismatch_in_codegen() {
     let temp_root = make_temp_project_root("no-check-invalid-match-stmt-variant-type");
-    let source_path = temp_root.join("no_check_invalid_match_stmt_variant_type.apex");
+    let source_path = temp_root.join("no_check_invalid_match_stmt_variant_type.arden");
     let output_path = temp_root.join("no_check_invalid_match_stmt_variant_type");
     let source = r#"
             function main(): Integer {
@@ -12190,7 +12197,7 @@ fn compile_source_no_check_rejects_match_stmt_variant_type_mismatch_in_codegen()
 fn compile_source_no_check_rejects_module_local_match_stmt_variant_type_mismatch_with_user_facing_name(
 ) {
     let temp_root = make_temp_project_root("no-check-invalid-match-stmt-module-local-variant-type");
-    let source_path = temp_root.join("no_check_invalid_match_stmt_module_local_variant_type.apex");
+    let source_path = temp_root.join("no_check_invalid_match_stmt_module_local_variant_type.arden");
     let output_path = temp_root.join("no_check_invalid_match_stmt_module_local_variant_type");
     let source = r#"
             module M {
@@ -12221,7 +12228,7 @@ fn compile_source_no_check_rejects_module_local_match_stmt_variant_type_mismatch
 #[test]
 fn compile_source_runs_match_expr_with_user_enum_some_string_payload_runtime() {
     let temp_root = make_temp_project_root("match-expr-user-enum-some-string-runtime");
-    let source_path = temp_root.join("match_expr_user_enum_some_string_runtime.apex");
+    let source_path = temp_root.join("match_expr_user_enum_some_string_runtime.arden");
     let output_path = temp_root.join("match_expr_user_enum_some_string_runtime");
     let source = r#"
             enum E {
@@ -12253,7 +12260,7 @@ fn compile_source_runs_match_expr_with_user_enum_some_string_payload_runtime() {
 #[test]
 fn compile_source_runs_string_interpolation_on_boolean_runtime() {
     let temp_root = make_temp_project_root("string-interpolation-bool-runtime");
-    let source_path = temp_root.join("string_interpolation_bool_runtime.apex");
+    let source_path = temp_root.join("string_interpolation_bool_runtime.arden");
     let output_path = temp_root.join("string_interpolation_bool_runtime");
     let source = r#"
             import std.string.*;
@@ -12279,7 +12286,7 @@ fn compile_source_runs_string_interpolation_on_boolean_runtime() {
 #[test]
 fn compile_source_runs_string_interpolation_on_char_runtime() {
     let temp_root = make_temp_project_root("string-interpolation-char-runtime");
-    let source_path = temp_root.join("string_interpolation_char_runtime.apex");
+    let source_path = temp_root.join("string_interpolation_char_runtime.arden");
     let output_path = temp_root.join("string_interpolation_char_runtime");
     let source = r#"
             import std.string.*;
@@ -12305,7 +12312,7 @@ fn compile_source_runs_string_interpolation_on_char_runtime() {
 #[test]
 fn compile_source_runs_string_interpolation_on_none_runtime() {
     let temp_root = make_temp_project_root("string-interpolation-none-runtime");
-    let source_path = temp_root.join("string_interpolation_none_runtime.apex");
+    let source_path = temp_root.join("string_interpolation_none_runtime.arden");
     let output_path = temp_root.join("string_interpolation_none_runtime");
     let source = r#"
             import std.string.*;
@@ -12331,7 +12338,7 @@ fn compile_source_runs_string_interpolation_on_none_runtime() {
 #[test]
 fn compile_source_fails_fast_on_math_abs_min_integer_runtime() {
     let temp_root = make_temp_project_root("math-abs-min-integer-runtime");
-    let source_path = temp_root.join("math_abs_min_integer_runtime.apex");
+    let source_path = temp_root.join("math_abs_min_integer_runtime.arden");
     let output_path = temp_root.join("math_abs_min_integer_runtime");
     let source = r#"
             import std.math.*;
@@ -12363,7 +12370,7 @@ fn compile_source_fails_fast_on_math_abs_min_integer_runtime() {
 #[test]
 fn compile_source_prints_boolean_with_user_facing_representation() {
     let temp_root = make_temp_project_root("print-bool-runtime");
-    let source_path = temp_root.join("print_bool_runtime.apex");
+    let source_path = temp_root.join("print_bool_runtime.arden");
     let output_path = temp_root.join("print_bool_runtime");
     let source = r#"
             import std.io.*;
@@ -12391,7 +12398,7 @@ fn compile_source_prints_boolean_with_user_facing_representation() {
 #[test]
 fn compile_source_prints_unicode_char_with_user_facing_representation() {
     let temp_root = make_temp_project_root("print-char-runtime");
-    let source_path = temp_root.join("print_char_runtime.apex");
+    let source_path = temp_root.join("print_char_runtime.arden");
     let output_path = temp_root.join("print_char_runtime");
     let source = r#"
             import std.io.*;
@@ -12419,7 +12426,7 @@ fn compile_source_prints_unicode_char_with_user_facing_representation() {
 #[test]
 fn compile_source_prints_none_with_user_facing_representation() {
     let temp_root = make_temp_project_root("print-none-runtime");
-    let source_path = temp_root.join("print_none_runtime.apex");
+    let source_path = temp_root.join("print_none_runtime.arden");
     let output_path = temp_root.join("print_none_runtime");
     let source = r#"
             import std.io.*;
@@ -12447,7 +12454,7 @@ fn compile_source_prints_none_with_user_facing_representation() {
 #[test]
 fn compile_source_runs_print_on_option_runtime() {
     let temp_root = make_temp_project_root("print-option-runtime");
-    let source_path = temp_root.join("print_option_runtime.apex");
+    let source_path = temp_root.join("print_option_runtime.arden");
     let output_path = temp_root.join("print_option_runtime");
     let source = r#"
             import std.io.*;
@@ -12475,7 +12482,7 @@ fn compile_source_runs_print_on_option_runtime() {
 #[test]
 fn compile_source_runs_print_on_direct_option_none_runtime() {
     let temp_root = make_temp_project_root("print-direct-option-none-runtime");
-    let source_path = temp_root.join("print_direct_option_none_runtime.apex");
+    let source_path = temp_root.join("print_direct_option_none_runtime.arden");
     let output_path = temp_root.join("print_direct_option_none_runtime");
     let source = r#"
             import std.io.*;
@@ -12503,7 +12510,7 @@ fn compile_source_runs_print_on_direct_option_none_runtime() {
 #[test]
 fn compile_source_runs_print_on_direct_result_error_with_option_none_runtime() {
     let temp_root = make_temp_project_root("print-direct-result-error-option-none-runtime");
-    let source_path = temp_root.join("print_direct_result_error_option_none_runtime.apex");
+    let source_path = temp_root.join("print_direct_result_error_option_none_runtime.arden");
     let output_path = temp_root.join("print_direct_result_error_option_none_runtime");
     let source = r#"
             import std.io.*;
@@ -12531,7 +12538,7 @@ fn compile_source_runs_print_on_direct_result_error_with_option_none_runtime() {
 #[test]
 fn compile_source_runs_print_on_result_runtime() {
     let temp_root = make_temp_project_root("print-result-runtime");
-    let source_path = temp_root.join("print_result_runtime.apex");
+    let source_path = temp_root.join("print_result_runtime.arden");
     let output_path = temp_root.join("print_result_runtime");
     let source = r#"
             import std.io.*;
@@ -12560,7 +12567,7 @@ fn compile_source_runs_print_on_result_runtime() {
 #[test]
 fn compile_source_runs_print_on_direct_result_error_runtime() {
     let temp_root = make_temp_project_root("print-direct-result-error-runtime");
-    let source_path = temp_root.join("print_direct_result_error_runtime.apex");
+    let source_path = temp_root.join("print_direct_result_error_runtime.arden");
     let output_path = temp_root.join("print_direct_result_error_runtime");
     let source = r#"
             import std.io.*;
@@ -12588,7 +12595,7 @@ fn compile_source_runs_print_on_direct_result_error_runtime() {
 #[test]
 fn compile_source_runs_string_interpolation_with_string_literal_index_key_runtime() {
     let temp_root = make_temp_project_root("string-interpolation-map-string-key-runtime");
-    let source_path = temp_root.join("string_interpolation_map_string_key_runtime.apex");
+    let source_path = temp_root.join("string_interpolation_map_string_key_runtime.arden");
     let output_path = temp_root.join("string_interpolation_map_string_key_runtime");
     let source = r#"
             function main(): Integer {
@@ -12614,7 +12621,7 @@ fn compile_source_runs_string_interpolation_with_string_literal_index_key_runtim
 #[test]
 fn compile_source_runs_long_string_interpolation_runtime() {
     let temp_root = make_temp_project_root("long-string-interpolation-runtime");
-    let source_path = temp_root.join("long_string_interpolation_runtime.apex");
+    let source_path = temp_root.join("long_string_interpolation_runtime.arden");
     let output_path = temp_root.join("long_string_interpolation_runtime");
     let source = r#"
             import std.string.*;
@@ -12646,7 +12653,7 @@ fn compile_source_runs_long_string_interpolation_runtime() {
 #[test]
 fn compile_source_runs_string_interpolation_with_nested_braces_string_literal_runtime() {
     let temp_root = make_temp_project_root("string-interp-nested-braces-string-runtime");
-    let source_path = temp_root.join("string_interp_nested_braces_string_runtime.apex");
+    let source_path = temp_root.join("string_interp_nested_braces_string_runtime.arden");
     let output_path = temp_root.join("string_interp_nested_braces_string_runtime");
     let source = r#"
             import std.string.*;
@@ -12672,7 +12679,7 @@ fn compile_source_runs_string_interpolation_with_nested_braces_string_literal_ru
 #[test]
 fn compile_source_runs_string_interpolation_with_char_brace_literal_runtime() {
     let temp_root = make_temp_project_root("string-interp-char-brace-runtime");
-    let source_path = temp_root.join("string_interp_char_brace_runtime.apex");
+    let source_path = temp_root.join("string_interp_char_brace_runtime.arden");
     let output_path = temp_root.join("string_interp_char_brace_runtime");
     let source = r#"
             function main(): Integer {
@@ -12696,7 +12703,7 @@ fn compile_source_runs_string_interpolation_with_char_brace_literal_runtime() {
 #[test]
 fn compile_source_runs_float_interpolation_from_nested_module_runtime() {
     let temp_root = make_temp_project_root("float-interpolation-nested-module-runtime");
-    let source_path = temp_root.join("float_interpolation_nested_module_runtime.apex");
+    let source_path = temp_root.join("float_interpolation_nested_module_runtime.arden");
     let output_path = temp_root.join("float_interpolation_nested_module_runtime");
     let source = r#"
             import std.io.*;
@@ -12742,7 +12749,7 @@ fn compile_source_runs_float_interpolation_from_nested_module_runtime() {
 #[test]
 fn compile_source_runs_inline_mixed_numeric_if_interpolation_runtime() {
     let temp_root = make_temp_project_root("inline-mixed-if-interpolation-runtime");
-    let source_path = temp_root.join("inline_mixed_if_interpolation_runtime.apex");
+    let source_path = temp_root.join("inline_mixed_if_interpolation_runtime.arden");
     let output_path = temp_root.join("inline_mixed_if_interpolation_runtime");
     let source = r#"
             import std.io.*;
@@ -12774,7 +12781,7 @@ fn compile_source_runs_inline_mixed_numeric_if_interpolation_runtime() {
 #[test]
 fn compile_source_runs_inline_mixed_numeric_match_interpolation_runtime() {
     let temp_root = make_temp_project_root("inline-mixed-match-interpolation-runtime");
-    let source_path = temp_root.join("inline_mixed_match_interpolation_runtime.apex");
+    let source_path = temp_root.join("inline_mixed_match_interpolation_runtime.arden");
     let output_path = temp_root.join("inline_mixed_match_interpolation_runtime");
     let source = r#"
             import std.io.*;
@@ -12807,7 +12814,7 @@ fn compile_source_runs_inline_mixed_numeric_match_interpolation_runtime() {
 #[test]
 fn compile_source_runs_unit_enum_match_expression_runtime() {
     let temp_root = make_temp_project_root("unit-enum-match-expression-runtime");
-    let source_path = temp_root.join("unit_enum_match_expression_runtime.apex");
+    let source_path = temp_root.join("unit_enum_match_expression_runtime.arden");
     let output_path = temp_root.join("unit_enum_match_expression_runtime");
     let source = r#"
             enum Kind { A, B }
@@ -12839,7 +12846,7 @@ fn compile_source_runs_unit_enum_match_expression_runtime() {
 #[test]
 fn compile_source_runs_imported_unit_enum_variant_alias_match_expression_runtime() {
     let temp_root = make_temp_project_root("imported-unit-enum-variant-alias-match-runtime");
-    let source_path = temp_root.join("imported_unit_enum_variant_alias_match_runtime.apex");
+    let source_path = temp_root.join("imported_unit_enum_variant_alias_match_runtime.arden");
     let output_path = temp_root.join("imported_unit_enum_variant_alias_match_runtime");
     let source = r#"
             import std.io.*;
@@ -12873,7 +12880,7 @@ fn compile_source_runs_imported_unit_enum_variant_alias_match_expression_runtime
 #[test]
 fn compile_source_runs_imported_unit_enum_variant_alias_patterns_runtime() {
     let temp_root = make_temp_project_root("imported-unit-enum-variant-alias-pattern-runtime");
-    let source_path = temp_root.join("imported_unit_enum_variant_alias_pattern_runtime.apex");
+    let source_path = temp_root.join("imported_unit_enum_variant_alias_pattern_runtime.arden");
     let output_path = temp_root.join("imported_unit_enum_variant_alias_pattern_runtime");
     let source = r#"
             import std.io.*;
@@ -12909,7 +12916,7 @@ fn check_source_rejects_non_exhaustive_imported_unit_enum_variant_alias_pattern(
     let temp_root =
         make_temp_project_root("imported-unit-enum-variant-alias-pattern-non-exhaustive");
     let source_path =
-        temp_root.join("imported_unit_enum_variant_alias_pattern_non_exhaustive.apex");
+        temp_root.join("imported_unit_enum_variant_alias_pattern_non_exhaustive.arden");
     let output_path = temp_root.join("imported_unit_enum_variant_alias_pattern_non_exhaustive");
     let source = r#"
             enum E { A, B }
@@ -12933,7 +12940,7 @@ fn check_source_rejects_non_exhaustive_imported_unit_enum_variant_alias_pattern(
 #[test]
 fn compile_source_runs_imported_payload_enum_variant_alias_patterns_runtime() {
     let temp_root = make_temp_project_root("imported-payload-enum-variant-alias-pattern-runtime");
-    let source_path = temp_root.join("imported_payload_enum_variant_alias_pattern_runtime.apex");
+    let source_path = temp_root.join("imported_payload_enum_variant_alias_pattern_runtime.arden");
     let output_path = temp_root.join("imported_payload_enum_variant_alias_pattern_runtime");
     let source = r#"
             enum E { A(Integer), B(Integer) }
@@ -12966,7 +12973,7 @@ fn compile_source_runs_imported_payload_enum_variant_alias_patterns_runtime() {
 #[test]
 fn compile_source_runs_imported_top_level_type_alias_runtime() {
     let temp_root = make_temp_project_root("imported-top-level-type-alias-runtime");
-    let source_path = temp_root.join("imported_top_level_type_alias_runtime.apex");
+    let source_path = temp_root.join("imported_top_level_type_alias_runtime.arden");
     let output_path = temp_root.join("imported_top_level_type_alias_runtime");
     let source = r#"
             class Box {
@@ -12995,7 +13002,7 @@ fn compile_source_runs_imported_top_level_type_alias_runtime() {
 #[test]
 fn compile_source_runs_imported_nested_type_alias_runtime() {
     let temp_root = make_temp_project_root("imported-nested-type-alias-runtime");
-    let source_path = temp_root.join("imported_nested_type_alias_runtime.apex");
+    let source_path = temp_root.join("imported_nested_type_alias_runtime.arden");
     let output_path = temp_root.join("imported_nested_type_alias_runtime");
     let source = r#"
             module M {
@@ -13026,7 +13033,7 @@ fn compile_source_runs_imported_nested_type_alias_runtime() {
 #[test]
 fn compile_source_runs_imported_generic_top_level_type_alias_runtime() {
     let temp_root = make_temp_project_root("imported-generic-top-level-type-alias-runtime");
-    let source_path = temp_root.join("imported_generic_top_level_type_alias_runtime.apex");
+    let source_path = temp_root.join("imported_generic_top_level_type_alias_runtime.arden");
     let output_path = temp_root.join("imported_generic_top_level_type_alias_runtime");
     let source = r#"
             class Box<T> {
@@ -13055,7 +13062,7 @@ fn compile_source_runs_imported_generic_top_level_type_alias_runtime() {
 #[test]
 fn compile_source_runs_imported_generic_nested_type_alias_runtime() {
     let temp_root = make_temp_project_root("imported-generic-nested-type-alias-runtime");
-    let source_path = temp_root.join("imported_generic_nested_type_alias_runtime.apex");
+    let source_path = temp_root.join("imported_generic_nested_type_alias_runtime.arden");
     let output_path = temp_root.join("imported_generic_nested_type_alias_runtime");
     let source = r#"
             module M {
@@ -13086,7 +13093,7 @@ fn compile_source_runs_imported_generic_nested_type_alias_runtime() {
 #[test]
 fn compile_source_runs_generic_class_constructor_function_value_runtime() {
     let temp_root = make_temp_project_root("generic-class-ctor-fn-value-runtime");
-    let source_path = temp_root.join("generic_class_ctor_fn_value_runtime.apex");
+    let source_path = temp_root.join("generic_class_ctor_fn_value_runtime.arden");
     let output_path = temp_root.join("generic_class_ctor_fn_value_runtime");
     let source = r#"
             class Box<T> {
@@ -13115,7 +13122,7 @@ fn compile_source_runs_generic_class_constructor_function_value_runtime() {
 #[test]
 fn compile_source_runs_imported_generic_class_constructor_function_value_runtime() {
     let temp_root = make_temp_project_root("imported-generic-class-ctor-fn-value-runtime");
-    let source_path = temp_root.join("imported_generic_class_ctor_fn_value_runtime.apex");
+    let source_path = temp_root.join("imported_generic_class_ctor_fn_value_runtime.arden");
     let output_path = temp_root.join("imported_generic_class_ctor_fn_value_runtime");
     let source = r#"
             class Box<T> {
@@ -13146,7 +13153,7 @@ fn compile_source_runs_imported_generic_class_constructor_function_value_runtime
 #[test]
 fn compile_source_runs_imported_nested_generic_class_constructor_function_value_runtime() {
     let temp_root = make_temp_project_root("imported-nested-generic-class-ctor-fn-value-runtime");
-    let source_path = temp_root.join("imported_nested_generic_class_ctor_fn_value_runtime.apex");
+    let source_path = temp_root.join("imported_nested_generic_class_ctor_fn_value_runtime.arden");
     let output_path = temp_root.join("imported_nested_generic_class_ctor_fn_value_runtime");
     let source = r#"
             module M {
@@ -13179,7 +13186,7 @@ fn compile_source_runs_imported_nested_generic_class_constructor_function_value_
 #[test]
 fn compile_source_runs_inferred_generic_class_constructor_function_value_runtime() {
     let temp_root = make_temp_project_root("inferred-generic-class-ctor-fn-value-runtime");
-    let source_path = temp_root.join("inferred_generic_class_ctor_fn_value_runtime.apex");
+    let source_path = temp_root.join("inferred_generic_class_ctor_fn_value_runtime.arden");
     let output_path = temp_root.join("inferred_generic_class_ctor_fn_value_runtime");
     let source = r#"
             class Box<T> {
@@ -13208,7 +13215,7 @@ fn compile_source_runs_inferred_generic_class_constructor_function_value_runtime
 #[test]
 fn compile_source_runs_imported_inferred_generic_class_constructor_function_value_runtime() {
     let temp_root = make_temp_project_root("imported-inferred-generic-class-ctor-fn-value-runtime");
-    let source_path = temp_root.join("imported_inferred_generic_class_ctor_fn_value_runtime.apex");
+    let source_path = temp_root.join("imported_inferred_generic_class_ctor_fn_value_runtime.arden");
     let output_path = temp_root.join("imported_inferred_generic_class_ctor_fn_value_runtime");
     let source = r#"
             module M {
@@ -13243,7 +13250,7 @@ fn compile_source_runs_namespace_alias_inferred_generic_class_constructor_functi
     let temp_root =
         make_temp_project_root("namespace-alias-inferred-generic-class-ctor-fn-value-runtime");
     let source_path =
-        temp_root.join("namespace_alias_inferred_generic_class_ctor_fn_value_runtime.apex");
+        temp_root.join("namespace_alias_inferred_generic_class_ctor_fn_value_runtime.arden");
     let output_path =
         temp_root.join("namespace_alias_inferred_generic_class_ctor_fn_value_runtime");
     let source = r#"
@@ -13282,7 +13289,7 @@ fn compile_source_runs_wildcard_imported_inferred_generic_class_constructor_func
     let temp_root =
         make_temp_project_root("wildcard-imported-inferred-generic-class-ctor-fn-value-runtime");
     let source_path =
-        temp_root.join("wildcard_imported_inferred_generic_class_ctor_fn_value_runtime.apex");
+        temp_root.join("wildcard_imported_inferred_generic_class_ctor_fn_value_runtime.arden");
     let output_path =
         temp_root.join("wildcard_imported_inferred_generic_class_ctor_fn_value_runtime");
     let source = r#"
@@ -13318,7 +13325,7 @@ fn compile_source_runs_wildcard_imported_inferred_generic_class_constructor_func
 #[test]
 fn compile_source_runs_nested_generic_class_field_access_runtime() {
     let temp_root = make_temp_project_root("nested-generic-class-field-runtime");
-    let source_path = temp_root.join("nested_generic_class_field_runtime.apex");
+    let source_path = temp_root.join("nested_generic_class_field_runtime.arden");
     let output_path = temp_root.join("nested_generic_class_field_runtime");
     let source = r#"
             module M {
@@ -13348,7 +13355,7 @@ fn compile_source_runs_nested_generic_class_field_access_runtime() {
 #[test]
 fn compile_source_runs_nested_generic_class_method_runtime() {
     let temp_root = make_temp_project_root("nested-generic-class-method-runtime");
-    let source_path = temp_root.join("nested_generic_class_method_runtime.apex");
+    let source_path = temp_root.join("nested_generic_class_method_runtime.arden");
     let output_path = temp_root.join("nested_generic_class_method_runtime");
     let source = r#"
             module M {
@@ -13379,7 +13386,7 @@ fn compile_source_runs_nested_generic_class_method_runtime() {
 #[test]
 fn compile_source_runs_wildcard_imported_nested_generic_class_field_access_runtime() {
     let temp_root = make_temp_project_root("wildcard-imported-nested-generic-class-field-runtime");
-    let source_path = temp_root.join("wildcard_imported_nested_generic_class_field_runtime.apex");
+    let source_path = temp_root.join("wildcard_imported_nested_generic_class_field_runtime.arden");
     let output_path = temp_root.join("wildcard_imported_nested_generic_class_field_runtime");
     let source = r#"
             module M {
@@ -13411,7 +13418,7 @@ fn compile_source_runs_wildcard_imported_nested_generic_class_field_access_runti
 #[test]
 fn compile_source_runs_wildcard_imported_nested_generic_class_method_runtime() {
     let temp_root = make_temp_project_root("wildcard-imported-nested-generic-class-method-runtime");
-    let source_path = temp_root.join("wildcard_imported_nested_generic_class_method_runtime.apex");
+    let source_path = temp_root.join("wildcard_imported_nested_generic_class_method_runtime.arden");
     let output_path = temp_root.join("wildcard_imported_nested_generic_class_method_runtime");
     let source = r#"
             module M {
@@ -13444,7 +13451,7 @@ fn compile_source_runs_wildcard_imported_nested_generic_class_method_runtime() {
 #[test]
 fn compile_source_runs_imported_enum_type_alias_variant_runtime() {
     let temp_root = make_temp_project_root("imported-enum-type-alias-variant-runtime");
-    let source_path = temp_root.join("imported_enum_type_alias_variant_runtime.apex");
+    let source_path = temp_root.join("imported_enum_type_alias_variant_runtime.arden");
     let output_path = temp_root.join("imported_enum_type_alias_variant_runtime");
     let source = r#"
             enum E { A(Integer) }
@@ -13474,7 +13481,7 @@ fn compile_source_runs_namespace_alias_nested_generic_class_constructor_runtime(
     let temp_root =
         make_temp_project_root("namespace-alias-nested-generic-class-constructor-runtime");
     let source_path =
-        temp_root.join("namespace_alias_nested_generic_class_constructor_runtime.apex");
+        temp_root.join("namespace_alias_nested_generic_class_constructor_runtime.arden");
     let output_path = temp_root.join("namespace_alias_nested_generic_class_constructor_runtime");
     let source = r#"
             module U {
@@ -13507,7 +13514,7 @@ fn compile_source_runs_namespace_alias_nested_generic_class_constructor_runtime(
 #[test]
 fn compile_source_runs_namespace_alias_enum_variant_constructor_runtime() {
     let temp_root = make_temp_project_root("namespace-alias-enum-variant-constructor-runtime");
-    let source_path = temp_root.join("namespace_alias_enum_variant_constructor_runtime.apex");
+    let source_path = temp_root.join("namespace_alias_enum_variant_constructor_runtime.arden");
     let output_path = temp_root.join("namespace_alias_enum_variant_constructor_runtime");
     let source = r#"
             module U {
@@ -13537,7 +13544,7 @@ fn compile_source_runs_namespace_alias_nested_enum_variant_constructor_runtime()
     let temp_root =
         make_temp_project_root("namespace-alias-nested-enum-variant-constructor-runtime");
     let source_path =
-        temp_root.join("namespace_alias_nested_enum_variant_constructor_runtime.apex");
+        temp_root.join("namespace_alias_nested_enum_variant_constructor_runtime.arden");
     let output_path = temp_root.join("namespace_alias_nested_enum_variant_constructor_runtime");
     let source = r#"
             module U {
@@ -13569,7 +13576,7 @@ fn compile_source_runs_imported_generic_function_alias_returning_generic_class_r
     let temp_root =
         make_temp_project_root("imported-generic-function-alias-returning-generic-class-runtime");
     let source_path =
-        temp_root.join("imported_generic_function_alias_returning_generic_class_runtime.apex");
+        temp_root.join("imported_generic_function_alias_returning_generic_class_runtime.arden");
     let output_path =
         temp_root.join("imported_generic_function_alias_returning_generic_class_runtime");
     let source = r#"
@@ -13602,7 +13609,7 @@ fn compile_source_runs_imported_generic_function_alias_returning_generic_class_r
 #[test]
 fn compile_source_runs_imported_generic_function_alias_runtime() {
     let temp_root = make_temp_project_root("imported-generic-function-alias-runtime");
-    let source_path = temp_root.join("imported_generic_function_alias_runtime.apex");
+    let source_path = temp_root.join("imported_generic_function_alias_runtime.arden");
     let output_path = temp_root.join("imported_generic_function_alias_runtime");
     let source = r#"
             module M {
@@ -13629,7 +13636,7 @@ fn compile_source_runs_imported_generic_function_alias_runtime() {
 #[test]
 fn compile_source_runs_exact_imported_module_named_main_runtime() {
     let temp_root = make_temp_project_root("exact-imported-module-main-runtime");
-    let source_path = temp_root.join("exact_imported_module_main_runtime.apex");
+    let source_path = temp_root.join("exact_imported_module_main_runtime.arden");
     let output_path = temp_root.join("exact_imported_module_main_runtime");
     let source = r#"
             module M {
@@ -13660,7 +13667,7 @@ fn compile_source_runs_exact_imported_module_named_main_runtime() {
 #[test]
 fn compile_source_runs_wildcard_imported_module_named_main_runtime() {
     let temp_root = make_temp_project_root("wildcard-imported-module-main-runtime");
-    let source_path = temp_root.join("wildcard_imported_module_main_runtime.apex");
+    let source_path = temp_root.join("wildcard_imported_module_main_runtime.arden");
     let output_path = temp_root.join("wildcard_imported_module_main_runtime");
     let source = r#"
             module M {
@@ -13691,7 +13698,7 @@ fn compile_source_runs_wildcard_imported_module_named_main_runtime() {
 #[test]
 fn compile_source_runs_if_expression_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("if-expression-builtin-function-value-runtime");
-    let source_path = temp_root.join("if_expression_builtin_function_value_runtime.apex");
+    let source_path = temp_root.join("if_expression_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("if_expression_builtin_function_value_runtime");
     let source = r#"
             import std.io.*;
@@ -13726,7 +13733,7 @@ fn compile_source_runs_if_expression_builtin_function_value_runtime() {
 #[test]
 fn compile_source_runs_match_expression_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("match-expression-builtin-function-value-runtime");
-    let source_path = temp_root.join("match_expression_builtin_function_value_runtime.apex");
+    let source_path = temp_root.join("match_expression_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("match_expression_builtin_function_value_runtime");
     let source = r#"
             import std.io.*;
@@ -13764,7 +13771,7 @@ fn compile_source_runs_if_expression_float_function_value_with_integer_argument_
     let temp_root =
         make_temp_project_root("if-expression-float-function-value-integer-argument-runtime");
     let source_path =
-        temp_root.join("if_expression_float_function_value_integer_argument_runtime.apex");
+        temp_root.join("if_expression_float_function_value_integer_argument_runtime.arden");
     let output_path = temp_root.join("if_expression_float_function_value_integer_argument_runtime");
     let source = r#"
             function scale(value: Float): Float {
@@ -13793,7 +13800,7 @@ fn compile_source_runs_if_expression_float_function_value_with_integer_argument_
 #[test]
 fn compile_source_runs_option_some_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("option-some-builtin-function-value-runtime");
-    let source_path = temp_root.join("option_some_builtin_function_value_runtime.apex");
+    let source_path = temp_root.join("option_some_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("option_some_builtin_function_value_runtime");
     let source = r#"
             import std.io.*;
@@ -13830,7 +13837,7 @@ fn compile_source_runs_if_expression_option_some_builtin_function_value_runtime(
     let temp_root =
         make_temp_project_root("if-expression-option-some-builtin-function-value-runtime");
     let source_path =
-        temp_root.join("if_expression_option_some_builtin_function_value_runtime.apex");
+        temp_root.join("if_expression_option_some_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("if_expression_option_some_builtin_function_value_runtime");
     let source = r#"
             import std.io.*;
@@ -13867,7 +13874,7 @@ fn compile_source_runs_match_expression_option_some_builtin_function_value_runti
     let temp_root =
         make_temp_project_root("match-expression-option-some-builtin-function-value-runtime");
     let source_path =
-        temp_root.join("match_expression_option_some_builtin_function_value_runtime.apex");
+        temp_root.join("match_expression_option_some_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("match_expression_option_some_builtin_function_value_runtime");
     let source = r#"
             import std.io.*;
@@ -13906,7 +13913,7 @@ fn compile_source_runs_match_expression_option_some_builtin_function_value_runti
 #[test]
 fn compile_source_runs_result_ok_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("result-ok-builtin-function-value-runtime");
-    let source_path = temp_root.join("result_ok_builtin_function_value_runtime.apex");
+    let source_path = temp_root.join("result_ok_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("result_ok_builtin_function_value_runtime");
     let source = r#"
             import std.io.*;
@@ -13941,7 +13948,7 @@ fn compile_source_runs_result_ok_builtin_function_value_runtime() {
 #[test]
 fn compile_source_runs_result_error_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("result-error-builtin-function-value-runtime");
-    let source_path = temp_root.join("result_error_builtin_function_value_runtime.apex");
+    let source_path = temp_root.join("result_error_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("result_error_builtin_function_value_runtime");
     let source = r#"
             import std.io.*;
@@ -13980,7 +13987,7 @@ fn compile_source_runs_result_error_builtin_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_option_some_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-option-some-function-value-runtime");
-    let source_path = temp_root.join("direct_option_some_function_value_runtime.apex");
+    let source_path = temp_root.join("direct_option_some_function_value_runtime.arden");
     let output_path = temp_root.join("direct_option_some_function_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -14005,7 +14012,7 @@ fn compile_source_runs_direct_option_some_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_option_none_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-option-none-function-value-runtime");
-    let source_path = temp_root.join("direct_option_none_function_value_runtime.apex");
+    let source_path = temp_root.join("direct_option_none_function_value_runtime.arden");
     let output_path = temp_root.join("direct_option_none_function_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -14030,7 +14037,7 @@ fn compile_source_runs_direct_option_none_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_result_ok_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-result-ok-function-value-runtime");
-    let source_path = temp_root.join("direct_result_ok_function_value_runtime.apex");
+    let source_path = temp_root.join("direct_result_ok_function_value_runtime.arden");
     let output_path = temp_root.join("direct_result_ok_function_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -14055,7 +14062,7 @@ fn compile_source_runs_direct_result_ok_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_result_error_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-result-error-function-value-runtime");
-    let source_path = temp_root.join("direct_result_error_function_value_runtime.apex");
+    let source_path = temp_root.join("direct_result_error_function_value_runtime.arden");
     let output_path = temp_root.join("direct_result_error_function_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -14080,7 +14087,7 @@ fn compile_source_runs_direct_result_error_function_value_runtime() {
 #[test]
 fn compile_source_rejects_direct_option_some_function_value_type_mismatch() {
     let temp_root = make_temp_project_root("direct-option-some-function-value-type-mismatch");
-    let source_path = temp_root.join("direct_option_some_function_value_type_mismatch.apex");
+    let source_path = temp_root.join("direct_option_some_function_value_type_mismatch.arden");
     let output_path = temp_root.join("direct_option_some_function_value_type_mismatch");
     let source = r#"
             function main(): Integer {
@@ -14105,7 +14112,7 @@ fn compile_source_rejects_direct_option_some_function_value_type_mismatch() {
 #[test]
 fn compile_source_runs_direct_enum_payload_variant_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-enum-payload-variant-function-value");
-    let source_path = temp_root.join("direct_enum_payload_variant_function_value.apex");
+    let source_path = temp_root.join("direct_enum_payload_variant_function_value.arden");
     let output_path = temp_root.join("direct_enum_payload_variant_function_value");
     let source = r#"
             enum Boxed { Wrap(Integer) }
@@ -14133,7 +14140,7 @@ fn compile_source_runs_direct_enum_payload_variant_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_enum_unit_variant_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-enum-unit-variant-function-value");
-    let source_path = temp_root.join("direct_enum_unit_variant_function_value.apex");
+    let source_path = temp_root.join("direct_enum_unit_variant_function_value.arden");
     let output_path = temp_root.join("direct_enum_unit_variant_function_value");
     let source = r#"
             enum Mode { A, B }
@@ -14158,7 +14165,7 @@ fn compile_source_runs_direct_enum_unit_variant_function_value_runtime() {
 #[test]
 fn compile_source_rejects_direct_enum_variant_function_value_type_mismatch() {
     let temp_root = make_temp_project_root("direct-enum-variant-function-value-type-mismatch");
-    let source_path = temp_root.join("direct_enum_variant_function_value_type_mismatch.apex");
+    let source_path = temp_root.join("direct_enum_variant_function_value_type_mismatch.arden");
     let output_path = temp_root.join("direct_enum_variant_function_value_type_mismatch");
     let source = r#"
             enum Boxed { Wrap(Integer) }
@@ -14185,7 +14192,7 @@ fn compile_source_no_check_rejects_module_local_enum_variant_function_value_type
     let temp_root =
         make_temp_project_root("no-check-module-local-enum-variant-fn-value-type-mismatch");
     let source_path =
-        temp_root.join("no_check_module_local_enum_variant_fn_value_type_mismatch.apex");
+        temp_root.join("no_check_module_local_enum_variant_fn_value_type_mismatch.arden");
     let output_path = temp_root.join("no_check_module_local_enum_variant_fn_value_type_mismatch");
     let source = r#"
             module M {
@@ -14214,7 +14221,7 @@ fn compile_source_no_check_rejects_module_local_enum_variant_function_value_type
 fn compile_source_no_check_rejects_specialized_constructor_wrong_arity_with_user_facing_diagnostic()
 {
     let temp_root = make_temp_project_root("no-check-specialized-constructor-wrong-arity");
-    let source_path = temp_root.join("no_check_specialized_constructor_wrong_arity.apex");
+    let source_path = temp_root.join("no_check_specialized_constructor_wrong_arity.arden");
     let output_path = temp_root.join("no_check_specialized_constructor_wrong_arity");
     let source = r#"
             module M {
@@ -14248,7 +14255,7 @@ fn compile_source_no_check_rejects_specialized_constructor_wrong_arity_with_user
 #[test]
 fn compile_source_no_check_rejects_specialized_method_wrong_arity_with_user_facing_diagnostic() {
     let temp_root = make_temp_project_root("no-check-specialized-method-wrong-arity");
-    let source_path = temp_root.join("no_check_specialized_method_wrong_arity.apex");
+    let source_path = temp_root.join("no_check_specialized_method_wrong_arity.arden");
     let output_path = temp_root.join("no_check_specialized_method_wrong_arity");
     let source = r#"
             module M {
@@ -14287,7 +14294,7 @@ fn compile_source_no_check_rejects_specialized_method_wrong_arity_with_user_faci
 fn compile_source_no_check_rejects_unknown_specialized_class_field_access_with_user_facing_class_diagnostic(
 ) {
     let temp_root = make_temp_project_root("no-check-unknown-specialized-class-field-access");
-    let source_path = temp_root.join("no_check_unknown_specialized_class_field_access.apex");
+    let source_path = temp_root.join("no_check_unknown_specialized_class_field_access.arden");
     let output_path = temp_root.join("no_check_unknown_specialized_class_field_access");
     let source = r#"
             module M {
@@ -14322,7 +14329,7 @@ fn compile_source_no_check_rejects_unknown_specialized_class_field_access_with_u
 #[test]
 fn compile_source_no_check_rejects_module_local_missing_method_with_user_facing_class_name() {
     let temp_root = make_temp_project_root("no-check-module-local-missing-method-call");
-    let source_path = temp_root.join("no_check_module_local_missing_method_call.apex");
+    let source_path = temp_root.join("no_check_module_local_missing_method_call.arden");
     let output_path = temp_root.join("no_check_module_local_missing_method_call");
     let source = r#"
             module M {
@@ -14352,7 +14359,7 @@ fn compile_source_no_check_rejects_module_local_missing_method_with_user_facing_
 #[test]
 fn compile_source_no_check_rejects_bound_method_function_value_wrong_arity() {
     let temp_root = make_temp_project_root("no-check-bound-method-function-value-wrong-arity");
-    let source_path = temp_root.join("no_check_bound_method_function_value_wrong_arity.apex");
+    let source_path = temp_root.join("no_check_bound_method_function_value_wrong_arity.arden");
     let output_path = temp_root.join("no_check_bound_method_function_value_wrong_arity");
     let source = r#"
             class Box {
@@ -14387,7 +14394,7 @@ fn compile_source_no_check_rejects_generic_bound_method_function_value_signature
     let temp_root =
         make_temp_project_root("no-check-generic-bound-method-function-signature-mismatch");
     let source_path =
-        temp_root.join("no_check_generic_bound_method_function_signature_mismatch.apex");
+        temp_root.join("no_check_generic_bound_method_function_signature_mismatch.arden");
     let output_path = temp_root.join("no_check_generic_bound_method_function_signature_mismatch");
     let source = r#"
             interface Named {
@@ -14424,7 +14431,7 @@ fn compile_source_no_check_rejects_generic_bound_method_function_value_signature
 #[test]
 fn compile_source_no_check_rejects_enum_missing_bound_method_value_with_user_facing_diagnostic() {
     let temp_root = make_temp_project_root("no-check-enum-missing-bound-method-value");
-    let source_path = temp_root.join("no_check_enum_missing_bound_method_value.apex");
+    let source_path = temp_root.join("no_check_enum_missing_bound_method_value.arden");
     let output_path = temp_root.join("no_check_enum_missing_bound_method_value");
     let source = r#"
             class Box {
@@ -14460,7 +14467,7 @@ fn compile_source_no_check_rejects_enum_missing_bound_method_value_with_user_fac
 #[test]
 fn compile_source_no_check_rejects_enum_variant_function_value_field_access_without_panicking() {
     let temp_root = make_temp_project_root("no-check-enum-variant-function-value-field-access");
-    let source_path = temp_root.join("no_check_enum_variant_function_value_field_access.apex");
+    let source_path = temp_root.join("no_check_enum_variant_function_value_field_access.arden");
     let output_path = temp_root.join("no_check_enum_variant_function_value_field_access");
     let source = r#"
             enum Boxed {
@@ -14488,7 +14495,7 @@ fn compile_source_no_check_rejects_enum_variant_function_value_field_access_with
 #[test]
 fn compile_source_no_check_rejects_module_function_wrong_arity_instead_of_ignoring_extra_args() {
     let temp_root = make_temp_project_root("no-check-module-function-wrong-arity");
-    let source_path = temp_root.join("no_check_module_function_wrong_arity.apex");
+    let source_path = temp_root.join("no_check_module_function_wrong_arity.arden");
     let output_path = temp_root.join("no_check_module_function_wrong_arity");
     let source = r#"
             module M {
@@ -14516,7 +14523,7 @@ fn compile_source_no_check_rejects_module_function_wrong_arity_instead_of_ignori
 #[test]
 fn compile_source_rejects_enum_variant_function_value_type_args_cleanly() {
     let temp_root = make_temp_project_root("enum-variant-function-value-type-args");
-    let source_path = temp_root.join("enum_variant_function_value_type_args.apex");
+    let source_path = temp_root.join("enum_variant_function_value_type_args.arden");
     let output_path = temp_root.join("enum_variant_function_value_type_args");
     let source = r#"
             enum Boxed { Wrap(Integer) }
@@ -14540,7 +14547,7 @@ fn compile_source_rejects_enum_variant_function_value_type_args_cleanly() {
 #[test]
 fn compile_source_rejects_builtin_constructor_function_value_type_args_cleanly() {
     let temp_root = make_temp_project_root("builtin-constructor-function-value-type-args");
-    let source_path = temp_root.join("builtin_constructor_function_value_type_args.apex");
+    let source_path = temp_root.join("builtin_constructor_function_value_type_args.arden");
     let output_path = temp_root.join("builtin_constructor_function_value_type_args");
     let source = r#"
             function main(): Integer {
@@ -14563,7 +14570,7 @@ fn compile_source_rejects_builtin_constructor_function_value_type_args_cleanly()
 #[test]
 fn compile_source_rejects_imported_enum_variant_function_value_type_args_cleanly() {
     let temp_root = make_temp_project_root("imported-enum-variant-function-value-type-args");
-    let source_path = temp_root.join("imported_enum_variant_function_value_type_args.apex");
+    let source_path = temp_root.join("imported_enum_variant_function_value_type_args.arden");
     let output_path = temp_root.join("imported_enum_variant_function_value_type_args");
     let source = r#"
             enum Boxed { Wrap(Integer) }
@@ -14588,7 +14595,7 @@ fn compile_source_rejects_imported_enum_variant_function_value_type_args_cleanly
 #[test]
 fn compile_source_rejects_imported_enum_variant_call_type_args_cleanly() {
     let temp_root = make_temp_project_root("imported-enum-variant-call-type-args");
-    let source_path = temp_root.join("imported_enum_variant_call_type_args.apex");
+    let source_path = temp_root.join("imported_enum_variant_call_type_args.arden");
     let output_path = temp_root.join("imported_enum_variant_call_type_args");
     let source = r#"
             enum Boxed { Wrap(Integer) }
@@ -14613,7 +14620,7 @@ fn compile_source_rejects_imported_enum_variant_call_type_args_cleanly() {
 #[test]
 fn compile_source_rejects_nested_imported_enum_variant_function_value_type_args_cleanly() {
     let temp_root = make_temp_project_root("nested-imported-enum-variant-function-value-type-args");
-    let source_path = temp_root.join("nested_imported_enum_variant_function_value_type_args.apex");
+    let source_path = temp_root.join("nested_imported_enum_variant_function_value_type_args.arden");
     let output_path = temp_root.join("nested_imported_enum_variant_function_value_type_args");
     let source = r#"
             module U {
@@ -14642,7 +14649,7 @@ fn compile_source_rejects_nested_imported_enum_variant_function_value_type_args_
 #[test]
 fn compile_source_rejects_nested_imported_enum_variant_call_type_args_cleanly() {
     let temp_root = make_temp_project_root("nested-imported-enum-variant-call-type-args");
-    let source_path = temp_root.join("nested_imported_enum_variant_call_type_args.apex");
+    let source_path = temp_root.join("nested_imported_enum_variant_call_type_args.arden");
     let output_path = temp_root.join("nested_imported_enum_variant_call_type_args");
     let source = r#"
             module U {
@@ -14671,7 +14678,7 @@ fn compile_source_rejects_nested_imported_enum_variant_call_type_args_cleanly() 
 #[test]
 fn compile_source_rejects_builtin_constructor_function_value_type_args_nocheck() {
     let temp_root = make_temp_project_root("builtin-constructor-function-value-type-args-nocheck");
-    let source_path = temp_root.join("builtin_constructor_function_value_type_args_nocheck.apex");
+    let source_path = temp_root.join("builtin_constructor_function_value_type_args_nocheck.arden");
     let output_path = temp_root.join("builtin_constructor_function_value_type_args_nocheck");
     let source = r#"
             function main(): Integer {
@@ -14694,7 +14701,7 @@ fn compile_source_rejects_builtin_constructor_function_value_type_args_nocheck()
 #[test]
 fn compile_source_runs_constructor_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("constructor-builtin-function-value-runtime");
-    let source_path = temp_root.join("constructor_builtin_function_value_runtime.apex");
+    let source_path = temp_root.join("constructor_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("constructor_builtin_function_value_runtime");
     let source = r#"
             class Box {
@@ -14721,7 +14728,7 @@ fn compile_source_runs_constructor_builtin_function_value_runtime() {
 #[test]
 fn compile_source_runs_generic_constructor_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("generic-constructor-builtin-function-value-runtime");
-    let source_path = temp_root.join("generic_constructor_builtin_function_value_runtime.apex");
+    let source_path = temp_root.join("generic_constructor_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("generic_constructor_builtin_function_value_runtime");
     let source = r#"
             class Box<T> {
@@ -14748,7 +14755,7 @@ fn compile_source_runs_generic_constructor_builtin_function_value_runtime() {
 #[test]
 fn compile_source_runs_generic_method_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("generic-method-builtin-function-value-runtime");
-    let source_path = temp_root.join("generic_method_builtin_function_value_runtime.apex");
+    let source_path = temp_root.join("generic_method_builtin_function_value_runtime.arden");
     let output_path = temp_root.join("generic_method_builtin_function_value_runtime");
     let source = r#"
             class Box<T> {
@@ -14780,7 +14787,7 @@ fn compile_source_runs_user_defined_result_generic_method_builtin_function_value
     let temp_root =
         make_temp_project_root("user-defined-result-generic-method-builtin-function-value");
     let source_path =
-        temp_root.join("user_defined_result_generic_method_builtin_function_value.apex");
+        temp_root.join("user_defined_result_generic_method_builtin_function_value.arden");
     let output_path = temp_root.join("user_defined_result_generic_method_builtin_function_value");
     let source = r#"
             class Result<T, E> {
@@ -14813,7 +14820,7 @@ fn compile_source_runs_if_receiver_result_generic_method_builtin_function_value_
     let temp_root =
         make_temp_project_root("if-receiver-result-generic-method-builtin-function-value");
     let source_path =
-        temp_root.join("if_receiver_result_generic_method_builtin_function_value.apex");
+        temp_root.join("if_receiver_result_generic_method_builtin_function_value.arden");
     let output_path = temp_root.join("if_receiver_result_generic_method_builtin_function_value");
     let source = r#"
             class Result<T, E> {
@@ -14846,7 +14853,7 @@ fn compile_source_runs_if_receiver_result_generic_method_builtin_function_value_
 #[test]
 fn compile_source_runs_if_receiver_map_generic_method_builtin_function_value_runtime() {
     let temp_root = make_temp_project_root("if-receiver-map-generic-method-builtin-function-value");
-    let source_path = temp_root.join("if_receiver_map_generic_method_builtin_function_value.apex");
+    let source_path = temp_root.join("if_receiver_map_generic_method_builtin_function_value.arden");
     let output_path = temp_root.join("if_receiver_map_generic_method_builtin_function_value");
     let source = r#"
             class Map<K, V> {
@@ -14879,7 +14886,7 @@ fn compile_source_runs_if_receiver_map_generic_method_builtin_function_value_run
 #[test]
 fn compile_source_runs_method_lambda_capturing_this_runtime() {
     let temp_root = make_temp_project_root("method-lambda-capturing-this-runtime");
-    let source_path = temp_root.join("method_lambda_capturing_this_runtime.apex");
+    let source_path = temp_root.join("method_lambda_capturing_this_runtime.arden");
     let output_path = temp_root.join("method_lambda_capturing_this_runtime");
     let source = r#"
             class C {
@@ -14908,7 +14915,7 @@ fn compile_source_runs_method_lambda_capturing_this_runtime() {
 #[test]
 fn compile_source_runs_generic_method_lambda_capturing_this_and_builtin_callback_runtime() {
     let temp_root = make_temp_project_root("generic-method-lambda-capturing-this-builtin-callback");
-    let source_path = temp_root.join("generic_method_lambda_capturing_this_builtin_callback.apex");
+    let source_path = temp_root.join("generic_method_lambda_capturing_this_builtin_callback.arden");
     let output_path = temp_root.join("generic_method_lambda_capturing_this_builtin_callback");
     let source = r#"
             class Box<T> {
@@ -14937,7 +14944,7 @@ fn compile_source_runs_generic_method_lambda_capturing_this_and_builtin_callback
 #[test]
 fn compile_source_runs_lambda_if_expression_capture_runtime() {
     let temp_root = make_temp_project_root("lambda-if-expression-capture-runtime");
-    let source_path = temp_root.join("lambda_if_expression_capture_runtime.apex");
+    let source_path = temp_root.join("lambda_if_expression_capture_runtime.arden");
     let output_path = temp_root.join("lambda_if_expression_capture_runtime");
     let source = r#"
             function main(): Integer {
@@ -14962,7 +14969,7 @@ fn compile_source_runs_lambda_if_expression_capture_runtime() {
 #[test]
 fn compile_source_runs_async_if_expression_capture_runtime() {
     let temp_root = make_temp_project_root("async-if-expression-capture-runtime");
-    let source_path = temp_root.join("async_if_expression_capture_runtime.apex");
+    let source_path = temp_root.join("async_if_expression_capture_runtime.arden");
     let output_path = temp_root.join("async_if_expression_capture_runtime");
     let source = r#"
             function main(): Integer {
@@ -14987,7 +14994,7 @@ fn compile_source_runs_async_if_expression_capture_runtime() {
 #[test]
 fn compile_source_runs_async_shadowed_borrow_name_without_false_capture_runtime() {
     let temp_root = make_temp_project_root("async-shadowed-borrow-name-runtime");
-    let source_path = temp_root.join("async_shadowed_borrow_name_runtime.apex");
+    let source_path = temp_root.join("async_shadowed_borrow_name_runtime.arden");
     let output_path = temp_root.join("async_shadowed_borrow_name_runtime");
     let source = r#"
             function main(): Integer {
@@ -15016,7 +15023,7 @@ fn compile_source_runs_async_shadowed_borrow_name_without_false_capture_runtime(
 #[test]
 fn compile_source_runs_async_match_pattern_shadowed_borrow_name_runtime() {
     let temp_root = make_temp_project_root("async-match-pattern-shadowed-borrow-name-runtime");
-    let source_path = temp_root.join("async_match_pattern_shadowed_borrow_name_runtime.apex");
+    let source_path = temp_root.join("async_match_pattern_shadowed_borrow_name_runtime.arden");
     let output_path = temp_root.join("async_match_pattern_shadowed_borrow_name_runtime");
     let source = r#"
             enum E { A(Integer) }
@@ -15045,7 +15052,7 @@ fn compile_source_runs_async_match_pattern_shadowed_borrow_name_runtime() {
 #[test]
 fn compile_source_runs_async_block_integer_tail_for_float_task_runtime() {
     let temp_root = make_temp_project_root("async-int-tail-float-task-runtime");
-    let source_path = temp_root.join("async_int_tail_float_task_runtime.apex");
+    let source_path = temp_root.join("async_int_tail_float_task_runtime.arden");
     let output_path = temp_root.join("async_int_tail_float_task_runtime");
     let source = r#"
             function main(): Integer {
@@ -15070,7 +15077,7 @@ fn compile_source_runs_async_block_integer_tail_for_float_task_runtime() {
 #[test]
 fn compile_source_runs_integer_tail_lambda_for_float_return_runtime() {
     let temp_root = make_temp_project_root("lambda-int-tail-float-return-runtime");
-    let source_path = temp_root.join("lambda_int_tail_float_return_runtime.apex");
+    let source_path = temp_root.join("lambda_int_tail_float_return_runtime.arden");
     let output_path = temp_root.join("lambda_int_tail_float_return_runtime");
     let source = r#"
             function main(): Integer {
@@ -15095,7 +15102,7 @@ fn compile_source_runs_integer_tail_lambda_for_float_return_runtime() {
 #[test]
 fn compile_source_runs_named_integer_function_value_for_float_return_runtime() {
     let temp_root = make_temp_project_root("named-fn-int-to-float-runtime");
-    let source_path = temp_root.join("named_fn_int_to_float_runtime.apex");
+    let source_path = temp_root.join("named_fn_int_to_float_runtime.arden");
     let output_path = temp_root.join("named_fn_int_to_float_runtime");
     let source = r#"
             function one(): Integer {
@@ -15124,7 +15131,7 @@ fn compile_source_runs_named_integer_function_value_for_float_return_runtime() {
 #[test]
 fn compile_source_runs_explicit_generic_function_value_runtime() {
     let temp_root = make_temp_project_root("explicit-generic-function-value-runtime");
-    let source_path = temp_root.join("explicit_generic_function_value_runtime.apex");
+    let source_path = temp_root.join("explicit_generic_function_value_runtime.arden");
     let output_path = temp_root.join("explicit_generic_function_value_runtime");
     let source = r#"
             function id<T>(x: T): T {
@@ -15152,7 +15159,7 @@ fn compile_source_runs_explicit_generic_function_value_runtime() {
 #[test]
 fn compile_source_runs_imported_alias_explicit_generic_function_value_runtime() {
     let temp_root = make_temp_project_root("imported-alias-explicit-generic-fn-value-runtime");
-    let source_path = temp_root.join("imported_alias_explicit_generic_fn_value_runtime.apex");
+    let source_path = temp_root.join("imported_alias_explicit_generic_fn_value_runtime.arden");
     let output_path = temp_root.join("imported_alias_explicit_generic_fn_value_runtime");
     let source = r#"
             function id<T>(x: T): T {
@@ -15182,7 +15189,7 @@ fn compile_source_runs_imported_alias_explicit_generic_function_value_runtime() 
 #[test]
 fn compile_source_runs_imported_option_some_alias_runtime() {
     let temp_root = make_temp_project_root("imported-option-some-alias-runtime");
-    let source_path = temp_root.join("imported_option_some_alias_runtime.apex");
+    let source_path = temp_root.join("imported_option_some_alias_runtime.arden");
     let output_path = temp_root.join("imported_option_some_alias_runtime");
     let source = r#"
             import Option.Some as Present;
@@ -15208,7 +15215,7 @@ fn compile_source_runs_imported_option_some_alias_runtime() {
 #[test]
 fn compile_source_runs_imported_option_some_alias_function_value_runtime() {
     let temp_root = make_temp_project_root("imported-option-some-alias-fn-value-runtime");
-    let source_path = temp_root.join("imported_option_some_alias_fn_value_runtime.apex");
+    let source_path = temp_root.join("imported_option_some_alias_fn_value_runtime.arden");
     let output_path = temp_root.join("imported_option_some_alias_fn_value_runtime");
     let source = r#"
             import Option.Some as Present;
@@ -15235,7 +15242,7 @@ fn compile_source_runs_imported_option_some_alias_function_value_runtime() {
 #[test]
 fn compile_source_runs_imported_option_alias_match_runtime() {
     let temp_root = make_temp_project_root("imported-option-alias-match-runtime");
-    let source_path = temp_root.join("imported_option_alias_match_runtime.apex");
+    let source_path = temp_root.join("imported_option_alias_match_runtime.arden");
     let output_path = temp_root.join("imported_option_alias_match_runtime");
     let source = r#"
             import Option.Some as Present;
@@ -15265,7 +15272,7 @@ fn compile_source_runs_imported_option_alias_match_runtime() {
 #[test]
 fn compile_source_runs_imported_result_ok_alias_runtime() {
     let temp_root = make_temp_project_root("imported-result-ok-alias-runtime");
-    let source_path = temp_root.join("imported_result_ok_alias_runtime.apex");
+    let source_path = temp_root.join("imported_result_ok_alias_runtime.arden");
     let output_path = temp_root.join("imported_result_ok_alias_runtime");
     let source = r#"
             import Result.Ok as Success;
@@ -15291,7 +15298,7 @@ fn compile_source_runs_imported_result_ok_alias_runtime() {
 #[test]
 fn compile_source_runs_exact_imported_nested_enum_variant_aliases_runtime() {
     let temp_root = make_temp_project_root("exact-imported-nested-enum-variant-aliases-runtime");
-    let source_path = temp_root.join("exact_imported_nested_enum_variant_aliases_runtime.apex");
+    let source_path = temp_root.join("exact_imported_nested_enum_variant_aliases_runtime.arden");
     let output_path = temp_root.join("exact_imported_nested_enum_variant_aliases_runtime");
     let source = r#"
             module util { enum Result { Ok(Integer), Error(String) } }
@@ -15322,7 +15329,7 @@ fn compile_source_runs_exact_imported_nested_enum_variant_aliases_runtime() {
 #[test]
 fn compile_source_runs_function_variable_retyped_to_float_return_runtime() {
     let temp_root = make_temp_project_root("fn-var-retype-float-runtime");
-    let source_path = temp_root.join("fn_var_retype_float_runtime.apex");
+    let source_path = temp_root.join("fn_var_retype_float_runtime.arden");
     let output_path = temp_root.join("fn_var_retype_float_runtime");
     let source = r#"
             function one(): Integer {
@@ -15352,7 +15359,7 @@ fn compile_source_runs_function_variable_retyped_to_float_return_runtime() {
 #[test]
 fn compile_source_runs_named_function_value_retyped_to_integer_parameter_runtime() {
     let temp_root = make_temp_project_root("named-fn-retype-int-param-runtime");
-    let source_path = temp_root.join("named_fn_retype_int_param_runtime.apex");
+    let source_path = temp_root.join("named_fn_retype_int_param_runtime.arden");
     let output_path = temp_root.join("named_fn_retype_int_param_runtime");
     let source = r#"
             function scale(value: Float): Float {
@@ -15381,7 +15388,7 @@ fn compile_source_runs_named_function_value_retyped_to_integer_parameter_runtime
 #[test]
 fn compile_source_runs_named_function_value_with_interface_return_runtime() {
     let temp_root = make_temp_project_root("named-fn-interface-return-runtime");
-    let source_path = temp_root.join("named_fn_interface_return_runtime.apex");
+    let source_path = temp_root.join("named_fn_interface_return_runtime.arden");
     let output_path = temp_root.join("named_fn_interface_return_runtime");
     let source = r#"
             interface Named {
@@ -15418,7 +15425,7 @@ fn compile_source_runs_named_function_value_with_interface_return_runtime() {
 #[test]
 fn compile_source_runs_named_function_value_with_interface_parameter_runtime() {
     let temp_root = make_temp_project_root("named-fn-interface-param-runtime");
-    let source_path = temp_root.join("named_fn_interface_param_runtime.apex");
+    let source_path = temp_root.join("named_fn_interface_param_runtime.arden");
     let output_path = temp_root.join("named_fn_interface_param_runtime");
     let source = r#"
             interface Named {
@@ -15456,7 +15463,7 @@ fn compile_source_runs_named_function_value_with_interface_parameter_runtime() {
 #[test]
 fn compile_source_runs_function_variable_retyped_to_integer_parameter_runtime() {
     let temp_root = make_temp_project_root("fn-var-retype-int-param-runtime");
-    let source_path = temp_root.join("fn_var_retype_int_param_runtime.apex");
+    let source_path = temp_root.join("fn_var_retype_int_param_runtime.arden");
     let output_path = temp_root.join("fn_var_retype_int_param_runtime");
     let source = r#"
             function scale(value: Float): Float {
@@ -15486,7 +15493,7 @@ fn compile_source_runs_function_variable_retyped_to_integer_parameter_runtime() 
 #[test]
 fn compile_source_rejects_function_value_retyped_to_narrower_integer_parameter() {
     let temp_root = make_temp_project_root("fn-retype-narrower-int-param");
-    let source_path = temp_root.join("fn_retype_narrower_int_param.apex");
+    let source_path = temp_root.join("fn_retype_narrower_int_param.arden");
     let output_path = temp_root.join("fn_retype_narrower_int_param");
     let source = r#"
             function truncate(value: Integer): Integer {
@@ -15513,7 +15520,7 @@ fn compile_source_rejects_function_value_retyped_to_narrower_integer_parameter()
 #[test]
 fn compile_source_no_check_rejects_named_function_value_signature_mismatch_with_function_type() {
     let temp_root = make_temp_project_root("no-check-named-function-value-signature-mismatch");
-    let source_path = temp_root.join("no_check_named_function_value_signature_mismatch.apex");
+    let source_path = temp_root.join("no_check_named_function_value_signature_mismatch.arden");
     let output_path = temp_root.join("no_check_named_function_value_signature_mismatch");
     let source = r#"
             function get(): Integer {
@@ -15542,7 +15549,8 @@ fn compile_source_no_check_rejects_named_function_value_signature_mismatch_with_
 fn compile_source_no_check_rejects_constructor_function_value_signature_mismatch() {
     let temp_root =
         make_temp_project_root("no-check-constructor-function-value-signature-mismatch");
-    let source_path = temp_root.join("no_check_constructor_function_value_signature_mismatch.apex");
+    let source_path =
+        temp_root.join("no_check_constructor_function_value_signature_mismatch.arden");
     let output_path = temp_root.join("no_check_constructor_function_value_signature_mismatch");
     let source = r#"
             class Box {
@@ -15573,7 +15581,7 @@ fn compile_source_no_check_formats_specialized_constructor_function_value_signat
     let temp_root =
         make_temp_project_root("no-check-specialized-constructor-function-signature-mismatch");
     let source_path =
-        temp_root.join("no_check_specialized_constructor_function_signature_mismatch.apex");
+        temp_root.join("no_check_specialized_constructor_function_signature_mismatch.arden");
     let output_path =
         temp_root.join("no_check_specialized_constructor_function_signature_mismatch");
     let source = r#"
@@ -15607,7 +15615,7 @@ fn compile_source_no_check_formats_specialized_builtin_function_value_signature_
     let temp_root =
         make_temp_project_root("no-check-specialized-builtin-function-signature-mismatch");
     let source_path =
-        temp_root.join("no_check_specialized_builtin_function_signature_mismatch.apex");
+        temp_root.join("no_check_specialized_builtin_function_signature_mismatch.arden");
     let output_path = temp_root.join("no_check_specialized_builtin_function_signature_mismatch");
     let source = r#"
             class Box<T> {
@@ -15638,7 +15646,7 @@ fn compile_source_no_check_formats_specialized_builtin_function_value_signature_
 #[test]
 fn compile_source_no_check_formats_specialized_constructor_builtin_diagnostics() {
     let temp_root = make_temp_project_root("no-check-specialized-constructor-builtin-diagnostics");
-    let source_path = temp_root.join("no_check_specialized_constructor_builtin_diagnostics.apex");
+    let source_path = temp_root.join("no_check_specialized_constructor_builtin_diagnostics.arden");
     let output_path = temp_root.join("no_check_specialized_constructor_builtin_diagnostics");
     let source = r#"
             class Box<T> {
@@ -15667,7 +15675,7 @@ fn compile_source_no_check_formats_specialized_constructor_builtin_diagnostics()
 #[test]
 fn compile_source_no_check_formats_specialized_unknown_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-specialized-unknown-type-diagnostic");
-    let source_path = temp_root.join("no_check_specialized_unknown_type_diagnostic.apex");
+    let source_path = temp_root.join("no_check_specialized_unknown_type_diagnostic.arden");
     let output_path = temp_root.join("no_check_specialized_unknown_type_diagnostic");
     let source = r#"
             class Box<T> {
@@ -15693,7 +15701,7 @@ fn compile_source_no_check_formats_specialized_unknown_type_diagnostic() {
 #[test]
 fn compile_source_runs_async_block_nested_integer_return_for_float_task_runtime() {
     let temp_root = make_temp_project_root("async-nested-int-return-float-task-runtime");
-    let source_path = temp_root.join("async_nested_int_return_float_task_runtime.apex");
+    let source_path = temp_root.join("async_nested_int_return_float_task_runtime.arden");
     let output_path = temp_root.join("async_nested_int_return_float_task_runtime");
     let source = r#"
             function main(): Integer {
@@ -15723,7 +15731,7 @@ fn compile_source_runs_async_block_nested_integer_return_for_float_task_runtime(
 #[test]
 fn compile_source_runs_async_block_nested_mixed_numeric_returns_runtime() {
     let temp_root = make_temp_project_root("async-nested-mixed-numeric-returns-runtime");
-    let source_path = temp_root.join("async_nested_mixed_numeric_returns_runtime.apex");
+    let source_path = temp_root.join("async_nested_mixed_numeric_returns_runtime.arden");
     let output_path = temp_root.join("async_nested_mixed_numeric_returns_runtime");
     let source = r#"
             function main(): Integer {
@@ -15754,7 +15762,7 @@ fn compile_source_runs_async_block_nested_mixed_numeric_returns_runtime() {
 #[test]
 fn compile_source_runs_float_loop_variable_over_integer_range_runtime() {
     let temp_root = make_temp_project_root("float-loop-var-integer-range-runtime");
-    let source_path = temp_root.join("float_loop_var_integer_range_runtime.apex");
+    let source_path = temp_root.join("float_loop_var_integer_range_runtime.arden");
     let output_path = temp_root.join("float_loop_var_integer_range_runtime");
     let source = r#"
             function main(): Integer {
@@ -15781,7 +15789,7 @@ fn compile_source_runs_float_loop_variable_over_integer_range_runtime() {
 #[test]
 fn compile_source_runs_float_loop_variable_over_integer_list_runtime() {
     let temp_root = make_temp_project_root("float-loop-var-integer-list-runtime");
-    let source_path = temp_root.join("float_loop_var_integer_list_runtime.apex");
+    let source_path = temp_root.join("float_loop_var_integer_list_runtime.arden");
     let output_path = temp_root.join("float_loop_var_integer_list_runtime");
     let source = r#"
             function main(): Integer {
@@ -15814,7 +15822,7 @@ fn compile_source_runs_float_loop_variable_over_integer_list_runtime() {
 #[test]
 fn compile_source_runs_stdlib_function_alias_call_runtime() {
     let temp_root = make_temp_project_root("stdlib-fn-alias-call-runtime");
-    let source_path = temp_root.join("stdlib_fn_alias_call_runtime.apex");
+    let source_path = temp_root.join("stdlib_fn_alias_call_runtime.arden");
     let output_path = temp_root.join("stdlib_fn_alias_call_runtime");
     let source = r#"
             import std.math.abs as abs;
@@ -15840,7 +15848,7 @@ fn compile_source_runs_stdlib_function_alias_call_runtime() {
 #[test]
 fn compile_source_runs_args_count_alias_call_runtime() {
     let temp_root = make_temp_project_root("args-count-alias-call-runtime");
-    let source_path = temp_root.join("args_count_alias_call_runtime.apex");
+    let source_path = temp_root.join("args_count_alias_call_runtime.arden");
     let output_path = temp_root.join("args_count_alias_call_runtime");
     let source = r#"
             import std.args.count as count;
@@ -15866,7 +15874,7 @@ fn compile_source_runs_args_count_alias_call_runtime() {
 #[test]
 fn compile_source_runs_capitalized_stdlib_function_alias_call_runtime() {
     let temp_root = make_temp_project_root("capitalized-stdlib-fn-alias-call-runtime");
-    let source_path = temp_root.join("capitalized_stdlib_fn_alias_call_runtime.apex");
+    let source_path = temp_root.join("capitalized_stdlib_fn_alias_call_runtime.arden");
     let output_path = temp_root.join("capitalized_stdlib_fn_alias_call_runtime");
     let source = r#"
             import std.args.get as ArgGet;
@@ -15893,7 +15901,7 @@ fn compile_source_runs_capitalized_stdlib_function_alias_call_runtime() {
 #[test]
 fn compile_source_runs_capitalized_stdlib_numeric_alias_call_runtime() {
     let temp_root = make_temp_project_root("capitalized-stdlib-numeric-alias-call-runtime");
-    let source_path = temp_root.join("capitalized_stdlib_numeric_alias_call_runtime.apex");
+    let source_path = temp_root.join("capitalized_stdlib_numeric_alias_call_runtime.arden");
     let output_path = temp_root.join("capitalized_stdlib_numeric_alias_call_runtime");
     let source = r#"
             import std.math.abs as Abs;
@@ -15918,7 +15926,7 @@ fn compile_source_runs_capitalized_stdlib_numeric_alias_call_runtime() {
 #[test]
 fn compile_source_no_check_runs_capitalized_stdlib_function_alias_call_runtime() {
     let temp_root = make_temp_project_root("no-check-capitalized-stdlib-fn-alias-call-runtime");
-    let source_path = temp_root.join("no_check_capitalized_stdlib_fn_alias_call_runtime.apex");
+    let source_path = temp_root.join("no_check_capitalized_stdlib_fn_alias_call_runtime.arden");
     let output_path = temp_root.join("no_check_capitalized_stdlib_fn_alias_call_runtime");
     let source = r#"
             import std.args.get as ArgGet;
@@ -15945,7 +15953,7 @@ fn compile_source_no_check_runs_capitalized_stdlib_function_alias_call_runtime()
 #[test]
 fn compile_source_runs_stdlib_function_alias_value_runtime() {
     let temp_root = make_temp_project_root("stdlib-fn-alias-value-runtime");
-    let source_path = temp_root.join("stdlib_fn_alias_value_runtime.apex");
+    let source_path = temp_root.join("stdlib_fn_alias_value_runtime.arden");
     let output_path = temp_root.join("stdlib_fn_alias_value_runtime");
     let source = r#"
             import std.math.abs as abs;
@@ -15971,7 +15979,7 @@ fn compile_source_runs_stdlib_function_alias_value_runtime() {
 #[test]
 fn compile_source_runs_stdlib_namespace_alias_function_value_runtime() {
     let temp_root = make_temp_project_root("stdlib-namespace-alias-value-runtime");
-    let source_path = temp_root.join("stdlib_namespace_alias_value_runtime.apex");
+    let source_path = temp_root.join("stdlib_namespace_alias_value_runtime.arden");
     let output_path = temp_root.join("stdlib_namespace_alias_value_runtime");
     let source = r#"
             import std.math as math;
@@ -15997,7 +16005,7 @@ fn compile_source_runs_stdlib_namespace_alias_function_value_runtime() {
 #[test]
 fn compile_source_runs_stdlib_function_alias_callback_runtime() {
     let temp_root = make_temp_project_root("stdlib-fn-alias-callback-runtime");
-    let source_path = temp_root.join("stdlib_fn_alias_callback_runtime.apex");
+    let source_path = temp_root.join("stdlib_fn_alias_callback_runtime.arden");
     let output_path = temp_root.join("stdlib_fn_alias_callback_runtime");
     let source = r#"
             import std.math.abs as abs;
@@ -16026,7 +16034,7 @@ fn compile_source_runs_stdlib_function_alias_callback_runtime() {
 #[test]
 fn compile_source_runs_stdlib_math_min_alias_call_runtime() {
     let temp_root = make_temp_project_root("stdlib-math-min-alias-call-runtime");
-    let source_path = temp_root.join("stdlib_math_min_alias_call_runtime.apex");
+    let source_path = temp_root.join("stdlib_math_min_alias_call_runtime.arden");
     let output_path = temp_root.join("stdlib_math_min_alias_call_runtime");
     let source = r#"
             import std.math.min as min;
@@ -16051,7 +16059,7 @@ fn compile_source_runs_stdlib_math_min_alias_call_runtime() {
 #[test]
 fn compile_source_runs_stdlib_math_min_alias_value_runtime() {
     let temp_root = make_temp_project_root("stdlib-math-min-alias-value-runtime");
-    let source_path = temp_root.join("stdlib_math_min_alias_value_runtime.apex");
+    let source_path = temp_root.join("stdlib_math_min_alias_value_runtime.arden");
     let output_path = temp_root.join("stdlib_math_min_alias_value_runtime");
     let source = r#"
             import std.math.min as min;
@@ -16077,7 +16085,7 @@ fn compile_source_runs_stdlib_math_min_alias_value_runtime() {
 #[test]
 fn compile_source_runs_stdlib_math_min_mixed_numeric_function_value_runtime() {
     let temp_root = make_temp_project_root("stdlib-math-min-mixed-fn-value-runtime");
-    let source_path = temp_root.join("stdlib_math_min_mixed_fn_value_runtime.apex");
+    let source_path = temp_root.join("stdlib_math_min_mixed_fn_value_runtime.arden");
     let output_path = temp_root.join("stdlib_math_min_mixed_fn_value_runtime");
     let source = r#"
             import std.math as math;
@@ -16103,7 +16111,7 @@ fn compile_source_runs_stdlib_math_min_mixed_numeric_function_value_runtime() {
 #[test]
 fn compile_source_runs_stdlib_math_max_mixed_numeric_function_value_runtime() {
     let temp_root = make_temp_project_root("stdlib-math-max-mixed-fn-value-runtime");
-    let source_path = temp_root.join("stdlib_math_max_mixed_fn_value_runtime.apex");
+    let source_path = temp_root.join("stdlib_math_max_mixed_fn_value_runtime.arden");
     let output_path = temp_root.join("stdlib_math_max_mixed_fn_value_runtime");
     let source = r#"
             import std.math as math;
@@ -16129,7 +16137,7 @@ fn compile_source_runs_stdlib_math_max_mixed_numeric_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_math_abs_widened_return_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-math-abs-widened-return-fn-value-runtime");
-    let source_path = temp_root.join("direct_math_abs_widened_return_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_math_abs_widened_return_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_math_abs_widened_return_fn_value_runtime");
     let source = r#"
             import std.math.*;
@@ -16155,7 +16163,7 @@ fn compile_source_runs_direct_math_abs_widened_return_function_value_runtime() {
 #[test]
 fn compile_source_runs_wildcard_imported_math_abs_call_runtime() {
     let temp_root = make_temp_project_root("wildcard-imported-math-abs-call-runtime");
-    let source_path = temp_root.join("wildcard_imported_math_abs_call_runtime.apex");
+    let source_path = temp_root.join("wildcard_imported_math_abs_call_runtime.arden");
     let output_path = temp_root.join("wildcard_imported_math_abs_call_runtime");
     let source = r#"
             import std.math.*;
@@ -16180,7 +16188,7 @@ fn compile_source_runs_wildcard_imported_math_abs_call_runtime() {
 #[test]
 fn compile_source_runs_wildcard_imported_math_abs_widened_return_function_value_runtime() {
     let temp_root = make_temp_project_root("wildcard-imported-math-abs-widened-return-fn-value");
-    let source_path = temp_root.join("wildcard_imported_math_abs_widened_return_fn_value.apex");
+    let source_path = temp_root.join("wildcard_imported_math_abs_widened_return_fn_value.arden");
     let output_path = temp_root.join("wildcard_imported_math_abs_widened_return_fn_value");
     let source = r#"
             import std.math.*;
@@ -16206,7 +16214,7 @@ fn compile_source_runs_wildcard_imported_math_abs_widened_return_function_value_
 #[test]
 fn compile_source_runs_alias_math_abs_widened_return_function_value_runtime() {
     let temp_root = make_temp_project_root("alias-math-abs-widened-return-fn-value-runtime");
-    let source_path = temp_root.join("alias_math_abs_widened_return_fn_value_runtime.apex");
+    let source_path = temp_root.join("alias_math_abs_widened_return_fn_value_runtime.arden");
     let output_path = temp_root.join("alias_math_abs_widened_return_fn_value_runtime");
     let source = r#"
             import std.math.abs as abs;
@@ -16234,7 +16242,7 @@ fn compile_source_runs_namespace_alias_math_abs_widened_return_function_value_ru
     let temp_root =
         make_temp_project_root("namespace-alias-math-abs-widened-return-fn-value-runtime");
     let source_path =
-        temp_root.join("namespace_alias_math_abs_widened_return_fn_value_runtime.apex");
+        temp_root.join("namespace_alias_math_abs_widened_return_fn_value_runtime.arden");
     let output_path = temp_root.join("namespace_alias_math_abs_widened_return_fn_value_runtime");
     let source = r#"
             import std.math as math;
@@ -16260,7 +16268,7 @@ fn compile_source_runs_namespace_alias_math_abs_widened_return_function_value_ru
 #[test]
 fn compile_source_runs_direct_math_min_widened_return_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-math-min-widened-return-fn-value-runtime");
-    let source_path = temp_root.join("direct_math_min_widened_return_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_math_min_widened_return_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_math_min_widened_return_fn_value_runtime");
     let source = r#"
             import std.math.*;
@@ -16286,7 +16294,7 @@ fn compile_source_runs_direct_math_min_widened_return_function_value_runtime() {
 #[test]
 fn compile_source_runs_alias_math_min_widened_return_function_value_runtime() {
     let temp_root = make_temp_project_root("alias-math-min-widened-return-fn-value-runtime");
-    let source_path = temp_root.join("alias_math_min_widened_return_fn_value_runtime.apex");
+    let source_path = temp_root.join("alias_math_min_widened_return_fn_value_runtime.arden");
     let output_path = temp_root.join("alias_math_min_widened_return_fn_value_runtime");
     let source = r#"
             import std.math.min as min;
@@ -16314,7 +16322,7 @@ fn compile_source_runs_namespace_alias_math_min_widened_return_function_value_ru
     let temp_root =
         make_temp_project_root("namespace-alias-math-min-widened-return-fn-value-runtime");
     let source_path =
-        temp_root.join("namespace_alias_math_min_widened_return_fn_value_runtime.apex");
+        temp_root.join("namespace_alias_math_min_widened_return_fn_value_runtime.arden");
     let output_path = temp_root.join("namespace_alias_math_min_widened_return_fn_value_runtime");
     let source = r#"
             import std.math as math;
@@ -16340,7 +16348,7 @@ fn compile_source_runs_namespace_alias_math_min_widened_return_function_value_ru
 #[test]
 fn compile_source_runs_direct_math_max_widened_return_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-math-max-widened-return-fn-value-runtime");
-    let source_path = temp_root.join("direct_math_max_widened_return_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_math_max_widened_return_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_math_max_widened_return_fn_value_runtime");
     let source = r#"
             import std.math.*;
@@ -16366,7 +16374,7 @@ fn compile_source_runs_direct_math_max_widened_return_function_value_runtime() {
 #[test]
 fn compile_source_runs_alias_math_max_widened_return_function_value_runtime() {
     let temp_root = make_temp_project_root("alias-math-max-widened-return-fn-value-runtime");
-    let source_path = temp_root.join("alias_math_max_widened_return_fn_value_runtime.apex");
+    let source_path = temp_root.join("alias_math_max_widened_return_fn_value_runtime.arden");
     let output_path = temp_root.join("alias_math_max_widened_return_fn_value_runtime");
     let source = r#"
             import std.math.max as max;
@@ -16394,7 +16402,7 @@ fn compile_source_runs_namespace_alias_math_max_widened_return_function_value_ru
     let temp_root =
         make_temp_project_root("namespace-alias-math-max-widened-return-fn-value-runtime");
     let source_path =
-        temp_root.join("namespace_alias_math_max_widened_return_fn_value_runtime.apex");
+        temp_root.join("namespace_alias_math_max_widened_return_fn_value_runtime.arden");
     let output_path = temp_root.join("namespace_alias_math_max_widened_return_fn_value_runtime");
     let source = r#"
             import std.math as math;
@@ -16420,7 +16428,7 @@ fn compile_source_runs_namespace_alias_math_max_widened_return_function_value_ru
 #[test]
 fn compile_source_runs_builtin_math_pow_integer_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-math-pow-int-fn-value-runtime");
-    let source_path = temp_root.join("builtin_math_pow_int_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_math_pow_int_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_math_pow_int_fn_value_runtime");
     let source = r#"
             import std.math as math;
@@ -16446,7 +16454,7 @@ fn compile_source_runs_builtin_math_pow_integer_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_math_pow_mixed_numeric_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-math-pow-mixed-fn-value-runtime");
-    let source_path = temp_root.join("builtin_math_pow_mixed_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_math_pow_mixed_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_math_pow_mixed_fn_value_runtime");
     let source = r#"
             import std.math as math;
@@ -16472,7 +16480,7 @@ fn compile_source_runs_builtin_math_pow_mixed_numeric_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_math_random_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-math-random-fn-value-runtime");
-    let source_path = temp_root.join("direct_math_random_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_math_random_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_math_random_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16496,7 +16504,7 @@ fn compile_source_runs_direct_math_random_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_math_pi_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-math-pi-fn-value-runtime");
-    let source_path = temp_root.join("direct_math_pi_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_math_pi_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_math_pi_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16520,7 +16528,7 @@ fn compile_source_runs_direct_math_pi_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_math_sqrt_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-math-sqrt-fn-value-runtime");
-    let source_path = temp_root.join("direct_math_sqrt_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_math_sqrt_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_math_sqrt_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16544,7 +16552,7 @@ fn compile_source_runs_direct_math_sqrt_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_system_cwd_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-system-cwd-fn-value-runtime");
-    let source_path = temp_root.join("direct_system_cwd_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_system_cwd_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_system_cwd_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16568,7 +16576,7 @@ fn compile_source_runs_direct_system_cwd_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_system_os_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-system-os-fn-value-runtime");
-    let source_path = temp_root.join("direct_system_os_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_system_os_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_system_os_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16592,7 +16600,7 @@ fn compile_source_runs_direct_system_os_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_time_unix_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-time-unix-fn-value-runtime");
-    let source_path = temp_root.join("direct_time_unix_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_time_unix_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_time_unix_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16616,7 +16624,7 @@ fn compile_source_runs_direct_time_unix_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_time_sleep_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-time-sleep-fn-value-runtime");
-    let source_path = temp_root.join("direct_time_sleep_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_time_sleep_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_time_sleep_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16640,7 +16648,7 @@ fn compile_source_runs_direct_time_sleep_function_value_runtime() {
 #[test]
 fn compile_source_runs_direct_args_count_function_value_runtime() {
     let temp_root = make_temp_project_root("direct-args-count-fn-value-runtime");
-    let source_path = temp_root.join("direct_args_count_fn_value_runtime.apex");
+    let source_path = temp_root.join("direct_args_count_fn_value_runtime.arden");
     let output_path = temp_root.join("direct_args_count_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16664,7 +16672,7 @@ fn compile_source_runs_direct_args_count_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
-    let source_path = temp_root.join("builtin_to_float_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_to_float_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16688,7 +16696,7 @@ fn compile_source_runs_builtin_to_float_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_to_int_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-int-fn-value-runtime");
-    let source_path = temp_root.join("builtin_to_int_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_to_int_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_to_int_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16712,7 +16720,7 @@ fn compile_source_runs_builtin_to_int_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_to_string_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-string-fn-value-runtime");
-    let source_path = temp_root.join("builtin_to_string_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_to_string_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_to_string_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16736,7 +16744,7 @@ fn compile_source_runs_builtin_to_string_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_mixed_numeric_assert_eq_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-mixed-assert-eq-fn-value-runtime");
-    let source_path = temp_root.join("builtin_mixed_assert_eq_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_mixed_assert_eq_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_mixed_assert_eq_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16761,7 +16769,7 @@ fn compile_source_runs_builtin_mixed_numeric_assert_eq_function_value_runtime() 
 #[test]
 fn compile_source_runs_builtin_mixed_numeric_assert_ne_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-mixed-assert-ne-fn-value-runtime");
-    let source_path = temp_root.join("builtin_mixed_assert_ne_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_mixed_assert_ne_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_mixed_assert_ne_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16786,7 +16794,7 @@ fn compile_source_runs_builtin_mixed_numeric_assert_ne_function_value_runtime() 
 #[test]
 fn compile_source_runs_builtin_assert_eq_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-assert-eq-fn-value-runtime");
-    let source_path = temp_root.join("builtin_assert_eq_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_assert_eq_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_assert_eq_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16811,7 +16819,7 @@ fn compile_source_runs_builtin_assert_eq_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_assert_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-assert-fn-value-runtime");
-    let source_path = temp_root.join("builtin_assert_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_assert_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_assert_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16836,7 +16844,7 @@ fn compile_source_runs_builtin_assert_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_assert_ne_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-assert-ne-fn-value-runtime");
-    let source_path = temp_root.join("builtin_assert_ne_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_assert_ne_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_assert_ne_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16861,7 +16869,7 @@ fn compile_source_runs_builtin_assert_ne_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_assert_true_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-assert-true-fn-value-runtime");
-    let source_path = temp_root.join("builtin_assert_true_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_assert_true_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_assert_true_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16886,7 +16894,7 @@ fn compile_source_runs_builtin_assert_true_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_assert_false_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-assert-false-fn-value-runtime");
-    let source_path = temp_root.join("builtin_assert_false_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_assert_false_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_assert_false_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16911,7 +16919,7 @@ fn compile_source_runs_builtin_assert_false_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_fail_no_arg_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-fail-no-arg-fn-value-runtime");
-    let source_path = temp_root.join("builtin_fail_no_arg_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_fail_no_arg_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_fail_no_arg_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16935,7 +16943,7 @@ fn compile_source_runs_builtin_fail_no_arg_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_fail_string_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-fail-string-fn-value-runtime");
-    let source_path = temp_root.join("builtin_fail_string_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_fail_string_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_fail_string_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16959,7 +16967,7 @@ fn compile_source_runs_builtin_fail_string_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_exit_function_value_check_runtime() {
     let temp_root = make_temp_project_root("builtin-exit-fn-value-runtime");
-    let source_path = temp_root.join("builtin_exit_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_exit_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_exit_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -16983,7 +16991,7 @@ fn compile_source_runs_builtin_exit_function_value_check_runtime() {
 #[test]
 fn compile_source_rejects_builtin_assert_function_value_with_string_parameter() {
     let temp_root = make_temp_project_root("reject-builtin-assert-fn-string-param");
-    let source_path = temp_root.join("reject_builtin_assert_fn_string_param.apex");
+    let source_path = temp_root.join("reject_builtin_assert_fn_string_param.arden");
     let output_path = temp_root.join("reject_builtin_assert_fn_string_param");
     let source = r#"
             function main(): Integer {
@@ -17006,7 +17014,7 @@ fn compile_source_rejects_builtin_assert_function_value_with_string_parameter() 
 #[test]
 fn compile_source_rejects_builtin_assert_function_value_with_integer_parameter() {
     let temp_root = make_temp_project_root("reject-builtin-assert-fn-integer-param");
-    let source_path = temp_root.join("reject_builtin_assert_fn_integer_param.apex");
+    let source_path = temp_root.join("reject_builtin_assert_fn_integer_param.arden");
     let output_path = temp_root.join("reject_builtin_assert_fn_integer_param");
     let source = r#"
             function main(): Integer {
@@ -17029,7 +17037,7 @@ fn compile_source_rejects_builtin_assert_function_value_with_integer_parameter()
 #[test]
 fn compile_source_rejects_builtin_fail_function_value_with_integer_parameter() {
     let temp_root = make_temp_project_root("reject-builtin-fail-fn-integer-param");
-    let source_path = temp_root.join("reject_builtin_fail_fn_integer_param.apex");
+    let source_path = temp_root.join("reject_builtin_fail_fn_integer_param.arden");
     let output_path = temp_root.join("reject_builtin_fail_fn_integer_param");
     let source = r#"
             function main(): Integer {
@@ -17052,7 +17060,7 @@ fn compile_source_rejects_builtin_fail_function_value_with_integer_parameter() {
 #[test]
 fn compile_source_rejects_builtin_assert_true_function_value_with_integer_parameter() {
     let temp_root = make_temp_project_root("reject-builtin-assert-true-fn-integer-param");
-    let source_path = temp_root.join("reject_builtin_assert_true_fn_integer_param.apex");
+    let source_path = temp_root.join("reject_builtin_assert_true_fn_integer_param.arden");
     let output_path = temp_root.join("reject_builtin_assert_true_fn_integer_param");
     let source = r#"
             function main(): Integer {
@@ -17075,7 +17083,7 @@ fn compile_source_rejects_builtin_assert_true_function_value_with_integer_parame
 #[test]
 fn compile_source_rejects_builtin_assert_false_function_value_with_integer_parameter() {
     let temp_root = make_temp_project_root("reject-builtin-assert-false-fn-integer-param");
-    let source_path = temp_root.join("reject_builtin_assert_false_fn_integer_param.apex");
+    let source_path = temp_root.join("reject_builtin_assert_false_fn_integer_param.arden");
     let output_path = temp_root.join("reject_builtin_assert_false_fn_integer_param");
     let source = r#"
             function main(): Integer {
@@ -17098,7 +17106,7 @@ fn compile_source_rejects_builtin_assert_false_function_value_with_integer_param
 #[test]
 fn compile_source_runs_builtin_integer_range_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-int-range-fn-value-runtime");
-    let source_path = temp_root.join("builtin_int_range_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_int_range_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_int_range_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -17127,7 +17135,7 @@ fn compile_source_runs_builtin_integer_range_function_value_runtime() {
 #[test]
 fn compile_source_runs_builtin_float_range_step_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-float-range-step-fn-value-runtime");
-    let source_path = temp_root.join("builtin_float_range_step_fn_value_runtime.apex");
+    let source_path = temp_root.join("builtin_float_range_step_fn_value_runtime.arden");
     let output_path = temp_root.join("builtin_float_range_step_fn_value_runtime");
     let source = r#"
             function main(): Integer {
@@ -17156,7 +17164,7 @@ fn compile_source_runs_builtin_float_range_step_function_value_runtime() {
 #[test]
 fn compile_source_runs_read_line_alias_function_value_check_runtime() {
     let temp_root = make_temp_project_root("read-line-alias-fn-value-runtime");
-    let source_path = temp_root.join("read_line_alias_fn_value_runtime.apex");
+    let source_path = temp_root.join("read_line_alias_fn_value_runtime.arden");
     let output_path = temp_root.join("read_line_alias_fn_value_runtime");
     let source = r#"
             import std.io.read_line as read_line;
@@ -17182,7 +17190,7 @@ fn compile_source_runs_read_line_alias_function_value_check_runtime() {
 #[test]
 fn compile_source_runs_args_get_alias_value_runtime() {
     let temp_root = make_temp_project_root("args-get-alias-value-runtime");
-    let source_path = temp_root.join("args_get_alias_value_runtime.apex");
+    let source_path = temp_root.join("args_get_alias_value_runtime.arden");
     let output_path = temp_root.join("args_get_alias_value_runtime");
     let source = r#"
             import std.args.get as get;
@@ -17209,7 +17217,7 @@ fn compile_source_runs_args_get_alias_value_runtime() {
 #[test]
 fn compile_source_runs_borrowed_list_iteration_runtime() {
     let temp_root = make_temp_project_root("borrowed-list-iteration-runtime");
-    let source_path = temp_root.join("borrowed_list_iteration_runtime.apex");
+    let source_path = temp_root.join("borrowed_list_iteration_runtime.arden");
     let output_path = temp_root.join("borrowed_list_iteration_runtime");
     let source = r#"
             function main(): Integer {
@@ -17240,7 +17248,7 @@ fn compile_source_runs_borrowed_list_iteration_runtime() {
 #[test]
 fn compile_source_runs_borrowed_range_iteration_runtime() {
     let temp_root = make_temp_project_root("borrowed-range-iteration-runtime");
-    let source_path = temp_root.join("borrowed_range_iteration_runtime.apex");
+    let source_path = temp_root.join("borrowed_range_iteration_runtime.arden");
     let output_path = temp_root.join("borrowed_range_iteration_runtime");
     let source = r#"
             function main(): Integer {
@@ -17269,7 +17277,7 @@ fn compile_source_runs_borrowed_range_iteration_runtime() {
 #[test]
 fn compile_source_runs_string_iteration_runtime() {
     let temp_root = make_temp_project_root("string-iteration-runtime");
-    let source_path = temp_root.join("string_iteration_runtime.apex");
+    let source_path = temp_root.join("string_iteration_runtime.arden");
     let output_path = temp_root.join("string_iteration_runtime");
     let source = r#"
             function main(): Integer {
@@ -17297,7 +17305,7 @@ fn compile_source_runs_string_iteration_runtime() {
 #[test]
 fn compile_source_runs_borrowed_string_iteration_runtime() {
     let temp_root = make_temp_project_root("borrowed-string-iteration-runtime");
-    let source_path = temp_root.join("borrowed_string_iteration_runtime.apex");
+    let source_path = temp_root.join("borrowed_string_iteration_runtime.arden");
     let output_path = temp_root.join("borrowed_string_iteration_runtime");
     let source = r#"
             function main(): Integer {
@@ -17326,7 +17334,7 @@ fn compile_source_runs_borrowed_string_iteration_runtime() {
 #[test]
 fn compile_source_runs_mutably_borrowed_string_iteration_runtime() {
     let temp_root = make_temp_project_root("mut-borrowed-string-iteration-runtime");
-    let source_path = temp_root.join("mut_borrowed_string_iteration_runtime.apex");
+    let source_path = temp_root.join("mut_borrowed_string_iteration_runtime.arden");
     let output_path = temp_root.join("mut_borrowed_string_iteration_runtime");
     let source = r#"
             function main(): Integer {
@@ -17355,7 +17363,7 @@ fn compile_source_runs_mutably_borrowed_string_iteration_runtime() {
 #[test]
 fn compile_source_runs_integer_for_loop_sugar_runtime() {
     let temp_root = make_temp_project_root("integer-for-loop-sugar-runtime");
-    let source_path = temp_root.join("integer_for_loop_sugar_runtime.apex");
+    let source_path = temp_root.join("integer_for_loop_sugar_runtime.arden");
     let output_path = temp_root.join("integer_for_loop_sugar_runtime");
     let source = r#"
             function main(): Integer {
@@ -17382,7 +17390,7 @@ fn compile_source_runs_integer_for_loop_sugar_runtime() {
 #[test]
 fn compile_source_runs_float_typed_integer_for_loop_sugar_runtime() {
     let temp_root = make_temp_project_root("float-typed-integer-for-loop-sugar-runtime");
-    let source_path = temp_root.join("float_typed_integer_for_loop_sugar_runtime.apex");
+    let source_path = temp_root.join("float_typed_integer_for_loop_sugar_runtime.arden");
     let output_path = temp_root.join("float_typed_integer_for_loop_sugar_runtime");
     let source = r#"
             function main(): Integer {
@@ -17409,7 +17417,7 @@ fn compile_source_runs_float_typed_integer_for_loop_sugar_runtime() {
 #[test]
 fn compile_source_runs_zero_length_integer_for_loop_sugar_runtime() {
     let temp_root = make_temp_project_root("zero-length-integer-for-loop-sugar-runtime");
-    let source_path = temp_root.join("zero_length_integer_for_loop_sugar_runtime.apex");
+    let source_path = temp_root.join("zero_length_integer_for_loop_sugar_runtime.arden");
     let output_path = temp_root.join("zero_length_integer_for_loop_sugar_runtime");
     let source = r#"
             function main(): Integer {
@@ -17436,7 +17444,7 @@ fn compile_source_runs_zero_length_integer_for_loop_sugar_runtime() {
 #[test]
 fn compile_source_runs_integer_expression_for_loop_sugar_runtime() {
     let temp_root = make_temp_project_root("integer-expression-for-loop-sugar-runtime");
-    let source_path = temp_root.join("integer_expression_for_loop_sugar_runtime.apex");
+    let source_path = temp_root.join("integer_expression_for_loop_sugar_runtime.arden");
     let output_path = temp_root.join("integer_expression_for_loop_sugar_runtime");
     let source = r#"
             function main(): Integer {
@@ -17464,7 +17472,7 @@ fn compile_source_runs_integer_expression_for_loop_sugar_runtime() {
 #[test]
 fn compile_source_runs_integer_call_for_loop_sugar_runtime() {
     let temp_root = make_temp_project_root("integer-call-for-loop-sugar-runtime");
-    let source_path = temp_root.join("integer_call_for_loop_sugar_runtime.apex");
+    let source_path = temp_root.join("integer_call_for_loop_sugar_runtime.arden");
     let output_path = temp_root.join("integer_call_for_loop_sugar_runtime");
     let source = r#"
             function make_end(): Integer {
@@ -17495,7 +17503,7 @@ fn compile_source_runs_integer_call_for_loop_sugar_runtime() {
 #[test]
 fn compile_source_rejects_range_integer_to_float_assignment() {
     let temp_root = make_temp_project_root("reject-range-int-float-assignment");
-    let source_path = temp_root.join("reject_range_int_float_assignment.apex");
+    let source_path = temp_root.join("reject_range_int_float_assignment.arden");
     let output_path = temp_root.join("reject_range_int_float_assignment");
     let source = r#"
             function main(): None {
@@ -17518,7 +17526,7 @@ fn compile_source_rejects_range_integer_to_float_assignment() {
 #[test]
 fn compile_source_rejects_option_integer_to_float_argument() {
     let temp_root = make_temp_project_root("reject-option-int-float-argument");
-    let source_path = temp_root.join("reject_option_int_float_argument.apex");
+    let source_path = temp_root.join("reject_option_int_float_argument.arden");
     let output_path = temp_root.join("reject_option_int_float_argument");
     let source = r#"
             function take(value: Option<Float>): None {
@@ -17545,7 +17553,7 @@ fn compile_source_rejects_option_integer_to_float_argument() {
 #[test]
 fn compile_source_rejects_task_integer_to_float_argument() {
     let temp_root = make_temp_project_root("reject-task-int-float-argument");
-    let source_path = temp_root.join("reject_task_int_float_argument.apex");
+    let source_path = temp_root.join("reject_task_int_float_argument.arden");
     let output_path = temp_root.join("reject_task_int_float_argument");
     let source = r#"
             async function take(value: Task<Float>): Task<None> {
@@ -17578,7 +17586,7 @@ fn compile_source_rejects_task_integer_to_float_argument() {
 #[test]
 fn compile_source_rejects_map_integer_to_float_argument() {
     let temp_root = make_temp_project_root("reject-map-int-float-argument");
-    let source_path = temp_root.join("reject_map_int_float_argument.apex");
+    let source_path = temp_root.join("reject_map_int_float_argument.arden");
     let output_path = temp_root.join("reject_map_int_float_argument");
     let source = r#"
             function take(values: Map<String, Float>): None {
@@ -17607,7 +17615,7 @@ fn compile_source_rejects_map_integer_to_float_argument() {
 #[test]
 fn compile_source_rejects_list_integer_to_float_argument() {
     let temp_root = make_temp_project_root("reject-list-int-float-argument");
-    let source_path = temp_root.join("reject_list_int_float_argument.apex");
+    let source_path = temp_root.join("reject_list_int_float_argument.arden");
     let output_path = temp_root.join("reject_list_int_float_argument");
     let source = r#"
             function take(values: List<Float>): None {
@@ -17636,7 +17644,7 @@ fn compile_source_rejects_list_integer_to_float_argument() {
 #[test]
 fn compile_source_rejects_option_integer_to_float_return() {
     let temp_root = make_temp_project_root("reject-option-int-float-return");
-    let source_path = temp_root.join("reject_option_int_float_return.apex");
+    let source_path = temp_root.join("reject_option_int_float_return.arden");
     let output_path = temp_root.join("reject_option_int_float_return");
     let source = r#"
             function produce(): Option<Float> {
@@ -17662,7 +17670,7 @@ fn compile_source_rejects_option_integer_to_float_return() {
 #[test]
 fn compile_source_rejects_if_expression_join_between_integer_and_float_ranges() {
     let temp_root = make_temp_project_root("reject-if-range-join-int-float");
-    let source_path = temp_root.join("reject_if_range_join_int_float.apex");
+    let source_path = temp_root.join("reject_if_range_join_int_float.arden");
     let output_path = temp_root.join("reject_if_range_join_int_float");
     let source = r#"
             function main(): None {
@@ -17688,7 +17696,7 @@ fn compile_source_rejects_if_expression_join_between_integer_and_float_ranges() 
 #[test]
 fn compile_source_fails_fast_on_out_of_bounds_list_index_assignment() {
     let temp_root = make_temp_project_root("list-index-assign-oob-runtime");
-    let source_path = temp_root.join("list_index_assign_oob_runtime.apex");
+    let source_path = temp_root.join("list_index_assign_oob_runtime.arden");
     let output_path = temp_root.join("list_index_assign_oob_runtime");
     let source = r#"
             function main(): Integer {
@@ -17714,7 +17722,7 @@ fn compile_source_fails_fast_on_out_of_bounds_list_index_assignment() {
 #[test]
 fn compile_source_fails_fast_on_negative_list_index_assignment() {
     let temp_root = make_temp_project_root("list-index-assign-negative-runtime");
-    let source_path = temp_root.join("list_index_assign_negative_runtime.apex");
+    let source_path = temp_root.join("list_index_assign_negative_runtime.arden");
     let output_path = temp_root.join("list_index_assign_negative_runtime");
     let source = r#"
             function main(): Integer {
@@ -17741,7 +17749,7 @@ fn compile_source_fails_fast_on_negative_list_index_assignment() {
 #[test]
 fn compile_source_fails_fast_on_missing_map_index_object_results() {
     let temp_root = make_temp_project_root("map-index-missing-object-runtime");
-    let source_path = temp_root.join("map_index_missing_object_runtime.apex");
+    let source_path = temp_root.join("map_index_missing_object_runtime.arden");
     let output_path = temp_root.join("map_index_missing_object_runtime");
     let source = r#"
             class Boxed {
@@ -17770,7 +17778,7 @@ fn compile_source_fails_fast_on_missing_map_index_object_results() {
 #[test]
 fn compile_source_fails_fast_on_empty_list_get_object_results() {
     let temp_root = make_temp_project_root("list-get-empty-object-runtime");
-    let source_path = temp_root.join("list_get_empty_object_runtime.apex");
+    let source_path = temp_root.join("list_get_empty_object_runtime.arden");
     let output_path = temp_root.join("list_get_empty_object_runtime");
     let source = r#"
             class Boxed {
@@ -17799,7 +17807,7 @@ fn compile_source_fails_fast_on_empty_list_get_object_results() {
 #[test]
 fn compile_source_fails_fast_on_empty_list_pop_object_results() {
     let temp_root = make_temp_project_root("list-pop-empty-object-runtime");
-    let source_path = temp_root.join("list_pop_empty_object_runtime.apex");
+    let source_path = temp_root.join("list_pop_empty_object_runtime.arden");
     let output_path = temp_root.join("list_pop_empty_object_runtime");
     let source = r#"
             class Boxed {
@@ -17828,7 +17836,7 @@ fn compile_source_fails_fast_on_empty_list_pop_object_results() {
 #[test]
 fn compile_source_fails_fast_on_negative_list_get_index() {
     let temp_root = make_temp_project_root("list-get-negative-index-runtime");
-    let source_path = temp_root.join("list_get_negative_index_runtime.apex");
+    let source_path = temp_root.join("list_get_negative_index_runtime.arden");
     let output_path = temp_root.join("list_get_negative_index_runtime");
     let source = r#"
             function main(): Integer {
@@ -17854,7 +17862,7 @@ fn compile_source_fails_fast_on_negative_list_get_index() {
 #[test]
 fn compile_source_fails_fast_on_negative_list_index_operator() {
     let temp_root = make_temp_project_root("list-index-negative-runtime");
-    let source_path = temp_root.join("list_index_negative_runtime.apex");
+    let source_path = temp_root.join("list_index_negative_runtime.arden");
     let output_path = temp_root.join("list_index_negative_runtime");
     let source = r#"
             function main(): Integer {
@@ -17880,7 +17888,7 @@ fn compile_source_fails_fast_on_negative_list_index_operator() {
 #[test]
 fn compile_source_runs_string_index_operator() {
     let temp_root = make_temp_project_root("string-index-runtime");
-    let source_path = temp_root.join("string_index_runtime.apex");
+    let source_path = temp_root.join("string_index_runtime.arden");
     let output_path = temp_root.join("string_index_runtime");
     let source = r#"
             function main(): Integer {
@@ -17905,7 +17913,7 @@ fn compile_source_runs_string_index_operator() {
 #[test]
 fn compile_source_rejects_main_with_string_return_type() {
     let temp_root = make_temp_project_root("main-string-return-type");
-    let source_path = temp_root.join("main_string_return_type.apex");
+    let source_path = temp_root.join("main_string_return_type.arden");
     let output_path = temp_root.join("main_string_return_type");
     let source = r#"
             function main(): String {
@@ -17928,7 +17936,7 @@ fn compile_source_rejects_main_with_string_return_type() {
 #[test]
 fn compile_file_no_check_rejects_main_with_string_return_type_cleanly() {
     let temp_root = make_temp_project_root("main-string-return-type-nocheck");
-    let source_path = temp_root.join("main_string_return_type_nocheck.apex");
+    let source_path = temp_root.join("main_string_return_type_nocheck.arden");
     let source = r#"
             function main(): String {
                 return "oops";
@@ -17947,7 +17955,7 @@ fn compile_file_no_check_rejects_main_with_string_return_type_cleanly() {
 #[test]
 fn compile_file_no_check_rejects_main_with_boolean_return_type_cleanly() {
     let temp_root = make_temp_project_root("main-boolean-return-type-nocheck");
-    let source_path = temp_root.join("main_boolean_return_type_nocheck.apex");
+    let source_path = temp_root.join("main_boolean_return_type_nocheck.arden");
     let source = r#"
             function main(): Integer {
                 return true;
@@ -17969,7 +17977,7 @@ fn compile_file_no_check_rejects_main_with_boolean_return_type_cleanly() {
 #[test]
 fn compile_source_no_check_rejects_function_with_boolean_return_type_cleanly() {
     let temp_root = make_temp_project_root("function-boolean-return-type-nocheck");
-    let source_path = temp_root.join("function_boolean_return_type_nocheck.apex");
+    let source_path = temp_root.join("function_boolean_return_type_nocheck.arden");
     let output_path = temp_root.join("function_boolean_return_type_nocheck");
     let source = r#"
             function f(): Integer {
@@ -17996,7 +18004,7 @@ fn compile_source_no_check_rejects_function_with_boolean_return_type_cleanly() {
 #[test]
 fn compile_source_rejects_main_with_parameters() {
     let temp_root = make_temp_project_root("main-parameters");
-    let source_path = temp_root.join("main_parameters.apex");
+    let source_path = temp_root.join("main_parameters.arden");
     let output_path = temp_root.join("main_parameters");
     let source = r#"
             function main(x: Integer): Integer {
@@ -18018,7 +18026,7 @@ fn compile_source_rejects_main_with_parameters() {
 #[test]
 fn compile_source_rejects_try_outside_result_or_option_return_context() {
     let temp_root = make_temp_project_root("try-invalid-return-context");
-    let source_path = temp_root.join("try_invalid_return_context.apex");
+    let source_path = temp_root.join("try_invalid_return_context.arden");
     let output_path = temp_root.join("try_invalid_return_context");
     let source = r#"
             function choose(): Result<Integer, String> {
@@ -18049,7 +18057,7 @@ fn compile_source_rejects_try_outside_result_or_option_return_context() {
 #[test]
 fn compile_source_rejects_try_inside_lambda_even_with_outer_result_return() {
     let temp_root = make_temp_project_root("try-invalid-lambda-context");
-    let source_path = temp_root.join("try_invalid_lambda_context.apex");
+    let source_path = temp_root.join("try_invalid_lambda_context.arden");
     let output_path = temp_root.join("try_invalid_lambda_context");
     let source = r#"
             function choose(): Result<Integer, String> {
@@ -18080,7 +18088,7 @@ fn compile_source_rejects_try_inside_lambda_even_with_outer_result_return() {
 #[test]
 fn compile_source_rejects_invalid_opt_level() {
     let temp_root = make_temp_project_root("compile-invalid-opt");
-    let source_path = temp_root.join("invalid_opt.apex");
+    let source_path = temp_root.join("invalid_opt.arden");
     let output_path = temp_root.join("invalid_opt");
     let source = "function main(): None { return None; }\n";
 
@@ -18103,7 +18111,7 @@ fn compile_source_rejects_invalid_opt_level() {
 #[test]
 fn compile_source_fails_fast_on_out_of_bounds_string_index_operator() {
     let temp_root = make_temp_project_root("string-index-oob-runtime");
-    let source_path = temp_root.join("string_index_oob_runtime.apex");
+    let source_path = temp_root.join("string_index_oob_runtime.arden");
     let output_path = temp_root.join("string_index_oob_runtime");
     let source = r#"
             function main(): Integer {
@@ -18128,7 +18136,7 @@ fn compile_source_fails_fast_on_out_of_bounds_string_index_operator() {
 #[test]
 fn compile_source_runs_unicode_string_literal_index_operator() {
     let temp_root = make_temp_project_root("unicode-string-index-runtime");
-    let source_path = temp_root.join("unicode_string_index_runtime.apex");
+    let source_path = temp_root.join("unicode_string_index_runtime.arden");
     let output_path = temp_root.join("unicode_string_index_runtime");
     let source = r#"
             function main(): Integer {
@@ -18152,7 +18160,7 @@ fn compile_source_runs_unicode_string_literal_index_operator() {
 #[test]
 fn compile_source_runs_unicode_string_literal_index_operator_with_dynamic_index() {
     let temp_root = make_temp_project_root("unicode-string-dynamic-index-runtime");
-    let source_path = temp_root.join("unicode_string_dynamic_index_runtime.apex");
+    let source_path = temp_root.join("unicode_string_dynamic_index_runtime.arden");
     let output_path = temp_root.join("unicode_string_dynamic_index_runtime");
     let source = r#"
             function main(): Integer {
@@ -18177,7 +18185,7 @@ fn compile_source_runs_unicode_string_literal_index_operator_with_dynamic_index(
 #[test]
 fn compile_source_fails_fast_on_unicode_string_literal_index_operator_past_char_len() {
     let temp_root = make_temp_project_root("unicode-string-index-oob-runtime");
-    let source_path = temp_root.join("unicode_string_index_oob_runtime.apex");
+    let source_path = temp_root.join("unicode_string_index_oob_runtime.arden");
     let output_path = temp_root.join("unicode_string_index_oob_runtime");
     let source = r#"
             function main(): Integer {
@@ -18204,7 +18212,7 @@ fn compile_source_fails_fast_on_unicode_string_literal_index_operator_past_char_
 #[test]
 fn compile_source_runs_unicode_string_variable_index_operator() {
     let temp_root = make_temp_project_root("unicode-string-variable-index-runtime");
-    let source_path = temp_root.join("unicode_string_variable_index_runtime.apex");
+    let source_path = temp_root.join("unicode_string_variable_index_runtime.arden");
     let output_path = temp_root.join("unicode_string_variable_index_runtime");
     let source = r#"
             function main(): Integer {
@@ -18230,7 +18238,7 @@ fn compile_source_runs_unicode_string_variable_index_operator() {
 #[test]
 fn compile_source_runs_unicode_string_literal_length() {
     let temp_root = make_temp_project_root("unicode-string-literal-length-runtime");
-    let source_path = temp_root.join("unicode_string_literal_length_runtime.apex");
+    let source_path = temp_root.join("unicode_string_literal_length_runtime.arden");
     let output_path = temp_root.join("unicode_string_literal_length_runtime");
     let source = r#"
             function main(): Integer {
@@ -18253,7 +18261,7 @@ fn compile_source_runs_unicode_string_literal_length() {
 #[test]
 fn compile_source_runs_unicode_string_variable_length() {
     let temp_root = make_temp_project_root("unicode-string-variable-length-runtime");
-    let source_path = temp_root.join("unicode_string_variable_length_runtime.apex");
+    let source_path = temp_root.join("unicode_string_variable_length_runtime.arden");
     let output_path = temp_root.join("unicode_string_variable_length_runtime");
     let source = r#"
             function main(): Integer {
@@ -18277,7 +18285,7 @@ fn compile_source_runs_unicode_string_variable_length() {
 #[test]
 fn compile_source_runs_system_exec_large_output() {
     let temp_root = make_temp_project_root("system-exec-large-output-runtime");
-    let source_path = temp_root.join("system_exec_large_output_runtime.apex");
+    let source_path = temp_root.join("system_exec_large_output_runtime.arden");
     let output_path = temp_root.join("system_exec_large_output_runtime");
     let command = if cfg!(windows) {
         r#"powershell -NoProfile -Command "$s='x'*5000; Write-Output $s""#
@@ -18320,7 +18328,7 @@ fn compile_source_runs_system_exec_large_output() {
 #[test]
 fn compile_source_fails_fast_on_system_exec_nul_bytes() {
     let temp_root = make_temp_project_root("system-exec-nul-bytes-runtime");
-    let source_path = temp_root.join("system_exec_nul_bytes_runtime.apex");
+    let source_path = temp_root.join("system_exec_nul_bytes_runtime.arden");
     let output_path = temp_root.join("system_exec_nul_bytes_runtime");
     let source = r#"
             import std.system.*;
@@ -18352,7 +18360,7 @@ fn compile_source_fails_fast_on_system_exec_nul_bytes() {
 #[test]
 fn compile_source_fails_fast_on_system_exec_invalid_utf8() {
     let temp_root = make_temp_project_root("system-exec-invalid-utf8-runtime");
-    let source_path = temp_root.join("system_exec_invalid_utf8_runtime.apex");
+    let source_path = temp_root.join("system_exec_invalid_utf8_runtime.arden");
     let output_path = temp_root.join("system_exec_invalid_utf8_runtime");
     let source = r#"
             import std.system.*;
@@ -18384,7 +18392,7 @@ fn compile_source_fails_fast_on_system_exec_invalid_utf8() {
 #[test]
 fn compile_source_fails_fast_on_system_getenv_invalid_utf8() {
     let temp_root = make_temp_project_root("system-getenv-invalid-utf8-runtime");
-    let source_path = temp_root.join("system_getenv_invalid_utf8_runtime.apex");
+    let source_path = temp_root.join("system_getenv_invalid_utf8_runtime.arden");
     let output_path = temp_root.join("system_getenv_invalid_utf8_runtime");
     let source = r#"
             import std.system.*;
@@ -18420,7 +18428,7 @@ fn compile_source_fails_fast_on_system_getenv_invalid_utf8() {
 #[test]
 fn compile_source_runs_system_shell_with_decoded_exit_code() {
     let temp_root = make_temp_project_root("system-shell-decoded-exit-code-runtime");
-    let source_path = temp_root.join("system_shell_decoded_exit_code_runtime.apex");
+    let source_path = temp_root.join("system_shell_decoded_exit_code_runtime.arden");
     let output_path = temp_root.join("system_shell_decoded_exit_code_runtime");
     let source = r#"
             import std.system.*;
@@ -18446,7 +18454,7 @@ fn compile_source_runs_system_shell_with_decoded_exit_code() {
 #[test]
 fn compile_source_fails_fast_on_file_read_missing_path() {
     let temp_root = make_temp_project_root("file-read-missing-path-runtime");
-    let source_path = temp_root.join("file_read_missing_path_runtime.apex");
+    let source_path = temp_root.join("file_read_missing_path_runtime.arden");
     let output_path = temp_root.join("file_read_missing_path_runtime");
     let source = r#"
             import std.fs.*;
@@ -18478,7 +18486,7 @@ fn compile_source_fails_fast_on_file_read_missing_path() {
 #[test]
 fn compile_source_runs_time_now_with_long_format() {
     let temp_root = make_temp_project_root("time-now-long-format-runtime");
-    let source_path = temp_root.join("time_now_long_format_runtime.apex");
+    let source_path = temp_root.join("time_now_long_format_runtime.arden");
     let output_path = temp_root.join("time_now_long_format_runtime");
     let source = r#"
             import std.time.*;
@@ -18505,7 +18513,7 @@ fn compile_source_runs_time_now_with_long_format() {
 #[test]
 fn compile_source_runs_system_cwd_with_long_working_directory() {
     let temp_root = make_temp_project_root("system-cwd-long-working-directory-runtime");
-    let source_path = temp_root.join("system_cwd_long_working_directory_runtime.apex");
+    let source_path = temp_root.join("system_cwd_long_working_directory_runtime.arden");
     let output_path = temp_root.join("system_cwd_long_working_directory_runtime");
     let source = r#"
             import std.string.*;
@@ -18541,7 +18549,7 @@ fn compile_source_runs_system_cwd_with_long_working_directory() {
 #[test]
 fn compile_source_runs_read_line_with_long_input() {
     let temp_root = make_temp_project_root("read-line-long-input-runtime");
-    let source_path = temp_root.join("read_line_long_input_runtime.apex");
+    let source_path = temp_root.join("read_line_long_input_runtime.arden");
     let output_path = temp_root.join("read_line_long_input_runtime");
     let source = r#"
             import std.io.*;
@@ -18576,7 +18584,7 @@ fn compile_source_runs_read_line_with_long_input() {
 #[test]
 fn compile_source_runs_unicode_str_len() {
     let temp_root = make_temp_project_root("unicode-str-len-runtime");
-    let source_path = temp_root.join("unicode_str_len_runtime.apex");
+    let source_path = temp_root.join("unicode_str_len_runtime.arden");
     let output_path = temp_root.join("unicode_str_len_runtime");
     let source = r#"
             import std.string.*;
@@ -18602,7 +18610,7 @@ fn compile_source_runs_unicode_str_len() {
 #[test]
 fn compile_source_fails_fast_on_unicode_string_variable_index_operator_past_char_len() {
     let temp_root = make_temp_project_root("unicode-string-variable-index-oob-runtime");
-    let source_path = temp_root.join("unicode_string_variable_index_oob_runtime.apex");
+    let source_path = temp_root.join("unicode_string_variable_index_oob_runtime.arden");
     let output_path = temp_root.join("unicode_string_variable_index_oob_runtime");
     let source = r#"
             function main(): Integer {
@@ -18630,7 +18638,7 @@ fn compile_source_fails_fast_on_unicode_string_variable_index_operator_past_char
 #[test]
 fn compile_source_runs_string_equality_on_literals() {
     let temp_root = make_temp_project_root("string-eq-literal-runtime");
-    let source_path = temp_root.join("string_eq_literal_runtime.apex");
+    let source_path = temp_root.join("string_eq_literal_runtime.arden");
     let output_path = temp_root.join("string_eq_literal_runtime");
     let source = r#"
             function main(): Integer {
@@ -18654,7 +18662,7 @@ fn compile_source_runs_string_equality_on_literals() {
 #[test]
 fn compile_source_runs_string_equality_on_expression_results() {
     let temp_root = make_temp_project_root("string-eq-expr-runtime");
-    let source_path = temp_root.join("string_eq_expr_runtime.apex");
+    let source_path = temp_root.join("string_eq_expr_runtime.arden");
     let output_path = temp_root.join("string_eq_expr_runtime");
     let source = r#"
             import std.string.*;
@@ -18679,7 +18687,7 @@ fn compile_source_runs_string_equality_on_expression_results() {
 #[test]
 fn compile_source_runs_list_identity_equality() {
     let temp_root = make_temp_project_root("list-eq-runtime");
-    let source_path = temp_root.join("list_eq_runtime.apex");
+    let source_path = temp_root.join("list_eq_runtime.arden");
     let output_path = temp_root.join("list_eq_runtime");
     let source = r#"
             function main(): Integer {
@@ -18705,7 +18713,7 @@ fn compile_source_runs_list_identity_equality() {
 #[test]
 fn compile_source_runs_list_constructor_with_preallocated_integer_capacity() {
     let temp_root = make_temp_project_root("list-capacity-runtime");
-    let source_path = temp_root.join("list_capacity_runtime.apex");
+    let source_path = temp_root.join("list_capacity_runtime.arden");
     let output_path = temp_root.join("list_capacity_runtime");
     let source = r#"
             function main(): Integer {
@@ -18735,7 +18743,7 @@ fn compile_source_runs_list_constructor_with_preallocated_integer_capacity() {
 #[test]
 fn compile_source_runs_list_constructor_with_preallocated_option_capacity() {
     let temp_root = make_temp_project_root("option-list-capacity-runtime");
-    let source_path = temp_root.join("option_list_capacity_runtime.apex");
+    let source_path = temp_root.join("option_list_capacity_runtime.arden");
     let output_path = temp_root.join("option_list_capacity_runtime");
     let source = r#"
             function main(): Integer {
@@ -18764,7 +18772,7 @@ fn compile_source_runs_list_constructor_with_preallocated_option_capacity() {
 #[test]
 fn compile_source_fails_runtime_on_negative_list_constructor_capacity_expression() {
     let temp_root = make_temp_project_root("negative-list-capacity-runtime");
-    let source_path = temp_root.join("negative_list_capacity_runtime.apex");
+    let source_path = temp_root.join("negative_list_capacity_runtime.arden");
     let output_path = temp_root.join("negative_list_capacity_runtime");
     let source = r#"
             function main(): Integer {
@@ -18796,7 +18804,7 @@ fn compile_source_fails_runtime_on_negative_list_constructor_capacity_expression
 #[test]
 fn compile_source_runs_typed_option_constructor_through_function_return() {
     let temp_root = make_temp_project_root("typed-option-constructor-runtime");
-    let source_path = temp_root.join("typed_option_constructor_runtime.apex");
+    let source_path = temp_root.join("typed_option_constructor_runtime.arden");
     let output_path = temp_root.join("typed_option_constructor_runtime");
     let source = r#"
             function build(): Option<List<Option<Integer>>> {
@@ -18827,7 +18835,7 @@ fn compile_source_runs_typed_option_constructor_through_function_return() {
 #[test]
 fn compile_source_runs_typed_result_constructor_through_function_return() {
     let temp_root = make_temp_project_root("typed-result-constructor-runtime");
-    let source_path = temp_root.join("typed_result_constructor_runtime.apex");
+    let source_path = temp_root.join("typed_result_constructor_runtime.arden");
     let output_path = temp_root.join("typed_result_constructor_runtime");
     let source = r#"
             function build(): Result<List<Option<Integer>>, String> {
@@ -18858,7 +18866,7 @@ fn compile_source_runs_typed_result_constructor_through_function_return() {
 #[test]
 fn compile_source_uses_typed_heap_sizes_for_builtin_smart_pointer_constructors() {
     let temp_root = make_temp_project_root("typed-smart-pointer-ir");
-    let source_path = temp_root.join("typed_smart_pointer_ir.apex");
+    let source_path = temp_root.join("typed_smart_pointer_ir.arden");
     let output_path = temp_root.join("typed_smart_pointer_ir");
     let source = r#"
             function main(): None {
@@ -18896,7 +18904,7 @@ fn compile_source_uses_typed_heap_sizes_for_builtin_smart_pointer_constructors()
 #[test]
 fn compile_source_supports_raw_ptr_deref_with_float_payloads() {
     let temp_root = make_temp_project_root("ptr-float-deref-codegen");
-    let source_path = temp_root.join("ptr_float_deref_codegen.apex");
+    let source_path = temp_root.join("ptr_float_deref_codegen.arden");
     let output_path = temp_root.join("ptr_float_deref_codegen");
     let source = r#"
             function load(slot: Ptr<Float>): Float {
@@ -18919,7 +18927,7 @@ fn compile_source_supports_raw_ptr_deref_with_float_payloads() {
 #[test]
 fn compile_source_runs_async_block_await_timeout_method_chain() {
     let temp_root = make_temp_project_root("async-block-await-timeout-runtime");
-    let source_path = temp_root.join("async_block_await_timeout_runtime.apex");
+    let source_path = temp_root.join("async_block_await_timeout_runtime.arden");
     let output_path = temp_root.join("async_block_await_timeout_runtime");
     let source = r#"
             function main(): Integer {
@@ -18943,7 +18951,7 @@ fn compile_source_runs_async_block_await_timeout_method_chain() {
 #[test]
 fn compile_source_runs_await_timeout_zero_pending_runtime() {
     let temp_root = make_temp_project_root("await-timeout-zero-pending-runtime");
-    let source_path = temp_root.join("await_timeout_zero_pending_runtime.apex");
+    let source_path = temp_root.join("await_timeout_zero_pending_runtime.arden");
     let output_path = temp_root.join("await_timeout_zero_pending_runtime");
     let source = r#"
             import std.time.*;
@@ -18976,7 +18984,7 @@ fn compile_source_runs_await_timeout_zero_pending_runtime() {
 #[test]
 fn compile_source_supports_async_block_is_done_method_chain() {
     let temp_root = make_temp_project_root("async-block-is-done-codegen");
-    let source_path = temp_root.join("async_block_is_done_codegen.apex");
+    let source_path = temp_root.join("async_block_is_done_codegen.arden");
     let output_path = temp_root.join("async_block_is_done_codegen");
     let source = r#"
             function main(): None {
@@ -18996,7 +19004,7 @@ fn compile_source_supports_async_block_is_done_method_chain() {
 #[test]
 fn compile_source_runs_map_identity_equality() {
     let temp_root = make_temp_project_root("map-eq-runtime");
-    let source_path = temp_root.join("map_eq_runtime.apex");
+    let source_path = temp_root.join("map_eq_runtime.arden");
     let output_path = temp_root.join("map_eq_runtime");
     let source = r#"
             class Boxed {
@@ -19027,7 +19035,7 @@ fn compile_source_runs_map_identity_equality() {
 #[test]
 fn compile_source_runs_class_identity_equality() {
     let temp_root = make_temp_project_root("class-eq-runtime");
-    let source_path = temp_root.join("class_eq_runtime.apex");
+    let source_path = temp_root.join("class_eq_runtime.arden");
     let output_path = temp_root.join("class_eq_runtime");
     let source = r#"
             class Boxed {
@@ -19057,7 +19065,7 @@ fn compile_source_runs_class_identity_equality() {
 #[test]
 fn compile_source_runs_option_unwrap_object_identity_equality() {
     let temp_root = make_temp_project_root("option-unwrap-object-eq-runtime");
-    let source_path = temp_root.join("option_unwrap_object_eq_runtime.apex");
+    let source_path = temp_root.join("option_unwrap_object_eq_runtime.arden");
     let output_path = temp_root.join("option_unwrap_object_eq_runtime");
     let source = r#"
             class Boxed {
@@ -19088,7 +19096,7 @@ fn compile_source_runs_option_unwrap_object_identity_equality() {
 #[test]
 fn compile_source_runs_map_get_object_identity_equality() {
     let temp_root = make_temp_project_root("map-get-object-eq-runtime");
-    let source_path = temp_root.join("map_get_object_eq_runtime.apex");
+    let source_path = temp_root.join("map_get_object_eq_runtime.arden");
     let output_path = temp_root.join("map_get_object_eq_runtime");
     let source = r#"
             class Boxed {
@@ -19120,7 +19128,7 @@ fn compile_source_runs_map_get_object_identity_equality() {
 #[test]
 fn compile_source_runs_await_timeout_unwrap_object_identity_equality() {
     let temp_root = make_temp_project_root("await-timeout-unwrap-object-eq-runtime");
-    let source_path = temp_root.join("await_timeout_unwrap_object_eq_runtime.apex");
+    let source_path = temp_root.join("await_timeout_unwrap_object_eq_runtime.arden");
     let output_path = temp_root.join("await_timeout_unwrap_object_eq_runtime");
     let source = r#"
             class Boxed {
@@ -19154,7 +19162,7 @@ fn compile_source_runs_await_timeout_unwrap_object_identity_equality() {
 #[test]
 fn compile_source_runs_direct_range_method_calls() {
     let temp_root = make_temp_project_root("direct-range-method-runtime");
-    let source_path = temp_root.join("direct_range_method_runtime.apex");
+    let source_path = temp_root.join("direct_range_method_runtime.arden");
     let output_path = temp_root.join("direct_range_method_runtime");
     let source = r#"
             function main(): Integer {
@@ -19178,7 +19186,7 @@ fn compile_source_runs_direct_range_method_calls() {
 #[test]
 fn compile_source_runs_direct_option_some_method_chains() {
     let temp_root = make_temp_project_root("direct-option-some-method-runtime");
-    let source_path = temp_root.join("direct_option_some_method_runtime.apex");
+    let source_path = temp_root.join("direct_option_some_method_runtime.arden");
     let output_path = temp_root.join("direct_option_some_method_runtime");
     let source = r#"
             function main(): Integer {
@@ -19202,7 +19210,7 @@ fn compile_source_runs_direct_option_some_method_chains() {
 #[test]
 fn compile_source_runs_direct_option_some_object_method_chains() {
     let temp_root = make_temp_project_root("direct-option-some-object-method-runtime");
-    let source_path = temp_root.join("direct_option_some_object_method_runtime.apex");
+    let source_path = temp_root.join("direct_option_some_object_method_runtime.arden");
     let output_path = temp_root.join("direct_option_some_object_method_runtime");
     let source = r#"
             class Boxed {
@@ -19230,7 +19238,7 @@ fn compile_source_runs_direct_option_some_object_method_chains() {
 #[test]
 fn compile_source_runs_direct_result_ok_method_chains() {
     let temp_root = make_temp_project_root("direct-result-ok-method-runtime");
-    let source_path = temp_root.join("direct_result_ok_method_runtime.apex");
+    let source_path = temp_root.join("direct_result_ok_method_runtime.arden");
     let output_path = temp_root.join("direct_result_ok_method_runtime");
     let source = r#"
             function main(): Integer {
@@ -19254,7 +19262,7 @@ fn compile_source_runs_direct_result_ok_method_chains() {
 #[test]
 fn compile_source_runs_direct_result_ok_object_method_chains() {
     let temp_root = make_temp_project_root("direct-result-ok-object-method-runtime");
-    let source_path = temp_root.join("direct_result_ok_object_method_runtime.apex");
+    let source_path = temp_root.join("direct_result_ok_object_method_runtime.arden");
     let output_path = temp_root.join("direct_result_ok_object_method_runtime");
     let source = r#"
             class Boxed {
@@ -19282,7 +19290,7 @@ fn compile_source_runs_direct_result_ok_object_method_chains() {
 #[test]
 fn compile_source_runs_direct_constructor_method_calls() {
     let temp_root = make_temp_project_root("direct-ctor-method-runtime");
-    let source_path = temp_root.join("direct_ctor_method_runtime.apex");
+    let source_path = temp_root.join("direct_ctor_method_runtime.arden");
     let output_path = temp_root.join("direct_ctor_method_runtime");
     let source = r#"
             class Boxed {
@@ -19311,7 +19319,7 @@ fn compile_source_runs_direct_constructor_method_calls() {
 #[test]
 fn compile_source_runs_direct_result_error_integer_equality() {
     let temp_root = make_temp_project_root("direct-result-error-int-eq-runtime");
-    let source_path = temp_root.join("direct_result_error_int_eq_runtime.apex");
+    let source_path = temp_root.join("direct_result_error_int_eq_runtime.arden");
     let output_path = temp_root.join("direct_result_error_int_eq_runtime");
     let source = r#"
             function main(): Integer {
@@ -19336,7 +19344,7 @@ fn compile_source_runs_direct_result_error_integer_equality() {
 #[test]
 fn compile_source_runs_direct_result_error_object_identity_equality() {
     let temp_root = make_temp_project_root("direct-result-error-object-eq-runtime");
-    let source_path = temp_root.join("direct_result_error_object_eq_runtime.apex");
+    let source_path = temp_root.join("direct_result_error_object_eq_runtime.arden");
     let output_path = temp_root.join("direct_result_error_object_eq_runtime");
     let source = r#"
             class Boxed {
@@ -19366,7 +19374,7 @@ fn compile_source_runs_direct_result_error_object_identity_equality() {
 #[test]
 fn compile_source_runs_match_result_error_equality_against_static_constructor() {
     let temp_root = make_temp_project_root("match-result-error-static-eq-runtime");
-    let source_path = temp_root.join("match_result_error_static_eq_runtime.apex");
+    let source_path = temp_root.join("match_result_error_static_eq_runtime.arden");
     let output_path = temp_root.join("match_result_error_static_eq_runtime");
     let source = r#"
             function choose(flag: Boolean): Result<Integer, Integer> {
@@ -19401,7 +19409,7 @@ fn compile_source_runs_match_result_error_equality_against_static_constructor() 
 #[test]
 fn compile_source_runs_ultra_nested_option_result_static_equality() {
     let temp_root = make_temp_project_root("ultra-nested-option-result-static-eq-runtime");
-    let source_path = temp_root.join("ultra_nested_option_result_static_eq_runtime.apex");
+    let source_path = temp_root.join("ultra_nested_option_result_static_eq_runtime.arden");
     let output_path = temp_root.join("ultra_nested_option_result_static_eq_runtime");
     let source = r#"
             function wrap(flag: Boolean): Option<Result<Option<Result<Integer, Integer>>, Integer>> {
@@ -19443,7 +19451,7 @@ fn compile_source_runs_ultra_nested_option_result_static_equality() {
 #[test]
 fn compile_source_runs_if_merge_option_none_method_chain() {
     let temp_root = make_temp_project_root("if-merge-option-none-method-runtime");
-    let source_path = temp_root.join("if_merge_option_none_method_runtime.apex");
+    let source_path = temp_root.join("if_merge_option_none_method_runtime.arden");
     let output_path = temp_root.join("if_merge_option_none_method_runtime");
     let source = r#"
             class Boxed {
@@ -19476,7 +19484,7 @@ fn compile_source_runs_if_merge_option_none_method_chain() {
 #[test]
 fn compile_source_runs_nested_if_match_if_tagged_merge_method_chain() {
     let temp_root = make_temp_project_root("nested-if-match-if-tagged-merge-runtime");
-    let source_path = temp_root.join("nested_if_match_if_tagged_merge_runtime.apex");
+    let source_path = temp_root.join("nested_if_match_if_tagged_merge_runtime.arden");
     let output_path = temp_root.join("nested_if_match_if_tagged_merge_runtime");
     let source = r#"
             class Boxed {
@@ -19516,7 +19524,7 @@ fn compile_source_runs_nested_if_match_if_tagged_merge_method_chain() {
 #[test]
 fn compile_source_runs_chaotic_unreachable_tagged_branch_chain() {
     let temp_root = make_temp_project_root("chaotic-unreachable-tagged-branch-runtime");
-    let source_path = temp_root.join("chaotic_unreachable_tagged_branch_runtime.apex");
+    let source_path = temp_root.join("chaotic_unreachable_tagged_branch_runtime.arden");
     let output_path = temp_root.join("chaotic_unreachable_tagged_branch_runtime");
     let source = r#"
             class Boxed {
@@ -19558,7 +19566,7 @@ fn compile_source_runs_chaotic_unreachable_tagged_branch_chain() {
 #[test]
 fn compile_source_fails_fast_on_empty_list_index_object_results() {
     let temp_root = make_temp_project_root("list-index-empty-object-runtime");
-    let source_path = temp_root.join("list_index_empty_object_runtime.apex");
+    let source_path = temp_root.join("list_index_empty_object_runtime.arden");
     let output_path = temp_root.join("list_index_empty_object_runtime");
     let source = r#"
             class Boxed {
@@ -19587,7 +19595,7 @@ fn compile_source_fails_fast_on_empty_list_index_object_results() {
 #[test]
 fn compile_source_supports_lambda_callee_calls() {
     let temp_root = make_temp_project_root("lambda-callee-codegen");
-    let source_path = temp_root.join("lambda_callee.apex");
+    let source_path = temp_root.join("lambda_callee.arden");
     let output_path = temp_root.join("lambda_callee");
     let source = r#"
             function main(): None {
@@ -19607,7 +19615,7 @@ fn compile_source_supports_lambda_callee_calls() {
 #[test]
 fn compile_source_supports_indexed_function_value_callees() {
     let temp_root = make_temp_project_root("indexed-function-callee-codegen");
-    let source_path = temp_root.join("indexed_function_callee.apex");
+    let source_path = temp_root.join("indexed_function_callee.arden");
     let output_path = temp_root.join("indexed_function_callee");
     let source = r#"
             function inc(x: Integer): Integer { return x + 1; }
@@ -19633,7 +19641,7 @@ fn compile_source_supports_indexed_function_value_callees() {
 #[test]
 fn compile_source_supports_if_expression_function_value_callees() {
     let temp_root = make_temp_project_root("ifexpr-function-callee-codegen");
-    let source_path = temp_root.join("ifexpr_function_callee.apex");
+    let source_path = temp_root.join("ifexpr_function_callee.arden");
     let output_path = temp_root.join("ifexpr_function_callee");
     let source = r#"
             function inc(x: Integer): Integer { return x + 1; }
@@ -19656,7 +19664,7 @@ fn compile_source_supports_if_expression_function_value_callees() {
 #[test]
 fn formatted_async_block_tail_expression_preserves_runtime_behavior() {
     let temp_root = make_temp_project_root("formatted-async-block-tail-runtime");
-    let source_path = temp_root.join("formatted_async_block_tail_runtime.apex");
+    let source_path = temp_root.join("formatted_async_block_tail_runtime.arden");
     let output_path = temp_root.join("formatted_async_block_tail_runtime");
     let source = r#"
             function main(): Integer {
@@ -19691,7 +19699,7 @@ fn formatted_async_block_tail_expression_preserves_runtime_behavior() {
 #[test]
 fn compile_source_supports_function_valued_field_calls() {
     let temp_root = make_temp_project_root("function-field-call-codegen");
-    let source_path = temp_root.join("function_field_call.apex");
+    let source_path = temp_root.join("function_field_call.arden");
     let output_path = temp_root.join("function_field_call");
     let source = r#"
             class C {
@@ -19717,7 +19725,7 @@ fn compile_source_supports_function_valued_field_calls() {
 #[test]
 fn compile_source_supports_generic_method_returning_lambda() {
     let temp_root = make_temp_project_root("generic-method-lambda-codegen");
-    let source_path = temp_root.join("generic_method_lambda.apex");
+    let source_path = temp_root.join("generic_method_lambda.arden");
     let output_path = temp_root.join("generic_method_lambda");
     let source = r#"
             class C {
@@ -19743,7 +19751,7 @@ fn compile_source_supports_generic_method_returning_lambda() {
 #[test]
 fn compile_source_runs_zero_arg_pipe_lambda_runtime() {
     let temp_root = make_temp_project_root("zero-arg-pipe-lambda-runtime");
-    let source_path = temp_root.join("zero_arg_pipe_lambda_runtime.apex");
+    let source_path = temp_root.join("zero_arg_pipe_lambda_runtime.arden");
     let output_path = temp_root.join("zero_arg_pipe_lambda_runtime");
     let source = r#"
             function make(): () -> Integer { return || 7; }
@@ -19769,7 +19777,7 @@ fn compile_source_runs_zero_arg_pipe_lambda_runtime() {
 #[test]
 fn compile_source_runs_generic_method_returning_zero_arg_pipe_lambda_runtime() {
     let temp_root = make_temp_project_root("generic-method-zero-arg-pipe-lambda-runtime");
-    let source_path = temp_root.join("generic_method_zero_arg_pipe_lambda_runtime.apex");
+    let source_path = temp_root.join("generic_method_zero_arg_pipe_lambda_runtime.arden");
     let output_path = temp_root.join("generic_method_zero_arg_pipe_lambda_runtime");
     let source = r#"
             class Box<T> {
@@ -19800,7 +19808,7 @@ fn compile_source_runs_generic_method_returning_zero_arg_pipe_lambda_runtime() {
 #[test]
 fn compile_source_runs_entry_namespace_module_named_main_runtime() {
     let temp_root = make_temp_project_root("entry-namespace-module-main-runtime");
-    let source_path = temp_root.join("entry_namespace_module_main_runtime.apex");
+    let source_path = temp_root.join("entry_namespace_module_main_runtime.arden");
     let output_path = temp_root.join("entry_namespace_module_main_runtime");
     let source = r#"
 package core;
@@ -19835,7 +19843,7 @@ function main(): Integer {
 #[test]
 fn compile_source_runs_entry_namespace_class_named_main_runtime() {
     let temp_root = make_temp_project_root("entry-namespace-class-main-runtime");
-    let source_path = temp_root.join("entry_namespace_class_main_runtime.apex");
+    let source_path = temp_root.join("entry_namespace_class_main_runtime.arden");
     let output_path = temp_root.join("entry_namespace_class_main_runtime");
     let source = r#"
 package core;
@@ -19873,7 +19881,7 @@ function main(): Integer {
 #[test]
 fn compile_source_runs_package_qualified_builtin_option_variant_alias_patterns() {
     let temp_root = make_temp_project_root("package-qualified-builtin-option-variant-aliases");
-    let source_path = temp_root.join("package_qualified_builtin_option_variant_aliases.apex");
+    let source_path = temp_root.join("package_qualified_builtin_option_variant_aliases.arden");
     let output_path = temp_root.join("package_qualified_builtin_option_variant_aliases");
     let source = r#"
 package app;
@@ -19914,7 +19922,7 @@ function main(): Integer {
 #[test]
 fn compile_source_runs_package_qualified_builtin_result_variant_alias_patterns() {
     let temp_root = make_temp_project_root("package-qualified-builtin-result-variant-aliases");
-    let source_path = temp_root.join("package_qualified_builtin_result_variant_aliases.apex");
+    let source_path = temp_root.join("package_qualified_builtin_result_variant_aliases.arden");
     let output_path = temp_root.join("package_qualified_builtin_result_variant_aliases");
     let source = r#"
 package app;
@@ -19955,7 +19963,7 @@ function main(): Integer {
 #[test]
 fn compile_source_runs_package_qualified_direct_builtin_option_constructor() {
     let temp_root = make_temp_project_root("package-qualified-direct-builtin-option-constructor");
-    let source_path = temp_root.join("package_qualified_direct_builtin_option_constructor.apex");
+    let source_path = temp_root.join("package_qualified_direct_builtin_option_constructor.arden");
     let output_path = temp_root.join("package_qualified_direct_builtin_option_constructor");
     let source = r#"
 package app;
@@ -19987,7 +19995,7 @@ function main(): Integer {
 #[test]
 fn compile_source_runs_package_qualified_direct_builtin_result_constructor() {
     let temp_root = make_temp_project_root("package-qualified-direct-builtin-result-constructor");
-    let source_path = temp_root.join("package_qualified_direct_builtin_result_constructor.apex");
+    let source_path = temp_root.join("package_qualified_direct_builtin_result_constructor.arden");
     let output_path = temp_root.join("package_qualified_direct_builtin_result_constructor");
     let source = r#"
 package app;
@@ -20021,7 +20029,7 @@ fn compile_source_runs_package_qualified_inline_option_constructor_method_chain(
     let temp_root =
         make_temp_project_root("package-qualified-inline-option-constructor-method-chain");
     let source_path =
-        temp_root.join("package_qualified_inline_option_constructor_method_chain.apex");
+        temp_root.join("package_qualified_inline_option_constructor_method_chain.arden");
     let output_path = temp_root.join("package_qualified_inline_option_constructor_method_chain");
     let source = r#"
 package app;
@@ -20054,7 +20062,7 @@ fn compile_source_runs_package_qualified_inline_result_constructor_method_chain(
     let temp_root =
         make_temp_project_root("package-qualified-inline-result-constructor-method-chain");
     let source_path =
-        temp_root.join("package_qualified_inline_result_constructor_method_chain.apex");
+        temp_root.join("package_qualified_inline_result_constructor_method_chain.arden");
     let output_path = temp_root.join("package_qualified_inline_result_constructor_method_chain");
     let source = r#"
 package app;
@@ -20071,6 +20079,75 @@ function main(): Integer {
     let output = std::process::Command::new(&output_path)
         .output()
         .expect("run compiled package-qualified inline Result constructor binary");
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_root_namespace_alias_builtin_option_constructor() {
+    let temp_root = make_temp_project_root("root-namespace-alias-builtin-option-constructor");
+    let source_path = temp_root.join("root_namespace_alias_builtin_option_constructor.arden");
+    let output_path = temp_root.join("root_namespace_alias_builtin_option_constructor");
+    let source = r#"
+package app;
+
+import app as root;
+
+function main(): Integer {
+    value: Option<Integer> = root.Option.Some(4);
+    return value.unwrap();
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("root namespace alias builtin Option constructor should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled root alias Option constructor binary");
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_root_namespace_alias_inline_result_constructor_method_chain() {
+    let temp_root =
+        make_temp_project_root("root-namespace-alias-inline-result-constructor-method-chain");
+    let source_path =
+        temp_root.join("root_namespace_alias_inline_result_constructor_method_chain.arden");
+    let output_path = temp_root.join("root_namespace_alias_inline_result_constructor_method_chain");
+    let source = r#"
+package app;
+
+import app as root;
+
+function main(): Integer {
+    return root.Result.Ok(4).unwrap();
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("root namespace alias inline Result constructor chain should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled root alias Result constructor chain binary");
     assert_eq!(
         output.status.code(),
         Some(4),

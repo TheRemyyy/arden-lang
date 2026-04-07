@@ -1,6 +1,6 @@
 import std.io.*;
 
-// Typical output shape from `apex bindgen`.
+// Typical output shape from `arden bindgen`.
 extern(c) function puts(msg: String): Integer;
 extern(c) function printf(fmt: String, ...): Integer;
 

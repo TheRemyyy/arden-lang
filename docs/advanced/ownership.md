@@ -1,10 +1,10 @@
 # Ownership and Borrowing
 
-Apex uses an ownership system inspired by Rust to ensure memory safety without a garbage collector.
+Arden uses an ownership system inspired by Rust to ensure memory safety without a garbage collector.
 
 ## Ownership Rules
 
-1. Each value in Apex has a variable that's called its **owner**.
+1. Each value in Arden has a variable that's called its **owner**.
 2. There can only be one owner at a time.
 3. When the owner goes out of scope, the value will be dropped.
 
@@ -12,7 +12,7 @@ Apex uses an ownership system inspired by Rust to ensure memory safety without a
 
 When you assign a value to another variable or pass it to a function, ownership is transferred (moved).
 
-```apex
+```arden
 s1: String = "hello";
 s2: String = s1; // s1 is moved to s2
 // println("{s1}"); // Error: s1 is invalid
@@ -26,7 +26,7 @@ You can allow other code to access data without taking ownership by using **refe
 
 Create an immutable reference with `&`. You can have multiple immutable references.
 
-```apex
+```arden
 function len(s: &String): Integer {
     return strlen(*s); // Dereference might be implicit
 }
@@ -38,7 +38,7 @@ println("{s1}"); // s1 is still valid
 
 Immutable references can be used directly for read access on borrowed values without spelling an explicit `*` first. The compiler now accepts field access, read-only method calls, and indexing through borrowed receivers when the underlying type supports them.
 
-```apex
+```arden
 class Boxed {
     value: Integer;
     constructor(value: Integer) { this.value = value; }
@@ -62,7 +62,7 @@ n: Integer = nums_ref.get(0);
 
 Create a mutable reference with `&mut`. You can only have **one** mutable reference at a time.
 
-```apex
+```arden
 function append(s: &mut String): None {
     // ... modify s
     return None;
@@ -74,7 +74,7 @@ append(&mut s);
 
 Mutable references also forward receiver mutability for built-in container and iterator methods. That means `&mut List<T>`, `&mut Map<K, V>`, `&mut Set<T>`, and `&mut Range<T>` can call mutating methods directly, while the corresponding immutable references are rejected for those same calls.
 
-```apex
+```arden
 mut xs: List<Integer> = List<Integer>();
 items: &mut List<Integer> = &mut xs;
 items.push(1);
@@ -86,7 +86,7 @@ view: &List<Integer> = &xs;
 
 The same mutability forwarding now applies to index assignment. Mutable borrowed containers can be updated through `[]`, including nested field chains, while immutable references are rejected explicitly.
 
-```apex
+```arden
 mut xs: List<Integer> = List<Integer>();
 xs.push(1);
 items: &mut List<Integer> = &mut xs;
@@ -102,7 +102,7 @@ view: &List<Integer> = &xs;
 
 Borrowed values also work correctly when the runtime representation itself is pointer-backed. In particular, borrowed `Range<T>` and borrowed `Task<T>` receivers now dispatch against the underlying runtime object rather than an extra reference layer.
 
-```apex
+```arden
 mut r: Range<Integer> = range(0, 3);
 rr: &mut Range<Integer> = &mut r;
 first: Integer = rr.next();
@@ -111,7 +111,7 @@ more: Boolean = rr.has_next();
 
 Field borrows through borrowed class receivers are supported as well, including both immutable and mutable field references.
 
-```apex
+```arden
 class Boxed {
     mut value: Integer;
     constructor(value: Integer) { this.value = value; }
@@ -127,7 +127,7 @@ Assignments through `*ref` follow the same rule: `*slot = ...` is valid only for
 
 Mutable references also stay sound across ordinary helper-function calls. Passing a borrowed local into a normal function now preserves mutations correctly at optimized codegen too.
 
-```apex
+```arden
 function write_ref(r: &mut Integer): None {
     *r = 17;
     return None;
@@ -140,7 +140,7 @@ write_ref(&mut x);
 ## Lifetimes
 
 (Advanced)
-Apex tracks lifetimes to ensure references do not outlive the data they refer to. This is currently handled implicitly by the compiler.
+Arden tracks lifetimes to ensure references do not outlive the data they refer to. This is currently handled implicitly by the compiler.
 
 ## Borrow Checker Edge Behavior
 

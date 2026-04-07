@@ -11,7 +11,7 @@ The `System` object provides static methods for system-level operations.
 Retrieves the value of an environment variable. Returns an empty string if the variable is not set.
 Invalid UTF-8 environment values are rejected immediately instead of slipping into a broken `String`.
 
-```apex
+```arden
 import std.io.*;
 
 path: String = System.getenv("PATH");
@@ -23,7 +23,7 @@ println("Path: {path}");
 Executes a command in the system shell and returns the exit code.
 On POSIX hosts this is now the decoded process exit code, not the raw `system()` wait-status word.
 
-```apex
+```arden
 exitCode: Integer = System.shell("echo Hello");
 ```
 
@@ -33,7 +33,7 @@ Executes a command in the system shell and captures its standard output (stdout)
 The full stdout stream is returned; longer output is no longer truncated to a small fixed buffer.
 Binary-looking stdout is rejected: embedded NUL bytes and invalid UTF-8 now fail immediately instead of slipping into a broken `String`.
 
-```apex
+```arden
 import std.io.*;
 
 output: String = System.exec("whoami");
@@ -45,7 +45,7 @@ println("Current user: {output}");
 Returns the current working directory.
 Deep working directories are supported without truncating or collapsing the result to an empty string.
 
-```apex
+```arden
 import std.io.*;
 
 currentDir: String = System.cwd();
@@ -56,7 +56,7 @@ println("Working in: {currentDir}");
 
 Returns the name of the operating system ("windows", "macos", "linux", or "unknown").
 
-```apex
+```arden
 import std.io.*;
 
 os: String = System.os();
@@ -67,7 +67,7 @@ println("Running on {os}");
 
 Terminates the program immediately with the specified exit code. `0` usually indicates success, while any other value indicates an error.
 
-```apex
+```arden
 if (error_occurred) {
     System.exit(1);
 }
@@ -75,13 +75,13 @@ if (error_occurred) {
 
 The global builtin `exit` is also available without import and can be assigned to a typed function value:
 
-```apex
+```arden
 stop: (Integer) -> None = exit;
 ```
 
 Direct `System.*` members can be stored as typed function values too:
 
-```apex
+```arden
 cwd: () -> String = System.cwd;
 platform: () -> String = System.os;
 run_shell: (String) -> Integer = System.shell;

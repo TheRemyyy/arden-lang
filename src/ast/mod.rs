@@ -1,4 +1,4 @@
-//! Apex AST - Abstract Syntax Tree definitions
+//! Arden AST - Abstract Syntax Tree definitions
 //!
 //! Production-ready AST with full language support including:
 //! - Visibility modifiers (public, private, protected)

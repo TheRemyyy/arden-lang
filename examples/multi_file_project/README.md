@@ -1,29 +1,29 @@
 # Multi-File Project Example
 
-This example demonstrates how to organize an Apex project with multiple source files.
+This example demonstrates how to organize an Arden project with multiple source files.
 
 ## Project Structure
 
 ```
 .
-├── apex.toml          # Project configuration
+├── arden.toml          # Project configuration
 ├── src/
-│   ├── math_utils.apex    # Mathematical utilities
-│   ├── string_utils.apex  # String manipulation utilities
-│   └── main.apex          # Entry point with main function
+│   ├── math_utils.arden    # Mathematical utilities
+│   ├── string_utils.arden  # String manipulation utilities
+│   └── main.arden          # Entry point with main function
 └── README.md
 ```
 
-## Configuration (apex.toml)
+## Configuration (arden.toml)
 
 ```toml
 name = "multi_file_demo"
 version = "1.0.0"
-entry = "src/main.apex"        # Entry point file
+entry = "src/main.arden"        # Entry point file
 files = [                       # All source files
-    "src/math_utils.apex",
-    "src/string_utils.apex",
-    "src/main.apex"
+    "src/math_utils.arden",
+    "src/string_utils.arden",
+    "src/main.arden"
 ]
 output = "multi_file_demo"     # Output binary name
 opt_level = "3"                # Optimization level
@@ -33,16 +33,16 @@ opt_level = "3"                # Optimization level
 
 ```bash
 # Build the project
-apex build
+arden build
 
 # Build and run
-apex run
+arden run
 
 # Show project info
-apex info
+arden info
 
 # Check for errors
-apex check
+arden check
 ```
 
 ## Notes

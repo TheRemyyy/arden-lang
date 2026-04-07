@@ -126,7 +126,7 @@ fn check_import_sorting(program: &Program) -> Vec<LintFinding> {
             code: "L002",
             level: LintLevel::Warning,
             message: "imports are not sorted and deduplicated".to_string(),
-            suggestion: Some("run `apex fix` or sort imports lexicographically".to_string()),
+            suggestion: Some("run `arden fix` or sort imports lexicographically".to_string()),
             span: None,
         }]
     }

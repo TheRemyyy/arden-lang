@@ -1,7 +1,7 @@
 {
-  "name": "apex-docs",
+  "name": "arden-docs",
   "version": "0.0.0",
-  "description": "API documentation for the Apex compiler",
+  "description": "API documentation for the Arden",
   "endpoints": [],
   "license": "MIT"
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the Apex Programming Language Compiler will be documented in this file.
+All notable changes to the Arden will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed root namespace aliases for builtin `Option`/`Result` constructors:
+  - checked builtin-call dispatch now handles namespace-alias canonical constructor names through the same shared `Option`/`Result` path as direct package-qualified calls, so `import app as root; root.Option.Some(...)` and `root.Result.Ok(...)` no longer fall through to ordinary field-access evaluation
+  - this fixes package-scoped checked builds that previously failed later in type checking with `Undefined variable: root`, including inline chains such as `root.Result.Ok(4).unwrap()`
 - Fixed inline method chains on direct builtin constructors inside `package app`:
   - codegen-side builtin call inference now derives `Option`/`Result` return types from the shared canonical constructor names for `Option.{Some,None}` and `Result.{Ok,Error}` instead of falling back to raw scalar inference in expression-only chains
   - this fixes package-scoped expressions such as `Option.Some(4).unwrap()` and `Result.Ok(4).unwrap()`, which previously reached codegen as `Integer` values and failed with `Cannot call method on type Integer`
@@ -167,7 +170,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed module-local import aliases leaking into outer typechecking scopes:
   - type resolution now picks import aliases from the current module scope chain instead of flattening every nested module import into one global alias table for the entire file
   - this fixes cases such as `module Inner { import std.math as math; }` followed by top-level `math.abs(...)`, which previously compiled even though the alias should only exist inside `Inner`
-- Fixed `apex fix` hoisting module-local imports to file scope:
+- Fixed `arden fix` hoisting module-local imports to file scope:
   - the safe import autofix now only rewrites the top-level import prelude before the first real declaration body instead of textually extracting every later `import ...;` line in the file
   - this fixes cases such as `module M { import util.helper; ... }`, which previously got rewritten with `import util.helper;` moved to file scope and silently changed program semantics
 - Fixed lint import analysis skipping module-local import scopes:
@@ -233,7 +236,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed plain compound assignments skipping expected RHS lowering:
   - non-container compound assignments such as `value += rhs` now compile the RHS against the target type before the binary op, so integer-to-float coercions and unchecked validation stay consistent with normal assignments
 - Fixed project extern functions losing their default C/system link names after project rewrite:
-  - namespaced project builds now preserve the original extern symbol as the implicit `link_name`, so declarations like `extern(c) function abs(...)` still link against `abs` instead of the rewritten namespace-mangled Apex symbol
+  - namespaced project builds now preserve the original extern symbol as the implicit `link_name`, so declarations like `extern(c) function abs(...)` still link against `abs` instead of the rewritten namespace-mangled Arden symbol
 - Fixed nested-module destructors skipping project rewrite:
   - destructors on classes inside recursively nested modules now rewrite import aliases and qualified calls the same way as constructors and methods, so file-scope aliases like `import util.add1 as inc;` keep working inside nested-module destructor bodies
 - Fixed nested-module generic bounds skipping project rewrite:
@@ -343,7 +346,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - import checking now parses and validates `extends`, `implements`, and generic bound type references through the same alias-resolution path as normal type annotations
   - this fixes stale rebuilds where declaration-only aliases such as `import app.M.Api.Named as Named; class Book implements Named { ... }` previously bypassed import-check revalidation and fell through to later semantic errors
 - Fixed named function value adapters that skipped the hidden function environment parameter:
-  - adapter wrappers for retyped named functions now forward the implicit `env_ptr` argument before user arguments, matching the normal Apex function ABI
+  - adapter wrappers for retyped named functions now forward the implicit `env_ptr` argument before user arguments, matching the normal Arden function ABI
   - function value adaptation now also accepts source and target types that differ nominally but share the same LLVM representation, fixing interface/class retyping cases like `() -> Book` to `() -> Named` and `(Book) -> Integer` to `(Named) -> Integer`
   - this fixes real runtime bugs where adapted named function values could segfault or fail with misleading fallback diagnostics instead of compiling and running correctly
 - Fixed for-loop binding conversions for same-representation nominal types:
@@ -376,7 +379,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - added import-check and project rebuild regressions, and stale nested enum alias accesses now fail with `Imported namespace alias 'root' has no member 'M.E.A'`
 - Fixed stale rewrite-fingerprint reuse for bare same-namespace enum references:
   - rewrite-context fingerprinting now hashes the owner file API for same-namespace enum symbols, matching the existing behavior for functions, classes, interfaces, and modules
-  - this fixes incremental project builds where `main.apex` referenced a split-file enum in the same package without an import, and a breaking enum API change could previously reuse a stale safe rewrite fingerprint
+  - this fixes incremental project builds where `main.arden` referenced a split-file enum in the same package without an import, and a breaking enum API change could previously reuse a stale safe rewrite fingerprint
   - added a regression covering a bare `State.Ok(...)` same-namespace enum reference, and the fingerprint now changes when the enum API changes
 - Fixed split-file project builds when a dependency class or module is named `main` in the entry namespace:
   - object-shard body filtering now matches declaration symbols against their exact mangled owners instead of stripping the namespace prefix and accidentally treating `core__main` as the local entry function `main`
@@ -450,7 +453,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - invalid `--no-check` expressions such as `await "hi"`, `await value` where `value: String`, and `await value` where `value: Box<Integer>` now fail with `'await' can only be used on Task types, got ...`
   - backend await lowering no longer treats arbitrary pointer-backed values like `String` and `Box<T>` as valid tasks just because their LLVM representation is a pointer
 - Fixed unsupported display-format diagnostics in unchecked codegen:
-  - invalid `--no-check` uses such as `println(b)` and `"box={b}"` where `b` is a user class now include the offending Apex type in the error, for example `..., got Box`
+  - invalid `--no-check` uses such as `println(b)` and `"box={b}"` where `b` is a user class now include the offending Arden type in the error, for example `..., got Box`
   - display lowering no longer drops the source operand type when rejecting unsupported interpolation and print formatting
 - Fixed unchecked unknown-field diagnostics for user classes:
   - invalid `--no-check` field reads and assignments such as `b.missing` and `b.missing = 1` now report `Unknown field 'missing' on class 'Box'` like checked builds
@@ -465,13 +468,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - invalid `--no-check` calls such as `missing<Integer>(1)` and `Box(1).missing<Integer>(1)` now preserve the real user-facing callee-resolution errors (`Undefined function: missing`, `Unknown method 'missing' for class 'Box'`) instead of leaking the internal backend fallback `Explicit generic call code generation is not supported yet`
   - explicit generic call lowering now propagates underlying callee resolution failures before falling back to its internal unsupported-generic-call guard
 - Fixed unchecked explicit-type-argument validation for enum variants and builtin static constructors:
-  - invalid `--no-check` calls such as `Boxed.Wrap<Integer>(1)`, `Option.some<Integer>(1)`, and `Result.ok<Integer>(1)` now fail with the same Apex diagnostics as checked builds instead of leaking the internal fallback `Explicit generic call code generation is not supported yet` or reaching Clang with broken IR
+  - invalid `--no-check` calls such as `Boxed.Wrap<Integer>(1)`, `Option.some<Integer>(1)`, and `Result.ok<Integer>(1)` now fail with the same Arden diagnostics as checked builds instead of leaking the internal fallback `Explicit generic call code generation is not supported yet` or reaching Clang with broken IR
   - explicit generic call lowering now rejects enum variant calls and `Option`/`Result` static constructor calls with explicit type arguments before backend IR emission
 - Fixed imported enum-variant alias constructor handling for checked and unchecked builds:
   - invalid alias calls such as `import Boxed.Wrap as WrapCtor; WrapCtor<Integer>(1)` now report `Enum variant 'Boxed.Wrap' does not accept type arguments` instead of falling through to bogus type-constructor errors like `Unknown type: WrapCtor<Integer>`
   - unchecked single-file builds now also compile and run payload variant aliases such as `WrapCtor(7)` directly through `construct` lowering instead of treating the alias as a missing class constructor
 - Fixed unchecked entrypoint validation for invalid `main()` signatures:
-  - `--no-check` single-file and project builds now reject invalid entrypoints such as `function main(): String` with the normal Apex diagnostic `main() must return None or Integer` instead of leaking broken LLVM IR to Clang
+  - `--no-check` single-file and project builds now reject invalid entrypoints such as `function main(): String` with the normal Arden diagnostic `main() must return None or Integer` instead of leaking broken LLVM IR to Clang
   - frontend compile paths now validate top-level `main()` signatures before unchecked codegen, so invalid entrypoints fail consistently even when semantic passes are skipped
 - Fixed exact-import aliases for built-in `Option` / `Result` variant constructors and function values:
   - aliases such as `import Option.Some as Present` and `import Result.Ok as Success` now work in checked and unchecked builds for direct constructor-style calls (`Present(7)`, `Success(5)`) and first-class function values (`wrap = Present`)
@@ -522,16 +525,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - both checked analysis and `--no-check` codegen now avoid falling through to misleading `Undefined variable` / `Cannot access field on type unknown` errors for these invalid first-class function-value forms
   - nested/imported enum variant diagnostics now show user-facing dotted paths like `U.V.E.Wrap` instead of internal mangled names like `U__V__E.Wrap`
 - Fixed unchecked builtin method arity validation in backend codegen:
-  - invalid `--no-check` calls such as `xs.length(1)`, `values.get(1, 2)`, `values.contains(1, 2)`, `Option.some(1).unwrap(1)`, `Result.ok(1).unwrap(1)`, and `range(0, 3).next(1)` now fail with explicit Apex diagnostics instead of compiling or falling through to broken IR/runtime paths
+  - invalid `--no-check` calls such as `xs.length(1)`, `values.get(1, 2)`, `values.contains(1, 2)`, `Option.some(1).unwrap(1)`, `Result.ok(1).unwrap(1)`, and `range(0, 3).next(1)` now fail with explicit Arden diagnostics instead of compiling or falling through to broken IR/runtime paths
   - unchecked lowering for `List`, `Map`, `Set`, `Option`, `Result`, and `Range` methods now enforces the same method arity guards before backend dispatch
 - Fixed unchecked `Option.none(...)` constructor arity validation in backend codegen:
-  - invalid `--no-check` calls such as `Option.none(1)` now fail with the same Apex diagnostic as checked builds instead of silently compiling and discarding unexpected arguments
+  - invalid `--no-check` calls such as `Option.none(1)` now fail with the same Arden diagnostic as checked builds instead of silently compiling and discarding unexpected arguments
   - both expected-type constructor lowering and general static-call lowering now enforce the zero-argument contract for `Option.none()`
 - Fixed unchecked stdlib-function arity validation in backend codegen:
-  - invalid `--no-check` calls such as `Math.abs()`, `Math.pi(1)`, and `exit()` now fail with explicit Apex diagnostics instead of panicking on missing arguments or silently compiling extra arguments
+  - invalid `--no-check` calls such as `Math.abs()`, `Math.pi(1)`, and `exit()` now fail with explicit Arden diagnostics instead of panicking on missing arguments or silently compiling extra arguments
   - stdlib dispatch now enforces the checked-mode arity contracts for math, string, file, time, system, args, assertion, conversion, and range builtins before backend lowering
 - Fixed numeric-contract enforcement for `Math` builtins:
-  - invalid calls such as `Math.abs(true)` and `Math.min(true, false)` now fail with explicit Apex diagnostics instead of producing broken LLVM IR or silently returning inverted Boolean results
+  - invalid calls such as `Math.abs(true)` and `Math.min(true, false)` now fail with explicit Arden diagnostics instead of producing broken LLVM IR or silently returning inverted Boolean results
   - `Math.min/max` now reject non-numeric arguments during checked analysis as well, matching the runtime/codegen contract already implied by the numeric math APIs
   - invalid function-value bindings such as `f: (Boolean) -> Boolean = Math.abs` and `f: (Boolean, Boolean) -> Boolean = Math.min` now fail during typechecking instead of slipping through contextual builtin-function fallback with `unknown` placeholders
 - Fixed placeholder builtin-function value leakage in contextual typing:
@@ -541,73 +544,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - invalid `--no-check` bindings such as `f: (Boolean) -> Float = to_float` and `f: (Integer) -> None = assert_true` now fail with explicit `Type mismatch` diagnostics instead of falling through to the misleading backend error `Unknown variable`
   - contextual builtin function-value lowering now reports signature mismatches directly when the builtin name is known but the requested function type is incompatible
 - Fixed string-only builtin argument validation in codegen when compiling with `--no-check`:
-  - calls such as `System.shell(true)` and `File.exists(true)` now fail with explicit Apex type diagnostics instead of silently passing non-string LLVM values into C string APIs
+  - calls such as `System.shell(true)` and `File.exists(true)` now fail with explicit Arden type diagnostics instead of silently passing non-string LLVM values into C string APIs
   - calls such as `fail(true)` now also fail early instead of passing a non-string LLVM value into `%s` formatting during panic printing
-  - calls such as `Str.upper(true)`, `Str.trim(true)`, `Str.compare(true, "a")`, and `require(false, true)` now fail with Apex diagnostics instead of panicking inside the compiler or silently flowing through raw C string routines
+  - calls such as `Str.upper(true)`, `Str.trim(true)`, `Str.compare(true, "a")`, and `require(false, true)` now fail with Arden diagnostics instead of panicking inside the compiler or silently flowing through raw C string routines
   - unchecked lowering for `File.read/write/exists/delete`, `Time.now`, `System.getenv/shell/exec`, `fail(message)`, `require(..., message)`, and the `Str.len/compare/concat/upper/lower/trim/contains/startsWith/endsWith` family now validates `String` arguments before emitting runtime calls
 - Fixed unchecked conversion builtin validation in codegen for `to_float(...)` and `to_int(...)`:
-  - invalid calls such as `to_float("8")` and `to_float(true)` now fail with Apex type diagnostics instead of reaching Clang with broken return-type IR
+  - invalid calls such as `to_float("8")` and `to_float(true)` now fail with Arden type diagnostics instead of reaching Clang with broken return-type IR
   - invalid calls such as `to_int(true)` now fail in codegen instead of silently treating a Boolean LLVM value as an `Integer`
 - Fixed unchecked constant validation drift in codegen for negative and zero-only builtins:
-  - invalid constant calls such as `range(0, 10, 0)`, `Time.sleep(-1)`, `Args.get(-1)`, and `task.await_timeout(-1)` now fail during codegen with the same Apex diagnostics as checked builds instead of compiling and only failing later at runtime
+  - invalid constant calls such as `range(0, 10, 0)`, `Time.sleep(-1)`, `Args.get(-1)`, and `task.await_timeout(-1)` now fail during codegen with the same Arden diagnostics as checked builds instead of compiling and only failing later at runtime
   - unchecked lowering now preserves compile-time constant guards for zero range steps and negative timeout/sleep/index literals
 - Fixed unchecked negative index constant validation for list and string access paths:
-  - invalid constant access such as `xs[-1]`, `s[-1]`, `xs.get(-1)`, and `xs.set(-1, 99)` now fails during codegen with the same Apex diagnostics as checked builds instead of compiling and only failing at runtime bounds checks
+  - invalid constant access such as `xs[-1]`, `s[-1]`, `xs.get(-1)`, and `xs.set(-1, 99)` now fails during codegen with the same Arden diagnostics as checked builds instead of compiling and only failing at runtime bounds checks
   - direct index lowering and `List.get/set` method lowering now preserve compile-time negative-index guards under `--no-check`
 - Fixed unchecked negative list-constructor capacity constants in codegen:
-  - invalid constant construction such as `List<Integer>(-1)` now fails during codegen with the same Apex diagnostic as checked builds instead of compiling and only failing at runtime
+  - invalid constant construction such as `List<Integer>(-1)` now fails during codegen with the same Arden diagnostic as checked builds instead of compiling and only failing at runtime
   - dynamic negative capacities still keep the existing runtime guard, but compile-time negative literals now get rejected before IR emission
 - Fixed unchecked constant string literal out-of-bounds indexing in codegen:
-  - invalid constant access such as `"abc"[5]` and `"🚀"[1]` now fails during codegen with the same Apex diagnostic as checked builds instead of compiling and only failing at runtime
+  - invalid constant access such as `"abc"[5]` and `"🚀"[1]` now fails during codegen with the same Arden diagnostic as checked builds instead of compiling and only failing at runtime
   - string-literal index lowering now preserves compile-time char-count bounds checks under `--no-check`
 - Fixed unchecked invalid method-call diagnostics on non-object primitive receivers:
-  - invalid calls such as `flag.length()` or `value.length()` now fail with explicit Apex type diagnostics like `Cannot call method on type Boolean` instead of surfacing the internal codegen fallback `Cannot determine object type for method call`
+  - invalid calls such as `flag.length()` or `value.length()` now fail with explicit Arden type diagnostics like `Cannot call method on type Boolean` instead of surfacing the internal codegen fallback `Cannot determine object type for method call`
   - unchecked method-call lowering now reports unsupported receiver types before attempting class-only dispatch resolution
 - Fixed unchecked invalid field-access diagnostics on non-object primitive receivers:
-  - invalid access such as `flag.value` or `value.value` now fails with explicit Apex type diagnostics like `Cannot access field on type Boolean` instead of panicking inside the compiler during pointer lowering
+  - invalid access such as `flag.value` or `value.value` now fails with explicit Arden type diagnostics like `Cannot access field on type Boolean` instead of panicking inside the compiler during pointer lowering
   - unchecked field-access lowering now rejects unsupported receiver types before attempting class-only field dispatch
-  - invalid field assignment such as `flag.value = false` now also fails with the same Apex diagnostic instead of panicking in the lvalue field-pointer path
+  - invalid field assignment such as `flag.value = false` now also fails with the same Arden diagnostic instead of panicking in the lvalue field-pointer path
 - Fixed unchecked unknown String-method diagnostics in codegen:
   - invalid calls such as `s.missing()` now fail with `Unknown String method: missing` to match checked builds instead of the broader fallback `Cannot call method on type String`
 - Fixed `Args.get(...)` argument validation in codegen when compiling with `--no-check`:
-  - invalid calls such as `Args.get(true)` now fail with an explicit Apex type diagnostic instead of reaching Clang with a broken integer bounds comparison
-  - unchecked `Args.get(...)` lowering now validates that the index expression is an Apex `Integer` before emitting bounds checks
+  - invalid calls such as `Args.get(true)` now fail with an explicit Arden type diagnostic instead of reaching Clang with a broken integer bounds comparison
+  - unchecked `Args.get(...)` lowering now validates that the index expression is an Arden `Integer` before emitting bounds checks
 - Fixed `Time.sleep(...)` argument validation in codegen when compiling with `--no-check`:
-  - invalid calls such as `Time.sleep(true)` now fail with an explicit Apex type diagnostic instead of compiling and then tripping the runtime negative-millisecond guard after Boolean sign-extension
-  - unchecked `Time.sleep(...)` lowering now validates that the millisecond argument is an Apex `Integer` before integer casting and runtime range checks
+  - invalid calls such as `Time.sleep(true)` now fail with an explicit Arden type diagnostic instead of compiling and then tripping the runtime negative-millisecond guard after Boolean sign-extension
+  - unchecked `Time.sleep(...)` lowering now validates that the millisecond argument is an Arden `Integer` before integer casting and runtime range checks
 - Fixed `exit(...)` argument validation in codegen when compiling with `--no-check`:
-  - invalid calls such as `exit(true)` now fail with the same Apex diagnostic as checked builds instead of silently truncating a non-integer LLVM value into an exit status
-  - unchecked `exit(...)` lowering now validates that the exit code is an Apex `Integer` before emitting the final truncation/call sequence
+  - invalid calls such as `exit(true)` now fail with the same Arden diagnostic as checked builds instead of silently truncating a non-integer LLVM value into an exit status
+  - unchecked `exit(...)` lowering now validates that the exit code is an Arden `Integer` before emitting the final truncation/call sequence
 - Fixed `range(...)` builtin argument validation in codegen when compiling with `--no-check`:
-  - invalid calls such as `range(true, 3)` now fail with the same Apex diagnostic as checked builds instead of surfacing a lower-level internal codegen message about mismatched start/end/step shapes
+  - invalid calls such as `range(true, 3)` now fail with the same Arden diagnostic as checked builds instead of surfacing a lower-level internal codegen message about mismatched start/end/step shapes
   - unchecked `range(...)` lowering now validates its argument family before constructing the runtime range object
 - Fixed `match` expression payload binding for user enums whose variant names overlap builtin ones:
   - user enums such as `enum E { Some(String), ... }` now bind payloads correctly inside `match` expressions instead of misrouting through builtin `Option`/`Result` extraction logic and failing later in codegen
-  - `match` expression payload binding now only treats `Some` / `Ok` / `Error` specially when the matched Apex type is actually `Option` or `Result`
+  - `match` expression payload binding now only treats `Some` / `Ok` / `Error` specially when the matched Arden type is actually `Option` or `Result`
 - Fixed invalid variant-pattern handling in codegen when compiling with `--no-check`:
-  - invalid patterns such as `match (true) { Some(v) => ... }` now fail with an explicit Apex codegen diagnostic instead of either panicking inside the compiler or silently falling through as if the pattern were just absent
-  - `match` statements and `match` expressions now both validate that builtin and enum variant patterns are compatible with the matched Apex type before touching struct-tag lowering
+  - invalid patterns such as `match (true) { Some(v) => ... }` now fail with an explicit Arden codegen diagnostic instead of either panicking inside the compiler or silently falling through as if the pattern were just absent
+  - `match` statements and `match` expressions now both validate that builtin and enum variant patterns are compatible with the matched Arden type before touching struct-tag lowering
 - Fixed match literal type enforcement in codegen when compiling with `--no-check`:
-  - invalid branches such as `match (true) { 1 => ... }` now fail with an explicit Apex codegen diagnostic instead of reaching Clang with an invalid branch condition type
-  - match-literal lowering now validates Apex pattern compatibility before choosing raw LLVM integer/float/pointer comparison paths
+  - invalid branches such as `match (true) { 1 => ... }` now fail with an explicit Arden codegen diagnostic instead of reaching Clang with an invalid branch condition type
+  - match-literal lowering now validates Arden pattern compatibility before choosing raw LLVM integer/float/pointer comparison paths
 - Fixed integer `for`-loop sugar validation in codegen when compiling with `--no-check`:
-  - invalid loops such as `for (i in true)` now fail with an explicit Apex codegen diagnostic instead of reaching Clang with broken integer comparisons like `icmp slt i64 ..., i1 true`
+  - invalid loops such as `for (i in true)` now fail with an explicit Arden codegen diagnostic instead of reaching Clang with broken integer comparisons like `icmp slt i64 ..., i1 true`
   - unchecked `for (i in N)` lowering now reuses an Integer-only guard for the sugar-bound expression, keeping codegen aligned with checked builds
 - Fixed index type enforcement in codegen when compiling with `--no-check`:
-  - invalid index expressions such as `"hi"[true]`, `xs[true]`, and `xs[true] = 20` now fail with an explicit Apex codegen diagnostic instead of silently treating `Boolean` as an integer index or surfacing broken LLVM/Clang errors
+  - invalid index expressions such as `"hi"[true]`, `xs[true]`, and `xs[true] = 20` now fail with an explicit Arden codegen diagnostic instead of silently treating `Boolean` as an integer index or surfacing broken LLVM/Clang errors
   - string and list index lowering now share the same Integer-only index guard, keeping unchecked codegen aligned with checked builds for both read and write paths
 - Fixed checked-build type enforcement for `assert(...)`, `assert_true(...)`, and `assert_false(...)`:
   - direct checked builds now reject integer conditions like `assert(1)`, `assert_true(1)`, and `assert_false(1)` during semantic analysis instead of accidentally accepting them until later stages
   - builtin function-value compatibility now matches the same Boolean-only contract, so invalid signatures like `(Integer) -> None = assert_true` fail instead of slipping through assignment checks
 - Fixed `assert_eq(...)` and `assert_ne(...)` codegen type enforcement when compiling with `--no-check`:
-  - incompatible comparisons such as `assert_eq(1, true)` and `assert_ne(1, true)` now fail with an explicit Apex codegen diagnostic instead of slipping through raw LLVM integer comparison lowering
+  - incompatible comparisons such as `assert_eq(1, true)` and `assert_ne(1, true)` now fail with an explicit Arden codegen diagnostic instead of slipping through raw LLVM integer comparison lowering
   - assertion equality lowering now reuses the compiler's normal `==` / `!=` implementation, so `assert_eq` and `assert_ne` stay aligned with checked builds for type rules and structural equality
 - Fixed non-boolean assertion builtin conditions in codegen when compiling with `--no-check`:
-  - `assert(1)`, `assert_true(1)`, and `assert_false(1)` now fail with an explicit Apex codegen diagnostic instead of silently treating integers as truthy/falsy assertion conditions
+  - `assert(1)`, `assert_true(1)`, and `assert_false(1)` now fail with an explicit Arden codegen diagnostic instead of silently treating integers as truthy/falsy assertion conditions
   - assertion lowering now uses the same Boolean-only condition guard as other control-flow style constructs, keeping `assert*` behavior aligned with checked builds
 - Fixed non-boolean `require(...)` conditions in codegen when compiling with `--no-check`:
   - `require(1)` and `require(1, "boom")` now fail with an explicit codegen diagnostic instead of emitting invalid LLVM branches that later explode in Clang with `branch condition must have 'i1' type`
-  - the `require` lowering path now uses the same Apex-Boolean condition guard as `if`, `if` expressions, and `while`
+  - the `require` lowering path now uses the same Arden-Boolean condition guard as `if`, `if` expressions, and `while`
 - Fixed recursive display checks for nested direct constructor expressions:
   - direct constructor forms such as `Option.some(Option.none())` and `Result.error(Option.none())` now compile inside `to_string(...)`, `print(...)`, and string interpolation instead of being rejected on nested unresolved payload markers like `Option<?Tn>`
   - display validation now follows the active constructor payload expression recursively, so nested direct `Option`/`Result` constructors stay aligned with the existing runtime formatter without loosening checks for arbitrary non-displayable values
@@ -703,7 +706,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `mut` parameters in functions, methods, constructors, lambdas, and async functions now preserve their mutability when lowered into local codegen variables instead of being downgraded to immutable bindings
   - valid flows like reassigning a `mut value: Integer` parameter now compile and run again instead of failing with bogus codegen errors such as `Cannot assign to immutable variable 'value'`
 - Fixed invalid binary operator lowering in codegen when compiling with `--no-check`:
-  - arithmetic, comparison, equality, and logical operators now validate Apex operand types before lowering instead of trusting raw LLVM integer shapes for booleans and other scalar values
+  - arithmetic, comparison, equality, and logical operators now validate Arden operand types before lowering instead of trusting raw LLVM integer shapes for booleans and other scalar values
   - invalid programs such as `1 + true`, `1 == true`, `true < false`, `1 && 2`, and interpolated expressions like `"{1 + true}"` now fail with explicit codegen diagnostics instead of silently producing wrong results or surfacing a downstream clang IR error
 - Fixed project-mode wildcard import invalidation after imported symbol removal:
   - dependency graph entries for `import lib.*` now keep namespace-level dependencies when a previously used symbol disappears, instead of severing all downstream edges for the importing file
@@ -712,10 +715,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - namespace alias imports like `import lib as l` and exact import aliases like `import lib.add as inc` now also fall back to namespace-level dependency invalidation when the imported symbol disappears
   - incremental `build` no longer leaks stale alias rewrite/import state through cache reuse in those cases, so alias consumers fail in the semantic/import pipeline instead of reaching late codegen crashes such as `Unknown variable: l` or `Unknown function: lib__add`
 - Fixed invalid unary operator lowering in codegen when compiling with `--no-check`:
-  - unary negation and logical not now validate Apex operand types before lowering instead of trusting raw LLVM integer shapes for booleans and other scalar values
+  - unary negation and logical not now validate Arden operand types before lowering instead of trusting raw LLVM integer shapes for booleans and other scalar values
   - invalid programs such as `-true` and `!1` now fail with explicit codegen diagnostics instead of silently miscompiling or surfacing a downstream clang IR error like `branch condition must have 'i1' type`
 - Fixed non-boolean control-flow conditions in codegen when compiling with `--no-check`:
-  - `if` statements, `if` expressions, and `while` loops now validate that their condition lowers from Apex `Boolean` before emitting LLVM branches
+  - `if` statements, `if` expressions, and `while` loops now validate that their condition lowers from Arden `Boolean` before emitting LLVM branches
   - invalid programs such as `if (1)`, `return if (1) { ... } else { ... }`, and `while (1) { ... }` now fail with explicit codegen diagnostics instead of surfacing downstream clang IR errors like `branch condition must have 'i1' type`
 - Fixed smart-pointer and non-constructible builtin constructor rules in typechecking:
   - `Box<T>`, `Rc<T>`, and `Arc<T>` constructors now reject extra arguments during semantic checks instead of letting invalid calls like `Box<Integer>(1, 2)` slip through
@@ -817,7 +820,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - project builds no longer mis-read `Task<Float>` results from cross-file dotted-package async functions as raw integer bit patterns during `await`
   - exact-typed first-class references like `f: (Integer) -> Task<Float> = analytics.Api.V2.score` now lower to real closures instead of falling through to `Unknown variable: demo__analytics` when no function adapter is needed
 - Fixed numeric display formatting for `to_string(...)`, `print(...)`, and string interpolation:
-  - display lowering now prefers the actual LLVM runtime value shape instead of trusting only the inferred Apex numeric type
+  - display lowering now prefers the actual LLVM runtime value shape instead of trusting only the inferred Arden numeric type
   - float-backed values flowing through mixed numeric inference, async/task paths, or cross-file wrappers no longer panic or mis-lower when rendered as strings
   - backend diagnostics for unsupported numeric binary ops now include the operator and the resolved left/right types instead of the opaque `Type mismatch in binary operation`
   - mixed numeric `if` / `match` expressions now carry their merged result type through codegen inference too, so inline interpolation like `"{if (true) { 1 } else { 2.5 }}"` renders as `1.000000` instead of `1`, and `match` expressions with `Integer`/`Float` arms no longer emit invalid LLVM phi nodes
@@ -1023,17 +1026,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - method calls through bounded generic parameters now resolve against the bound interfaces, so valid code like `value.name()` inside `function read<T extends Named>(value: T)` typechecks again
   - project rewrite and dependency metadata now preserve alias-qualified generic bounds like `T extends u.Named`, so project-mode builds no longer drop or leave bound-only interface references unresolved
 - Fixed bindgen `restrict`-qualified pointer lowering:
-  - C prototypes like `void copy(char *restrict dst, char *restrict src)` now parse into valid Apex bindings instead of being dropped because `*restrict` was treated as an unknown pseudo-type token
-  - `char **restrict argv` style parameters now keep their real pointer depth instead of collapsing into Apex `String`
+  - C prototypes like `void copy(char *restrict dst, char *restrict src)` now parse into valid Arden bindings instead of being dropped because `*restrict` was treated as an unknown pseudo-type token
+  - `char **restrict argv` style parameters now keep their real pointer depth instead of collapsing into Arden `String`
 - Fixed bindgen integer normalization for reordered and bare signed C declarations:
-  - prototypes like `long unsigned int checksum(...)` and `signed negate(signed value)` now map to Apex `Integer` instead of failing bindgen generation
+  - prototypes like `long unsigned int checksum(...)` and `signed negate(signed value)` now map to Arden `Integer` instead of failing bindgen generation
 - Fixed import parser keyword validation gaps:
   - `import utils.math as class;` and keyword path segments like `import class.tools.helper;` / `import util.module.helper;` are now rejected directly instead of being accepted as syntactically valid imports
   - terminal built-in variant imports like `import app.Option.None;` remain accepted
-- Fixed project-mode default `apex test` file selection:
-  - bare `apex test` inside a project now considers every source file listed in `apex.toml`, so `@Test` functions inside regular files like `src/main.apex` are no longer skipped just because the filename does not contain `test` or `spec`
+- Fixed project-mode default `arden test` file selection:
+  - bare `arden test` inside a project now considers every source file listed in `arden.toml`, so `@Test` functions inside regular files like `src/main.arden` are no longer skipped just because the filename does not contain `test` or `spec`
 - Fixed project output collision validation:
-  - `apex.toml` `output` values that resolve to `apex.toml`, the entry file, or any other listed source file are now rejected during validation instead of allowing builds/info flows to target and potentially overwrite project inputs
+  - `arden.toml` `output` values that resolve to `arden.toml`, the entry file, or any other listed source file are now rejected during validation instead of allowing builds/info flows to target and potentially overwrite project inputs
 - Fixed lint `L004` unused-variable coverage gaps in expression-bodied scopes:
   - locals declared inside `async { ... }` and `if (...) { ... } else { ... }` expressions are now reported when unused instead of being skipped because the linter only tracked identifier reads from nested expression blocks
   - `match` pattern bindings in both statement and expression forms are now reported when unused instead of silently disappearing from lint analysis
@@ -1092,11 +1095,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed codegen match lowering collisions between built-in and user enum variant names:
   - custom enums using variant leaves like `Ok` / `Error` no longer get lowered through the built-in `Result` match path, avoiding backend crashes like `ExtractOutOfRange` during payload extraction
   - that built-in fast path now runs only when the matched expression is actually `Option` or `Result`
-- Fixed `apex test` runner import injection and `main(...)` stripping edge cases:
+- Fixed `arden test` runner import injection and `main(...)` stripping edge cases:
   - generated runners now still inject `import std.io.*;` when the source only mentions that import inside block comments, instead of treating commented text as a real import and emitting uncompilable runner code
   - shebang-based scripts now keep `#!/...` as the first line and receive the injected stdio import after the shebang instead of before it
   - user-defined `main(...)` bodies are now stripped correctly even when they contain `{` / `}` inside strings, line comments, or block comments, so runner generation no longer leaks pieces of the original main body or accidentally deletes following helper declarations
-- Fixed `apex fix` import reordering for file headers:
+- Fixed `arden fix` import reordering for file headers:
   - leading line comments, block comments, and shebang-adjacent header comments now stay above `package` / sorted `import` blocks instead of being moved below them
   - comments placed between `package ...;` and the import block now stay in that pre-import position after safe import sorting
   - block-commented fake imports now remain commented text during fixups instead of being hoisted or split apart by the import rewriter
@@ -1107,35 +1110,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed formatter brace escaping for literal strings:
   - formatting plain string literals that contain literal `{` / `}` now preserves them as `\{` / `\}` instead of rewriting the source into accidental string interpolation
 - Fixed formatter brace escaping for `@Ignore(...)` reasons:
-  - ignored-test reasons with literal braces now round-trip through `apex fmt` without changing meaning or producing broken runner source
+  - ignored-test reasons with literal braces now round-trip through `arden fmt` without changing meaning or producing broken runner source
 - Fixed test-runner ignore-reason escaping for literal braces:
-  - `apex test` now accepts ignore reasons like `@Ignore("\{todo\}")` end-to-end instead of generating runner strings that re-enter interpolation parsing
+  - `arden test` now accepts ignore reasons like `@Ignore("\{todo\}")` end-to-end instead of generating runner strings that re-enter interpolation parsing
 - Fixed ignored-test lifecycle execution:
   - skipped tests no longer run `@Before` or `@After` hooks, so ignore markers cannot accidentally trigger setup/teardown side effects or failures
 - Fixed test-runner main stripping with attached attributes:
   - attributes immediately above a user-defined `main(...)` are now removed together with that entrypoint instead of being left behind as orphaned annotations in generated runner input
-- Fixed core project validation for non-`.apex` entry paths:
+- Fixed core project validation for non-`.arden` entry paths:
   - `ProjectConfig::validate` now rejects entries like `src/main.txt` directly instead of accepting them until later CLI-specific checks
-- Fixed core project validation for non-`.apex` secondary source paths:
+- Fixed core project validation for non-`.arden` secondary source paths:
   - `ProjectConfig::validate` now rejects invalid `files[]` entries like `src/helper.txt` consistently across callers
 - Fixed namespace registration for invalid filename identifiers:
-  - source files like `src/9bad.apex` now fail namespace registration instead of silently producing unusable module names
+  - source files like `src/9bad.arden` now fail namespace registration instead of silently producing unusable module names
 - Fixed namespace registration for invalid directory identifiers:
-  - namespace paths with invalid segments like `src/bad-dir/main.apex` are now rejected before they leak malformed names into module resolution
+  - namespace paths with invalid segments like `src/bad-dir/main.arden` are now rejected before they leak malformed names into module resolution
 - Fixed bindgen `char**` return-type lowering:
-  - C prototypes like `char **make_argv(void)` no longer collapse to Apex `String` and now stay pointer-shaped instead of silently changing ABI semantics
+  - C prototypes like `char **make_argv(void)` no longer collapse to Arden `String` and now stay pointer-shaped instead of silently changing ABI semantics
 - Fixed bindgen `char**` parameter lowering:
-  - C prototypes like `void main_like(int argc, char **argv)` no longer rewrite `argv` to Apex `String`, avoiding incorrect generated bindings for argv/envp-style APIs
+  - C prototypes like `void main_like(int argc, char **argv)` no longer rewrite `argv` to Arden `String`, avoiding incorrect generated bindings for argv/envp-style APIs
 - Fixed namespace registration for keyword-named files:
-  - files like `src/class.apex` are now rejected instead of registering unusable module names that conflict with Apex syntax
+  - files like `src/class.arden` are now rejected instead of registering unusable module names that conflict with Arden syntax
 - Fixed namespace registration for keyword-named directories:
-  - paths like `src/module/main.apex` are now rejected before they produce namespaces that cannot be expressed safely in imports/package paths
+  - paths like `src/module/main.arden` are now rejected before they produce namespaces that cannot be expressed safely in imports/package paths
 - Fixed lexer span preservation after Unix shebang stripping:
   - files that start with `#!/...` now keep absolute token offsets after lexing instead of shifting every downstream parser/LSP/diagnostic span to line 1
 - Fixed LSP identifier lookup at end-of-file:
   - hover/completion/name-resolution now still sees the trailing identifier when the cursor sits exactly at the end of the last token instead of returning no symbol
-- Fixed project-root false positives for directory-shaped `apex.toml` entries:
-  - project discovery now requires a real `apex.toml` file, so stray directories with that name no longer trick CLI commands into thinking they are inside a valid Apex project
+- Fixed project-root false positives for directory-shaped `arden.toml` entries:
+  - project discovery now requires a real `arden.toml` file, so stray directories with that name no longer trick CLI commands into thinking they are inside a valid Arden project
 - Fixed borrow-check diagnostic formatting on inverted/internal spans:
   - rendering borrow errors now uses saturating span lengths instead of subtracting raw offsets, so malformed recovery spans no longer risk panicking while printing the original diagnostic
 - Fixed project-mode filtered codegen for shadowed local class method calls:
@@ -1163,11 +1166,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed escaping async/lambda capture borrow propagation across `if` merges:
   - reassigning an outer closure/task binding inside a branch now preserves captured borrows after branch merge instead of dropping them with the inner scope and incorrectly allowing later moves/assignments of the captured value
 - Fixed project-mode `check` / `build` source-list validation gaps:
-  - when running from `apex.toml`, `apex check` and `apex build` now reject invalid `files[]` entries instead of silently checking only the entrypoint or falling through to late parse errors on non-`.apex` files
+  - when running from `arden.toml`, `arden check` and `arden build` now reject invalid `files[]` entries instead of silently checking only the entrypoint or falling through to late parse errors on non-`.arden` files
 - Fixed borrow-state tracking for match-pattern bindings:
   - bindings introduced by `match` patterns now preserve move/borrow checks like normal locals instead of being treated like non-dropping values and incorrectly allowing owned moves while still borrowed
-- Fixed `apex info` project source-file validation:
-  - project info now rejects non-`.apex` entry/files paths instead of printing invalid configs as healthy and silently listing unusable sources like `src/main.txt`
+- Fixed `arden info` project source-file validation:
+  - project info now rejects non-`.arden` entry/files paths instead of printing invalid configs as healthy and silently listing unusable sources like `src/main.txt`
 - Fixed keyword import-path segments for built-in variant aliases:
   - imports ending in keyword-named variants like `app.Option.None` now parse correctly instead of stopping at the final dot and reporting the misleading parser error `Import path cannot end with '.'`
 - Fixed built-in `Result` import-alias exhaustiveness checking:
@@ -1178,7 +1181,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - invalid `None()` match patterns now fail immediately with a direct parser error instead of leaking the stray `(` into arm parsing and reporting the unrelated follow-up error `Expected FatArrow, found Some(LParen)`
 - Fixed namespace-alias enum variant pattern rewriting:
   - match patterns like `u.E.A(v)` now rewrite through imported module aliases to the mangled enum path instead of staying partially unresolved while the equivalent expression form was already rewritten correctly
-- Fixed duplicate `apex.toml` source-file entries validation:
+- Fixed duplicate `arden.toml` source-file entries validation:
   - project configs now reject repeated paths in `files` instead of parsing the same source multiple times and risking duplicate declarations, false symbol collisions, or unstable project analysis
 - Fixed project-mode enum collision validation:
   - project builds now reject duplicate top-level enum names across different namespaces instead of silently letting the later enum overwrite the earlier global enum owner map
@@ -1188,7 +1191,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed late `?` operator validation:
   - invalid uses like `value = choose()?;` inside functions returning plain `Integer` now fail during semantic checking instead of leaking to backend codegen and crashing there
   - `Option`/`Result` propagation now also validates that the enclosing function returns the matching propagation container before LLVM lowering starts
-  - lambda bodies no longer inherit the outer function's propagation context, so `() => choose()?` now fails during `apex check` instead of surviving to a late codegen error
+  - lambda bodies no longer inherit the outer function's propagation context, so `() => choose()?` now fails during `arden check` instead of surviving to a late codegen error
 - Fixed compiler panic on list index assignment with expression receivers:
   - assignments like `make()[0] = 7` now lower through the same list-value extraction path as list reads instead of panicking in LLVM lvalue codegen when the receiver is a temporary struct-valued expression
 - Fixed docs-site routing and loading edge cases:
@@ -1197,63 +1200,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - generated heading anchors now stay unique for repeated headings, and the table of contents now reads the actual rendered heading IDs instead of recomputing mismatched slugs
   - non-HTTP custom-scheme links in markdown are no longer rewritten into broken client-side router links
 - Fixed project/CLI optimization-level validation:
-  - invalid `--opt-level` values in single-file mode and invalid `opt_level` values in `apex.toml` now fail fast with a direct validation error instead of silently compiling at `-O3`
+  - invalid `--opt-level` values in single-file mode and invalid `opt_level` values in `arden.toml` now fail fast with a direct validation error instead of silently compiling at `-O3`
 - Fixed project-root discovery for existing directories with dots in their names:
-  - commands invoked from project folders like `demo.v1/` now still detect the local `apex.toml` instead of incorrectly treating the directory as if it were a file path
-- Fixed `apex test` temp-runner file clobbering:
-  - test execution now uses isolated temporary runner workspaces instead of fixed `*.test_runner.apex` / `*.test_runner.exe` neighbor paths, so existing user files with those names are no longer overwritten and deleted
-- Fixed `apex test` project-mode runner builds:
+  - commands invoked from project folders like `demo.v1/` now still detect the local `arden.toml` instead of incorrectly treating the directory as if it were a file path
+- Fixed `arden test` temp-runner file clobbering:
+  - test execution now uses isolated temporary runner workspaces instead of fixed `*.test_runner.arden` / `*.test_runner.exe` neighbor paths, so existing user files with those names are no longer overwritten and deleted
+- Fixed `arden test` project-mode runner builds:
   - project-local tests that import project code through package aliases now run inside an isolated temporary project workspace, so test execution keeps project import resolution intact without colliding with the original project entrypoint's `main`
-  - explicit relative paths such as `apex test --path src/main.apex` now resolve against the current project correctly instead of tripping project-root discovery on an empty relative path
+  - explicit relative paths such as `arden test --path src/main.arden` now resolve against the current project correctly instead of tripping project-root discovery on an empty relative path
 - Fixed relative single-file CLI path validation:
-  - commands like `apex test --path smoke_test.apex` now work from the current directory instead of failing while canonicalizing an empty parent path for the bare relative filename
-- Fixed `apex run` behavior for library projects:
+  - commands like `arden test --path smoke_test.arden` now work from the current directory instead of failing while canonicalizing an empty parent path for the bare relative filename
+- Fixed `arden run` behavior for library projects:
   - project configs with `output_kind = "shared"` or `"static"` now fail fast with a direct CLI error before starting a build instead of building a library and then trying to execute it as a program
-- Fixed `apex info` config validation:
-  - project info now validates `apex.toml` paths and `opt_level` before printing, so broken configs no longer look healthy in the info output
-- Fixed `apex new` project-name validation:
-  - scaffold creation now rejects names with special characters that would otherwise generate invalid `apex.toml`, invalid Apex source literals, or unsafe output filenames
-- Fixed `apex test --path <dir>` symlink traversal:
+- Fixed `arden info` config validation:
+  - project info now validates `arden.toml` paths and `opt_level` before printing, so broken configs no longer look healthy in the info output
+- Fixed `arden new` project-name validation:
+  - scaffold creation now rejects names with special characters that would otherwise generate invalid `arden.toml`, invalid Arden source literals, or unsafe output filenames
+- Fixed `arden test --path <dir>` symlink traversal:
   - directory-based test discovery now skips symlinked directories instead of wandering outside the requested tree and pulling in external test files
 - Fixed silent link-manifest cache I/O fallback:
-  - broken `.apexcache/link_manifest/latest.json` paths now report a direct build error instead of being silently downgraded into a cache miss
+  - broken `.ardencache/link_manifest/latest.json` paths now report a direct build error instead of being silently downgraded into a cache miss
 - Fixed project output-path validation and nested output directory handling:
-  - `apex.toml` `output` values like `../outside/app` are now rejected during project validation instead of writing build artifacts outside the project root
+  - `arden.toml` `output` values like `../outside/app` are now rejected during project validation instead of writing build artifacts outside the project root
   - single-file and project compilation now create missing parent directories for valid nested output paths like `build/bin/app` instead of failing with a raw filesystem error
 - Fixed silent corrupt-cache fallback:
-  - invalid binary payloads in `.apexcache/parsed/`, rewrite, dependency, semantic, typecheck, object, and link cache blobs now report direct decode errors instead of being silently treated as cache misses
-  - unreadable text fingerprint caches such as `.apexcache/build_fingerprint` and `.apexcache/semantic_build_fingerprint` now also report direct I/O errors instead of being silently ignored
+  - invalid binary payloads in `.ardencache/parsed/`, rewrite, dependency, semantic, typecheck, object, and link cache blobs now report direct decode errors instead of being silently treated as cache misses
+  - unreadable text fingerprint caches such as `.ardencache/build_fingerprint` and `.ardencache/semantic_build_fingerprint` now also report direct I/O errors instead of being silently ignored
 - Fixed explicit symlinked source-path escape handling:
-  - commands that accept an explicit `.apex` file path now reject symlinked files that resolve outside the requested directory tree instead of following them to external sources
+  - commands that accept an explicit `.arden` file path now reject symlinked files that resolve outside the requested directory tree instead of following them to external sources
   - the same validation now also rejects paths that pass through symlinked ancestor directories before reaching the final file
-  - safe symlinked `.apex` files that still resolve inside the requested directory tree are accepted again instead of being over-rejected
+  - safe symlinked `.arden` files that still resolve inside the requested directory tree are accepted again instead of being over-rejected
 - Fixed integer-literal overflow diagnostics:
   - oversized integer literals now report a direct `Invalid integer literal` lexer error instead of collapsing into a generic `Unknown token`
 - Fixed float-literal overflow diagnostics:
   - oversized float literals now report a direct `Invalid float literal` lexer error instead of being tokenized as `inf`
 - Fixed parse-error source context for debug/test commands:
-  - `apex parse` and `apex test` now include filename, line, column, and source underline context on parse failures instead of only returning the bare parser message
+  - `arden parse` and `arden test` now include filename, line, column, and source underline context on parse failures instead of only returning the bare parser message
 
-- Fixed `apex fmt` comment stability inside inline expression blocks:
+- Fixed `arden fmt` comment stability inside inline expression blocks:
   - comments inside `async { ... }`, `if (...) { ... } else { ... }`, and `match (...) { ... }` expression bodies are now preserved in place instead of being dropped or moved outside the expression during formatting
   - trailing comments after the last statement inside those expression blocks now also stay inside the block instead of being hoisted below the enclosing statement
   - comments inside otherwise-empty expression blocks now also stay inside the block instead of collapsing into `{ }` / `async {}` and being moved below the enclosing statement
 - Fixed static validation of constant-zero `range` steps:
-  - `apex check` now rejects constant numeric step expressions like `range(0, 3, 1 - 1)` and `range(0.0, 3.0, 0.5 - 0.5)` instead of letting them compile and fail only at runtime
+  - `arden check` now rejects constant numeric step expressions like `range(0, 3, 1 - 1)` and `range(0.0, 3.0, 0.5 - 0.5)` instead of letting them compile and fail only at runtime
 - Fixed integer divide/modulo by zero diagnostics:
-  - `apex check` now rejects constant integer zero divisors such as `6 / (2 - 2)` and `6 % (2 - 2)` instead of letting them compile into crashing binaries
+  - `arden check` now rejects constant integer zero divisors such as `6 / (2 - 2)` and `6 % (2 - 2)` instead of letting them compile into crashing binaries
   - generated code now traps dynamic integer zero divisors with clean runtime errors (`Integer division by zero` / `Integer modulo by zero`) instead of crashing the process with a raw arithmetic fault
 - Fixed `Task.await_timeout()` validation for negative constants:
-  - `apex check` now rejects constant negative timeout expressions such as `await_timeout(-1)` and `await_timeout(1 - 2)` instead of letting them compile and fail only at runtime
+  - `arden check` now rejects constant negative timeout expressions such as `await_timeout(-1)` and `await_timeout(1 - 2)` instead of letting them compile and fail only at runtime
   - dynamic negative timeout values still fail fast at runtime with the existing explicit diagnostic instead of hanging or misbehaving
 - Fixed `Time.sleep()` validation for negative millisecond values:
-  - `apex check` now rejects constant negative sleep expressions such as `Time.sleep(-1)` and `Time.sleep(1 - 2)` instead of letting them compile and fail only at runtime
+  - `arden check` now rejects constant negative sleep expressions such as `Time.sleep(-1)` and `Time.sleep(1 - 2)` instead of letting them compile and fail only at runtime
   - dynamic negative sleep values now fail fast with a clean runtime error instead of overflowing into a huge platform sleep interval
 - Fixed collection/string negative constant index validation:
-  - `apex check` now rejects constant negative indices for `List.get(...)`, `List.set(...)`, `list[index]`, and `string[index]` instead of letting them compile and fail only at runtime
+  - `arden check` now rejects constant negative indices for `List.get(...)`, `List.set(...)`, `list[index]`, and `string[index]` instead of letting them compile and fail only at runtime
   - dynamic negative indices still keep the existing runtime guards, so non-constant bad indices continue to fail cleanly instead of producing undefined behavior
 - Fixed string literal constant out-of-bounds index validation:
-  - `apex check` now rejects constant literal accesses such as `"abc"[5]` instead of letting them compile and fail only at runtime
+  - `arden check` now rejects constant literal accesses such as `"abc"[5]` instead of letting them compile and fail only at runtime
 - Fixed Unicode `Char` handling for constant string-literal indexing:
   - constant literal accesses such as `"🚀"[0]` now yield the full Unicode `Char` instead of truncating to the first UTF-8 byte
   - constant out-of-bounds checks on string literals now count Unicode characters rather than raw UTF-8 bytes
@@ -1266,7 +1269,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed Unicode `String.length()` runtime semantics:
   - `String.length()` now counts Unicode characters instead of raw UTF-8 bytes, so values like `"🚀"` correctly report length `1` instead of `4`
 - Fixed `Args.get()` index validation:
-  - `apex check` now rejects constant negative indices like `Args.get(-1)` instead of letting them compile
+  - `arden check` now rejects constant negative indices like `Args.get(-1)` instead of letting them compile
   - dynamic negative or out-of-bounds argument indices now fail fast with explicit runtime diagnostics instead of reading invalid argv entries
 - Fixed `System.exec()` stdout truncation:
   - `System.exec(...)` now reads the full command stdout stream instead of silently truncating output at roughly 4KB
@@ -1303,14 +1306,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `File.read()` open-failure silent fallback:
   - `File.read()` now fails fast when the target path cannot be opened instead of silently returning an empty string for missing or inaccessible files
 - Fixed CLI source-path boundary validation for single-file commands:
-  - `apex lex`, `apex parse`, and `apex compile` now reject directory paths or non-`.apex` inputs up front with direct validation errors instead of falling through to generic late file-read failures
-- Fixed `apex check <path>` single-file boundary validation:
-  - `apex check <path>` now rejects directory paths or non-`.apex` inputs up front instead of falling through to generic late file-read or lexer failures
+  - `arden lex`, `arden parse`, and `arden compile` now reject directory paths or non-`.arden` inputs up front with direct validation errors instead of falling through to generic late file-read failures
+- Fixed `arden check <path>` single-file boundary validation:
+  - `arden check <path>` now rejects directory paths or non-`.arden` inputs up front instead of falling through to generic late file-read or lexer failures
 - Fixed entrypoint `main()` signature validation:
-  - `apex check` now rejects invalid entrypoint signatures such as `main(x: Integer)`, `async main()`, generic `main<T>()`, or `main()` returning unsupported types like `String`
+  - `arden check` now rejects invalid entrypoint signatures such as `main(x: Integer)`, `async main()`, generic `main<T>()`, or `main()` returning unsupported types like `String`
   - this prevents backend crashes and invalid LLVM/Clang failures that previously happened when malformed `main()` signatures reached code generation
 
-- Fixed `apex fmt` leading-comment ordering for package files:
+- Fixed `arden fmt` leading-comment ordering for package files:
   - banner comments that appear before `package ...;` now stay above the package declaration instead of being moved below it during formatting
 
 - Fixed invalid import-alias diagnostics in import checking:
@@ -1325,16 +1328,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - the smoke script now checks platform-appropriate shared/static artifact names (`.dll`, `.lib`, `.so`, `.dylib`, `.a`) instead of assuming Unix-style bare filenames for every target
   - the PowerShell wrapper now persists the bash log and prints the tail on failure, so Windows smoke failures no longer collapse into a bare `exit code 1` with no actionable context
 
-- Fixed `apex bindgen` C-type normalization for real-world headers:
+- Fixed `arden bindgen` C-type normalization for real-world headers:
   - inline `/* ... */` and `// ...` comments now preserve token boundaries instead of merging declarations like `unsigned/*x*/int` into an unparseable pseudo-type
   - `unsigned` integer prototypes now stay typed as integers instead of being corrupted by substring-based qualifier stripping
-  - array parameters now decay into valid Apex bindings, so headers like `void fill(char name[16], int values[4]);` no longer emit invalid identifiers such as `name[16]`
+  - array parameters now decay into valid Arden bindings, so headers like `void fill(char name[16], int values[4]);` no longer emit invalid identifiers such as `name[16]`
   - `inline` / `static inline` prototypes are now recognized instead of being dropped from generated bindings
-- Fixed project file boundary validation in `apex.toml`:
+- Fixed project file boundary validation in `arden.toml`:
   - `entry` and `files` paths that resolve through `..` or symlinks outside the project root are now rejected during config validation instead of silently escaping the workspace
   - directory paths in `entry` / `files` are now rejected as invalid source entries instead of surviving until later file reads
-  - project-root discovery now works for concrete source-file paths, including not-yet-created `.apex` files used by editor workflows
-  - project-aware CLI commands now consistently enforce that validation before using config-derived paths, so `apex fmt` and default-entry flows like `apex lint` can no longer follow `apex.toml` paths outside the workspace boundary
+  - project-root discovery now works for concrete source-file paths, including not-yet-created `.arden` files used by editor workflows
+  - project-aware CLI commands now consistently enforce that validation before using config-derived paths, so `arden fmt` and default-entry flows like `arden lint` can no longer follow `arden.toml` paths outside the workspace boundary
 - Fixed LSP cursor/symbol resolution edge cases:
   - UTF-16 position conversion now stays aligned after non-BMP characters, so hover/definition/reference requests no longer drift after emoji or similar code points
   - symbol lookup no longer leaks across whitespace/EOF and same-named function parameters now resolve to the parameter binding instead of the declaration name
@@ -1342,8 +1345,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - invalid wildcard-alias forms and malformed dotted paths are now rejected instead of being normalized into bogus imports
   - numeric-leading alias/path segments no longer pass validation as if they were legal identifiers
   - `NamespaceResolver::register_file()` now rejects symlinked source files that resolve outside the configured `src` root instead of trusting only the lexical path prefix
-  - `NamespaceResolver::register_file()` now also rejects non-`.apex` files at the boundary instead of turning arbitrary file stems into fake module namespaces
-  - `NamespaceResolver::register_file()` now normalizes `..` segments inside `src/` before deriving the namespace, so paths like `src/nested/../main.apex` no longer generate bogus module names
+  - `NamespaceResolver::register_file()` now also rejects non-`.arden` files at the boundary instead of turning arbitrary file stems into fake module namespaces
+  - `NamespaceResolver::register_file()` now normalizes `..` segments inside `src/` before deriving the namespace, so paths like `src/nested/../main.arden` no longer generate bogus module names
 
 - Fixed remaining built-in expression-receiver backend gaps:
   - `Map<K, V>` methods like `length`, `contains`, `get`, and `set` now lower correctly on non-local receivers such as `build().contains(1)` instead of failing to infer the object type
@@ -1402,17 +1405,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - qualified module type annotations like `item: util.Item = util.mk()` now canonicalize to the mangled owner symbol through typecheck and backend lowering instead of failing with mixed `util.Item` / `util__Item` identities or late `Unknown type: Item`
   - user-defined generic classes named like built-in containers, such as `class Box<T>`, now win consistently over the built-in `Box<T>` runtime path during parsing, type resolution, specialization discovery, and codegen, so `Box<Integer>(42).get()` no longer miscompile as a smart-pointer constructor or pointer-returning method call
 - Fixed parser-adjacent tooling and semantic checks around borrow/module/import workflows:
-  - `apex fmt` now preserves parser-valid `borrow mut` parameter ordering and keeps multi-bound generic constraints comma-separated, so formatter roundtrips no longer emit syntax the parser rejects
-  - `apex fix` no longer hoists commented-out fake imports into live import blocks, and lint alias-usage detection now counts type-position paths like `u.Box` as real uses of alias `u`
+  - `arden fmt` now preserves parser-valid `borrow mut` parameter ordering and keeps multi-bound generic constraints comma-separated, so formatter roundtrips no longer emit syntax the parser rejects
+  - `arden fix` no longer hoists commented-out fake imports into live import blocks, and lint alias-usage detection now counts type-position paths like `u.Box` as real uses of alias `u`
   - borrow checking now initializes borrowed constructor parameters correctly and keeps full nested-module function prefixes during call-mode lookup, so constructor `borrow` params and calls like `Outer.Inner.keep(s)` no longer degrade into accidental moves
   - import-check now rejects invalid namespace alias direct calls like `alias()` during import analysis instead of deferring them into later undefined-variable failures
-- Fixed tooling coverage in `apex test`, bindgen, and LSP:
+- Fixed tooling coverage in `arden test`, bindgen, and LSP:
   - test discovery now includes module-nested `@Test` and lifecycle hooks, preserving their mangled names in generated runners instead of silently skipping them
-  - bare `apex test` now respects the current project's `apex.toml` file list instead of recursively scanning every matching `*_test.apex` file under the working directory
-  - directory-based `apex test --path <dir>` discovery now walks nested folders like `tests/unit/*.apex` instead of only scanning the top-level directory
-  - test file discovery now matches mixed-case names like `MathTest.apex` and `USER_SPEC.apex` instead of only lowercase `test/spec` substrings
+  - bare `arden test` now respects the current project's `arden.toml` file list instead of recursively scanning every matching `*_test.arden` file under the working directory
+  - directory-based `arden test --path <dir>` discovery now walks nested folders like `tests/unit/*.arden` instead of only scanning the top-level directory
+  - test file discovery now matches mixed-case names like `MathTest.arden` and `USER_SPEC.arden` instead of only lowercase `test/spec` substrings
   - missing test directories now return a direct CLI error instead of being silently reported as `No test files found`
-  - `apex test --path <file>` now rejects non-`.apex` files at the CLI boundary instead of trying to lex arbitrary inputs
+  - `arden test --path <file>` now rejects non-`.arden` files at the CLI boundary instead of trying to lex arbitrary inputs
   - bindgen now accepts pointer-return C prototypes like `char *strdup(...)` and skips whole function-pointer-param prototypes instead of emitting ABI-wrong partial signatures
   - LSP rename/references/go-to-definition now tracks pattern-bound names and recurses through nested module declarations instead of missing `match` bindings and module-local class/enum definitions
 - Fixed filtered project codegen for direct constructor method receivers:
@@ -1446,30 +1449,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - direct built-in constructor/function call receivers such as `Option.some(12).unwrap()`, `Result.ok(12).unwrap()`, and `range(0, 10).has_next()` now keep their real object types through codegen-side inference instead of failing as unknown method receivers
   - direct `Result.ok/error` constructors now lower using the inferred expression type instead of hardcoded placeholder layouts, so equality and method chains on untyped `Result.error(...)` expressions preserve the real error payload ABI instead of relying on accidental defaults
   - codegen-side expression inference now treats plain constructor expressions like `Boxed(14)` as their declared class type instead of degrading them to `Integer`, which fixes direct `Option.some(Boxed(...)).unwrap().value` and `Result.ok(Boxed(...)).unwrap().value` chains
-- Fixed `apex test` handling for `@Ignore` without a reason:
+- Fixed `arden test` handling for `@Ignore` without a reason:
   - tests marked with bare `@Ignore` are now skipped correctly instead of being executed
   - ignored tests are now counted in the final `Total` summary as well as `Ignored`
-- Fixed string and char escape decoding in Apex source:
+- Fixed string and char escape decoding in Arden source:
   - escape sequences like `\n`, `\t`, `\"`, `\\`, and escaped char literals now decode correctly at runtime
   - escaped interpolation braces (`\{` and `\}`) now remain literal text instead of incorrectly triggering string interpolation
-- Fixed `apex test` ignore-reason rendering so backslashes and control characters are preserved correctly in generated runner output.
-- Fixed `apex test --list` ignore-reason rendering so control characters no longer break discovery layout.
-- Fixed stale example/docs interpolation snippets that used `${...}` instead of Apex `{...}` interpolation syntax.
+- Fixed `arden test` ignore-reason rendering so backslashes and control characters are preserved correctly in generated runner output.
+- Fixed `arden test --list` ignore-reason rendering so control characters no longer break discovery layout.
+- Fixed stale example/docs interpolation snippets that used `${...}` instead of Arden `{...}` interpolation syntax.
 - Fixed `range()` support so `Range<Float>` now works end-to-end instead of being rejected or miscompiled as an integer iterator.
 - Fixed `range()` validation so mixed numeric arguments are rejected with a clear same-type diagnostic.
 - Fixed zero-step `range()` creation so dynamic `step=0` now fails fast with a runtime error instead of producing inconsistent `has_next()/next()` behavior.
-- Expanded CLI smoke coverage to assert the real `examples/24_test_attributes.apex` runner output and ignored-test totals.
+- Expanded CLI smoke coverage to assert the real `examples/24_test_attributes.arden` runner output and ignored-test totals.
 - Fixed Windows LLVM setup in GitHub Actions by removing the fragile `llvm-config` shim/copy path and exporting the real LLVM prefix directly.
 - Fixed Windows CI LLVM setup time by replacing Chocolatey-based installation with a direct cached prebuilt LLVM archive install shared across Windows jobs.
 - Fixed tagged release publishing by removing the unsupported Intel macOS GitHub runner from the release matrix so GitHub Releases still publish Windows, Linux, and macOS arm64 assets.
-- Fixed Windows async task/runtime codegen to use Win32 thread primitives instead of unresolved `pthread_*` symbols during Apex program linking.
+- Fixed Windows async task/runtime codegen to use Win32 thread primitives instead of unresolved `pthread_*` symbols during Arden program linking.
 - Fixed Windows CLI smoke coverage by running the canonical `scripts/ci_cli_smoke.sh` through a Windows PowerShell wrapper instead of maintaining a reduced forked smoke script.
 - Fixed the Windows smoke wrapper to normalize paths for Git Bash, `chmod +x` the downloaded compiler/script pair, and return the underlying bash exit code instead of failing opaquely in PowerShell.
-- Fixed Apex CLI wording by tightening help text, command descriptions, scaffold output, and runtime status messages across `new`, `build`, `run`, `check`, `fmt`, `lint`, `fix`, `test`, `bindgen`, `bench`, and `profile`.
+- Fixed Arden CLI wording by tightening help text, command descriptions, scaffold output, and runtime status messages across `new`, `build`, `run`, `check`, `fmt`, `lint`, `fix`, `test`, `bindgen`, `bench`, and `profile`.
 - Fixed CLI input-boundary validation for source-file oriented commands:
-  - recursive `.apex` directory collection for `fmt` no longer follows symlinked directories, avoiding accidental traversal outside the requested tree or symlink-loop recursion
-  - explicit `lint` / `fix` file paths now fail fast on directories, missing paths, and non-`.apex` files instead of deferring into lower-level IO errors
-- Fixed the benchmark suite scope so it now compares Apex only against Rust and Go; legacy C runner paths, generated projects, canned results, and fixture references were removed.
+  - recursive `.arden` directory collection for `fmt` no longer follows symlinked directories, avoiding accidental traversal outside the requested tree or symlink-loop recursion
+  - explicit `lint` / `fix` file paths now fail fast on directories, missing paths, and non-`.arden` files instead of deferring into lower-level IO errors
+- Fixed the benchmark suite scope so it now compares Arden only against Rust and Go; legacy C runner paths, generated projects, canned results, and fixture references were removed.
 - Changed internal compiler caches from JSON to bincode-only blobs, dropping legacy fallback parsing in favor of lower cache decode overhead.
 - Changed object emission to reuse thread-local LLVM `TargetMachine` instances and emit object bytes from an in-memory buffer before persisting cache objects.
 - Changed dependency graph rebuilds to reuse unchanged per-file entries from the previous cache instead of recomputing the whole graph every run.
@@ -1499,7 +1502,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed project rewrite coverage for expression-only containers, so imports and function references inside `if` expressions, `match` expressions, async blocks, `await`, string interpolation, `require`, borrow/deref, `try`, and range endpoints now rewrite consistently instead of leaking raw alias/local names into project-mode typecheck/codegen.
 - Fixed unit enum variant values across project mode, so payload-less forms like `E.A`, `Enum.A`, and `u.E.A` now typecheck/codegen as enum values instead of falling through as invalid field access or undefined alias expressions.
 - Fixed higher-order `try`/borrow/deref callee codegen, so expressions like `(choose()?)(1)` and `(*f)(1)` now compile end to end instead of failing with `Invalid callee` / `Unknown variable` backend errors.
-- Fixed formatter callee precedence for deref/`try`-unwrapped function values, so `apex fmt` now preserves forms like `(*f)(1)` and `(choose()?)(1)` instead of rewriting them into different expressions.
+- Fixed formatter callee precedence for deref/`try`-unwrapped function values, so `arden fmt` now preserves forms like `(*f)(1)` and `(choose()?)(1)` instead of rewriting them into different expressions.
 - Fixed async soundness around borrowed references:
   - async blocks and async functions now reject return values that contain borrowed references across the task boundary
   - async functions now reject parameters that contain borrowed references
@@ -1529,7 +1532,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `Set<T>` method support across frontend and backend expression receivers, so `add`, `contains`, `remove`, and `length` now typecheck consistently and calls like `build().contains(7)` no longer fail after returning a set from a function.
 - Tightened dependency graph resolution for wildcard imports and namespace aliases so used imported symbols point at concrete owner files instead of invalidating every file in a busy namespace whenever possible.
 - Tightened filtered object codegen so per-file rebuilds assemble programs from the declaration-closure file set instead of the full transitive dependency file closure.
-- Added `apex build --timings` / project-mode `apex run --timings` / `apex check --timings` phase timing output for parse, dependency graph, import check, rewrite, semantic, object cache probe, object codegen, and final link stages.
+- Added `arden build --timings` / project-mode `arden run --timings` / `arden check --timings` phase timing output for parse, dependency graph, import check, rewrite, semantic, object cache probe, object codegen, and final link stages.
 - Extended `--timings` output with per-phase counters so incremental tuning can see how many files/components each phase considered, reused, checked, rewrote, or rebuilt.
 - Tightened same-namespace rewrite/import invalidation to hash exact owner-file API fingerprints instead of pessimistically hashing the whole current namespace, sharply reducing false cache misses in wide `global` namespaces.
 - Fixed rewrite/import/object cache fingerprint stability by sorting collected symbol/reference inputs before hashing, so hot rebuild reuse is deterministic across runs instead of depending on `HashSet` iteration order.
@@ -1555,9 +1558,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - multi-file fixture projects now verify real parsed import-owner dependency graph resolution across files
   - parse-cache tests now verify that project parsing reuses unchanged files while reparsing only the file whose source actually changed
 - Added CLI-level smoke coverage:
-  - temp project tests now exercise project-mode `apex check` through the real internal command entrypoint
-  - formatter smoke tests now verify `apex fmt --check` failure, `apex fmt` rewrite, and subsequent clean `--check` on project files
-  - test discovery smoke now exercises filtered `apex test --list` style flow on real `.apex` test files without spawning external processes
+  - temp project tests now exercise project-mode `arden check` through the real internal command entrypoint
+  - formatter smoke tests now verify `arden fmt --check` failure, `arden fmt` rewrite, and subsequent clean `--check` on project files
+  - test discovery smoke now exercises filtered `arden test --list` style flow on real `.arden` test files without spawning external processes
   - negative temp project tests now verify cross-file type errors and cross-file use-after-move diagnostics through the same project-mode `check` path
 - Added incremental invalidation fixture coverage:
   - real multi-file project fixtures now verify rewrite/import-context fingerprint stability for body-only dependency edits
@@ -1592,7 +1595,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed parser/formatter handling for `else if` chains:
   - statement-form `if (...) { ... } else if (...) { ... }` now parses correctly instead of rejecting a documented control-flow form
   - expression-form `if (...) { ... } else if (...) { ... } else { ... }` now parses as nested `Expr::IfExpr` branches
-  - `apex fmt` now preserves nested `else if` chains instead of degrading them into `else { if ... }`
+  - `arden fmt` now preserves nested `else if` chains instead of degrading them into `else { if ... }`
 - Tightened declaration-header parser diagnostics:
   - visibility modifiers on `module` declarations are now rejected directly instead of falling through to a confusing token error
   - `class Child extends Base,` now fails with a direct single-base-class parser diagnostic
@@ -1604,7 +1607,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - empty class `extends` clauses are now rejected directly
   - visibility modifiers on `import` and `package` declarations now report dedicated parser errors
 - Fixed formatter precedence for callable expression callees:
-  - `apex fmt` now preserves parentheses when lambda / `if` / `match` / `async` expressions are used as the callee in a call expression
+  - `arden fmt` now preserves parentheses when lambda / `if` / `match` / `async` expressions are used as the callee in a call expression
   - this prevents formatter output from changing program meaning or producing unparseable lambda-call syntax
 - Fixed user-defined generic class instantiation/type propagation:
   - constructors like `Boxed<Integer>(1)` now resolve against the base class constructor instead of failing as unknown types
@@ -1613,7 +1616,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### ⚡ Changed
 
-- Apex project linking now uses an explicit no-fallback policy:
+- Arden project linking now uses an explicit no-fallback policy:
   - Linux requires `mold`
   - macOS and Windows require LLVM `lld`
   - linker selection remains encoded in build cache fingerprints
@@ -1623,18 +1626,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### ✨ Added
 
-- `apex fmt` command for formatting Apex source files.
+- `arden fmt` command for formatting Arden source files.
   - Supports single-file, directory, and project-aware formatting.
   - Supports `--check` mode for CI.
 - Parser support for compound assignment operators:
   - `+=`, `-=`, `*=`, `/=`
   - supports identifier targets and complex lvalues (`arr[i] += 1`, `obj.field -= 2`)
 - New tooling commands:
-  - `apex lint` for static source diagnostics
-  - `apex fix` for safe automated cleanup
-  - `apex bench` for repeated wall-time measurement
-  - `apex profile` for single-run wall-time reporting
-- Project linker/distribution configuration in `apex.toml`:
+  - `arden lint` for static source diagnostics
+  - `arden fix` for safe automated cleanup
+  - `arden bench` for repeated wall-time measurement
+  - `arden profile` for single-run wall-time reporting
+- Project linker/distribution configuration in `arden.toml`:
   - `output_kind = "bin" | "shared" | "static"`
   - `link_libs`
   - `link_search`
@@ -1642,17 +1645,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Expanded CI coverage:
   - release-built CLI smoke coverage for `new`, `info`, `check`, `lint`, `fix`, `fmt`, `lex`, `parse`, `compile`, `run`, `test`, `bench`, `profile`, and `bindgen`
   - frontend typecheck, test, and production build verification
-- `apex compile` now supports:
+- `arden compile` now supports:
   - `--opt-level <0|1|2|3|s|z|fast>`
   - `--target <triple>`
 - Benchmark runner improvements:
-  - `benchmark/run.py --apex-opt-level ...` (default: `3`)
-  - `benchmark/run.py --apex-target ...`
-  - Apex benchmark compile now uses `--no-check` for fair runtime-focused comparisons.
+  - `benchmark/run.py --arden-opt-level ...` (default: `3`)
+  - `benchmark/run.py --arden-target ...`
+  - Arden benchmark compile now uses `--no-check` for fair runtime-focused comparisons.
   - Added Go benchmark language parity (`benchmark/go/*`, `benchmark/run.py`).
   - Added `compile_project_10_files` stress benchmark (generated 10-file project compile timing per language).
   - Added compile benchmark cache modes: `--compile-mode hot|cold` for `compile_project_10_files`.
-  - Added cold-mode artifact/cache cleanup handling and Apex transient `.ll` retry guard in benchmark runner.
+  - Added cold-mode artifact/cache cleanup handling and Arden transient `.ll` retry guard in benchmark runner.
   - Added `incremental_rebuild_1_file` benchmark: compile once, mutate one source file, then recompile and report first/second compile timing.
   - Added `incremental_rebuild_central_file` benchmark: compile once, mutate shared core dependency file, then recompile for dependency-heavy invalidation path measurement.
   - Added `incremental_rebuild_mega_project_10_files` benchmark: compile a generated 120-file mega-project, apply syntax-only edits to 10 spread-out files, then report cold full-build vs hot rebuild timing.
@@ -1670,19 +1673,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `python3 benchmark/run.py` now includes both `compile_project_10_files_hot` and `compile_project_10_files_cold` plus incremental rebuild output in one report by default.
   - Benchmark runner now normalizes executable path handling for Windows (`.exe`).
 - New language coverage examples:
-  - `examples/35_visibility_enforcement.apex`
-  - `examples/36_inheritance_extends.apex`
-  - `examples/37_interfaces_contracts.apex`
-  - `examples/38_import_aliases.apex`
-  - `examples/39_compound_assign.apex`
-  - `examples/40_borrow_scope_recovery.apex`
+  - `examples/35_visibility_enforcement.arden`
+  - `examples/36_inheritance_extends.arden`
+  - `examples/37_interfaces_contracts.arden`
+  - `examples/38_import_aliases.arden`
+  - `examples/39_compound_assign.arden`
+  - `examples/40_borrow_scope_recovery.arden`
 - New lint checks:
   - `L004` unused variables (`Variable 'x' is declared but never used`)
   - `L005` variable shadowing diagnostics with outer declaration offset
 
 ### ♻️ Changed
 
-- Apex project linking now requires `lld` and uses `clang -fuse-ld=lld` exclusively.
+- Arden project linking now requires `lld` and uses `clang -fuse-ld=lld` exclusively.
   - Removed linker fallback behavior; missing `lld` is now a hard error.
   - Object-cache build fingerprints now encode the enforced linker mode.
 - Switched internal stdlib metadata access to a shared lazy registry (`OnceLock`) instead of repeated `StdLib::new()` construction in hot paths (type checker, borrow checker, rewrite, codegen, and import-check entry points).
@@ -1696,14 +1699,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `List<T>` now supports fixed-capacity construction with a compile-time literal argument (`List<T>(N)`) using stack-backed storage.
 - List growth path now uses explicit `malloc + copy` reallocation logic, which is compatible with both heap-backed and stack-backed list buffers.
 - `List<Boolean>` now uses boolean-sized element storage/codegen paths instead of integer-width storage in list internals.
-- `apex fmt` now preserves source comments instead of refusing commented files.
+- `arden fmt` now preserves source comments instead of refusing commented files.
 - Borrow checker call-site param-mode resolution for methods is now type-directed from receiver type instead of first-match method-name heuristics across all classes.
 - Borrow checker now tracks optional declared variable type metadata to improve method-call move/borrow analysis accuracy.
-- Project builds now wire `target` from `apex.toml` into final Clang linking (`--target <triple>`).
+- Project builds now wire `target` from `arden.toml` into final Clang linking (`--target <triple>`).
 - Project builds can now emit shared libraries and static archives via `output_kind`.
-- Single-file scripts can start with a Unix shebang (`#!/usr/bin/env apex`).
-- `apex info` now displays `Target` value (`native/default` when not set).
-- `apex info` now displays output kind and native linker settings from `apex.toml`.
+- Single-file scripts can start with a Unix shebang (`#!/usr/bin/env arden`).
+- `arden info` now displays `Target` value (`native/default` when not set).
+- `arden info` now displays output kind and native linker settings from `arden.toml`.
 - Clang fallback flow now degrades native tuning more gracefully:
   - tries `-march=native -mtune=native`
   - then `-march=native`
@@ -1715,7 +1718,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - interface inheritance (`interface A extends B`) is validated
   - interface types can be used in function parameters and assignments
 - Import aliases (`import ... as ...`) are now supported by parser, formatter, checker, and codegen.
-- Project builds now use `.apexcache` with:
+- Project builds now use `.ardencache` with:
   - early up-to-date skip via project fingerprint cache
   - parser-level per-file AST cache reuse for unchanged files in changed builds
   - parse cache now does a metadata fast-path (`len + mtime`) before falling back to full source hashing for unchanged-file reuse
@@ -1741,9 +1744,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - parallel multi-file parse pipeline for lower front-end wall time on larger projects
   - parallel import-check and rewrite/cache resolution pass
 - CI workflow now builds Linux release compiler once and reuses the artifact for CLI smoke and examples jobs, avoiding duplicate release rebuilds.
-- CI examples validation now invokes `target/release/apex-compiler` directly instead of `cargo run --release -- ...`.
+- CI examples validation now invokes `target/release/arden` directly instead of `cargo run --release -- ...`.
 - CI LLVM install steps on Ubuntu are now centralized into a reusable composite action (`.github/actions/install-llvm`) to remove duplicated workflow logic.
-- CI/release Ubuntu LLVM setup now installs `lld-21` explicitly and exports `ld.lld`/`lld` into `PATH`, matching Apex's no-fallback linker requirement.
+- CI/release Ubuntu LLVM setup now installs `lld-21` explicitly and exports `ld.lld`/`lld` into `PATH`, matching Arden's no-fallback linker requirement.
 - CI job graph is now `build -> (checks, smoke, examples)` while `web` runs independently in parallel.
 - Release workflow now publishes both macOS architectures (`aarch64-apple-darwin`, `x86_64-apple-darwin`).
 - Windows release workflow LLVM setup now uses Chocolatey (`choco install llvm`) instead of downloading a hardcoded GitHub release tarball URL.
@@ -1778,8 +1781,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed import checker precedence so same-file local functions correctly shadow stdlib names (e.g. local `print(...)` no longer incorrectly requires `import std.io.print;`).
 - Fixed import checking for stdlib module-style calls (`Math.abs(...)`) so missing `std.math` imports are now reported.
 - Fixed import checker handling for namespace aliases (`import std.io as io;`) so aliased stdlib calls like `io.println(...)`, `math.abs(...)`, and `str.len(...)` are validated correctly.
-- Fixed `apex check` behavior in project mode:
-  - running `apex check` without an explicit file now performs project-aware validation (same multi-file pipeline as project builds), not entry-file-only checking.
+- Fixed `arden check` behavior in project mode:
+  - running `arden check` without an explicit file now performs project-aware validation (same multi-file pipeline as project builds), not entry-file-only checking.
   - project build/check now runs type checker and borrow checker on the rewritten combined project AST before codegen/link.
 - Improved import-check hint text for module-style stdlib calls (`Math.abs`, `Str.len`, `System.os`) to suggest namespace wildcard imports (`import std.math.*;`) instead of mangled symbol names.
 - Fixed parser built-in generic handling gap for enum named fields so `Ptr<T>` now parses as `Type::Ptr` (instead of generic fallback).
@@ -1811,7 +1814,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed dotted module-alias imports so paths like `import lib.A.X as ax; ax.f()` resolve and compile correctly in project mode.
 - Fixed CI `cli-smoke` compiler path resolution when reusing downloaded release artifact:
   - `scripts/ci_cli_smoke.sh` now normalizes relative `APEX_COMPILER_PATH` to absolute path before changing working directories.
-  - CI now passes absolute compiler path via `${{ github.workspace }}/target/release/apex-compiler`.
+  - CI now passes absolute compiler path via `${{ github.workspace }}/target/release/arden`.
 - Fixed macOS async runtime example/link failures caused by `Task.await_timeout(...)` depending on unavailable `pthread_timedjoin_np`.
 - Fixed async task completion races by initializing task back-pointers before worker thread spawn and publishing completion state atomically.
 - Fixed Windows GitHub Actions `llvm-sys` detection failures when the LLVM 21 Chocolatey install provides `clang.exe` but no `llvm-config.exe`.
@@ -1839,7 +1842,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed assignment mutability enforcement for nested lvalues:
   - immutable owners now reject `obj.field = ...`
   - immutable owners now reject `arr[i] = ...`
-- Fixed examples regression in `examples/12_string_interp.apex` by adding missing `std.math` import for `Math.abs(...)`.
+- Fixed examples regression in `examples/12_string_interp.arden` by adding missing `std.math` import for `Math.abs(...)`.
 - Fixed project rewrite handling of stdlib namespace aliases (`import std.io as io;`, `import std.math as math;`) so project-mode `check/build` no longer rewrites aliases into invalid mangled module identifiers.
 - Fixed type checker alias resolution precedence: a local variable named like an import alias (for example `io`) no longer gets treated as stdlib module alias in method-call resolution (`io.println(...)` now correctly errors on non-module variable types).
 - Replaced hardcoded stdlib alias mapping in type checking/project rewrite with stdlib-registry-based resolution:
@@ -1873,7 +1876,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - preventing `undefined reference to ...__spec__...` linker errors in project builds.
 - Fixed parser behavior where visibility modifiers on `constructor`/`destructor` were silently ignored.
 - Fixed formatter roundtrip stability for expression statements starting with `match`/`if`:
-  - `apex fmt` now emits parenthesized expression-statement forms (`(match (...){...});`, `(if (...){...} else {...});`) to avoid reparsing as statement nodes with different semantics.
+  - `arden fmt` now emits parenthesized expression-statement forms (`(match (...){...});`, `(if (...){...} else {...});`) to avoid reparsing as statement nodes with different semantics.
 - Added parser/type/smoke regression coverage for `if` expression branches containing `match (...) { ... };` and lambda-valued `if` expression branches compiled through full codegen.
 - Fixed `match` expression runtime codegen to evaluate arm predicates correctly (literal/variant/wildcard) instead of falling back to wildcard/default behavior.
 - Fixed `match` expression runtime codegen for exhaustive non-wildcard matches (e.g. booleans) to return the selected arm value instead of a constant zero fallback.
@@ -1882,12 +1885,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `require(...)` now validates calls in both condition and message expressions.
 - Fixed duplicate typechecker diagnostics in `if`/`match` expressions where expression statements were previously type-checked twice in the same branch/arm.
 - Fixed lint duplicate-import detection to account for aliases (`path + alias` identity), preventing false `L001` on distinct alias imports.
-- Fixed `apex fix` import cleanup to keep imports with trailing inline comments (`import ...; // comment`) instead of dropping them from rewritten output.
-- Fixed formatter shebang handling so `apex fmt` preserves `#!/usr/bin/env apex` script headers.
+- Fixed `arden fix` import cleanup to keep imports with trailing inline comments (`import ...; // comment`) instead of dropping them from rewritten output.
+- Fixed formatter shebang handling so `arden fmt` preserves `#!/usr/bin/env arden` script headers.
 - Fixed parser call/construction disambiguation for uppercase identifiers:
   - uppercase function calls such as `Foo()` now parse as function calls when `Foo` is a known function symbol (not forced constructor syntax).
 - Fixed import checker traversal for `async { ... }` expression blocks so missing imports used inside async bodies are now reported.
-- Fixed `apex fix` shebang handling (`#!/usr/bin/env apex`) so fix + format pipelines preserve script headers instead of failing lexing after import rewrites.
+- Fixed `arden fix` shebang handling (`#!/usr/bin/env arden`) so fix + format pipelines preserve script headers instead of failing lexing after import rewrites.
 - Fixed `match` codegen literal comparison for `String` patterns in both statement and expression forms by using string-content comparison instead of integer-only fallback logic.
 - Fixed `match` Option/Result binding type propagation in codegen:
   - `Some(v)` / `Ok(v)` / `Error(e)` bindings now inherit the real payload type instead of hardcoded `Integer`/`String`,
@@ -1900,7 +1903,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - explicit generic function call syntax (`id<Integer>(...)`) now parses correctly.
 - Extended pattern parser support to include float literals, char literals, and negative integer literals in `match` patterns.
 - Fixed borrow checker async mutable-capture handling to keep mutable borrow state (not downgraded to immutable), so later `&x`/`&mut x` operations now report correct mutable-borrow conflicts.
-- Fixed `apex fix` import rewrite to preserve imports with trailing block comments (`import x; /* ... */`) instead of dropping required imports.
+- Fixed `arden fix` import rewrite to preserve imports with trailing block comments (`import x; /* ... */`) instead of dropping required imports.
   - parser now emits an explicit error (`Visibility modifiers are not supported on constructors/destructors`) instead of accepting misleading syntax.
 - Fixed parser expression coverage by adding `if (...) { ... } else { ... }` expression parsing (`Expr::IfExpr`) in expression contexts.
 - `if` expression parsing now supports both forms:
@@ -1915,7 +1918,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `match` expression type safety:
   - arm result types are now validated for compatibility,
   - non-exhaustive `match` expressions are now rejected for `Boolean`, `Option<T>`, and `Result<T, E>` unless a catch-all arm exists.
-- Fixed project config compatibility for `apex.toml`:
+- Fixed project config compatibility for `arden.toml`:
   - `ProjectConfig::load` now supports both flat-key format and `[project]` table format.
 - Fixed class visibility enforcement gaps:
   - `private`/`protected` class types are now validated at construction sites and variable type declarations.
@@ -1926,12 +1929,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added import checker regression tests for local-vs-stdlib shadowing and `Math.*` import enforcement paths.
 - Added import checker regression test for aliased stdlib module calls (`std.io`/`std.math`/`std.string` alias flow).
 - Added import checker regression test for nested-call validation under aliased stdlib callees.
-- Added CLI smoke regression coverage for project-level `apex check` catching cross-file type errors.
-- Added CLI smoke regression coverage for project-mode stdlib alias imports (`io.println`, `math.abs`) in `apex check`.
+- Added CLI smoke regression coverage for project-level `arden check` catching cross-file type errors.
+- Added CLI smoke regression coverage for project-mode stdlib alias imports (`io.println`, `math.abs`) in `arden check`.
 - Added type checker regression test for local-variable shadowing over stdlib import aliases.
 - Expanded CLI smoke regression suite with:
   - explicit historical regression scenarios (constructor validation, borrow-state consistency, stdlib import enforcement, local shadowing, project alias handling, cross-file type checks),
-  - and an automated batch of 100 generated `apex check` cases (pass/fail mix) for broader real-world syntax/type/import/borrow coverage.
+  - and an automated batch of 100 generated `arden check` cases (pass/fail mix) for broader real-world syntax/type/import/borrow coverage.
 - Added borrow checker regression tests for:
   - use-after-move
   - move while borrowed
@@ -1950,16 +1953,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - CI smoke checks now include compile-time regression coverage for nested field assignment (`a.b.v += ...`) and list index codegen assignment paths.
 - Removed duplicate Vercel routing config from `web/public/vercel.json`; `web/vercel.json` is now the only deploy config.
 - Removed machine-specific LLVM/linker paths from `.cargo/config.toml`.
-- `apex new` now scaffolds `src/main.apex` with the required `import std.io.*;`, so a fresh project checks and runs immediately.
+- `arden new` now scaffolds `src/main.arden` with the required `import std.io.*;`, so a fresh project checks and runs immediately.
 - Added regression coverage for shebang tokenization, lint import rules, and project linker config parsing.
-- Fixed `apex new` default config paths:
-  - `entry` is now `src/main.apex`
-  - `files` includes `src/main.apex`
+- Fixed `arden new` default config paths:
+  - `entry` is now `src/main.arden`
+  - `files` includes `src/main.arden`
 - Fixed test runner generation:
   - generated hook/test invocations now call functions (`testName();`) instead of expression statements (`testName;`)
   - `main()` stripping logic no longer over-consumes source after the main function.
   - generated test runner sources now inject `import std.io.*;` when needed.
-- Fixed `apex test --filter` summary counters:
+- Fixed `arden test --filter` summary counters:
   - `total`/`ignored` now reflect the filtered subset, not the unfiltered discovery set.
 - Fixed previously accepted invalid access to `private` and `protected` members from outside class boundaries.
 - Fixed stale docs wording around class visibility defaults and interface implementation behavior.
@@ -1985,23 +1988,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Supports variadic extern declarations (e.g. `extern function printf(fmt: String, ...): Integer;`).
   - Supports explicit ABI and symbol aliasing (e.g. `extern(c, "puts") function c_puts(...): Integer;`, `extern(system, "printf") ...`).
   - Enforces FFI-safe extern signatures and variadic argument types at type-check time.
-  - Extern callsites now use C ABI argument lowering (no Apex env pointer).
+  - Extern callsites now use C ABI argument lowering (no Arden env pointer).
 - **Pointer Interop Type**: Added generic `Ptr<T>` as a first-class type for raw FFI pointer signatures.
   - Parser/typechecker/codegen support for `Ptr<T>` declarations and extern interop.
   - `Ptr<T>` is now accepted as an FFI-safe extern signature type.
-- **C Header Bindings**: Added CLI command `apex bindgen` to generate Apex `extern(c)` declarations from `.h` files.
+- **C Header Bindings**: Added CLI command `arden bindgen` to generate Arden `extern(c)` declarations from `.h` files.
   - Supports common C prototypes and variadic signatures.
   - Supports stdout output or `--output <file>` generation.
 - **New Feature Examples**:
-  - `examples/26_effect_system.apex`
-  - `examples/27_extern_c_interop.apex`
-  - `examples/28_async_runtime_control.apex`
-  - `examples/29_effect_inference_and_any.apex`
-  - `examples/30_extern_variadic_printf.apex`
-  - `examples/31_extern_abi_link_name.apex`
-  - `examples/32_extern_safe_wrapper.apex`
-  - `examples/33_extern_ptr_types.apex`
-  - `examples/34_bindgen_workflow.apex`
+  - `examples/26_effect_system.arden`
+  - `examples/27_extern_c_interop.arden`
+  - `examples/28_async_runtime_control.arden`
+  - `examples/29_effect_inference_and_any.arden`
+  - `examples/30_extern_variadic_printf.arden`
+  - `examples/31_extern_abi_link_name.arden`
+  - `examples/32_extern_safe_wrapper.arden`
+  - `examples/33_extern_ptr_types.arden`
+  - `examples/34_bindgen_workflow.arden`
   - `examples/README.md` (coverage index)
 
 ### ♻️ Changed
@@ -2033,15 +2036,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Scope-Aware Rewriting**: Project call rewriting now preserves params, locals, loop vars, lambda params, and match bindings.
 - **Architecture Docs**: Project documentation now covers AST combining, deterministic mangling, scope-aware behavior, and collision policy.
 - **Native Clang Tuning**: Final IR compilation now prefers `-march=native -mtune=native` with a safe fallback to baseline `-O3` if tuned flags are unavailable.
-- **Project `opt_level` Wiring**: `apex.toml` `opt_level` now actually drives final Clang optimization level (`0/1/2/3/s/z/fast`). Missing/invalid values default safely to maximum-performance `-O3`.
+- **Project `opt_level` Wiring**: `arden.toml` `opt_level` now actually drives final Clang optimization level (`0/1/2/3/s/z/fast`). Missing/invalid values default safely to maximum-performance `-O3`.
 
 ### 🐛 Fixed
 
 - **Namespace Collisions**: Collision handling now fails early with clear function+namespace diagnostics.
-- **Documentation Consistency**: Updated `apex` CLI usage, module syntax notes, and compiler architecture file map.
+- **Documentation Consistency**: Updated `arden` CLI usage, module syntax notes, and compiler architecture file map.
 - **Class/Module Collisions**: Top-level class and module name collisions now fail early across namespaces.
-- **List Capacity Growth**: Fixed `List.push()` codegen to grow backing storage with `realloc` when `length >= capacity`, preventing heap corruption (`malloc(): corrupted top size`) in large workloads like `benchmark/apex/matrix_mul.apex`.
-- **Map IR Block Ordering**: Fixed invalid LLVM IR generation in `Map.set()` control-flow block ordering (late-created `map_set.cont/update`), which caused Clang parse failures in `examples/17_comprehensive.apex`.
+- **List Capacity Growth**: Fixed `List.push()` codegen to grow backing storage with `realloc` when `length >= capacity`, preventing heap corruption (`malloc(): corrupted top size`) in large workloads like `benchmark/arden/matrix_mul.arden`.
+- **Map IR Block Ordering**: Fixed invalid LLVM IR generation in `Map.set()` control-flow block ordering (late-created `map_set.cont/update`), which caused Clang parse failures in `examples/17_comprehensive.arden`.
 
 ## [1.3.2] - Range Types - 2026-02-22
 
@@ -2052,7 +2055,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Iterator protocol with `has_next()` and `next()` methods
   - Support for ascending and descending ranges (negative steps)
   - LLVM struct-based implementation with heap allocation
-  - New example: `examples/25_range_types.apex`
+  - New example: `examples/25_range_types.arden`
   - Documentation: `docs/features/ranges.md`
 
 - **Testing Framework**: Full testing framework with attributes and assertions
@@ -2060,12 +2063,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - `@Ignore` attribute to skip tests (with optional reason: `@Ignore("not ready")`)
   - `@Before`, `@After` for setup/teardown around each test
   - `@BeforeAll`, `@AfterAll` for suite-level setup/teardown
-  - New CLI command: `apex test` - Discover and run all @Test functions
+  - New CLI command: `arden test` - Discover and run all @Test functions
   - Assertion functions: `assert()`, `assert_eq()`, `assert_ne()`, `assert_true()`, `assert_false()`, `fail()`
-  - New example: `examples/24_test_attributes.apex`
+  - New example: `examples/24_test_attributes.arden`
 
-- **LSP (Language Server Protocol)**: Apex now has a built-in LSP server for IDE integration
-  - New CLI command: `apex lsp` - Start the language server
+- **LSP (Language Server Protocol)**: Arden now has a built-in LSP server for IDE integration
+  - New CLI command: `arden lsp` - Start the language server
   - Autocomplete support for keywords, types, and functions
   - Hover documentation for language keywords
   - Go to definition support (prepared)
@@ -2118,27 +2121,27 @@ This release introduces a complete multi-file project system with Java-style nam
 
 ### ✨ New Features
 
-- **Multi-File Project Support**: Apex now supports organizing code into projects with multiple source files.
-  - Project configuration via `apex.toml`
-  - New CLI commands: `apex new`, `apex build`, `apex run`, `apex info`
+- **Multi-File Project Support**: Arden now supports organizing code into projects with multiple source files.
+  - Project configuration via `arden.toml`
+  - New CLI commands: `arden new`, `arden build`, `arden run`, `arden info`
   - Automatic merging and compilation of multiple source files
   - Entry point configuration for main function location
 
 - **Project Commands**:
-  - `apex new <name>` - Create a new project with standard structure
-  - `apex build` - Build current project
-  - `apex run` - Build and run current project
-  - `apex info` - Display project information
-  - `apex check [file]` - Check project or specific file
+  - `arden new <name>` - Create a new project with standard structure
+  - `arden build` - Build current project
+  - `arden run` - Build and run current project
+  - `arden info` - Display project information
+  - `arden check [file]` - Check project or specific file
 
 ### 📁 Configuration
 
-- **apex.toml Format**:
+- **arden.toml Format**:
   ```toml
   name = "my_project"
   version = "1.0.0"
-  entry = "src/main.apex"
-  files = ["src/utils.apex", "src/main.apex"]
+  entry = "src/main.arden"
+  files = ["src/utils.arden", "src/main.arden"]
   output = "my_project"
   opt_level = "3"
   ```
@@ -2229,7 +2232,7 @@ This release introduces a complete multi-file project system with Java-style nam
   - `Time.sleep(ms)`: Suspends program execution.
 - **List Improvements**:
   - `List.pop()`: Remove and return the last element.
-- **New Examples**: Added `19_time.apex`, `20_system.apex`, `21_conversions.apex`, `22_args.apex`, `23_str_utils.apex`.
+- **New Examples**: Added `19_time.arden`, `20_system.arden`, `21_conversions.arden`, `22_args.arden`, `23_str_utils.arden`.
 
 ### ♻️ Changed
 
@@ -2250,7 +2253,7 @@ This release introduces a complete multi-file project system with Java-style nam
   - `File.write(path, content)`: Writes content to file.
   - `File.exists(path)`: Checks for file existence.
   - `File.delete(path)`: Deletes a file.
-- **New Examples**: Added `18_file_io.apex` and `app_notes.apex` demonstrating file system interactions.
+- **New Examples**: Added `18_file_io.arden` and `app_notes.arden` demonstrating file system interactions.
 - **Test Infrastructure**: Added `test_examples.bat` for automated verification of all example programs.
 
 ### ♻️ Changed

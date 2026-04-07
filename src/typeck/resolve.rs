@@ -12,7 +12,7 @@ impl TypeChecker {
         scopes
     }
 
-    fn lookup_import_alias_path(&self, alias_ident: &str) -> Option<&str> {
+    pub(crate) fn lookup_import_alias_path(&self, alias_ident: &str) -> Option<&str> {
         let scoped_paths = self.import_aliases.get(alias_ident)?;
         for scope_prefix in self.current_import_scope_prefixes() {
             if let Some((_, path)) = scoped_paths
@@ -213,6 +213,10 @@ impl TypeChecker {
         let path = self.lookup_import_alias_path(alias_ident)?;
         if path.ends_with(".*") {
             return None;
+        }
+        let full_path = format!("{}.{}", path, member_parts.join("."));
+        if let Some(canonical) = crate::ast::builtin_exact_import_alias_canonical(&full_path) {
+            return Some(canonical.to_string());
         }
         Some(format!(
             "{}__{}",
@@ -902,6 +906,12 @@ impl TypeChecker {
                                 .resolve_alias_call(&namespace_path, path_parts.last()?)
                             {
                                 return Some(canonical);
+                            }
+                            let full_path = format!("{}.{}", path, path_parts[1..].join("."));
+                            if let Some(canonical) =
+                                crate::ast::builtin_exact_import_alias_canonical(&full_path)
+                            {
+                                return Some(canonical.to_string());
                             }
                             let candidate = format!(
                                 "{}__{}",

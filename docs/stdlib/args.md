@@ -10,7 +10,7 @@ The `Args` object provides static methods for argument retrieval.
 
 Returns the total number of command-line arguments, including the program name itself at index 0.
 
-```apex
+```arden
 import std.io.*;
 
 count: Integer = Args.count();
@@ -19,7 +19,7 @@ println("Received {count} arguments");
 
 You can also import the function directly by symbol:
 
-```apex
+```arden
 import std.args.count as count;
 
 println("argc = {count()}");
@@ -27,7 +27,7 @@ println("argc = {count()}");
 
 That direct symbol alias can also be stored in a typed function value:
 
-```apex
+```arden
 import std.args.get as get;
 
 fetch: (Integer) -> String = get;
@@ -35,7 +35,7 @@ fetch: (Integer) -> String = get;
 
 The direct stdlib member works as a typed function value too:
 
-```apex
+```arden
 argc: () -> Integer = Args.count;
 ```
 
@@ -46,7 +46,7 @@ Returns the argument at the specified index as a `String`.
 - Index `0` is always the path to the executable.
 - Indices `1` and above are user-provided arguments.
 
-```apex
+```arden
 import std.io.*;
 
 if (Args.count() > 1) {

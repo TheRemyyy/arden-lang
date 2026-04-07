@@ -1,4 +1,4 @@
-//! LSP (Language Server Protocol) implementation for Apex
+//! LSP (Language Server Protocol) implementation for Arden
 //!
 //! Provides IDE features like:
 //! - Autocompletion
@@ -676,7 +676,7 @@ impl Backend {
             severity: Some(DiagnosticSeverity::ERROR),
             code: None,
             code_description: None,
-            source: Some("apex-parser".to_string()),
+            source: Some("arden-parser".to_string()),
             message,
             related_information: None,
             tags: None,
@@ -697,7 +697,7 @@ impl Backend {
             severity: Some(DiagnosticSeverity::ERROR),
             code: None,
             code_description: None,
-            source: Some("apex-lexer".to_string()),
+            source: Some("arden-lexer".to_string()),
             message: msg.to_string(),
             related_information: None,
             tags: None,
@@ -715,7 +715,7 @@ impl Backend {
             severity: Some(DiagnosticSeverity::ERROR),
             code: None,
             code_description: None,
-            source: Some("apex-typeck".to_string()),
+            source: Some("arden-typeck".to_string()),
             message,
             related_information: None,
             tags: None,
@@ -733,7 +733,7 @@ impl Backend {
             severity: Some(DiagnosticSeverity::ERROR),
             code: None,
             code_description: None,
-            source: Some("apex-borrowck".to_string()),
+            source: Some("arden-borrowck".to_string()),
             message,
             related_information: None,
             tags: None,
@@ -1315,20 +1315,20 @@ impl Backend {
     fn get_hover(&self, doc: &Document, pos: Position) -> Option<Hover> {
         // Keywords documentation
         let keywords_docs: HashMap<&str, &str> = [
-            ("function", "Define a function\n\n```apex\nfunction name(params): ReturnType {\n  // body\n}\n```"),
-            ("class", "Define a class\n\n```apex\nclass Name {\n  field: Type;\n  function method(): Type { }\n}\n```"),
-            ("if", "Conditional statement\n\n```apex\nif (condition) {\n  // then branch\n} else {\n  // else branch\n}\n```"),
-            ("while", "While loop\n\n```apex\nwhile (condition) {\n  // body\n}\n```"),
-            ("for", "For loop\n\n```apex\nfor (i in 0..10) {\n  // body\n}\n```"),
-            ("match", "Pattern matching\n\n```apex\nmatch value {\n  Pattern => { },\n  _ => { },\n}\n```"),
-            ("mut", "Mutable variable declaration\n\n```apex\nmut x: Integer = 10;\n```"),
-            ("let", "Variable declaration\n\n```apex\nlet x: Integer = 10;\n```"),
-            ("import", "Import from another module\n\n```apex\nimport utils.math.*;\n```"),
-            ("package", "Declare package namespace\n\n```apex\npackage my.module;\n```"),
-            ("extern", "Declare an external C ABI function\n\n```apex\nextern function puts(msg: String): Integer;\nextern(c) function puts2(msg: String): Integer;\nextern(system, \"printf\") function sys_printf(fmt: String, ...): Integer;\n```"),
-            ("async", "Async function or block\n\n```apex\nasync function foo(): Task<String> { }\n```"),
-            ("await", "Await an async operation\n\n```apex\nlet result = await asyncFunction();\n```"),
-            ("return", "Return from function\n\n```apex\nreturn value;\n```"),
+            ("function", "Define a function\n\n```arden\nfunction name(params): ReturnType {\n  // body\n}\n```"),
+            ("class", "Define a class\n\n```arden\nclass Name {\n  field: Type;\n  function method(): Type { }\n}\n```"),
+            ("if", "Conditional statement\n\n```arden\nif (condition) {\n  // then branch\n} else {\n  // else branch\n}\n```"),
+            ("while", "While loop\n\n```arden\nwhile (condition) {\n  // body\n}\n```"),
+            ("for", "For loop\n\n```arden\nfor (i in 0..10) {\n  // body\n}\n```"),
+            ("match", "Pattern matching\n\n```arden\nmatch value {\n  Pattern => { },\n  _ => { },\n}\n```"),
+            ("mut", "Mutable variable declaration\n\n```arden\nmut x: Integer = 10;\n```"),
+            ("let", "Variable declaration\n\n```arden\nlet x: Integer = 10;\n```"),
+            ("import", "Import from another module\n\n```arden\nimport utils.math.*;\n```"),
+            ("package", "Declare package namespace\n\n```arden\npackage my.module;\n```"),
+            ("extern", "Declare an external C ABI function\n\n```arden\nextern function puts(msg: String): Integer;\nextern(c) function puts2(msg: String): Integer;\nextern(system, \"printf\") function sys_printf(fmt: String, ...): Integer;\n```"),
+            ("async", "Async function or block\n\n```arden\nasync function foo(): Task<String> { }\n```"),
+            ("await", "Await an async operation\n\n```arden\nlet result = await asyncFunction();\n```"),
+            ("return", "Return from function\n\n```arden\nreturn value;\n```"),
         ].iter().cloned().collect();
 
         if let Some(word) = self.word_at_position(&doc.text, pos) {
@@ -1352,7 +1352,7 @@ impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             server_info: Some(ServerInfo {
-                name: "apex-lsp".to_string(),
+                name: "arden-lsp".to_string(),
                 version: Some("1.3.1".to_string()),
             }),
             offset_encoding: None,
@@ -1378,7 +1378,7 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "Apex LSP server initialized")
+            .log_message(MessageType::INFO, "Arden LSP server initialized")
             .await;
     }
 

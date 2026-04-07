@@ -1,4 +1,4 @@
-//! Apex Programming Language Compiler
+//! Arden
 
 mod ast;
 mod bindgen;
@@ -62,11 +62,11 @@ struct ObjectCodegenShard {
 }
 
 #[derive(ClapParser)]
-#[command(name = "apex")]
-#[command(bin_name = "apex")]
+#[command(name = "arden")]
+#[command(bin_name = "arden")]
 #[command(author = "TheRemyyy")]
 #[command(version = "1.3.5")]
-#[command(about = "Apex compiler and project CLI")]
+#[command(about = "Arden and project CLI")]
 #[command(long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -115,7 +115,7 @@ enum Commands {
         #[arg(long)]
         timings: bool,
     },
-    /// Compile a single Apex file
+    /// Compile a single Arden file
     Compile {
         /// Input file
         file: PathBuf,
@@ -155,7 +155,7 @@ enum Commands {
         /// File to fix (defaults to the project entry point)
         path: Option<PathBuf>,
     },
-    /// Format Apex source
+    /// Format Arden source
     Fmt {
         /// File or directory to format
         path: Option<PathBuf>,
@@ -187,11 +187,11 @@ enum Commands {
         #[arg(short, long)]
         filter: Option<String>,
     },
-    /// Generate Apex extern bindings from a C header
+    /// Generate Arden extern bindings from a C header
     Bindgen {
         /// Input C header file
         header: PathBuf,
-        /// Output Apex file (defaults to stdout)
+        /// Output Arden file (defaults to stdout)
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
@@ -358,7 +358,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
     let filename = file
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("unknown.apex");
+        .unwrap_or("unknown.arden");
     let file_metadata = current_file_metadata_stamp(file)?;
     let cached_entry = load_parsed_file_cache_entry(project_root, file)?;
     let read_source = |f: &Path| {
@@ -1048,10 +1048,10 @@ fn new_project(name: &str, path: Option<&Path>) -> Result<(), String> {
 
     // Create project config
     let config = ProjectConfig::new(name);
-    let config_path = project_path.join("apex.toml");
+    let config_path = project_path.join("arden.toml");
     config.save(&config_path)?;
 
-    // Create main.apex
+    // Create main.arden
     let main_content = format!(
         r#"import std.io.*;
 
@@ -1063,10 +1063,10 @@ function main(): None {{
         name
     );
 
-    let main_path = project_path.join("src").join("main.apex");
+    let main_path = project_path.join("src").join("main.arden");
     fs::write(&main_path, main_content).map_err(|e| {
         format!(
-            "{}: Failed to create main.apex: {}",
+            "{}: Failed to create main.arden: {}",
             "error".red().bold(),
             e
         )
@@ -1076,34 +1076,34 @@ function main(): None {{
     let readme_content = format!(
         r#"# {}
 
-Apex project created with `apex new`.
+Arden project created with `arden new`.
 
 ## Project Structure
 
 ```
 .
-├── apex.toml       # Project configuration
+├── arden.toml       # Project configuration
 ├── src/
-│   └── main.apex   # Entry point
+│   └── main.arden   # Entry point
 └── README.md       # This file
 ```
 
 ## Common Commands
 
-- `apex build` - Build the project
-- `apex run` - Build and run the project
-- `apex check` - Parse and type-check the project
-- `apex test` - Run test files in the project
+- `arden build` - Build the project
+- `arden run` - Build and run the project
+- `arden check` - Parse and type-check the project
+- `arden test` - Run test files in the project
 
 ## Configuration
 
-Edit `apex.toml` to customize your project:
+Edit `arden.toml` to customize your project:
 
 ```toml
 name = "{}"
 version = "0.1.0"
-entry = "src/main.apex"
-files = ["src/main.apex"]
+entry = "src/main.arden"
+files = ["src/main.arden"]
 output = "{}"
 opt_level = "3"
 output_kind = "bin"
@@ -1132,7 +1132,7 @@ output_kind = "bin"
     );
     println!("\n{}", "Next".dimmed());
     println!("  cd {}", path.unwrap_or(Path::new(name)).display());
-    println!("  apex run");
+    println!("  arden run");
 
     Ok(())
 }
@@ -1173,10 +1173,10 @@ fn build_project(
     reset_cache_io_timing_totals(&OBJECT_CACHE_META_TIMING_TOTALS);
     let cwd = current_dir_checked()?;
     let project_root = find_project_root(&cwd)
-        .ok_or_else(|| format!("{}: No apex.toml found. Are you in a project directory?\nRun `apex new <name>` to create a new project.",
+        .ok_or_else(|| format!("{}: No arden.toml found. Are you in a project directory?\nRun `arden new <name>` to create a new project.",
             "error".red().bold()))?;
 
-    let config_path = project_root.join("apex.toml");
+    let config_path = project_root.join("arden.toml");
     let mut config = ProjectConfig::load(&config_path)?;
     if release {
         config.opt_level = "3".to_string();
@@ -1939,7 +1939,7 @@ fn build_project(
         let entry_filename = entry_path
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("main.apex");
+            .unwrap_or("main.arden");
         validate_entry_main_signature(entry_program, &entry_source, entry_filename)?;
     }
 
@@ -3793,9 +3793,9 @@ fn run_project(
 ) -> Result<(), String> {
     let cwd = current_dir_checked()?;
     let project_root = find_project_root(&cwd)
-        .ok_or_else(|| format!("{}: No apex.toml found", "error".red().bold()))?;
+        .ok_or_else(|| format!("{}: No arden.toml found", "error".red().bold()))?;
 
-    let config_path = project_root.join("apex.toml");
+    let config_path = project_root.join("arden.toml");
     let config = ProjectConfig::load(&config_path)?;
     config.validate(&project_root)?;
     validate_opt_level(Some(&config.opt_level))?;
@@ -3817,7 +3817,7 @@ fn ensure_project_is_runnable(output_kind: &OutputKind) -> Result<(), String> {
     }
 
     Err(format!(
-        "{}: `apex run` requires `output_kind = \"bin\"`, found {:?}. Use `apex build` for library targets.",
+        "{}: `arden run` requires `output_kind = \"bin\"`, found {:?}. Use `arden build` for library targets.",
         "error".red().bold(),
         output_kind
     ))
@@ -3921,7 +3921,7 @@ fn compile_file(
         if file.starts_with(&project_root) {
             println!(
                 "{}",
-                "note: file is inside a project; prefer `apex build` for project builds".yellow()
+                "note: file is inside a project; prefer `arden build` for project builds".yellow()
             );
         }
     }
@@ -3946,7 +3946,7 @@ fn compile_file(
         let filename = file
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("input.apex");
+            .unwrap_or("input.arden");
         let program = parse_program_from_source(&source, filename)?;
         validate_entry_main_signature(&program, &source, filename)?;
     }
@@ -3980,7 +3980,7 @@ fn compile_source(
     let filename = source_path
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("input.apex");
+        .unwrap_or("input.arden");
 
     // Tokenize
     let program = parse_program_from_source(source, filename)?;
@@ -4033,12 +4033,12 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
         // Use project entry point
         let project_root = find_project_root(&current_dir_checked()?).ok_or_else(|| {
             format!(
-                "{}: No apex.toml found. Specify a file or run from a project directory.",
+                "{}: No arden.toml found. Specify a file or run from a project directory.",
                 "error".red().bold()
             )
         })?;
 
-        let config_path = project_root.join("apex.toml");
+        let config_path = project_root.join("arden.toml");
         let config = ProjectConfig::load(&config_path)?;
         config.validate(&project_root)?;
         for source_file in config.get_source_files(&project_root) {
@@ -4055,7 +4055,7 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
     let filename = file_path
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("input.apex");
+        .unwrap_or("input.arden");
 
     let program = parse_program_from_source(&source, filename)?;
     run_single_file_semantic_checks(&source, filename, &program)?;
@@ -4166,12 +4166,12 @@ fn extract_top_level_imports(program: &ast::Program) -> Vec<ast::ImportDecl> {
 fn show_project_info() -> Result<(), String> {
     let project_root = find_project_root(&current_dir_checked()?).ok_or_else(|| {
         format!(
-            "{}: No apex.toml found in current directory or parents.",
+            "{}: No arden.toml found in current directory or parents.",
             "error".red().bold()
         )
     })?;
 
-    let config_path = project_root.join("apex.toml");
+    let config_path = project_root.join("arden.toml");
     let config = ProjectConfig::load(&config_path)?;
     config.validate(&project_root)?;
     validate_opt_level(Some(&config.opt_level))?;
@@ -4225,17 +4225,17 @@ fn show_project_info() -> Result<(), String> {
 fn format_targets(path: Option<&Path>, check_only: bool) -> Result<(), String> {
     let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
     let targets = if let Some(path) = path {
-        collect_apex_files(path)?
+        collect_arden_files(path)?
     } else if let Some(project_root) = find_project_root(&current_dir) {
-        let config = ProjectConfig::load(&project_root.join("apex.toml"))?;
+        let config = ProjectConfig::load(&project_root.join("arden.toml"))?;
         config.validate(&project_root)?;
         config.get_source_files(&project_root)
     } else {
-        collect_apex_files(&current_dir)?
+        collect_arden_files(&current_dir)?
     };
 
     if targets.is_empty() {
-        return Err("No .apex files found to format".to_string());
+        return Err("No .arden files found to format".to_string());
     }
 
     let mut changed = Vec::new();
@@ -4295,7 +4295,7 @@ fn resolve_default_file(path: Option<&Path>) -> Result<PathBuf, String> {
 
     let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
     if let Some(project_root) = find_project_root(&current_dir) {
-        let config = ProjectConfig::load(&project_root.join("apex.toml"))?;
+        let config = ProjectConfig::load(&project_root.join("arden.toml"))?;
         config.validate(&project_root)?;
         for source_file in config.get_source_files(&project_root) {
             validate_source_file_path(&source_file)?;
@@ -4303,7 +4303,7 @@ fn resolve_default_file(path: Option<&Path>) -> Result<PathBuf, String> {
         return Ok(config.get_entry_path(&project_root));
     }
 
-    Err("No file specified and no apex.toml found in the current directory".to_string())
+    Err("No file specified and no arden.toml found in the current directory".to_string())
 }
 
 fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, String> {
@@ -4335,8 +4335,8 @@ fn validate_source_file_path(path: &Path) -> Result<(), String> {
     if !path.is_file() {
         return Err(format!("Path '{}' is not a file", path.display()));
     }
-    if path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
-        return Err(format!("Path '{}' is not an .apex file", path.display()));
+    if path.extension().and_then(|ext| ext.to_str()) != Some("arden") {
+        return Err(format!("Path '{}' is not an .arden file", path.display()));
     }
 
     let parent_dir = path.parent().unwrap_or(Path::new("."));
@@ -4422,7 +4422,7 @@ fn fix_target(path: Option<&Path>) -> Result<(), String> {
     Ok(())
 }
 
-fn collect_apex_files(path: &Path) -> Result<Vec<PathBuf>, String> {
+fn collect_arden_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     if path.is_file() {
         validate_source_file_path(path)?;
         return Ok(vec![path.to_path_buf()]);
@@ -4439,12 +4439,12 @@ fn collect_apex_files(path: &Path) -> Result<Vec<PathBuf>, String> {
     }
 
     let mut files = Vec::new();
-    collect_apex_files_recursive(path, &mut files)?;
+    collect_arden_files_recursive(path, &mut files)?;
     files.sort();
     Ok(files)
 }
 
-fn collect_apex_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
     for entry in fs::read_dir(dir)
         .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?
     {
@@ -4464,9 +4464,9 @@ fn collect_apex_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<
         })?;
         let path = entry.path();
         if file_type.is_dir() {
-            collect_apex_files_recursive(&path, files)?;
+            collect_arden_files_recursive(&path, files)?;
         } else if file_type.is_file()
-            && path.extension().and_then(|ext| ext.to_str()) == Some("apex")
+            && path.extension().and_then(|ext| ext.to_str()) == Some("arden")
         {
             files.push(path);
         }
@@ -4511,8 +4511,8 @@ fn prepare_bench_binary(
 
     let cwd = current_dir_checked()?;
     let project_root = find_project_root(&cwd)
-        .ok_or_else(|| format!("{}: No apex.toml found", "error".red().bold()))?;
-    let config_path = project_root.join("apex.toml");
+        .ok_or_else(|| format!("{}: No arden.toml found", "error".red().bold()))?;
+    let config_path = project_root.join("arden.toml");
     let config = ProjectConfig::load(&config_path)?;
     config.validate(&project_root)?;
     ensure_project_is_runnable(&config.output_kind)?;
@@ -4606,7 +4606,7 @@ fn parse_file(file: &Path) -> Result<(), String> {
     let filename = file
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("input.apex");
+        .unwrap_or("input.arden");
     let mut parser = Parser::new(tokens);
     let program = parser
         .parse_program()
@@ -4707,7 +4707,7 @@ fn run_tests(
         let filename = test_file
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("input.apex");
+            .unwrap_or("input.arden");
         let mut parser = Parser::new(tokens);
         let program = parser
             .parse_program()
@@ -4766,7 +4766,7 @@ fn run_tests(
             // Generate and run test runner - include original source + test runner main
             let runner_code = generate_test_runner_with_source(&filtered_discovery, &source);
             if let Some(project_root) = test_file.parent().and_then(find_project_root) {
-                let config_path = project_root.join("apex.toml");
+                let config_path = project_root.join("arden.toml");
                 let config = ProjectConfig::load(&config_path)?;
                 config.validate(&project_root)?;
                 let (temp_dir, exe_path) = create_project_test_runner_workspace(
@@ -4813,7 +4813,7 @@ fn run_tests(
 
 fn default_test_files(current_dir: &Path) -> Result<Vec<PathBuf>, String> {
     if let Some(project_root) = find_project_root(current_dir) {
-        let config_path = project_root.join("apex.toml");
+        let config_path = project_root.join("arden.toml");
         let config = ProjectConfig::load(&config_path)?;
         config.validate(&project_root)?;
 
@@ -4833,9 +4833,9 @@ fn create_test_runner_workspace(test_file: &Path) -> Result<(PathBuf, PathBuf, P
     let stem = test_file
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("apex_test");
+        .unwrap_or("arden_test");
     let temp_dir = std::env::temp_dir().join(format!(
-        "apex-test-runner-{}-{}-{}",
+        "arden-test-runner-{}-{}-{}",
         stem,
         std::process::id(),
         unique
@@ -4843,7 +4843,7 @@ fn create_test_runner_workspace(test_file: &Path) -> Result<(PathBuf, PathBuf, P
     fs::create_dir_all(&temp_dir)
         .map_err(|e| format!("Failed to create test runner workspace: {}", e))?;
 
-    let runner_path = temp_dir.join("runner.apex");
+    let runner_path = temp_dir.join("runner.arden");
     let exe_path = temp_dir.join("runner.exe");
     Ok((temp_dir, runner_path, exe_path))
 }
@@ -4859,7 +4859,7 @@ fn create_project_test_runner_workspace(
         .map_err(|e| format!("Failed to create unique test runner project path: {}", e))?
         .as_nanos();
     let temp_dir = std::env::temp_dir().join(format!(
-        "apex-project-test-runner-{}-{}",
+        "arden-project-test-runner-{}-{}",
         std::process::id(),
         unique
     ));
@@ -4931,7 +4931,7 @@ fn create_project_test_runner_workspace(
     }
     temp_config.output = "runner".to_string();
     temp_config
-        .save(&temp_dir.join("apex.toml"))
+        .save(&temp_dir.join("arden.toml"))
         .map_err(|e| format!("Failed to write test runner project config: {}", e))?;
 
     Ok((temp_dir.clone(), temp_dir.join("runner")))
@@ -4953,7 +4953,7 @@ fn find_test_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn is_test_like_file(path: &Path) -> bool {
-    if path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
+    if path.extension().and_then(|ext| ext.to_str()) != Some("arden") {
         return false;
     }
 

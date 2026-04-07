@@ -1,5 +1,5 @@
 // Test 32: Extern Safe Wrapper Pattern
-// Tests: wrapping raw extern calls behind validated Apex APIs
+// Tests: wrapping raw extern calls behind validated Arden APIs
 
 import std.io.*;
 

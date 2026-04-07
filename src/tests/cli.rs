@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use super::*;
 #[cfg(unix)]
-use crate::collect_apex_files;
+use crate::collect_arden_files;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -13,17 +13,17 @@ fn cli_check_command_succeeds_for_temp_project() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction main(): None { value: Integer = helper(); return None; }\n",
     )
     .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nfunction helper(): Integer { return 1; }\n",
     )
     .expect("write helper");
@@ -39,8 +39,8 @@ fn cli_check_command_succeeds_for_temp_project() {
 fn cli_format_targets_checks_and_formats_project_files() {
     let temp_root = make_temp_project_root("cli-fmt");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
-    let main_file = src_dir.join("main.apex");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    let main_file = src_dir.join("main.arden");
     fs::write(
         &main_file,
         "function main(): None {println(\"hi\");return None;}\n",
@@ -67,7 +67,7 @@ fn cli_format_targets_checks_and_formats_project_files() {
 #[test]
 fn cli_run_tests_lists_filtered_tests_in_directory() {
     let temp_root = make_temp_project_root("cli-test-list");
-    let test_file = temp_root.join("smoke_test.apex");
+    let test_file = temp_root.join("smoke_test.arden");
     fs::write(
         &test_file,
         r#"
@@ -90,7 +90,7 @@ fn cli_run_tests_recurses_into_nested_test_directories() {
     let temp_root = make_temp_project_root("cli-test-nested");
     let nested_dir = temp_root.join("tests").join("unit");
     fs::create_dir_all(&nested_dir).expect("create nested test dir");
-    let nested_test = nested_dir.join("math_spec.apex");
+    let nested_test = nested_dir.join("math_spec.arden");
     fs::write(
         &nested_test,
         r#"
@@ -109,7 +109,7 @@ fn cli_run_tests_recurses_into_nested_test_directories() {
 #[test]
 fn cli_run_tests_discovers_mixed_case_test_filenames() {
     let temp_root = make_temp_project_root("cli-test-mixed-case");
-    let test_file = temp_root.join("MathTest.apex");
+    let test_file = temp_root.join("MathTest.arden");
     fs::write(
         &test_file,
         r#"
@@ -141,19 +141,19 @@ fn cli_run_tests_errors_for_missing_directory() {
 }
 
 #[test]
-fn cli_run_tests_rejects_non_apex_file_paths() {
-    let temp_root = make_temp_project_root("cli-test-non-apex");
+fn cli_run_tests_rejects_non_arden_file_paths() {
+    let temp_root = make_temp_project_root("cli-test-non-arden");
     let text_file = temp_root.join("notes.txt");
     fs::write(
         &text_file,
         "@Test\nfunction nope(): None { return None; }\n",
     )
-    .expect("write non-apex file");
+    .expect("write non-arden file");
 
-    let err = run_tests(Some(&text_file), true, None).expect_err("non-apex file path should fail");
+    let err = run_tests(Some(&text_file), true, None).expect_err("non-arden file path should fail");
     assert!(
-        err.contains("is not an .apex file"),
-        "expected non-apex file error, got: {err}"
+        err.contains("is not an .arden file"),
+        "expected non-arden file error, got: {err}"
     );
 
     let _ = fs::remove_dir_all(temp_root);
@@ -162,7 +162,7 @@ fn cli_run_tests_rejects_non_apex_file_paths() {
 #[test]
 fn cli_run_tests_reports_source_context_for_parse_errors() {
     let temp_root = make_temp_project_root("cli-test-parse-source-context");
-    let test_file = temp_root.join("broken_test.apex");
+    let test_file = temp_root.join("broken_test.arden");
     fs::write(
         &test_file,
         "@Test\nfunction broken(: None { return None; }\n",
@@ -171,7 +171,7 @@ fn cli_run_tests_reports_source_context_for_parse_errors() {
 
     let err = run_tests(Some(&test_file), true, None)
         .expect_err("test command should report parse source context");
-    assert!(err.contains("broken_test.apex:2:"), "{err}");
+    assert!(err.contains("broken_test.arden:2:"), "{err}");
     assert!(err.contains("-->"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -185,22 +185,22 @@ fn cli_run_tests_without_path_uses_project_file_list_only() {
     fs::create_dir_all(&examples_dir).expect("create examples dir");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/math_test.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/math_test.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction main(): None { return None; }\n",
     )
     .expect("write main");
     fs::write(
-        src_dir.join("math_test.apex"),
+        src_dir.join("math_test.arden"),
         "@Test\nfunction listedTest(): None { return None; }\n",
     )
     .expect("write listed test");
     fs::write(
-        examples_dir.join("broken_test.apex"),
+        examples_dir.join("broken_test.arden"),
         "@Test\nfunction broken(: None { return None; }\n",
     )
     .expect("write stray broken test");
@@ -217,9 +217,9 @@ fn cli_run_tests_without_path_uses_project_file_list_only() {
 fn cli_run_tests_without_path_executes_tests_in_non_test_named_project_files() {
     let temp_root = make_temp_project_root("cli-test-project-non-test-filename");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "@Test\nfunction smokeFromMain(): None { assert_eq(2 + 2, 4); return None; }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main with test");
@@ -236,8 +236,8 @@ fn cli_run_tests_without_path_executes_tests_in_non_test_named_project_files() {
 #[test]
 fn cli_run_tests_does_not_delete_existing_test_runner_neighbor_files() {
     let temp_root = make_temp_project_root("cli-test-runner-neighbor-files");
-    let test_file = temp_root.join("smoke_test.apex");
-    let existing_runner = temp_root.join("smoke_test.test_runner.apex");
+    let test_file = temp_root.join("smoke_test.arden");
+    let existing_runner = temp_root.join("smoke_test.test_runner.arden");
     let existing_exe = temp_root.join("smoke_test.test_runner.exe");
     fs::write(
         &test_file,
@@ -271,22 +271,22 @@ fn cli_run_tests_executes_project_local_alias_import_tests() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex", "src/math_spec.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden", "src/math_spec.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction main(): Integer { return 0; }\n",
     )
     .expect("write main");
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nmodule Math {\n    class Box<T> { value: T; constructor(value: T) { this.value = value; } function get(): T { return this.value; } }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("math_spec.apex"),
+            src_dir.join("math_spec.arden"),
             "package tests;\nimport lib as l;\n@Test\nfunction aliasImportTest(): None { value: Integer = l.Math.Box<Integer>(3).get(); assert_eq(value, 3); return None; }\n",
         )
         .expect("write test");
@@ -307,17 +307,17 @@ fn cli_build_reports_import_check_errors_only_once() {
     let temp_root = make_temp_project_root("cli-build-import-check-single-print");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer { value: root.M.Box = root.M.Box(7); return value.value; }\n",
         )
         .expect("write main");
     fs::write(
-            temp_root.join("src/helper.apex"),
+            temp_root.join("src/helper.arden"),
             "package app;\nmodule M { class Box { value: Integer; constructor(value: Integer) { this.value = value; } } }\n",
         )
         .expect("write helper");
@@ -336,7 +336,7 @@ fn cli_build_reports_import_check_errors_only_once() {
 
     std::thread::sleep(std::time::Duration::from_millis(20));
     fs::write(
-            temp_root.join("src/helper.apex"),
+            temp_root.join("src/helper.arden"),
             "package app;\nmodule M { class Other { value: Integer; constructor(value: Integer) { this.value = value; } } }\n",
         )
         .expect("rewrite helper without imported constructor symbol");
@@ -379,15 +379,15 @@ fn cli_build_reports_import_check_errors_only_once() {
 fn cli_run_tests_accepts_relative_project_file_path() {
     let temp_root = make_temp_project_root("cli-test-relative-project-file");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\n@Test\nfunction smoke(): None { assert_eq(1, 1); return None; }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main test file");
 
     with_current_dir(&temp_root, || {
-        run_tests(Some(Path::new("src/main.apex")), false, Some("smoke"))
+        run_tests(Some(Path::new("src/main.arden")), false, Some("smoke"))
             .expect("relative project file path should execute tests");
     });
 
@@ -397,7 +397,7 @@ fn cli_run_tests_accepts_relative_project_file_path() {
 #[test]
 fn cli_run_tests_accepts_relative_single_file_path_in_current_directory() {
     let temp_root = make_temp_project_root("cli-test-relative-single-file");
-    let test_file = temp_root.join("smoke_test.apex");
+    let test_file = temp_root.join("smoke_test.arden");
     fs::write(
         &test_file,
         "@Test\nfunction smoke(): None { return None; }\n",
@@ -405,7 +405,7 @@ fn cli_run_tests_accepts_relative_single_file_path_in_current_directory() {
     .expect("write test file");
 
     with_current_dir(&temp_root, || {
-        run_tests(Some(Path::new("smoke_test.apex")), false, Some("smoke"))
+        run_tests(Some(Path::new("smoke_test.arden")), false, Some("smoke"))
             .expect("relative single-file path should execute tests");
     });
 
@@ -415,7 +415,7 @@ fn cli_run_tests_accepts_relative_single_file_path_in_current_directory() {
 #[test]
 fn cli_run_tests_skips_before_hooks_for_ignored_tests() {
     let temp_root = make_temp_project_root("cli-test-ignore-skips-before");
-    let test_file = temp_root.join("ignored_before_test.apex");
+    let test_file = temp_root.join("ignored_before_test.arden");
     fs::write(
         &test_file,
         r#"
@@ -438,7 +438,7 @@ fn cli_run_tests_skips_before_hooks_for_ignored_tests() {
 #[test]
 fn cli_run_tests_skips_after_hooks_for_ignored_tests() {
     let temp_root = make_temp_project_root("cli-test-ignore-skips-after");
-    let test_file = temp_root.join("ignored_after_test.apex");
+    let test_file = temp_root.join("ignored_after_test.arden");
     fs::write(
         &test_file,
         r#"
@@ -461,7 +461,7 @@ fn cli_run_tests_skips_after_hooks_for_ignored_tests() {
 #[test]
 fn cli_run_tests_accepts_ignore_reasons_with_literal_braces() {
     let temp_root = make_temp_project_root("cli-test-ignore-reason-braces");
-    let test_file = temp_root.join("ignored_braces_test.apex");
+    let test_file = temp_root.join("ignored_braces_test.arden");
     fs::write(
         &test_file,
         "@Test\n@Ignore(\"\\{danger\\}\")\nfunction skipped(): None { return None; }\n",
@@ -482,7 +482,7 @@ fn cli_run_tests_skips_symlinked_directories() {
     let temp_root = make_temp_project_root("cli-test-symlink-dir");
     let tests_dir = temp_root.join("tests");
     let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
-        "apex-outside-tests-{}-{}",
+        "arden-outside-tests-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -492,7 +492,7 @@ fn cli_run_tests_skips_symlinked_directories() {
     fs::create_dir_all(&tests_dir).expect("create tests dir");
     fs::create_dir_all(&outside_dir).expect("create outside dir");
     fs::write(
-        outside_dir.join("escape_test.apex"),
+        outside_dir.join("escape_test.arden"),
         "@Test\nfunction escaped(): None { return None; }\n",
     )
     .expect("write outside test");
@@ -516,14 +516,14 @@ fn cli_run_tests_rejects_symlinked_file_paths_outside_root() {
 
     let temp_root = make_temp_project_root("cli-test-symlink-file");
     let outside_file = temp_root.parent().expect("temp root parent").join(format!(
-        "apex-outside-test-file-{}-{}.apex",
+        "arden-outside-test-file-{}-{}.arden",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time")
             .as_nanos()
     ));
-    let linked_file = temp_root.join("linked_test.apex");
+    let linked_file = temp_root.join("linked_test.arden");
     fs::write(
         &outside_file,
         "@Test\nfunction escaped(): None { return None; }\n",
@@ -548,8 +548,8 @@ fn cli_run_tests_accepts_symlinked_file_paths_inside_root() {
     use std::os::unix::fs::symlink;
 
     let temp_root = make_temp_project_root("cli-test-safe-symlink-file");
-    let real_file = temp_root.join("real_test.apex");
-    let linked_file = temp_root.join("linked_test.apex");
+    let real_file = temp_root.join("real_test.arden");
+    let linked_file = temp_root.join("linked_test.arden");
     fs::write(
         &real_file,
         "@Test\nfunction smoke(): None { return None; }\n",
@@ -570,7 +570,7 @@ fn cli_run_tests_rejects_paths_through_symlinked_directories() {
 
     let temp_root = make_temp_project_root("cli-test-symlink-ancestor");
     let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
-        "apex-outside-test-dir-{}-{}",
+        "arden-outside-test-dir-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -578,10 +578,10 @@ fn cli_run_tests_rejects_paths_through_symlinked_directories() {
             .as_nanos()
     ));
     let linked_dir = temp_root.join("linked-tests");
-    let linked_file = linked_dir.join("escape_test.apex");
+    let linked_file = linked_dir.join("escape_test.arden");
     fs::create_dir_all(&outside_dir).expect("create outside dir");
     fs::write(
-        outside_dir.join("escape_test.apex"),
+        outside_dir.join("escape_test.arden"),
         "@Test\nfunction escaped(): None { return None; }\n",
     )
     .expect("write outside test");
@@ -602,7 +602,7 @@ fn cli_run_tests_rejects_paths_through_symlinked_directories() {
 fn cli_format_targets_rejects_project_files_outside_root() {
     let temp_root = make_temp_project_root("cli-fmt-outside-root");
     let outside_file = temp_root.parent().expect("temp root parent").join(format!(
-        "apex-outside-format-{}-{}.apex",
+        "arden-outside-format-{}-{}.arden",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -620,12 +620,12 @@ fn cli_format_targets_rejects_project_files_outside_root() {
     );
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", &rel_outside],
-        "src/main.apex",
+        &["src/main.arden", &rel_outside],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nfunction main(): None { return None; }\n",
     )
     .expect("write main");
@@ -645,13 +645,13 @@ fn cli_format_targets_rejects_project_files_outside_root() {
 
 #[cfg(unix)]
 #[test]
-fn collect_apex_files_skips_symlinked_directories() {
+fn collect_arden_files_skips_symlinked_directories() {
     use std::os::unix::fs::symlink;
 
-    let temp_root = make_temp_project_root("collect-apex-symlink-dir");
+    let temp_root = make_temp_project_root("collect-arden-symlink-dir");
     let real_dir = temp_root.join("real");
     let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
-        "apex-outside-dir-{}-{}",
+        "arden-outside-dir-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -660,8 +660,8 @@ fn collect_apex_files_skips_symlinked_directories() {
     ));
     fs::create_dir_all(&real_dir).expect("create real dir");
     fs::create_dir_all(&outside_dir).expect("create outside dir");
-    let inside_file = real_dir.join("inside.apex");
-    let outside_file = outside_dir.join("outside.apex");
+    let inside_file = real_dir.join("inside.arden");
+    let outside_file = outside_dir.join("outside.arden");
     fs::write(&inside_file, "function inside(): None { return None; }\n")
         .expect("write inside file");
     fs::write(&outside_file, "function outside(): None { return None; }\n")
@@ -669,10 +669,10 @@ fn collect_apex_files_skips_symlinked_directories() {
     symlink(&outside_dir, temp_root.join("linked-outside")).expect("create dir symlink");
 
     let files =
-        collect_apex_files(&temp_root).expect("collect_apex_files should skip symlink dirs");
+        collect_arden_files(&temp_root).expect("collect_arden_files should skip symlink dirs");
     assert!(
         files.contains(&inside_file),
-        "expected real apex file to be discovered: {files:?}"
+        "expected real arden file to be discovered: {files:?}"
     );
     assert!(
         !files.contains(&outside_file),
@@ -685,24 +685,24 @@ fn collect_apex_files_skips_symlinked_directories() {
 
 #[cfg(unix)]
 #[test]
-fn collect_apex_files_rejects_symlinked_file_paths_outside_root() {
+fn collect_arden_files_rejects_symlinked_file_paths_outside_root() {
     use std::os::unix::fs::symlink;
 
-    let temp_root = make_temp_project_root("collect-apex-symlink-file");
+    let temp_root = make_temp_project_root("collect-arden-symlink-file");
     let outside_file = temp_root.parent().expect("temp root parent").join(format!(
-        "apex-outside-format-file-{}-{}.apex",
+        "arden-outside-format-file-{}-{}.arden",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("time")
             .as_nanos()
     ));
-    let linked_file = temp_root.join("linked_format.apex");
+    let linked_file = temp_root.join("linked_format.arden");
     fs::write(&outside_file, "function escaped(): None { return None; }\n")
         .expect("write outside file");
     symlink(&outside_file, &linked_file).expect("create file symlink");
 
-    let err = collect_apex_files(&linked_file)
+    let err = collect_arden_files(&linked_file)
         .expect_err("fmt file collection should reject symlinked files escaping the root");
     assert!(
         err.contains("resolves outside the requested directory tree"),
@@ -715,18 +715,18 @@ fn collect_apex_files_rejects_symlinked_file_paths_outside_root() {
 
 #[cfg(unix)]
 #[test]
-fn collect_apex_files_accepts_symlinked_file_paths_inside_root() {
+fn collect_arden_files_accepts_symlinked_file_paths_inside_root() {
     use std::os::unix::fs::symlink;
 
-    let temp_root = make_temp_project_root("collect-apex-safe-symlink-file");
-    let real_file = temp_root.join("real.apex");
-    let linked_file = temp_root.join("linked.apex");
+    let temp_root = make_temp_project_root("collect-arden-safe-symlink-file");
+    let real_file = temp_root.join("real.arden");
+    let linked_file = temp_root.join("linked.arden");
     fs::write(&real_file, "function smoke(): None { return None; }\n")
-        .expect("write real apex file");
+        .expect("write real arden file");
     symlink(&real_file, &linked_file).expect("create file symlink");
 
-    let files = collect_apex_files(&linked_file)
-        .expect("safe in-tree symlinked apex file should be accepted");
+    let files = collect_arden_files(&linked_file)
+        .expect("safe in-tree symlinked arden file should be accepted");
     assert_eq!(files, vec![linked_file]);
 
     let _ = fs::remove_dir_all(temp_root);
@@ -734,12 +734,12 @@ fn collect_apex_files_accepts_symlinked_file_paths_inside_root() {
 
 #[cfg(unix)]
 #[test]
-fn collect_apex_files_rejects_paths_through_symlinked_directories() {
+fn collect_arden_files_rejects_paths_through_symlinked_directories() {
     use std::os::unix::fs::symlink;
 
-    let temp_root = make_temp_project_root("collect-apex-symlink-ancestor");
+    let temp_root = make_temp_project_root("collect-arden-symlink-ancestor");
     let outside_dir = temp_root.parent().expect("temp root parent").join(format!(
-        "apex-outside-format-dir-{}-{}",
+        "arden-outside-format-dir-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -747,16 +747,16 @@ fn collect_apex_files_rejects_paths_through_symlinked_directories() {
             .as_nanos()
     ));
     let linked_dir = temp_root.join("linked-format");
-    let linked_file = linked_dir.join("escape.apex");
+    let linked_file = linked_dir.join("escape.arden");
     fs::create_dir_all(&outside_dir).expect("create outside dir");
     fs::write(
-        outside_dir.join("escape.apex"),
+        outside_dir.join("escape.arden"),
         "function escaped(): None { return None; }\n",
     )
     .expect("write outside file");
     symlink(&outside_dir, &linked_dir).expect("create dir symlink");
 
-    let err = collect_apex_files(&linked_file)
+    let err = collect_arden_files(&linked_file)
         .expect_err("fmt file collection should reject symlinked ancestor directories");
     assert!(
         err.contains("must not traverse symlinked directories"),
@@ -771,7 +771,7 @@ fn collect_apex_files_rejects_paths_through_symlinked_directories() {
 fn cli_lint_target_rejects_entry_outside_root() {
     let temp_root = make_temp_project_root("cli-lint-outside-root");
     let outside_file = temp_root.parent().expect("temp root parent").join(format!(
-        "apex-outside-lint-{}-{}.apex",
+        "arden-outside-lint-{}-{}.arden",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -789,12 +789,12 @@ fn cli_lint_target_rejects_entry_outside_root() {
     );
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", &rel_outside],
+        &["src/main.arden", &rel_outside],
         &rel_outside,
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nfunction helper(): None { return None; }\n",
     )
     .expect("write main");
@@ -828,12 +828,12 @@ fn cli_lint_target_rejects_directory_paths() {
 fn cli_info_rejects_invalid_project_opt_level() {
     let temp_root = make_temp_project_root("cli-info-invalid-opt-level");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\nopt_level = \"turbo\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\noutput = \"smoke\"\nopt_level = \"turbo\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
     .expect("write main");
@@ -847,20 +847,20 @@ fn cli_info_rejects_invalid_project_opt_level() {
 }
 
 #[test]
-fn cli_info_rejects_non_apex_entry_path() {
-    let temp_root = make_temp_project_root("cli-info-non-apex-entry");
+fn cli_info_rejects_non_arden_entry_path() {
+    let temp_root = make_temp_project_root("cli-info-non-arden-entry");
     fs::write(
-            temp_root.join("apex.toml"),
+            temp_root.join("arden.toml"),
             "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.txt\"\nfiles = [\"src/main.txt\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
-    fs::write(temp_root.join("src/main.txt"), "not apex\n").expect("write main");
+        .expect("write arden.toml");
+    fs::write(temp_root.join("src/main.txt"), "not arden\n").expect("write main");
 
     with_current_dir(&temp_root, || {
-        let err = show_project_info().expect_err("info should reject non-apex entry");
+        let err = show_project_info().expect_err("info should reject non-arden entry");
         assert!(
-            err.contains("must resolve to an .apex source file")
-                || err.contains("is not an .apex file"),
+            err.contains("must resolve to an .arden source file")
+                || err.contains("is not an .arden file"),
             "{err}"
         );
     });
@@ -872,12 +872,12 @@ fn cli_info_rejects_non_apex_entry_path() {
 fn cli_info_rejects_directory_entry_path() {
     let temp_root = make_temp_project_root("cli-info-directory-entry");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src\"\nfiles = [\"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
     .expect("write main");
@@ -894,25 +894,25 @@ fn cli_info_rejects_directory_entry_path() {
 }
 
 #[test]
-fn cli_info_rejects_non_apex_secondary_file_path() {
-    let temp_root = make_temp_project_root("cli-info-non-apex-secondary-file");
+fn cli_info_rejects_non_arden_secondary_file_path() {
+    let temp_root = make_temp_project_root("cli-info-non-arden-secondary-file");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.txt\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.txt\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
     .expect("write main");
-    fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+    fs::write(temp_root.join("src/helper.txt"), "not arden\n").expect("write helper");
 
     with_current_dir(&temp_root, || {
-        let err = show_project_info().expect_err("info should reject non-apex secondary file");
+        let err = show_project_info().expect_err("info should reject non-arden secondary file");
         assert!(
-            err.contains("must resolve to an .apex source file")
-                || err.contains("is not an .apex file"),
+            err.contains("must resolve to an .arden source file")
+                || err.contains("is not an .arden file"),
             "{err}"
         );
     });
@@ -921,15 +921,15 @@ fn cli_info_rejects_non_apex_secondary_file_path() {
 }
 
 #[test]
-fn cli_fix_target_rejects_non_apex_file_paths() {
-    let temp_root = make_temp_project_root("cli-fix-non-apex");
+fn cli_fix_target_rejects_non_arden_file_paths() {
+    let temp_root = make_temp_project_root("cli-fix-non-arden");
     let text_file = temp_root.join("notes.txt");
-    fs::write(&text_file, "not apex\n").expect("write text file");
+    fs::write(&text_file, "not arden\n").expect("write text file");
 
-    let err = fix_target(Some(&text_file)).expect_err("fix should reject non-apex files");
+    let err = fix_target(Some(&text_file)).expect_err("fix should reject non-arden files");
     assert!(
-        err.contains("is not an .apex file"),
-        "expected non-apex validation error, got: {err}"
+        err.contains("is not an .arden file"),
+        "expected non-arden validation error, got: {err}"
     );
 
     let _ = fs::remove_dir_all(temp_root);
@@ -964,28 +964,28 @@ fn cli_parse_file_rejects_directory_paths() {
 #[test]
 fn cli_parse_file_reports_source_context_for_parse_errors() {
     let temp_root = make_temp_project_root("cli-parse-source-context");
-    let source_file = temp_root.join("broken.apex");
+    let source_file = temp_root.join("broken.arden");
     fs::write(&source_file, "function main(: None { return None; }\n")
         .expect("write malformed source");
 
     let err = parse_file(&source_file).expect_err("parse should report syntax error");
-    assert!(err.contains("broken.apex:1:"), "{err}");
+    assert!(err.contains("broken.arden:1:"), "{err}");
     assert!(err.contains("-->"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
 }
 
 #[test]
-fn cli_compile_file_rejects_non_apex_paths() {
-    let temp_root = make_temp_project_root("cli-compile-non-apex");
+fn cli_compile_file_rejects_non_arden_paths() {
+    let temp_root = make_temp_project_root("cli-compile-non-arden");
     let text_file = temp_root.join("notes.txt");
-    fs::write(&text_file, "not apex\n").expect("write text file");
+    fs::write(&text_file, "not arden\n").expect("write text file");
 
     let err = compile_file(&text_file, None, false, true, None, None)
-        .expect_err("compile should reject non-apex files");
+        .expect_err("compile should reject non-arden files");
     assert!(
-        err.contains("is not an .apex file"),
-        "expected non-apex validation error, got: {err}"
+        err.contains("is not an .arden file"),
+        "expected non-arden validation error, got: {err}"
     );
 
     let _ = fs::remove_dir_all(temp_root);
@@ -996,11 +996,11 @@ fn cli_commands_consistently_reject_invalid_files_before_output_processing() {
     let temp_root = make_temp_project_root("cli-invalid-file-before-output");
     let text_file = temp_root.join("notes.txt");
     let output_path = temp_root.join("nested/bin/app");
-    fs::write(&text_file, "not apex\n").expect("write text file");
+    fs::write(&text_file, "not arden\n").expect("write text file");
 
     let err = compile_file(&text_file, Some(&output_path), false, true, None, None)
         .expect_err("compile should reject invalid source before touching output path");
-    assert!(err.contains("is not an .apex file"), "{err}");
+    assert!(err.contains("is not an .arden file"), "{err}");
     assert!(
         !output_path.exists(),
         "output path should not be created on source validation failure"
@@ -1017,16 +1017,16 @@ fn cli_commands_consistently_reject_invalid_files_before_output_processing() {
 fn cli_project_commands_consistently_report_invalid_file_list_entries() {
     let temp_root = make_temp_project_root("cli-project-invalid-files-list-order");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/helper.txt\", \"src/main.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/helper.txt\", \"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
     .expect("write main");
-    fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+    fs::write(temp_root.join("src/helper.txt"), "not arden\n").expect("write helper");
 
     with_current_dir(&temp_root, || {
         let info_err =
@@ -1038,7 +1038,7 @@ fn cli_project_commands_consistently_report_invalid_file_list_entries() {
 
         for err in [info_err, check_err, lint_err, build_err] {
             assert!(
-                err.contains("src/helper.txt") || err.contains("is not an .apex file"),
+                err.contains("src/helper.txt") || err.contains("is not an .arden file"),
                 "{err}"
             );
         }
@@ -1050,7 +1050,7 @@ fn cli_project_commands_consistently_report_invalid_file_list_entries() {
 #[test]
 fn cli_compile_creates_missing_output_parent_directory() {
     let temp_root = make_temp_project_root("cli-compile-create-parent");
-    let source_file = temp_root.join("main.apex");
+    let source_file = temp_root.join("main.arden");
     let output_path = temp_root.join("nested/bin/app");
     fs::write(&source_file, "function main(): None { return None; }\n").expect("write source");
 
@@ -1076,15 +1076,15 @@ fn cli_check_file_rejects_directory_paths() {
 }
 
 #[test]
-fn cli_check_file_rejects_non_apex_paths() {
-    let temp_root = make_temp_project_root("cli-check-non-apex");
+fn cli_check_file_rejects_non_arden_paths() {
+    let temp_root = make_temp_project_root("cli-check-non-arden");
     let text_file = temp_root.join("notes.txt");
-    fs::write(&text_file, "not apex\n").expect("write text file");
+    fs::write(&text_file, "not arden\n").expect("write text file");
 
-    let err = check_file(Some(&text_file)).expect_err("check should reject non-apex files");
+    let err = check_file(Some(&text_file)).expect_err("check should reject non-arden files");
     assert!(
-        err.contains("is not an .apex file"),
-        "expected non-apex validation error, got: {err}"
+        err.contains("is not an .arden file"),
+        "expected non-arden validation error, got: {err}"
     );
 
     let _ = fs::remove_dir_all(temp_root);
@@ -1096,17 +1096,17 @@ fn cli_check_command_reports_cross_file_type_errors() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction main(): None { value: Integer = helper(); return None; }\n",
     )
     .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nfunction helper(): String { return \"oops\"; }\n",
     )
     .expect("write helper");
@@ -1128,12 +1128,12 @@ fn cli_check_command_reports_cross_file_type_errors() {
 fn cli_info_rejects_output_path_matching_project_config() {
     let temp_root = make_temp_project_root("cli-info-output-config-collision");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"apex.toml\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\noutput = \"arden.toml\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
     .expect("write main");
@@ -1153,17 +1153,17 @@ fn cli_check_command_reports_cross_file_borrow_errors() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nfunction main(): None { s: String = \"hello\"; consume(s); t: String = s; return None; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nfunction consume(owned s: String): None { return None; }\n",
     )
     .expect("write helper");

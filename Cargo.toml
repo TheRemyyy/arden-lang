@@ -1,9 +1,9 @@
 [package]
-name = "apex-compiler"
+name = "arden"
 version = "1.3.5"
 edition = "2021"
 authors = ["TheRemyyy"]
-description = "Apex Programming Language Compiler"
+description = "Arden systems programming language compiler"
 
 [dependencies]
 # LLVM 21 bindings

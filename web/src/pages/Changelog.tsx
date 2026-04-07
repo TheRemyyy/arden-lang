@@ -19,7 +19,7 @@ export function Changelog() {
         <div className="flex-1 pt-24 pb-20 px-6 max-w-4xl mx-auto w-full bg-[#09090b] min-h-screen overflow-x-hidden">
             <div className="mb-16 text-center">
                 <h1 className="text-5xl font-bold text-white mb-6 tracking-tight">Changelog</h1>
-                <p className="text-lg text-gray-400 font-medium max-w-2xl mx-auto">Tracking the latest improvements to Apex.</p>
+                <p className="text-lg text-gray-400 font-medium max-w-2xl mx-auto">Tracking the latest improvements to Arden.</p>
             </div>
 
             <motion.div

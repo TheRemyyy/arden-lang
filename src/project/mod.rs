@@ -1,6 +1,6 @@
-//! Apex Project Configuration
+//! Arden Project Configuration
 //!
-//! Supports multi-file projects with apex.toml configuration
+//! Supports multi-file projects with arden.toml configuration
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -108,9 +108,9 @@ fn validate_project_path(
         ));
     }
 
-    if resolved_path.extension().and_then(|ext| ext.to_str()) != Some("apex") {
+    if resolved_path.extension().and_then(|ext| ext.to_str()) != Some("arden") {
         return Err(format!(
-            "{} '{}' must resolve to an .apex source file",
+            "{} '{}' must resolve to an .arden source file",
             label, relative_path
         ));
     }
@@ -232,8 +232,8 @@ impl Default for ProjectConfig {
         Self {
             name: "untitled".to_string(),
             version: "0.1.0".to_string(),
-            entry: "src/main.apex".to_string(),
-            files: vec!["src/main.apex".to_string()],
+            entry: "src/main.arden".to_string(),
+            files: vec!["src/main.arden".to_string()],
             output: default_output(),
             flags: vec![],
             dependencies: HashMap::new(),
@@ -248,7 +248,7 @@ impl Default for ProjectConfig {
 }
 
 impl ProjectConfig {
-    /// Load project config from apex.toml
+    /// Load project config from arden.toml
     pub fn load(path: &Path) -> Result<Self, String> {
         let content =
             fs::read_to_string(path).map_err(|e| format!("Failed to read project file: {}", e))?;
@@ -264,7 +264,7 @@ impl ProjectConfig {
             .map_err(|e| format!("Failed to parse project file: {}", e))
     }
 
-    /// Save project config to apex.toml
+    /// Save project config to arden.toml
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let content = toml::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize project: {}", e))?;
@@ -279,8 +279,8 @@ impl ProjectConfig {
         Self {
             name: name.to_string(),
             version: "0.1.0".to_string(),
-            entry: "src/main.apex".to_string(),
-            files: vec!["src/main.apex".to_string()],
+            entry: "src/main.arden".to_string(),
+            files: vec!["src/main.arden".to_string()],
             output: name.to_string(),
             flags: vec![],
             dependencies: HashMap::new(),
@@ -318,7 +318,8 @@ impl ProjectConfig {
 
         let output_path =
             normalize_project_relative_path(&canonical_root, Path::new(&self.output))?;
-        let config_path = normalize_project_relative_path(&canonical_root, Path::new("apex.toml"))?;
+        let config_path =
+            normalize_project_relative_path(&canonical_root, Path::new("arden.toml"))?;
         if output_path == config_path {
             return Err(format!(
                 "Output path '{}' must not overwrite the project config",
@@ -355,7 +356,7 @@ impl ProjectConfig {
     }
 }
 
-/// Find project root by looking for apex.toml
+/// Find project root by looking for arden.toml
 pub fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
     let normalized = if start_dir.is_absolute() {
         start_dir.to_path_buf()
@@ -372,7 +373,7 @@ pub fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
     };
 
     while let Some(dir) = current {
-        let config_path = dir.join("apex.toml");
+        let config_path = dir.join("arden.toml");
         if config_path.is_file() {
             return Some(dir.to_path_buf());
         }
@@ -421,8 +422,8 @@ mod tests {
             r#"
 name = "demo"
 version = "0.1.0"
-entry = "src/main.apex"
-files = ["src/main.apex"]
+entry = "src/main.arden"
+files = ["src/main.arden"]
 output = "demo"
 output_kind = "shared"
 link_libs = ["ssl", "crypto"]
@@ -441,29 +442,29 @@ link_args = ["-Wl,--as-needed"]
     #[test]
     fn loads_project_table_toml_shape() {
         let dir = std::env::temp_dir();
-        let path = dir.join("apex_project_table_shape_test.toml");
+        let path = dir.join("arden_project_table_shape_test.toml");
         let content = r#"
 [project]
 name = "demo"
 version = "0.1.0"
-entry = "src/main.apex"
-files = ["src/main.apex"]
+entry = "src/main.arden"
+files = ["src/main.arden"]
 output = "demo"
 "#;
         std::fs::write(&path, content).expect("write temporary toml");
         let config = ProjectConfig::load(&path).expect("project table shape should load");
         let _ = std::fs::remove_file(&path);
         assert_eq!(config.name, "demo");
-        assert_eq!(config.entry, "src/main.apex");
+        assert_eq!(config.entry, "src/main.arden");
     }
 
     #[test]
     fn validate_rejects_entry_outside_project_root() {
-        let project_root = unique_temp_dir("apex_project_validate_entry_escape");
+        let project_root = unique_temp_dir("arden_project_validate_entry_escape");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
@@ -471,13 +472,13 @@ output = "demo"
         let escaped_file = project_root
             .parent()
             .expect("temp dir should have parent")
-            .join("escaped_entry.apex");
+            .join("escaped_entry.arden");
         std::fs::write(&escaped_file, "function main(): None { return None; }\n")
             .expect("escaped file should be written");
 
         let mut config = ProjectConfig::new("demo");
-        config.entry = "../escaped_entry.apex".to_string();
-        config.files = vec!["../escaped_entry.apex".to_string()];
+        config.entry = "../escaped_entry.arden".to_string();
+        config.files = vec!["../escaped_entry.arden".to_string()];
 
         let error = config
             .validate(&project_root)
@@ -491,11 +492,11 @@ output = "demo"
 
     #[test]
     fn validate_rejects_source_file_outside_project_root() {
-        let project_root = unique_temp_dir("apex_project_validate_file_escape");
+        let project_root = unique_temp_dir("arden_project_validate_file_escape");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
@@ -503,12 +504,12 @@ output = "demo"
         let escaped_file = project_root
             .parent()
             .expect("temp dir should have parent")
-            .join("escaped_module.apex");
+            .join("escaped_module.arden");
         std::fs::write(&escaped_file, "function helper(): None { return None; }\n")
             .expect("escaped module should be written");
 
         let mut config = ProjectConfig::new("demo");
-        config.files.push("../escaped_module.apex".to_string());
+        config.files.push("../escaped_module.arden".to_string());
 
         let error = config
             .validate(&project_root)
@@ -522,7 +523,7 @@ output = "demo"
 
     #[test]
     fn validate_rejects_directory_entry_path() {
-        let project_root = unique_temp_dir("apex_project_validate_entry_dir");
+        let project_root = unique_temp_dir("arden_project_validate_entry_dir");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
 
@@ -541,11 +542,11 @@ output = "demo"
 
     #[test]
     fn validate_rejects_directory_source_path() {
-        let project_root = unique_temp_dir("apex_project_validate_file_dir");
+        let project_root = unique_temp_dir("arden_project_validate_file_dir");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
@@ -564,11 +565,11 @@ output = "demo"
     }
 
     #[test]
-    fn validate_rejects_non_apex_entry_path() {
-        let project_root = unique_temp_dir("apex_project_validate_entry_non_apex");
+    fn validate_rejects_non_arden_entry_path() {
+        let project_root = unique_temp_dir("arden_project_validate_entry_non_arden");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
-        std::fs::write(src_dir.join("main.txt"), "not apex\n")
+        std::fs::write(src_dir.join("main.txt"), "not arden\n")
             .expect("entry file should be written");
 
         let mut config = ProjectConfig::new("demo");
@@ -577,27 +578,27 @@ output = "demo"
 
         let error = config
             .validate(&project_root)
-            .expect_err("non-apex entry path should be rejected");
+            .expect_err("non-arden entry path should be rejected");
 
         let _ = std::fs::remove_dir_all(&project_root);
 
         assert!(
-            error.contains("must resolve to an .apex source file"),
+            error.contains("must resolve to an .arden source file"),
             "{error}"
         );
     }
 
     #[test]
-    fn validate_rejects_non_apex_source_path() {
-        let project_root = unique_temp_dir("apex_project_validate_source_non_apex");
+    fn validate_rejects_non_arden_source_path() {
+        let project_root = unique_temp_dir("arden_project_validate_source_non_arden");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
-        std::fs::write(src_dir.join("helper.txt"), "not apex\n")
+        std::fs::write(src_dir.join("helper.txt"), "not arden\n")
             .expect("helper file should be written");
 
         let mut config = ProjectConfig::new("demo");
@@ -605,23 +606,23 @@ output = "demo"
 
         let error = config
             .validate(&project_root)
-            .expect_err("non-apex source path should be rejected");
+            .expect_err("non-arden source path should be rejected");
 
         let _ = std::fs::remove_dir_all(&project_root);
 
         assert!(
-            error.contains("must resolve to an .apex source file"),
+            error.contains("must resolve to an .arden source file"),
             "{error}"
         );
     }
 
     #[test]
     fn validate_rejects_output_path_outside_project_root() {
-        let project_root = unique_temp_dir("apex_project_validate_output_escape");
+        let project_root = unique_temp_dir("arden_project_validate_output_escape");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
@@ -640,21 +641,21 @@ output = "demo"
 
     #[test]
     fn validate_rejects_output_path_matching_project_config() {
-        let project_root = unique_temp_dir("apex_project_validate_output_config_collision");
+        let project_root = unique_temp_dir("arden_project_validate_output_config_collision");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
 
         let mut config = ProjectConfig::new("demo");
-        config.output = "apex.toml".to_string();
+        config.output = "arden.toml".to_string();
 
         let error = config
             .validate(&project_root)
-            .expect_err("output matching apex.toml should be rejected");
+            .expect_err("output matching arden.toml should be rejected");
 
         let _ = std::fs::remove_dir_all(&project_root);
 
@@ -663,17 +664,17 @@ output = "demo"
 
     #[test]
     fn validate_rejects_output_path_matching_entry_file() {
-        let project_root = unique_temp_dir("apex_project_validate_output_entry_collision");
+        let project_root = unique_temp_dir("arden_project_validate_output_entry_collision");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
 
         let mut config = ProjectConfig::new("demo");
-        config.output = "src/main.apex".to_string();
+        config.output = "src/main.arden".to_string();
 
         let error = config
             .validate(&project_root)
@@ -686,23 +687,23 @@ output = "demo"
 
     #[test]
     fn validate_rejects_output_path_matching_secondary_source_file() {
-        let project_root = unique_temp_dir("apex_project_validate_output_source_collision");
+        let project_root = unique_temp_dir("arden_project_validate_output_source_collision");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
         std::fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "function helper(): None { return None; }\n",
         )
         .expect("helper file should be written");
 
         let mut config = ProjectConfig::new("demo");
-        config.files.push("src/helper.apex".to_string());
-        config.output = "src/helper.apex".to_string();
+        config.files.push("src/helper.arden".to_string());
+        config.output = "src/helper.arden".to_string();
 
         let error = config
             .validate(&project_root)
@@ -715,17 +716,17 @@ output = "demo"
 
     #[test]
     fn validate_rejects_duplicate_source_files() {
-        let project_root = unique_temp_dir("apex_project_validate_duplicate_files");
+        let project_root = unique_temp_dir("arden_project_validate_duplicate_files");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "function main(): None { return None; }\n",
         )
         .expect("entry file should be written");
 
         let mut config = ProjectConfig::new("demo");
-        config.files = vec!["src/main.apex".to_string(), "src/main.apex".to_string()];
+        config.files = vec!["src/main.arden".to_string(), "src/main.arden".to_string()];
 
         let error = config
             .validate(&project_root)
@@ -738,12 +739,12 @@ output = "demo"
 
     #[test]
     fn find_project_root_accepts_source_file_path() {
-        let project_root = unique_temp_dir("apex_project_find_root_file");
+        let project_root = unique_temp_dir("arden_project_find_root_file");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
-        std::fs::write(project_root.join("apex.toml"), "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n")
+        std::fs::write(project_root.join("arden.toml"), "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\n")
             .expect("project config should be written");
-        let source_file = src_dir.join("main.apex");
+        let source_file = src_dir.join("main.arden");
         std::fs::write(&source_file, "function main(): None { return None; }\n")
             .expect("source file should be written");
 
@@ -756,12 +757,12 @@ output = "demo"
 
     #[test]
     fn is_in_project_accepts_source_file_path() {
-        let project_root = unique_temp_dir("apex_project_is_in_project_file");
+        let project_root = unique_temp_dir("arden_project_is_in_project_file");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
-        std::fs::write(project_root.join("apex.toml"), "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n")
+        std::fs::write(project_root.join("arden.toml"), "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\n")
             .expect("project config should be written");
-        let source_file = src_dir.join("main.apex");
+        let source_file = src_dir.join("main.arden");
         std::fs::write(&source_file, "function main(): None { return None; }\n")
             .expect("source file should be written");
 
@@ -774,12 +775,12 @@ output = "demo"
 
     #[test]
     fn find_project_root_accepts_nonexistent_source_file_path() {
-        let project_root = unique_temp_dir("apex_project_find_root_missing_file");
+        let project_root = unique_temp_dir("arden_project_find_root_missing_file");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
-        std::fs::write(project_root.join("apex.toml"), "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n")
+        std::fs::write(project_root.join("arden.toml"), "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\n")
             .expect("project config should be written");
-        let future_source_file = src_dir.join("new_file.apex");
+        let future_source_file = src_dir.join("new_file.arden");
 
         let discovered = super::find_project_root(&future_source_file);
 
@@ -790,12 +791,12 @@ output = "demo"
 
     #[test]
     fn find_project_root_accepts_existing_directory_with_dot_in_name() {
-        let parent_root = unique_temp_dir("apex_project_find_root_dotted_dir_parent");
+        let parent_root = unique_temp_dir("arden_project_find_root_dotted_dir_parent");
         let project_root = parent_root.join("demo.v1");
         std::fs::create_dir_all(project_root.join("src")).expect("project src dir should exist");
         std::fs::write(
-            project_root.join("apex.toml"),
-            "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n",
+            project_root.join("arden.toml"),
+            "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\n",
         )
         .expect("project config should be written");
 
@@ -808,12 +809,12 @@ output = "demo"
 
     #[test]
     fn find_project_root_accepts_relative_existing_directory_inside_project() {
-        let project_root = unique_temp_dir("apex_project_find_root_relative_dir");
+        let project_root = unique_temp_dir("arden_project_find_root_relative_dir");
         let src_dir = project_root.join("src");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
         std::fs::write(
-            project_root.join("apex.toml"),
-            "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\n",
+            project_root.join("arden.toml"),
+            "name = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\n",
         )
         .expect("project config should be written");
 
@@ -828,11 +829,11 @@ output = "demo"
     }
 
     #[test]
-    fn find_project_root_rejects_directory_named_apex_toml() {
-        let project_root = unique_temp_dir("apex_project_find_root_fake_config_dir");
-        let fake_config_dir = project_root.join("apex.toml");
+    fn find_project_root_rejects_directory_named_arden_toml() {
+        let project_root = unique_temp_dir("arden_project_find_root_fake_config_dir");
+        let fake_config_dir = project_root.join("arden.toml");
         let src_dir = project_root.join("src");
-        std::fs::create_dir_all(&fake_config_dir).expect("fake apex.toml directory should exist");
+        std::fs::create_dir_all(&fake_config_dir).expect("fake arden.toml directory should exist");
         std::fs::create_dir_all(&src_dir).expect("project src dir should be created");
 
         let discovered = super::find_project_root(&src_dir);

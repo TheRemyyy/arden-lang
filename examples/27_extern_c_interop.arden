@@ -9,10 +9,10 @@ extern function strlen(msg: String): Integer;
 function main(): None {
     println("=== C Interop Tests ===");
 
-    len: Integer = strlen("hello from apex extern");
+    len: Integer = strlen("hello from arden extern");
 
     println("strlen(message) = {len}");
-    puts("hello from apex extern");
+    puts("hello from arden extern");
 
     println("Extern calls executed.");
     return None;

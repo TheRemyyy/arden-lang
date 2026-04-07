@@ -1,12 +1,12 @@
 # Quick Start
 
-This guide will get you up and running with your first Apex program.
+This guide will get you up and running with your first Arden program.
 
 ## Hello World
 
-Create a file named `hello.apex` with the following content:
+Create a file named `hello.arden` with the following content:
 
-```apex
+```arden
 import std.io.*;
 
 function main(): None {
@@ -24,7 +24,7 @@ You can compile and run your program in a few different ways:
 The `run` command handles compilation and execution automatically:
 
 ```bash
-apex run hello.apex
+arden run hello.arden
 ```
 
 #### 2. Separate Compilation
@@ -32,7 +32,7 @@ apex run hello.apex
 To compile to a native executable:
 
 ```bash
-apex compile hello.apex
+arden compile hello.arden
 ```
 
 This produces an executable named `hello` (or `hello.exe` on Windows). Run it as usual:
@@ -47,7 +47,7 @@ This produces an executable named `hello` (or `hello.exe` on Windows). Run it as
 To check for errors without compiling (faster for development):
 
 ```bash
-apex check hello.apex
+arden check hello.arden
 ```
 
 #### 4. Formatting
@@ -55,16 +55,16 @@ apex check hello.apex
 To normalize layout before commits or in CI:
 
 ```bash
-apex fmt hello.apex
-apex fmt --check
-apex lint hello.apex
-apex fix hello.apex
+arden fmt hello.arden
+arden fmt --check
+arden lint hello.arden
+arden fix hello.arden
 ```
 
-For Unix-like scripting, Apex also accepts a shebang:
+For Unix-like scripting, Arden also accepts a shebang:
 
-```apex
-#!/usr/bin/env apex
+```arden
+#!/usr/bin/env arden
 import std.io.*;
 
 function main(): None {
@@ -77,14 +77,14 @@ function main(): None {
 
 Here is a more complex example demonstrating variables, loops, string interpolation, and mutability.
 
-`program.apex`:
+`program.arden`:
 
-```apex
+```arden
 import std.io.*;
 
 function main(): None {
     // Immutable variables
-    name: String = "Apex";
+    name: String = "Arden";
     
     // Mutable variable
     mut counter: Integer = 0;
@@ -104,7 +104,7 @@ function main(): None {
 Run it:
 
 ```bash
-apex run program.apex
+arden run program.arden
 ```
 
 ## Next Steps

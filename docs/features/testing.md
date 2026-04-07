@@ -1,12 +1,12 @@
 # Testing Framework
 
-Apex includes a built-in testing framework with annotations and assertions for writing unit tests.
+Arden includes a built-in testing framework with annotations and assertions for writing unit tests.
 
 ## Writing Tests
 
 Tests are functions marked with the `@Test` attribute:
 
-```apex
+```arden
 @Test
 function testAddition(): None {
     result: Integer = 2 + 2;
@@ -19,7 +19,7 @@ function testAddition(): None {
 ### @Test
 Marks a function as a test case:
 
-```apex
+```arden
 @Test
 function testSomething(): None {
     // Test code here
@@ -29,7 +29,7 @@ function testSomething(): None {
 ### @Ignore
 Skips a test (optionally with a reason):
 
-```apex
+```arden
 @Test
 @Ignore("Not implemented yet")
 function testFutureFeature(): None {
@@ -46,7 +46,7 @@ function testAnotherSkipped(): None {
 ### @Before
 Runs before each test in the suite:
 
-```apex
+```arden
 @Before
 function setup(): None {
     // Setup code runs before each test
@@ -56,7 +56,7 @@ function setup(): None {
 ### @After
 Runs after each test in the suite:
 
-```apex
+```arden
 @After
 function teardown(): None {
     // Cleanup code runs after each test
@@ -66,7 +66,7 @@ function teardown(): None {
 ### @BeforeAll
 Runs once before all tests in the suite:
 
-```apex
+```arden
 @BeforeAll
 function initSuite(): None {
     // Suite setup code
@@ -76,7 +76,7 @@ function initSuite(): None {
 ### @AfterAll
 Runs once after all tests in the suite:
 
-```apex
+```arden
 @AfterAll
 function cleanupSuite(): None {
     // Suite cleanup code
@@ -88,7 +88,7 @@ function cleanupSuite(): None {
 ### assert(condition)
 Panics if the condition is false:
 
-```apex
+```arden
 assert(x > 0);
 assert(name != "");
 ```
@@ -96,14 +96,14 @@ assert(name != "");
 ### assert_eq(a, b)
 Panics if `a` is not equal to `b`:
 
-```apex
+```arden
 assert_eq(2 + 2, 4);
 assert_eq("hello", greeting);
 ```
 
 Assertion helpers can also be stored in typed function values:
 
-```apex
+```arden
 check: (Integer, Integer) -> None = assert_eq;
 ensure_false: (Boolean) -> None = assert_false;
 ```
@@ -114,7 +114,7 @@ Mixed numeric assertion parity also applies in higher-order form, so signatures 
 ### assert_ne(a, b)
 Panics if `a` equals `b`:
 
-```apex
+```arden
 assert_ne(0, divisor);
 assert_ne("error", status);
 ```
@@ -122,66 +122,66 @@ assert_ne("error", status);
 ### assert_true(condition)
 Panics if the condition is false (same as `assert`):
 
-```apex
+```arden
 assert_true(isValid);
 ```
 
 ### assert_false(condition)
 Panics if the condition is true:
 
-```apex
+```arden
 assert_false(isEmpty);
 ```
 
 ### fail(message)
 Unconditionally fails the test:
 
-```apex
+```arden
 fail("This should not be reached");
 ```
 
 ## Running Tests
 
-Use the `apex test` command to discover and run tests:
+Use the `arden test` command to discover and run tests:
 
 ```bash
 # Run all tests in current project
-apex test
+arden test
 
 # Run tests in a specific file
-apex test --path tests/math_test.apex
+arden test --path tests/math_test.arden
 
 # List tests without running them
-apex test --list
+arden test --list
 
 # Filter tests by name pattern
-apex test --filter "math"
+arden test --filter "math"
 ```
 
 Notes:
-- Without `--path`, `apex test` uses every source file listed in the current project's `apex.toml` when available, so `@Test` functions in regular files like `src/main.apex` are discovered and unrelated `*_test.apex` files outside the project list are ignored.
+- Without `--path`, `arden test` uses every source file listed in the current project's `arden.toml` when available, so `@Test` functions in regular files like `src/main.arden` are discovered and unrelated `*_test.arden` files outside the project list are ignored.
 - The test runner auto-injects `import std.io.*;` when needed.
 - Block-commented `import std.io.*;` text no longer suppresses that injection, and shebang scripts keep the shebang above the injected import.
 - Existing user `main(...)` entrypoints are removed from runner input before generation (including `public function main(...)`) so the generated test entrypoint remains unique.
 - Main stripping is signature-aware and avoids stripping comment text that only mentions `function main(...)`.
 - `async main(...)` forms are also stripped from test-runner input before generated entrypoint insertion.
 - Main stripping is now also brace-aware inside strings and both comment forms, so `{` / `}` in main-body text no longer corrupt runner generation or erase following helpers.
-- Directory-based discovery now walks nested folders, so `apex test --path tests/` picks up files like `tests/unit/math_spec.apex`.
-- Discovery matches `test/spec` case-insensitively, so names like `MathTest.apex` and `USER_SPEC.apex` are picked up too.
+- Directory-based discovery now walks nested folders, so `arden test --path tests/` picks up files like `tests/unit/math_spec.arden`.
+- Discovery matches `test/spec` case-insensitively, so names like `MathTest.arden` and `USER_SPEC.arden` are picked up too.
 - Missing test directories now fail fast with a CLI error instead of being treated as an empty test set.
-- Explicit file paths must target `.apex` files; passing a non-Apex file now fails before lex/parse.
+- Explicit file paths must target `.arden` files; passing a non-Arden file now fails before lex/parse.
 - In project mode, generated runners are built from an isolated temporary copy of the project, so tests can still import project-local packages and aliases while safely replacing the original entrypoint.
-- Bare `@Ignore` and `@Ignore("reason")` are both skipped correctly by `apex test`.
+- Bare `@Ignore` and `@Ignore("reason")` are both skipped correctly by `arden test`.
 - Ignored tests do not run `@Before` or `@After` hooks.
 - Final summary `Total` counts all discovered tests, including ignored ones.
-- String escapes inside tests follow normal Apex string semantics, so `\n`, `\t`, `\"`, `\\`, `\{`, and `\}` are decoded before execution.
+- String escapes inside tests follow normal Arden string semantics, so `\n`, `\t`, `\"`, `\\`, `\{`, and `\}` are decoded before execution.
 - Ignore reasons containing backslashes, control characters, or literal braces are rendered safely by the generated runner instead of being reinterpreted as escape sequences.
-- `apex test --list` also escapes control characters inside ignore reasons so discovery output stays single-line per test.
+- `arden test --list` also escapes control characters inside ignore reasons so discovery output stays single-line per test.
 
 ## Complete Example
 
-```apex
-// test_math.apex
+```arden
+// test_math.arden
 
 import std.io.*;
 import std.string.*;
@@ -233,10 +233,10 @@ function cleanup(): None {
 ## Test Output
 
 ```
-$ apex test --path test_math.apex
+$ arden test --path test_math.arden
 
 ========================================
-         Apex Test Runner
+         Arden Test Runner
 ========================================
 
 --- Running Tests ---

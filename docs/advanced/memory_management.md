@@ -1,6 +1,6 @@
 # Memory Management
 
-Apex is a systems language that compiles to native code. it uses LLVM as a backend.
+Arden is a systems language that compiles to native code. it uses LLVM as a backend.
 
 ## Stack vs Heap
 
@@ -9,7 +9,7 @@ Apex is a systems language that compiles to native code. it uses LLVM as a backe
 
 ## RAII (Resource Acquisition Is Initialization)
 
-Apex follows the RAII pattern.
+Arden follows the RAII pattern.
 
 - Memory is allocated when an object is created.
 - Memory is freed when the object goes out of scope (droppped).

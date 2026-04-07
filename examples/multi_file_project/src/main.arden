@@ -32,7 +32,7 @@ function main(): None {
     stars: String = repeat("*", 10);
     println("repeat('*', 10) = " + stars);
     
-    greeting: String = greet("Apex");
+    greeting: String = greet("Arden");
     println(greeting);
     
     padded: String = pad_left("42", 5, "0");

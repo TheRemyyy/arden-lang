@@ -1161,11 +1161,11 @@ impl<'ctx> Codegen<'ctx> {
         let captures = self.identify_captures(&body.node, params);
 
         // 2. Infer return type
-        let ret_apex_ty = match expected_fn_ty {
+        let ret_arden_ty = match expected_fn_ty {
             Some(Type::Function(_, expected_ret)) => (**expected_ret).clone(),
             _ => self.infer_builtin_argument_type(&body.node),
         };
-        let ret_llvm_ty = self.llvm_type(&ret_apex_ty);
+        let ret_llvm_ty = self.llvm_type(&ret_arden_ty);
 
         // 3. Create environment struct in outer scope
         let mut env_types = Vec::new();
@@ -1243,7 +1243,7 @@ impl<'ctx> Codegen<'ctx> {
 
         // Set up function body
         self.current_function = Some(lambda_fn);
-        self.current_return_type = Some(ret_apex_ty.clone());
+        self.current_return_type = Some(ret_arden_ty.clone());
 
         let entry = self.context.append_basic_block(lambda_fn, "entry");
         self.builder.position_at_end(entry);
@@ -1308,7 +1308,7 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         // Compile body expression
-        let result = self.compile_expr_with_expected_type(&body.node, &ret_apex_ty)?;
+        let result = self.compile_expr_with_expected_type(&body.node, &ret_arden_ty)?;
 
         // Build return with proper casting if needed
         let final_result = if result.get_type() != ret_llvm_ty {
@@ -2170,7 +2170,7 @@ impl<'ctx> Codegen<'ctx> {
 
     // === Helpers ===
 
-    /// Infer the Apex Type of an expression
+    /// Infer the Arden Type of an expression
     pub fn infer_object_type(&self, expr: &Expr) -> Option<Type> {
         let inferred = match expr {
             Expr::Ident(name) => self

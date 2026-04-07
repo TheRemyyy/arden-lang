@@ -1,6 +1,6 @@
-# Contributing to Apex
+# Contributing to Arden
 
-Thank you for your interest in contributing to Apex! We are building a modern, safe, and efficient systems programming language, and we need your help.
+Thank you for your interest in contributing to Arden! We are building a modern, safe, and efficient systems programming language, and we need your help.
 
 ## Development Setup
 
@@ -10,8 +10,8 @@ See the [Installation Guide](docs/getting_started/installation.md) for prerequis
 2. **Clone your fork**:
 
    ```bash
-   git clone https://github.com/theremyyy/apex-compiler.git
-   cd apex-compiler
+   git clone https://github.com/theremyyy/arden.git
+   cd arden
    ```
 
 3. **Build the project**:
@@ -46,10 +46,10 @@ Ensure the compiler is working correctly:
 cargo test
 ```
 
-To run a specific Apex example check:
+To run a specific Arden example check:
 
 ```bash
-cargo run -- check examples/01_hello.apex
+cargo run -- check examples/01_hello.arden
 ```
 
 ### 4. Submit a Pull Request

@@ -1,10 +1,10 @@
 # Classes
 
-Apex supports Object-Oriented Programming (OOP) via classes.
+Arden supports Object-Oriented Programming (OOP) via classes.
 
 ## Definition
 
-```apex
+```arden
 class Point {
     // Fields
     public x: Integer;
@@ -33,7 +33,7 @@ class Point {
 
 Visibility is now enforced by the type checker. Invalid access is a compile-time error.
 
-```apex
+```arden
 class Account {
     private balance: Integer;
     
@@ -47,7 +47,7 @@ class Account {
 
 Classes can inherit members from a base class using `extends`.
 
-```apex
+```arden
 class Animal {
     public name: String;
 
@@ -71,7 +71,7 @@ class Dog extends Animal {
 
 Objects are instances of classes.
 
-```apex
+```arden
 p: Point = Point(10, 20);
 p.move(5, 5);
 ```
@@ -80,7 +80,7 @@ p.move(5, 5);
 
 You can define a `destructor` to run code when an object is destroyed (goes out of scope).
 
-```apex
+```arden
 class FileHandler {
     destructor() {
         println("File closed");

@@ -25,8 +25,8 @@ function main(): None {
     println("Boolean variables defined");
 
     // String variables
-    name: String = "Apex";
-    greeting: String = "Hello, Apex!";
+    name: String = "Arden";
+    greeting: String = "Hello, Arden!";
     println("String variables defined");
 
     // Char variables

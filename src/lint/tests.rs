@@ -137,14 +137,14 @@ return None;
 
 #[test]
 fn fix_preserves_shebang_line() {
-    let source = r#"#!/usr/bin/env apex
+    let source = r#"#!/usr/bin/env arden
 import std.string.*;
 import std.io.*;
 function main(): None { return None; }
 "#;
     let result = lint_source(source, true).expect("lint succeeds");
     let fixed = result.fixed_source.expect("fixed source");
-    assert!(fixed.starts_with("#!/usr/bin/env apex\n"));
+    assert!(fixed.starts_with("#!/usr/bin/env arden\n"));
 }
 
 #[test]
@@ -439,7 +439,7 @@ return None;
 
 #[test]
 fn fix_preserves_shebang_and_header_comment_order() {
-    let source = r#"#!/usr/bin/env apex
+    let source = r#"#!/usr/bin/env arden
 // generated file
 import std.string.*;
 import std.io.*;
@@ -453,7 +453,7 @@ return None;
     let fixed = result.fixed_source.expect("fixed source");
     assert!(
         fixed.starts_with(
-            "#!/usr/bin/env apex\n// generated file\nimport std.io.*;\nimport std.string.*;"
+            "#!/usr/bin/env arden\n// generated file\nimport std.io.*;\nimport std.string.*;"
         ),
         "{fixed}"
     );

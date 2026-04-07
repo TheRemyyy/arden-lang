@@ -43,7 +43,7 @@ runs:
       shell: pwsh
       run: |
         $llvmVersion = "21.1.8"
-        $llvmPrefix = "C:\apex-toolchains\llvm-$llvmVersion"
+        $llvmPrefix = "C:\arden-toolchains\llvm-$llvmVersion"
         $llvmBin = Join-Path $llvmPrefix "bin"
         $llvmLib = Join-Path $llvmPrefix "lib"
         $llvmInclude = Join-Path $llvmPrefix "include"

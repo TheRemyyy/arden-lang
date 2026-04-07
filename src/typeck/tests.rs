@@ -10,6 +10,25 @@ fn check_source(source: &str) -> Result<(), Vec<TypeError>> {
     checker.check(&program)
 }
 
+fn spanned_expr(node: Expr) -> Spanned<Expr> {
+    Spanned::new(node, 0..0)
+}
+
+fn root_builtin_ctor_call(container: &str, variant: &str, arg: Option<Expr>) -> Expr {
+    let callee = Expr::Field {
+        object: Box::new(spanned_expr(Expr::Field {
+            object: Box::new(spanned_expr(Expr::Ident("root".to_string()))),
+            field: container.to_string(),
+        })),
+        field: variant.to_string(),
+    };
+    Expr::Call {
+        callee: Box::new(spanned_expr(callee)),
+        args: arg.into_iter().map(spanned_expr).collect(),
+        type_args: Vec::new(),
+    }
+}
+
 fn empty_interface() -> InterfaceInfo {
     InterfaceInfo {
         methods: HashMap::new(),
@@ -62,6 +81,48 @@ fn parses_nested_namespace_aliased_function_type_string_inside_generic_container
             Box::new(ResolvedType::Integer),
         )))
     );
+}
+
+#[test]
+fn resolves_root_namespace_alias_builtin_constructor_function_value_name() {
+    let mut checker = TypeChecker::new();
+    checker
+        .import_aliases
+        .insert("root".to_string(), vec![(None, "app".to_string())]);
+    let expr = Expr::Field {
+        object: Box::new(spanned_expr(Expr::Field {
+            object: Box::new(spanned_expr(Expr::Ident("root".to_string()))),
+            field: "Option".to_string(),
+        })),
+        field: "Some".to_string(),
+    };
+
+    let resolved = checker.resolve_contextual_function_value_name(&expr);
+
+    assert_eq!(resolved.as_deref(), Some("Option__some"));
+}
+
+#[test]
+fn checks_root_namespace_alias_builtin_option_constructor_with_expected_type() {
+    let mut checker = TypeChecker::new();
+    checker
+        .import_aliases
+        .insert("root".to_string(), vec![(None, "app".to_string())]);
+    let expr = root_builtin_ctor_call("Option", "Some", Some(Expr::Literal(Literal::Integer(4))));
+
+    let resolved = checker.check_expr_with_expected_type(
+        &expr,
+        0..0,
+        Some(&ResolvedType::Option(Box::new(ResolvedType::Integer))),
+    );
+
+    assert_eq!(
+        resolved,
+        ResolvedType::Option(Box::new(ResolvedType::Integer)),
+        "{:?}",
+        checker.errors
+    );
+    assert!(checker.errors.is_empty(), "{:?}", checker.errors);
 }
 
 #[test]

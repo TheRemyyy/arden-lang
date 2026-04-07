@@ -1,6 +1,6 @@
 # Input / Output (I/O)
 
-Apex provides built-in functions for console I/O operations. These are compiler intrinsics that map directly to system calls.
+Arden provides built-in functions for console I/O operations. These are compiler intrinsics that map directly to system calls.
 
 > For `print`, `println`, and `read_line`, add:
 > `import std.io.*;`
@@ -13,7 +13,7 @@ Prints supported scalar values to standard output *without* a newline character 
 Multiple arguments are printed in order with no separator.
 Complex values such as `Option<T>` are currently rejected until structured formatting exists.
 
-```apex
+```arden
 import std.io.*;
 
 print("Hello, ");
@@ -25,7 +25,7 @@ print(true, " ", '🚀', " ", None); // Output: true 🚀 None
 
 Prints supported scalar values to standard output followed by a newline character.
 
-```apex
+```arden
 import std.io.*;
 
 println("Status: OK");
@@ -38,7 +38,7 @@ println("Status: OK");
 Reads a line of text from standard input (stdin). Returns the string including the newline character (if present).
 Longer input lines are supported without truncation through a growing internal buffer.
 
-```apex
+```arden
 import std.io.*;
 
 print("Enter name: ");
@@ -57,7 +57,7 @@ Files containing embedded `0x00` bytes are rejected at runtime instead of being 
 Invalid UTF-8 byte sequences are also rejected at load time instead of leaking into later string operations.
 Non-seekable paths such as FIFOs are rejected with a direct runtime error instead of being treated like normal files.
 
-```apex
+```arden
 content: String = File.read("data.txt");
 ```
 
@@ -65,15 +65,15 @@ content: String = File.read("data.txt");
 
 Writes the given content to a file. Overwrites the file if it already exists. Returns `true` only if both the write and final close/flush succeed.
 
-```apex
-success: Boolean = File.write("output.txt", "Hello, Apex!");
+```arden
+success: Boolean = File.write("output.txt", "Hello, Arden!");
 ```
 
 ### `File.exists(path: String): Boolean`
 
 Checks if a readable regular file exists at the given path. Directories return `false`.
 
-```apex
+```arden
 import std.io.*;
 
 if (File.exists("config.json")) {
@@ -85,6 +85,6 @@ if (File.exists("config.json")) {
 
 Deletes a regular file from the file system. Returns `true` if successful. Directories return `false`.
 
-```apex
+```arden
 File.delete("temp.log");
 ```

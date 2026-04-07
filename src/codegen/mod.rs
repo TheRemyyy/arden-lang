@@ -1,4 +1,4 @@
-//! Apex Code Generator - LLVM IR generation
+//! Arden Code Generator - LLVM IR generation
 //!
 //! Module structure:
 //! - core: Core codegen struct and main compilation logic

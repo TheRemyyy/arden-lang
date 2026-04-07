@@ -6,20 +6,20 @@ This example demonstrates Java-style package and import system.
 
 ```
 java_style_project/
-├── apex.toml
+├── arden.toml
 └── src/
     ├── utils/
-    │   ├── math.apex      # package utils.math
-    │   └── strings.apex   # package utils.strings
-    └── main.apex          # package main (entry)
+    │   ├── math.arden      # package utils.math
+    │   └── strings.arden   # package utils.strings
+    └── main.arden          # package main (entry)
 ```
 
 ## Package Declaration
 
 Each file declares its package at the top:
 
-```apex
-// src/utils/math.apex
+```arden
+// src/utils/math.arden
 package utils.math;
 
 function factorial(n: Integer): Integer {
@@ -31,14 +31,14 @@ function factorial(n: Integer): Integer {
 
 ### 1. Import Specific Functions
 
-```apex
+```arden
 import utils.math.factorial;
 import utils.math.power;
 ```
 
 ### 2. Wildcard Import
 
-```apex
+```arden
 import utils.strings.*;
 ```
 
@@ -46,7 +46,7 @@ import utils.strings.*;
 
 Imported functions are used directly by name:
 
-```apex
+```arden
 result: Integer = factorial(5);
 greeting: String = greet("World");
 ```
@@ -62,12 +62,12 @@ greeting: String = greet("World");
 
 ```bash
 cd multi_file_depth_project
-apex run
+arden run
 ```
 
 ## Comparison with Java
 
-| Java | Apex |
+| Java | Arden |
 |------|------|
 | `package com.example;` | `package utils.math;` |
 | `import com.example.Utils;` | `import utils.math.factorial;` |

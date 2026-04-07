@@ -32,14 +32,14 @@ function render_numbers(values: &List<Integer>): String {
 function main(): Integer {
     println("== Insane Showcase Project ==");
 
-    mut counter: Counter = Counter("apex-project", 6);
-    preview_counter: Counter = Counter("apex-project", 6);
+    mut counter: Counter = Counter("arden-project", 6);
+    preview_counter: Counter = Counter("arden-project", 6);
     fancy: FancyCounter = FancyCounter("fancy-project", 8);
     println(describe_named(preview_counter));
     println("fancy_scaled={fancy.scaled(1.25)}");
 
     total: Integer = analytics.sum_history(counter.value);
-    event: Event = analytics.Api.V2.build_event("apex-project", total);
+    event: Event = analytics.Api.V2.build_event("arden-project", total);
     println(describe_event(event));
     println(describe_event(Event.Snapshot(total)));
 
@@ -63,7 +63,7 @@ function main(): Integer {
     };
     println("nested_value={nested_value}");
 
-    report_label: String = "apex-project";
+    report_label: String = "arden-project";
     report_value: Integer = counter.value;
     report_task: Task<String> = runtime.render_report(report_label, report_value);
     maybe_report: Option<String> = report_task.await_timeout(5000);
@@ -74,7 +74,7 @@ function main(): Integer {
     println("report={report}");
 
     persisted: String = runtime.persist_report("insane_showcase_report.txt", report);
-    trimmed_ok: Boolean = strings.trim("  apex  ") == "apex";
+    trimmed_ok: Boolean = strings.trim("  arden  ") == "arden";
     println("persisted={persisted}");
     println("trimmed_ok={trimmed_ok}");
     println("sqrt_ok={math.sqrt(81) == 9.0}");

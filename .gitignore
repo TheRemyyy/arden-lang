@@ -31,6 +31,7 @@ benchmark/__pycache__/
 # Web
 web/node_modules
 web/dist
+web/package-lock.json
 
 # IDE
 .idea/
@@ -40,8 +41,8 @@ examples/test_no_import/test_no_import
 examples/multi_file_depth_project/multi_file_depth_project
 examples/multi_file_project/multi_file_project
 examples/insane_showcase_project/insane_showcase_project
-examples/.apexcache/
-.apexcache/
+examples/.ardencache/
+.ardencache/
 fuzz/artifacts/
 fuzz/coverage/
 fuzz/corpus/

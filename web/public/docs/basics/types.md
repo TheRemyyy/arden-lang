@@ -1,6 +1,6 @@
 # Types
 
-Apex is strongly and statically typed. Every variable must have a type known at compile time.
+Arden is strongly and statically typed. Every variable must have a type known at compile time.
 
 ## Primitive Types
 
@@ -17,13 +17,13 @@ Apex is strongly and statically typed. Every variable must have a type known at 
 
 Currently, `Integer` is the primary integer type.
 
-```apex
+```arden
 x: Integer = 100_000; // Underscores can be used for readability
 ```
 
 ### Floats
 
-```apex
+```arden
 f: Float = 1.0;
 // Note: implicit conversion from Integer to Float is not performed automatically in assignments
 sum: Float = 1 + 2.5; // Mixed numeric expressions promote Integer operands to Float
@@ -43,7 +43,7 @@ This promotion is scalar-only. Wrapped/container types stay invariant, so `Optio
 
 Used in conditional logic.
 
-```apex
+```arden
 isValid: Boolean = true;
 if (isValid) { ... }
 ```
@@ -52,7 +52,7 @@ if (isValid) { ... }
 
 Strings are heap-allocated and UTF-8 encoded.
 
-```apex
+```arden
 s: String = "Text";
 ```
 
@@ -60,7 +60,7 @@ s: String = "Text";
 
 The `None` type represents the absence of a value, similar to `void` in C or `()` in Rust. It has a single value: `None`.
 
-```apex
+```arden
 function doWork(): None {
     return None;
 }
@@ -68,7 +68,7 @@ function doWork(): None {
 
 ## Reference Types
 
-Apex allows references to values.
+Arden allows references to values.
 
 - `&T`: Immutable reference.
 - `&mut T`: Mutable reference.

@@ -1,4 +1,4 @@
-//! Apex Type Checker - Semantic analysis with type inference
+//! Arden Type Checker - Semantic analysis with type inference
 //!
 //! This module provides:
 //! - Type checking and inference
@@ -3195,6 +3195,32 @@ impl TypeChecker {
             Some(expected_ty),
         ) = (expr, expected)
         {
+            if let Some(path_parts) = flatten_field_chain(&callee.node) {
+                if path_parts.len() >= 2 {
+                    if let Some(alias_path) = self.lookup_import_alias_path(&path_parts[0]) {
+                        let full_alias_path =
+                            format!("{}.{}", alias_path, path_parts[1..].join("."));
+                        if let Some(canonical) =
+                            crate::ast::builtin_exact_import_alias_canonical(&full_alias_path)
+                        {
+                            if !type_args.is_empty() {
+                                self.error(
+                                    format!(
+                                        "Built-in function '{}' does not accept type arguments",
+                                        canonical.replace("__", ".")
+                                    ),
+                                    span.clone(),
+                                );
+                            }
+                            if let Some(return_type) =
+                                self.check_builtin_call(canonical, args, span.clone())
+                            {
+                                return return_type;
+                            }
+                        }
+                    }
+                }
+            }
             if let Some(container_ty) = self.check_static_container_call_with_expected_type(
                 &callee.node,
                 args,
@@ -3317,15 +3343,24 @@ impl TypeChecker {
         span: Span,
         expected: &ResolvedType,
     ) -> Option<ResolvedType> {
-        let Expr::Field { object, field } = callee else {
+        let path_parts = flatten_field_chain(callee)?;
+        if path_parts.len() < 2 {
             return None;
-        };
-        let Expr::Ident(owner_name) = &object.node else {
-            return None;
+        }
+        let owner_name = path_parts[..path_parts.len() - 1].join(".");
+        let field = path_parts.last()?.as_str();
+        let resolved_builtin = if let Some((alias, member_parts)) = path_parts.split_first() {
+            self.resolve_import_alias_module_candidate(alias, member_parts)
+                .or_else(|| {
+                    crate::ast::builtin_exact_import_alias_canonical(&path_parts.join("."))
+                        .map(str::to_string)
+                })
+        } else {
+            None
         };
 
-        match (owner_name.as_str(), field.as_str(), expected) {
-            ("Option", "some", ResolvedType::Option(inner)) => {
+        match (resolved_builtin.as_deref(), expected) {
+            (Some("Option__some"), ResolvedType::Option(inner)) => {
                 if !inner.contains_function_type() {
                     return None;
                 }
@@ -3355,7 +3390,7 @@ impl TypeChecker {
                 }
                 Some(expected.clone())
             }
-            ("Result", "ok", ResolvedType::Result(ok_ty, _)) => {
+            (Some("Result__ok"), ResolvedType::Result(ok_ty, _)) => {
                 if !ok_ty.contains_function_type() {
                     return None;
                 }
@@ -3385,7 +3420,7 @@ impl TypeChecker {
                 }
                 Some(expected.clone())
             }
-            ("Result", "error", ResolvedType::Result(_, err_ty)) => {
+            (Some("Result__error"), ResolvedType::Result(_, err_ty)) => {
                 if !err_ty.contains_function_type() {
                     return None;
                 }
@@ -3415,7 +3450,102 @@ impl TypeChecker {
                 }
                 Some(expected.clone())
             }
-            _ => None,
+            _ => match (owner_name.as_str(), field, expected) {
+                ("Option", "some", ResolvedType::Option(inner)) => {
+                    if !inner.contains_function_type() {
+                        return None;
+                    }
+                    if !type_args.is_empty() {
+                        self.error(
+                            "Option static methods do not accept explicit type arguments"
+                                .to_string(),
+                            span.clone(),
+                        );
+                    }
+                    self.check_arg_count("Option.some", args, 1, span.clone());
+                    if let Some(arg) = args.first() {
+                        let actual = self.check_expr_with_expected_type(
+                            &arg.node,
+                            arg.span.clone(),
+                            Some(inner),
+                        );
+                        if !self.types_compatible(inner, &actual) {
+                            self.error(
+                                format!(
+                                    "Option.some argument type mismatch: expected {}, got {}",
+                                    Self::format_resolved_type_for_diagnostic(inner),
+                                    Self::format_resolved_type_for_diagnostic(&actual)
+                                ),
+                                arg.span.clone(),
+                            );
+                        }
+                    }
+                    Some(expected.clone())
+                }
+                ("Result", "ok", ResolvedType::Result(ok_ty, _)) => {
+                    if !ok_ty.contains_function_type() {
+                        return None;
+                    }
+                    if !type_args.is_empty() {
+                        self.error(
+                            "Result static methods do not accept explicit type arguments"
+                                .to_string(),
+                            span.clone(),
+                        );
+                    }
+                    self.check_arg_count("Result.ok", args, 1, span.clone());
+                    if let Some(arg) = args.first() {
+                        let actual = self.check_expr_with_expected_type(
+                            &arg.node,
+                            arg.span.clone(),
+                            Some(ok_ty),
+                        );
+                        if !self.types_compatible(ok_ty, &actual) {
+                            self.error(
+                                format!(
+                                    "Result.ok argument type mismatch: expected {}, got {}",
+                                    Self::format_resolved_type_for_diagnostic(ok_ty),
+                                    Self::format_resolved_type_for_diagnostic(&actual)
+                                ),
+                                arg.span.clone(),
+                            );
+                        }
+                    }
+                    Some(expected.clone())
+                }
+                ("Result", "error", ResolvedType::Result(_, err_ty)) => {
+                    if !err_ty.contains_function_type() {
+                        return None;
+                    }
+                    if !type_args.is_empty() {
+                        self.error(
+                            "Result static methods do not accept explicit type arguments"
+                                .to_string(),
+                            span.clone(),
+                        );
+                    }
+                    self.check_arg_count("Result.error", args, 1, span.clone());
+                    if let Some(arg) = args.first() {
+                        let actual = self.check_expr_with_expected_type(
+                            &arg.node,
+                            arg.span.clone(),
+                            Some(err_ty),
+                        );
+                        if !self.types_compatible(err_ty, &actual) {
+                            self.error(
+                                format!(
+                                    "Result.error argument type mismatch: expected {}, got {}",
+                                    Self::format_resolved_type_for_diagnostic(err_ty),
+                                    Self::format_resolved_type_for_diagnostic(&actual)
+                                ),
+                                arg.span.clone(),
+                            );
+                        }
+                    }
+                    Some(expected.clone())
+                }
+                _ => None,
+            },
         }
     }
 
@@ -3977,7 +4107,35 @@ impl TypeChecker {
                 callee,
                 args,
                 type_args,
-            } => self.check_call(&callee.node, args, type_args, span),
+            } => {
+                if let Some(path_parts) = flatten_field_chain(&callee.node) {
+                    if path_parts.len() >= 2 {
+                        if let Some(alias_path) = self.lookup_import_alias_path(&path_parts[0]) {
+                            let full_alias_path =
+                                format!("{}.{}", alias_path, path_parts[1..].join("."));
+                            if let Some(canonical) =
+                                crate::ast::builtin_exact_import_alias_canonical(&full_alias_path)
+                            {
+                                if !type_args.is_empty() {
+                                    self.error(
+                                        format!(
+                                            "Built-in function '{}' does not accept type arguments",
+                                            canonical.replace("__", ".")
+                                        ),
+                                        span.clone(),
+                                    );
+                                }
+                                if let Some(return_type) =
+                                    self.check_builtin_call(canonical, args, span.clone())
+                                {
+                                    return return_type;
+                                }
+                            }
+                        }
+                    }
+                }
+                self.check_call(&callee.node, args, type_args, span)
+            }
 
             Expr::Field { object, field } => {
                 if let Some(path_parts) = flatten_field_chain(expr) {
@@ -4026,6 +4184,17 @@ impl TypeChecker {
                 }
                 if let Some(path_parts) = flatten_field_chain(expr) {
                     if path_parts.len() >= 2 {
+                        if let Some(alias_path) = self.lookup_import_alias_path(&path_parts[0]) {
+                            let full_alias_path =
+                                format!("{}.{}", alias_path, path_parts[1..].join("."));
+                            if let Some(canonical) =
+                                crate::ast::builtin_exact_import_alias_canonical(&full_alias_path)
+                            {
+                                if let Some(ty) = Self::builtin_function_value_type(canonical) {
+                                    return ty;
+                                }
+                            }
+                        }
                         if let Some(candidate) = self
                             .resolve_import_alias_module_candidate(&path_parts[0], &path_parts[1..])
                         {
@@ -4035,6 +4204,9 @@ impl TypeChecker {
                             if self.functions.contains_key(resolved) {
                                 let resolved = resolved.to_owned();
                                 return self.function_value_type_or_error(&resolved, span.clone());
+                            }
+                            if let Some(ty) = Self::builtin_function_value_type(resolved) {
+                                return ty;
                             }
                         }
                         if let Some(candidate) = self
@@ -5237,6 +5409,19 @@ impl TypeChecker {
         if let Expr::Field { object, field } = callee {
             if let Some(path_parts) = flatten_field_chain(callee) {
                 if path_parts.len() >= 2 {
+                    if let Some(alias_path) = self.lookup_import_alias_path(&path_parts[0]) {
+                        let full_alias_path =
+                            format!("{}.{}", alias_path, path_parts[1..].join("."));
+                        if let Some(canonical) =
+                            crate::ast::builtin_exact_import_alias_canonical(&full_alias_path)
+                        {
+                            if let Some(return_type) =
+                                self.check_builtin_call(canonical, args, span.clone())
+                            {
+                                return return_type;
+                            }
+                        }
+                    }
                     let full_path = path_parts.join(".");
                     let call_type_source = if type_args.is_empty() {
                         full_path.clone()
@@ -5383,6 +5568,11 @@ impl TypeChecker {
                                 }
                             }
                             return inst_return_type;
+                        }
+                        if let Some(return_type) =
+                            self.check_builtin_call(&resolved, args, span.clone())
+                        {
+                            return return_type;
                         }
                     }
                     if let Some(candidate) = self.resolve_wildcard_import_module_function_candidate(
@@ -5959,6 +6149,43 @@ impl TypeChecker {
         span: Span,
     ) -> Option<ResolvedType> {
         match name {
+            "Option__some" => {
+                self.check_arg_count("Option.some", args, 1, span.clone());
+                let inner = if let Some(arg) = args.first() {
+                    self.check_builtin_argument_expr(&arg.node, arg.span.clone())
+                } else {
+                    ResolvedType::Unknown
+                };
+                Some(ResolvedType::Option(Box::new(inner)))
+            }
+            "Option__none" => {
+                self.check_arg_count("Option.none", args, 0, span);
+                Some(ResolvedType::Option(Box::new(self.fresh_type_var())))
+            }
+            "Result__ok" => {
+                self.check_arg_count("Result.ok", args, 1, span.clone());
+                let ok_ty = if let Some(arg) = args.first() {
+                    self.check_builtin_argument_expr(&arg.node, arg.span.clone())
+                } else {
+                    ResolvedType::Unknown
+                };
+                Some(ResolvedType::Result(
+                    Box::new(ok_ty),
+                    Box::new(self.fresh_type_var()),
+                ))
+            }
+            "Result__error" => {
+                self.check_arg_count("Result.error", args, 1, span.clone());
+                let err_ty = if let Some(arg) = args.first() {
+                    self.check_builtin_argument_expr(&arg.node, arg.span.clone())
+                } else {
+                    ResolvedType::Unknown
+                };
+                Some(ResolvedType::Result(
+                    Box::new(self.fresh_type_var()),
+                    Box::new(err_ty),
+                ))
+            }
             "println" | "print" => {
                 for arg in args {
                     let ty = self.check_builtin_argument_expr(&arg.node, arg.span.clone());

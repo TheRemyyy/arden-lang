@@ -59,7 +59,7 @@ function printMenu(): None {
 function main(): None {
     manager: NoteManager = NoteManager("my_notes.txt");
     
-    println("Welcome to Apex Notes!");
+    println("Welcome to Arden Notes!");
 
     while (true) {
         printMenu();

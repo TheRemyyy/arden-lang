@@ -19,17 +19,17 @@ fn project_build_supports_shadowed_alias_in_helper_return_path_survives_runtime(
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nmodule M { function add1(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         r#"
 package app;
 import util as u;
@@ -79,17 +79,17 @@ fn project_build_incorrectly_filters_class_dependency_under_shadowed_alias_in_de
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nclass Box { value: Integer; constructor(v: Integer) { this.value = v; } }\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         r#"
 package app;
 import util as u;
@@ -134,17 +134,17 @@ fn project_build_runs_split_file_module_named_main_in_entry_namespace_runtime() 
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/module.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/module.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package core;\nfunction main(): Integer { return main.ping(); }\n",
     )
     .expect("write main");
     fs::write(
-        src_dir.join("module.apex"),
+        src_dir.join("module.arden"),
         "package core;\nmodule main { function ping(): Integer { return 22; } }\n",
     )
     .expect("write module");
@@ -174,12 +174,12 @@ fn project_build_runs_split_file_class_named_main_in_entry_namespace_runtime() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/model.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/model.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         r#"
 package core;
 function main(): Integer {
@@ -190,7 +190,7 @@ function main(): Integer {
     )
     .expect("write main");
     fs::write(
-        src_dir.join("model.apex"),
+        src_dir.join("model.arden"),
         r#"
 package core;
 class main {
@@ -227,12 +227,12 @@ fn project_build_runs_split_file_enum_named_main_in_entry_namespace_runtime() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/enum.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/enum.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         r#"
 package core;
 function main(): Integer {
@@ -244,7 +244,7 @@ function main(): Integer {
     )
     .expect("write main");
     fs::write(
-        src_dir.join("enum.apex"),
+        src_dir.join("enum.arden"),
         r#"
 package core;
 enum main {
@@ -277,8 +277,8 @@ enum main {
 fn project_parse_cache_reuses_only_unchanged_files() {
     let temp_root = make_temp_project_root("parse-cache-selective");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let lib_file = src_dir.join("lib.apex");
+    let main_file = src_dir.join("main.arden");
+    let lib_file = src_dir.join("lib.arden");
 
     fs::write(
             &main_file,
@@ -324,8 +324,8 @@ fn project_parse_cache_reuses_only_unchanged_files() {
 fn project_multi_file_import_graph_tracks_real_parsed_owner_file() {
     let temp_root = make_temp_project_root("import-graph");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let math_file = src_dir.join("math.apex");
+    let main_file = src_dir.join("main.arden");
+    let math_file = src_dir.join("math.arden");
 
     fs::write(
             &main_file,
@@ -438,8 +438,8 @@ fn project_multi_file_import_graph_tracks_real_parsed_owner_file() {
 fn project_multi_file_dependency_graph_tracks_same_namespace_enum_reference_owner_file() {
     let temp_root = make_temp_project_root("enum-main-import-graph");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let enum_file = src_dir.join("enum.apex");
+    let main_file = src_dir.join("main.arden");
+    let enum_file = src_dir.join("enum.arden");
 
     fs::write(
             &main_file,
@@ -561,17 +561,17 @@ fn project_check_supports_cross_file_function_value_references() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package app;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nfunction main(): None { o: Option<(Integer) -> Integer> = Option.some(add1); r: Result<(Integer) -> Integer, String> = Result.ok(add1); return None; }\n",
         )
         .expect("write main");
@@ -589,17 +589,17 @@ fn project_build_supports_imported_function_value_alias_references() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nfunction main(): None { f: (Integer) -> Integer = inc; o: Option<(Integer) -> Integer> = Option.some(inc); x: Integer = f(2); return None; }\n",
         )
         .expect("write main");
@@ -618,17 +618,17 @@ fn project_build_supports_namespace_alias_function_values() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\nfunction twice(f: (Integer) -> Integer, x: Integer): Integer { return f(f(x)); }\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { f: (Integer) -> Integer = u.add1; x: Integer = u.twice(f, 1); y: Integer = u.add1(2); return None; }\n",
         )
         .expect("write main");
@@ -647,17 +647,17 @@ fn project_build_supports_nested_namespace_alias_function_values() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nmodule M { function add1(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { f: (Integer) -> Integer = u.M.add1; x: Integer = u.M.add1(1); y: Integer = f(2); return None; }\n",
         )
         .expect("write main");
@@ -676,17 +676,17 @@ fn project_build_supports_exact_import_alias_explicit_generic_function_values() 
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.U.id as ident;\nfunction main(): Integer { f: (Integer) -> Integer = ident<Integer>; return if (f(7) == 7) { 0 } else { 1 }; }\n",
         )
         .expect("write main");
@@ -712,17 +712,17 @@ fn project_build_supports_root_namespace_alias_explicit_generic_function_values(
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer { f: (Integer) -> Integer = root.U.id<Integer>; return if (f(7) == 7) { 0 } else { 1 }; }\n",
         )
         .expect("write main");
@@ -748,17 +748,17 @@ fn project_build_supports_module_wildcard_import_calls() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
     .expect("write util");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport app.U.*;\nfunction main(): Integer { return id(7); }\n",
     )
     .expect("write main");
@@ -783,17 +783,17 @@ fn project_build_supports_module_wildcard_import_explicit_generic_function_value
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.U.*;\nfunction main(): Integer { f: (Integer) -> Integer = id<Integer>; return if (f(7) == 7) { 0 } else { 1 }; }\n",
         )
         .expect("write main");
@@ -819,17 +819,17 @@ fn project_build_supports_module_wildcard_import_integer_to_float_calls() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule U { function scale(value: Float): Float { return value * 2.0; } }\n",
     )
     .expect("write util");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport app.U.*;\nfunction main(): Integer { value: Float = scale(3); return if (value == 6.0) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -855,17 +855,17 @@ fn project_build_supports_wildcard_imported_nested_module_integer_to_float_calls
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule U { module Math { function scale(value: Float): Float { return value * 2.0; } } }\n",
     )
     .expect("write util");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport app.U.*;\nfunction main(): Integer { value: Float = Math.scale(3); return if (value == 6.0) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -889,9 +889,9 @@ fn project_build_supports_wildcard_imported_nested_module_integer_to_float_calls
 fn project_build_supports_stdlib_wildcard_import_calls() {
     let temp_root = make_temp_project_root("stdlib-wildcard-import-call-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.*;\nfunction main(): Integer { return if (abs(-7) == 7) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -914,9 +914,9 @@ fn project_build_supports_stdlib_wildcard_import_calls() {
 fn project_build_supports_stdlib_wildcard_import_function_values() {
     let temp_root = make_temp_project_root("stdlib-wildcard-import-fn-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.*;\nfunction main(): Integer { f: (Integer) -> Float = abs; return if (f(-7) == 7.0) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -939,9 +939,9 @@ fn project_build_supports_stdlib_wildcard_import_function_values() {
 fn project_build_supports_stdlib_exact_import_calls() {
     let temp_root = make_temp_project_root("stdlib-exact-import-call-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.abs as absolute;\nfunction main(): Integer { return if (absolute(-7) == 7) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -964,9 +964,9 @@ fn project_build_supports_stdlib_exact_import_calls() {
 fn project_build_supports_stdlib_exact_import_function_values() {
     let temp_root = make_temp_project_root("stdlib-exact-import-fn-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.abs as absolute;\nfunction main(): Integer { f: (Integer) -> Float = absolute; return if (f(-7) == 7.0) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -989,9 +989,9 @@ fn project_build_supports_stdlib_exact_import_function_values() {
 fn project_build_supports_stdlib_zero_arg_exact_import_values() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-exact-import-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = Pi; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1014,9 +1014,9 @@ fn project_build_supports_stdlib_zero_arg_exact_import_values() {
 fn project_build_supports_stdlib_zero_arg_string_exact_import_values() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-string-exact-import-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { value: String = CurrentDir; return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1039,9 +1039,9 @@ fn project_build_supports_stdlib_zero_arg_string_exact_import_values() {
 fn project_build_supports_stdlib_zero_arg_integer_exact_import_values() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-integer-exact-import-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { value: Integer = ArgCount; return if (value >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1064,9 +1064,9 @@ fn project_build_supports_stdlib_zero_arg_integer_exact_import_values() {
 fn project_build_supports_stdlib_zero_arg_exact_import_if_expressions() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-exact-import-if-expr-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = if (true) { Pi } else { 0.0 }; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1089,9 +1089,9 @@ fn project_build_supports_stdlib_zero_arg_exact_import_if_expressions() {
 fn project_build_supports_stdlib_zero_arg_exact_import_match_expressions() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-exact-import-match-expr-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = match (true) { true => Pi, false => 0.0, }; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1114,9 +1114,9 @@ fn project_build_supports_stdlib_zero_arg_exact_import_match_expressions() {
 fn project_build_supports_stdlib_zero_arg_exact_import_match_scrutinees() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-exact-import-match-scrutinee-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return match (CurrentDir) { \"\" => 1, _ => 0, }; }\n",
     )
     .expect("write main");
@@ -1139,9 +1139,9 @@ fn project_build_supports_stdlib_zero_arg_exact_import_match_scrutinees() {
 fn project_build_supports_stdlib_zero_arg_exact_import_match_statements() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-exact-import-match-stmt-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { mut result: Integer = 1; match (CurrentDir) { \"\" => { result = 1; } _ => { result = 0; } } return result; }\n",
     )
     .expect("write main");
@@ -1165,9 +1165,9 @@ fn project_build_supports_module_local_stdlib_zero_arg_exact_import_values() {
     let temp_root =
         make_temp_project_root("module-local-stdlib-zero-arg-exact-import-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nmodule Inner {\n    import std.system.cwd as CurrentDir;\n    function read(): String { value: String = CurrentDir; return value; }\n}\nfunction main(): Integer { value: String = Inner.read(); return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1191,9 +1191,9 @@ fn project_build_supports_module_local_stdlib_zero_arg_exact_import_values() {
 fn project_build_supports_stdlib_zero_arg_exact_import_return_values() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-exact-import-return-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction read(): String { return CurrentDir; }\nfunction main(): Integer { value: String = read(); return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1216,9 +1216,9 @@ fn project_build_supports_stdlib_zero_arg_exact_import_return_values() {
 fn project_build_supports_stdlib_zero_arg_wildcard_values() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-wildcard-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.*;\nfunction main(): Integer { value: Float = pi; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1241,9 +1241,9 @@ fn project_build_supports_stdlib_zero_arg_wildcard_values() {
 fn project_build_supports_stdlib_namespace_zero_arg_values() {
     let temp_root = make_temp_project_root("stdlib-namespace-zero-arg-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math as math;\nfunction main(): Integer { value: Float = math.pi; return if (value > 3.14 && value < 3.15) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1266,9 +1266,9 @@ fn project_build_supports_stdlib_namespace_zero_arg_values() {
 fn project_build_supports_stdlib_zero_arg_wildcard_string_values() {
     let temp_root = make_temp_project_root("stdlib-zero-arg-wildcard-string-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.*;\nfunction main(): Integer { value: String = cwd; return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1291,9 +1291,9 @@ fn project_build_supports_stdlib_zero_arg_wildcard_string_values() {
 fn project_build_supports_if_expression_builtin_function_values() {
     let temp_root = make_temp_project_root("if-expression-builtin-function-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction choose(flag: Boolean): (Integer) -> Float { return if (flag) { to_float } else { to_float }; }\nfunction main(): Integer { return if (choose(true)(1) == 1.0) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1316,9 +1316,9 @@ fn project_build_supports_if_expression_builtin_function_values() {
 fn project_build_supports_match_expression_builtin_function_values() {
     let temp_root = make_temp_project_root("match-expression-builtin-function-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nenum Mode { A, B }\nfunction choose(mode: Mode): (Integer) -> Float { return match (mode) { Mode.A => { to_float } Mode.B => { to_float } }; }\nfunction main(): Integer { return if (choose(Mode.A)(1) == 1.0) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1341,9 +1341,9 @@ fn project_build_supports_match_expression_builtin_function_values() {
 fn project_build_supports_zero_arg_exact_import_values_in_typed_lists() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-typed-list-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { values: List<Float> = List<Float>(); values.push(Pi); return if (values[0] > 3.14 && values[0] < 3.15) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1366,9 +1366,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_typed_lists() {
 fn project_build_supports_zero_arg_exact_import_values_in_builtin_calls() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-builtin-call-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { text: String = to_string(Pi); return if (text.length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1391,9 +1391,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_builtin_calls() {
 fn project_build_supports_zero_arg_exact_import_values_in_string_builtins() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-string-builtin-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nimport std.string.*;\nfunction main(): Integer { return if (Str.len(CurrentDir) >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1416,9 +1416,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_builtins() {
 fn project_build_supports_zero_arg_exact_import_values_in_time_builtin_calls() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-time-builtin-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nimport std.time.*;\nfunction main(): Integer { formatted: String = Time.now(CurrentDir); return if (formatted.length() >= 0) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1441,9 +1441,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_time_builtin_calls() {
 fn project_build_supports_zero_arg_exact_import_values_in_list_index_methods() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-list-index-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { values: List<Integer> = List<Integer>(); values.push(10); values.push(20); return values.get(ArgCount) - 20; }\n",
     )
     .expect("write main");
@@ -1467,9 +1467,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_list_index_methods() {
 fn project_build_supports_zero_arg_exact_import_values_in_list_constructor_capacity() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-list-capacity-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { values: List<Integer> = List<Integer>(ArgCount); values.push(7); return values.get(0) - 7; }\n",
     )
     .expect("write main");
@@ -1493,9 +1493,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_list_constructor_capac
 fn project_build_supports_zero_arg_exact_import_values_in_index_expressions() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-index-expression-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { values: List<Integer> = List<Integer>(); values.push(10); values.push(20); return values[ArgCount] - 20; }\n",
     )
     .expect("write main");
@@ -1520,9 +1520,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_index_expressio
     let temp_root =
         make_temp_project_root("zero-arg-exact-import-value-string-index-expression-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { text: String = \"ab\"; letter: Char = text[ArgCount]; return if (letter == 'b') { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1546,9 +1546,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_index_expressio
 fn project_build_supports_zero_arg_exact_import_values_as_indexed_objects() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-index-object-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { letter: Char = CurrentDir[0]; return if (letter == '/') { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1571,9 +1571,9 @@ fn project_build_supports_zero_arg_exact_import_values_as_indexed_objects() {
 fn project_build_supports_zero_arg_exact_import_values_in_for_iterables() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-for-iterable-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { mut count: Integer = 0; for (ch in CurrentDir) { count += 1; } return if (count >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1596,9 +1596,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_for_iterables() {
 fn project_build_supports_zero_arg_exact_import_values_in_async_returns() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-async-return-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { task: Task<Integer> = async { return ArgCount; }; return 0; }\n",
     )
     .expect("write main");
@@ -1621,9 +1621,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_async_returns() {
 fn project_build_supports_zero_arg_exact_import_values_in_async_tail_expressions() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-async-tail-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { return if (await(async { ArgCount }) == 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1647,9 +1647,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_async_tail_expressions
 fn project_build_supports_zero_arg_exact_import_values_in_range_syntax() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-range-syntax-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { value: Range<Integer> = ArgCount..(ArgCount + 1); return if (value.has_next()) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1672,9 +1672,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_range_syntax() {
 fn project_build_supports_zero_arg_exact_import_values_in_range_syntax_for_loops() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-range-for-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { mut total: Integer = 0; for (value in ArgCount..(ArgCount + 1)) { total += value; } return if (total == 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1698,9 +1698,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_range_syntax_for_loops
 fn project_build_supports_zero_arg_exact_import_values_in_task_await_timeout() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-await-timeout-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nimport std.time.*;\nfunction work(): Task<Integer> { return async { Time.sleep(50); return 7; }; }\nfunction main(): Integer { value: Option<Integer> = work().await_timeout(ArgCount); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1724,9 +1724,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_task_await_timeout() {
 fn project_build_supports_zero_arg_exact_import_values_in_option_some() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-option-some-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { value: Option<Integer> = Option.some(ArgCount); return if (value.unwrap() == 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1749,9 +1749,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_option_some() {
 fn project_build_supports_zero_arg_exact_import_values_in_result_ok() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-result-ok-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Result<Float, String> = Result.ok(Pi); return if (value.unwrap() > 3.14 && value.unwrap() < 3.15) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1774,9 +1774,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_result_ok() {
 fn project_build_supports_zero_arg_exact_import_values_in_direct_result_ok_receivers() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-direct-result-ok-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { return if (Result.ok(Pi).unwrap() > 3.14) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1800,9 +1800,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_direct_result_ok_recei
 fn project_build_supports_zero_arg_exact_import_values_in_require_messages() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-require-message-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { require(true, CurrentDir); return 0; }\n",
     )
     .expect("write main");
@@ -1826,9 +1826,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_require_messages() {
 fn project_build_supports_zero_arg_exact_import_values_in_borrows() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-borrow-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { text: &String = &CurrentDir; return if ((*text).length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1851,9 +1851,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_borrows() {
 fn project_build_supports_zero_arg_exact_import_values_in_direct_borrow_dereferences() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-direct-deref-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if ((*(&CurrentDir)).length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1877,9 +1877,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_direct_borrow_derefere
 fn project_build_supports_zero_arg_exact_import_values_in_try_expressions() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-try-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction run(): Option<Integer> { value: Integer = Option.some(ArgCount)?; return Option.some(value); }\nfunction main(): Integer { return if (run().unwrap() == 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1902,9 +1902,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_try_expressions() {
 fn project_build_supports_zero_arg_exact_import_values_in_zero_arg_pipe_lambdas() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-pipe-lambda-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { f: () -> Integer = || ArgCount; return if (f() == 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1928,9 +1928,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_zero_arg_pipe_lambdas(
 fn project_build_supports_zero_arg_exact_import_values_in_immediate_zero_arg_pipe_lambdas() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-immediate-pipe-lambda-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if ((|| CurrentDir)().length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -1954,9 +1954,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_immediate_zero_arg_pip
 fn project_build_supports_zero_arg_exact_import_values_in_println_calls() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-println-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nimport std.io.println;\nfunction main(): Integer { println(Pi); return 0; }\n",
     )
     .expect("write main");
@@ -1979,9 +1979,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_println_calls() {
 fn project_build_supports_zero_arg_exact_import_values_in_string_interpolation() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-string-interp-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: String = \"{Pi}\"; return if (value.length() >= 4) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2005,9 +2005,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_interpolation()
 fn project_build_supports_zero_arg_exact_import_values_in_variadic_ffi_calls() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-variadic-ffi-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nextern(system, \"printf\") function sys_printf(fmt: String, ...): Integer;\nfunction main(): Integer { sys_printf(\"%f\\n\", Pi); return 0; }\n",
     )
     .expect("write main");
@@ -2031,9 +2031,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_variadic_ffi_calls() {
 fn project_build_supports_zero_arg_exact_import_values_in_binary_expressions() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-binary-expr-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { return if (Pi > 3.14 && Pi < 3.15) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2057,9 +2057,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_binary_expressions() {
 fn project_build_supports_zero_arg_exact_import_values_in_unary_expressions() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-unary-expr-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { value: Float = -Pi; return if (value < -3.14 && value > -3.15) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2083,9 +2083,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_unary_expressions() {
 fn project_build_supports_zero_arg_exact_import_values_as_method_receivers() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-method-receiver-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if (CurrentDir.length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2109,9 +2109,9 @@ fn project_build_supports_zero_arg_exact_import_values_as_method_receivers() {
 fn project_build_supports_zero_arg_exact_import_values_in_compound_assignments() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-compound-assign-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { mut value: String = \"\"; value += CurrentDir; return if (value.length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2135,9 +2135,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_compound_assignments()
 fn project_build_supports_builtin_option_none_alias_as_method_receiver() {
     let temp_root = make_temp_project_root("builtin-option-none-method-receiver-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction main(): Integer { return if (Empty.is_none()) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2160,9 +2160,9 @@ fn project_build_supports_builtin_option_none_alias_as_method_receiver() {
 fn project_build_supports_zero_arg_exact_import_values_in_if_expr_method_receivers() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-if-receiver-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if ((if (true) { CurrentDir } else { CurrentDir }).length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2186,9 +2186,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_if_expr_method_receive
 fn project_build_supports_zero_arg_exact_import_values_in_block_expr_method_receivers() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-block-receiver-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if (({ CurrentDir }).length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2212,9 +2212,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_block_expr_method_rece
 fn project_build_supports_zero_arg_exact_import_values_in_match_expr_method_receivers() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-match-receiver-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if ((match (true) { true => CurrentDir, false => CurrentDir, }).length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2238,9 +2238,9 @@ fn project_build_supports_zero_arg_exact_import_values_in_match_expr_method_rece
 fn project_build_supports_builtin_option_some_alias_calls() {
     let temp_root = make_temp_project_root("builtin-option-some-alias-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Option.Some as Present;\nfunction main(): Integer { value: Option<Integer> = Present(7); return if (value.unwrap() == 7) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2263,9 +2263,9 @@ fn project_build_supports_builtin_option_some_alias_calls() {
 fn project_build_supports_builtin_result_ok_alias_function_values() {
     let temp_root = make_temp_project_root("builtin-result-ok-alias-fn-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Result.Ok as Success;\nfunction main(): Integer { f: (Integer) -> Result<Integer, String> = Success; value: Result<Integer, String> = f(7); return if (value.unwrap() == 7) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2288,9 +2288,9 @@ fn project_build_supports_builtin_result_ok_alias_function_values() {
 fn project_build_supports_builtin_result_error_alias_function_values() {
     let temp_root = make_temp_project_root("builtin-result-error-alias-fn-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Result.Error as Failure;\nfunction main(): Integer { f: (String) -> Result<Integer, String> = Failure; value: Result<Integer, String> = f(\"boom\"); return if (value.is_error()) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2313,9 +2313,9 @@ fn project_build_supports_builtin_result_error_alias_function_values() {
 fn project_build_supports_builtin_option_alias_patterns() {
     let temp_root = make_temp_project_root("builtin-option-alias-pattern-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Option.Some as Present;\nimport Option.None as Empty;\nfunction main(): Integer { value: Option<Integer> = Present(7); return match (value) { Present(inner) => if (inner == 7) { 0 } else { 1 }, Empty => 2, }; }\n",
     )
     .expect("write main");
@@ -2338,9 +2338,9 @@ fn project_build_supports_builtin_option_alias_patterns() {
 fn project_build_supports_builtin_result_alias_patterns() {
     let temp_root = make_temp_project_root("builtin-result-alias-pattern-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Result.Ok as Success;\nimport Result.Error as Failure;\nfunction main(): Integer { value: Result<Integer, String> = Success(7); return match (value) { Success(inner) => if (inner == 7) { 0 } else { 1 }, Failure(err) => 2, }; }\n",
     )
     .expect("write main");
@@ -2363,9 +2363,9 @@ fn project_build_supports_builtin_result_alias_patterns() {
 fn project_build_supports_builtin_option_none_alias_values() {
     let temp_root = make_temp_project_root("builtin-option-none-alias-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction main(): Integer { value: Option<Integer> = Empty; return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2388,9 +2388,9 @@ fn project_build_supports_builtin_option_none_alias_values() {
 fn project_build_supports_module_local_builtin_option_none_alias_values() {
     let temp_root = make_temp_project_root("module-local-builtin-option-none-alias-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { value: Option<Integer> = Empty; return if (value.is_none()) { 0 } else { 1 }; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
     .expect("write main");
@@ -2413,9 +2413,9 @@ fn project_build_supports_module_local_builtin_option_none_alias_values() {
 fn project_build_supports_builtin_option_none_alias_function_values() {
     let temp_root = make_temp_project_root("builtin-option-none-alias-fn-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction main(): Integer { f: () -> Option<Integer> = Empty; value: Option<Integer> = f(); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2438,9 +2438,9 @@ fn project_build_supports_builtin_option_none_alias_function_values() {
 fn project_build_supports_builtin_option_none_alias_return_values() {
     let temp_root = make_temp_project_root("builtin-option-none-alias-return-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction make(): Option<Integer> { return Empty; }\nfunction main(): Integer { value: Option<Integer> = make(); return if (value.is_none()) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
@@ -2463,9 +2463,9 @@ fn project_build_supports_builtin_option_none_alias_return_values() {
 fn project_build_supports_builtin_option_none_alias_argument_values() {
     let temp_root = make_temp_project_root("builtin-option-none-alias-arg-value-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport Option.None as Empty;\nfunction take(value: Option<Integer>): Integer { return if (value.is_none()) { 0 } else { 1 }; }\nfunction main(): Integer { return take(Empty); }\n",
     )
     .expect("write main");
@@ -2490,17 +2490,17 @@ fn project_build_preserves_default_extern_link_names() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nextern(c) function abs(value: Integer): Integer;\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport util.abs;\nfunction main(): Integer { return abs(-7); }\n",
     )
     .expect("write main");
@@ -2525,17 +2525,17 @@ fn project_build_preserves_default_extern_link_names_through_exact_import_aliase
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nextern(c) function abs(value: Integer): Integer;\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport util.abs as absolute;\nfunction main(): Integer { return absolute(-7); }\n",
     )
     .expect("write main");
@@ -2560,17 +2560,17 @@ fn project_build_preserves_module_extern_link_names_through_exact_import_aliases
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nmodule C { extern(c) function abs(value: Integer): Integer; }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport util.C.abs as absolute;\nfunction main(): Integer { return absolute(-7); }\n",
     )
     .expect("write main");
@@ -2596,17 +2596,17 @@ fn project_build_prefers_shadowed_local_over_namespace_alias_for_nested_field_ch
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nmodule M { function add1(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nclass Holder { function add1(x: Integer): Integer { return x + 5; } }\nfunction main(): Integer { u: Holder = Holder(); return u.add1(1); }\n",
         )
         .expect("write main");
@@ -2637,17 +2637,17 @@ fn project_build_supports_shadowed_local_nested_method_calls_without_alias_leaka
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nmodule M { class Box { value: Integer; constructor(v: Integer) { this.value = v; } function get(): Integer { return this.value; } } }\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nclass Holder { inner: u.M.Box; constructor(v: Integer) { this.inner = u.M.Box(v); } function get(): Integer { return this.inner.get() + 10; } }\nfunction main(): Integer { u: Holder = Holder(2); return u.get(); }\n",
         )
         .expect("write main");
@@ -2678,17 +2678,17 @@ fn project_build_supports_namespace_alias_class_constructors() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nclass Box { value: Integer; constructor(v: Integer) { this.value = v; } }\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport util as u;\nfunction main(): None { u.Box(2); return None; }\n",
     )
     .expect("write main");
@@ -2708,17 +2708,17 @@ fn project_build_supports_namespace_alias_nested_module_class_constructors() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nmodule Api {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n    }\n}\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport util as u;\nfunction main(): None { u.Api.Box(2); return None; }\n",
     )
     .expect("write main");
@@ -2738,17 +2738,17 @@ fn project_build_supports_nested_module_namespace_aliases_without_functions() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nmodule Api {\n    class Box {\n        constructor() {}\n    }\n}\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport util.Api as u;\nfunction main(): None { u.Box(); return None; }\n",
     )
     .expect("write main");
@@ -2768,17 +2768,17 @@ fn project_build_supports_deep_nested_module_namespace_aliases_without_functions
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nmodule Api {\n    module V1 {\n        class Box {\n            constructor() {}\n        }\n    }\n}\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport util.Api.V1 as u;\nfunction main(): None { u.Box(); return None; }\n",
     )
     .expect("write main");
@@ -2798,17 +2798,17 @@ fn project_build_supports_deep_nested_module_interface_aliases() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nmodule Api {\n    module V1 {\n        interface Named { function name(): Integer; }\n    }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.Api.V1 as u;\ninterface Printable extends u.Named { function print_me(): Integer; }\nclass Report implements Printable {\n    constructor() {}\n    function name(): Integer { return 1; }\n    function print_me(): Integer { return 2; }\n}\nfunction main(): None { return None; }\n",
         )
         .expect("write main");
@@ -2827,17 +2827,17 @@ fn project_build_supports_deep_nested_module_enum_alias_patterns() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nmodule Api {\n    module V1 {\n        enum Value { Ok(Integer) Error(Integer) }\n    }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.Api.V1 as u;\nfunction main(): None { value: u.Value = u.Value.Ok(2); match (value) { u.Value.Ok(v) => { require(v == 2); } u.Value.Error(err) => { require(false); } } return None; }\n",
         )
         .expect("write main");
@@ -2854,9 +2854,9 @@ fn project_build_supports_deep_nested_module_enum_alias_patterns() {
 fn project_build_supports_if_expression_function_value_callees() {
     let temp_root = make_temp_project_root("ifexpr-function-callee-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction dec(x: Integer): Integer { return x - 1; }\nfunction main(): None { x: Integer = (if (true) { inc; } else { dec; })(1); require(x == 2); return None; }\n",
         )
         .expect("write main");
@@ -2873,9 +2873,9 @@ fn project_build_supports_if_expression_function_value_callees() {
 fn project_build_supports_unit_enum_variant_values() {
     let temp_root = make_temp_project_root("unit-enum-variant-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nenum E { A, B }\nfunction main(): None { e: E = E.A; match (e) { E.A => { } E.B => { } } return None; }\n",
         )
         .expect("write main");
@@ -2894,17 +2894,17 @@ fn project_build_supports_exact_imported_enum_variant_aliases() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nenum E { A(Integer) B(Integer) }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.E.B as Variant;\nfunction main(): None { e: E = Variant(2); match (e) { E.A(v) => { require(false); } E.B(v) => { require(v == 2); } } return None; }\n",
         )
         .expect("write main");
@@ -2923,17 +2923,17 @@ fn project_build_supports_imported_payload_enum_variant_function_value_aliases()
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nenum E { Wrap(Integer) }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.E.Wrap as WrapCtor;\nfunction main(): Integer { f: (Integer) -> E = WrapCtor; value: E = f(7); return match (value) { E.Wrap(v) => { if (v == 7) { 0 } else { 1 } } }; }\n",
         )
         .expect("write main");
@@ -2959,17 +2959,17 @@ fn project_build_supports_imported_unit_enum_variant_function_value_aliases() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nenum Mode { A, B }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.Mode.A as Pick;\nfunction main(): Integer { f: () -> Mode = Pick; return if (f() == Mode.A) { 0 } else { 1 }; }\n",
         )
         .expect("write main");
@@ -2999,22 +2999,26 @@ fn project_build_rejects_colliding_top_level_enum_names_across_namespaces() {
     fs::create_dir_all(&right_dir).expect("create right namespace dir");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/left/util.apex", "src/right/util.apex"],
-        "src/main.apex",
+        &[
+            "src/main.arden",
+            "src/left/util.arden",
+            "src/right/util.arden",
+        ],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        left_dir.join("util.apex"),
+        left_dir.join("util.arden"),
         "package left;\nenum Shared { A }\n",
     )
     .expect("write left enum");
     fs::write(
-        right_dir.join("util.apex"),
+        right_dir.join("util.arden"),
         "package right;\nenum Shared { B }\n",
     )
     .expect("write right enum");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction main(): None { return None; }\n",
     )
     .expect("write main");
@@ -3037,17 +3041,17 @@ fn project_build_supports_exact_imported_enum_variant_alias_patterns() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nenum E { A(Integer) B(Integer) }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.E.B as Variant;\nfunction main(): None { e: E = Variant(2); match (e) { Variant(v) => { require(v == 2); } E.A(v) => { require(false); } } return None; }\n",
         )
         .expect("write main");
@@ -3066,17 +3070,17 @@ fn project_build_supports_namespace_alias_nested_enum_variant_patterns() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package util;\nmodule Result {\n    enum Value { Ok(Integer) Error(Integer) }\n}\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { value: u.Result.Value = u.Result.Value.Ok(2); match (value) { u.Result.Value.Ok(v) => { require(v == 2); } u.Result.Value.Error(err) => { require(false); } } return None; }\n",
         )
         .expect("write main");
@@ -3095,17 +3099,17 @@ fn project_build_supports_exact_imported_nested_enum_aliases() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.E as Enum;\nfunction main(): None { e: Enum = Enum.B(2); match (e) { Enum.B(v) => { require(v == 2); } Enum.A(v) => { require(false); } } return None; }\n",
         )
         .expect("write main");
@@ -3124,17 +3128,17 @@ fn project_build_supports_exact_imported_nested_enum_variant_aliases() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.E.B as Variant;\nfunction main(): None { e: M.E = Variant(2); match (e) { Variant(v) => { require(v == 2); } M.E.A(v) => { require(false); } } return None; }\n",
         )
         .expect("write main");
@@ -3153,17 +3157,17 @@ fn project_build_supports_namespace_alias_nested_enums() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as u;\nfunction main(): None { e: u.M.E = u.M.E.B(2); match (e) { u.M.E.B(v) => { require(v == 2); } u.M.E.A(v) => { require(false); } } return None; }\n",
         )
         .expect("write main");
@@ -3182,17 +3186,17 @@ fn project_build_supports_exact_imported_nested_function_aliases_returning_class
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n    function mk(value: Integer): Box { return Box(value); }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.mk as mk;\nfunction main(): None { value: Integer = mk(2).get(); require(value == 2); return None; }\n",
         )
         .expect("write main");
@@ -3212,17 +3216,17 @@ fn project_build_supports_exact_imported_nested_class_aliases() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.Box as Boxed;\nfunction main(): None { value: Integer = Boxed(2).get(); require(value == 2); return None; }\n",
         )
         .expect("write main");
@@ -3239,9 +3243,9 @@ fn project_build_supports_exact_imported_nested_class_aliases() {
 fn project_build_supports_local_qualified_nested_class_paths() {
     let temp_root = make_temp_project_root("local-qualified-nested-class-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n}\nfunction main(): None { b: M.Box = M.Box(2); require(b.get() == 2); return None; }\n",
         )
         .expect("write main");
@@ -3258,9 +3262,9 @@ fn project_build_supports_local_qualified_nested_class_paths() {
 fn project_build_supports_local_qualified_nested_generic_class_paths() {
     let temp_root = make_temp_project_root("local-qualified-nested-generic-class-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n}\nfunction main(): None { b: M.Box<Integer> = M.Box<Integer>(2); require(b.get() == 2); return None; }\n",
         )
         .expect("write main");
@@ -3279,17 +3283,17 @@ fn project_build_supports_exact_imported_nested_generic_class_aliases() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.Box as Boxed;\nfunction main(): None { b: Boxed<Integer> = Boxed<Integer>(2); require(b.get() == 2); return None; }\n",
         )
         .expect("write main");
@@ -3308,17 +3312,17 @@ fn project_build_supports_exact_imported_nested_generic_function_aliases_returni
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n    function mk<T>(value: T): Box<T> { return Box<T>(value); }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.mk as mk;\nfunction main(): None { value: Integer = mk<Integer>(2).get(); require(value == 2); return None; }\n",
         )
         .expect("write main");
@@ -3336,9 +3340,9 @@ fn project_build_supports_exact_imported_nested_generic_function_aliases_returni
 fn project_run_supports_local_nested_generic_functions_returning_classes() {
     let temp_root = make_temp_project_root("local-nested-generic-function-runtime-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n    function mk<T>(value: T): Box<T> { return Box<T>(value); }\n}\nfunction main(): Integer { return M.mk<Integer>(2).get(); }\n",
         )
         .expect("write main");
@@ -3363,17 +3367,17 @@ fn project_run_supports_exact_imported_nested_generic_function_aliases_returning
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function get(): T { return this.value; }\n    }\n    function mk<T>(value: T): Box<T> { return Box<T>(value); }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.mk as mk;\nfunction main(): Integer { return mk<Integer>(2).get(); }\n",
         )
         .expect("write main");
@@ -3398,17 +3402,17 @@ fn project_run_supports_specialized_parent_interface_methods() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package app;\ninterface Reader<T> { function read(): T; }\ninterface StringReader extends Reader<String> {}\nclass FileReader implements StringReader { function read(): String { return \"ok\"; } }\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.StringReader;\nimport app.FileReader;\nfunction main(): Integer { reader: StringReader = FileReader(); f: () -> String = reader.read; return if (reader.read().length() == 2 && f().length() == 2) { 0 } else { 1 }; }\n",
         )
         .expect("write main");
@@ -3432,17 +3436,17 @@ fn project_run_supports_generic_namespace_alias_parent_interfaces() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\ninterface StringReader extends api.Reader<String> {}\nclass FileReader implements StringReader { function read(): String { return \"ok\"; } }\nfunction main(): Integer { reader: StringReader = FileReader(); return if (reader.read().length() == 2) { 0 } else { 1 }; }\n",
         )
         .expect("write main");
@@ -3466,17 +3470,17 @@ fn project_build_supports_generic_exact_import_alias_parent_interfaces() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.Api.Reader as ReaderAlias;\ninterface StringReader extends ReaderAlias<String> {}\nclass FileReader implements StringReader { function read(): String { return \"ok\"; } }\nfunction main(): None { reader: StringReader = FileReader(); require(reader.read().length() == 2); return None; }\n",
         )
         .expect("write main");
@@ -3495,17 +3499,17 @@ fn project_run_supports_generic_namespace_alias_interface_annotations() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nfunction main(): Integer { reader: api.Reader<String> = FileReader(); return if (reader.read().length() == 2) { 0 } else { 1 }; }\n",
         )
         .expect("write main");
@@ -3529,17 +3533,17 @@ fn project_run_supports_generic_exact_import_alias_interface_annotations() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.Api.Reader as ReaderAlias;\nclass FileReader implements ReaderAlias<String> { function read(): String { return \"ok\"; } }\nfunction main(): Integer { reader: ReaderAlias<String> = FileReader(); return if (reader.read().length() == 2) { 0 } else { 1 }; }\n",
         )
         .expect("write main");
@@ -3564,17 +3568,17 @@ fn project_run_supports_generic_namespace_alias_interface_parameters() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nfunction use_reader(reader: api.Reader<String>): Integer { return reader.read().length(); }\nfunction main(): Integer { return use_reader(FileReader()); }\n",
         )
         .expect("write main");
@@ -3598,17 +3602,17 @@ fn project_run_supports_generic_exact_import_alias_interface_returns() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.Api.Reader as ReaderAlias;\nclass FileReader implements ReaderAlias<String> { function read(): String { return \"ok\"; } }\nfunction make_reader(): ReaderAlias<String> { return FileReader(); }\nfunction main(): Integer { return make_reader().read().length(); }\n",
         )
         .expect("write main");
@@ -3632,17 +3636,17 @@ fn project_run_supports_module_local_generic_namespace_alias_interface_parameter
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nmodule Helpers {\n    function use_reader(reader: api.Reader<String>): Integer { return reader.read().length(); }\n}\nfunction main(): Integer { return Helpers.use_reader(FileReader()); }\n",
         )
         .expect("write main");
@@ -3667,17 +3671,17 @@ fn project_run_supports_generic_namespace_alias_interface_lambda_parameters() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("util.apex"),
+        src_dir.join("util.arden"),
         "package app;\nmodule Api {\n    interface Reader<T> { function read(): T; }\n}\n",
     )
     .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nfunction main(): Integer {\n    use_reader: (api.Reader<String>) -> Integer = |reader: api.Reader<String>| reader.read().length();\n    return use_reader(FileReader());\n}\n",
         )
         .expect("write main");
@@ -3700,9 +3704,9 @@ fn project_run_supports_generic_namespace_alias_interface_lambda_parameters() {
 fn project_run_supports_nested_generic_methods_on_nested_generic_classes() {
     let temp_root = make_temp_project_root("nested-generic-method-runtime-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { b: M.Box<Integer> = M.Box<Integer>(2); return b.map<Integer>(inc).get(); }\n",
         )
         .expect("write main");
@@ -3727,17 +3731,17 @@ fn project_run_supports_nested_generic_method_alias_paths() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.Box as Boxed;\nimport app.inc as inc;\nfunction main(): Integer { b: Boxed<Integer> = Boxed<Integer>(2); return b.map<Integer>(inc).get(); }\n",
         )
         .expect("write main");
@@ -3761,17 +3765,17 @@ fn project_build_supports_namespace_alias_nested_generic_class_specializations()
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n        async function mk_async(value: Integer): Task<Box<Integer>> { return Box<Integer>(value); }\n    }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nimport util.M.N.Box as B;\nfunction main(): Integer { return u.M.N.Box<Integer>(41).value + B<Integer>(1).get(); }\n",
         )
         .expect("write main");
@@ -3791,17 +3795,17 @@ fn project_build_supports_namespace_alias_nested_generic_method_specializations(
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n    }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { return u.M.N.mk(46).map<Integer>(inc).get(); }\n",
         )
         .expect("write main");
@@ -3821,17 +3825,17 @@ fn project_build_emits_nested_generic_specialization_symbols_in_one_object_file(
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n        async function mk_async(value: Integer): Task<Box<Integer>> { return Box<Integer>(value); }\n    }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nimport util.M.N.Box as B;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { return u.M.N.mk(46).map<Integer>(inc).get() + u.M.N.Box<Integer>(41).value + B<Integer>(1).get() + await(u.M.N.mk_async(43)).get(); }\n",
         )
         .expect("write main");
@@ -3857,17 +3861,17 @@ fn project_run_supports_cross_package_nested_generic_function_returns_via_namesp
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function get(): T { return this.value; }\n        }\n        function mk(value: Integer): Box<Integer> { return Box<Integer>(value); }\n    }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): Integer { return u.M.N.mk(42).get(); }\n",
         )
         .expect("write main");
@@ -3893,17 +3897,17 @@ fn project_run_supports_cross_package_nested_generic_async_returns_via_namespace
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package util;\nmodule M {\n    module N {\n        class Box<T> {\n            value: T;\n            constructor(value: T) { this.value = value; }\n            function get(): T { return this.value; }\n        }\n        async function mk_async(value: Integer): Task<Box<Integer>> { return Box<Integer>(value); }\n    }\n}\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): Integer { return await(u.M.N.mk_async(43)).get(); }\n",
         )
         .expect("write main");
@@ -3926,9 +3930,9 @@ fn project_run_supports_cross_package_nested_generic_async_returns_via_namespace
 fn project_run_supports_qualified_module_type_paths() {
     let temp_root = make_temp_project_root("qualified-module-type-path-runtime-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule util {\n    class Item {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        function get(): Integer { return this.value; }\n    }\n    function mk(): Item { return Item(7); }\n}\nfunction main(): Integer {\n    item: util.Item = util.mk();\n    return item.get();\n}\n",
         )
         .expect("write main");
@@ -3950,9 +3954,9 @@ fn project_run_supports_qualified_module_type_paths() {
 fn project_run_supports_user_defined_generic_classes_named_like_builtins() {
     let temp_root = make_temp_project_root("user-defined-generic-class-named-like-builtin-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function get(): T { return this.value; }\n}\nfunction mk(value: Integer): Box<Integer> {\n    return Box<Integer>(value);\n}\nfunction main(): Integer {\n    return mk(42).get();\n}\n",
         )
         .expect("write main");
@@ -3975,9 +3979,9 @@ fn project_run_supports_user_defined_generic_classes_named_like_builtins() {
 fn project_run_supports_nested_generic_methods_on_expression_receivers() {
     let temp_root = make_temp_project_root("nested-generic-method-expr-runtime-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n    function make<T>(value: T): Box<T> { return Box<T>(value); }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): Integer { return M.make<Integer>(2).map<Integer>(inc).get(); }\n",
         )
         .expect("write main");
@@ -4000,9 +4004,9 @@ fn project_run_supports_builtin_function_values_in_user_defined_builtin_named_ge
     let temp_root =
         make_temp_project_root("builtin-fn-user-defined-builtin-named-generic-method-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n    function get(): T { return this.value; }\n}\nfunction main(): Integer { mapped: Box<Float> = Box<Integer>(1).map<Float>(to_float); return if (mapped.get() == 1.0) { 0 } else { 1 }; }\n",
         )
         .expect("write main");
@@ -4027,17 +4031,17 @@ fn project_run_supports_nested_generic_method_imported_expression_receivers() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/util.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("util.apex"),
+            src_dir.join("util.arden"),
             "package app;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n        function map<U>(f: (T) -> U): Box<U> { return Box<U>(f(this.value)); }\n        function get(): T { return this.value; }\n    }\n    function make<T>(value: T): Box<T> { return Box<T>(value); }\n}\nfunction inc(x: Integer): Integer { return x + 1; }\n",
         )
         .expect("write util");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.make as make;\nimport app.inc as inc;\nfunction main(): Integer { return make<Integer>(2).map<Integer>(inc).get(); }\n",
         )
         .expect("write main");
@@ -4062,17 +4066,17 @@ fn project_build_supports_async_block_import_alias_calls() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nfunction main(): None { task: Task<Integer> = async { return inc(1); }; value: Integer = await(task); require(value == 2); return None; }\n",
         )
         .expect("write main");
@@ -4091,17 +4095,17 @@ fn project_build_reports_demangled_generic_bound_errors() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\ninterface Named { function name(): Integer; }\nclass Plain { constructor() {} }\nclass Box<T extends Named> {\n    value: Integer;\n    constructor() { this.value = 1; }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction main(): Integer {\n    bad: u.Box<u.Plain> = u.Box<u.Plain>();\n    return bad.value;\n}\n",
         )
         .expect("write main");
@@ -4124,17 +4128,17 @@ fn project_build_reports_demangled_if_branch_type_mismatch() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nclass A { constructor() {} }\nclass B { constructor() {} }\nfunction pick(flag: Boolean): Integer {\n    value: Integer = if (flag) { A() } else { B() };\n    return value;\n}\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport lib.pick as pick;\nfunction main(): Integer { return pick(true); }\n",
     )
     .expect("write main");
@@ -4156,17 +4160,17 @@ fn project_build_reports_demangled_assignment_type_mismatch() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\nclass Named { constructor() {} }\nclass Plain { constructor() {} }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction main(): Integer {\n    value: u.Named = u.Plain();\n    return 0;\n}\n",
         )
         .expect("write main");
@@ -4191,17 +4195,17 @@ fn project_build_reports_demangled_unknown_field_class_name() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nclass Named { constructor() {} }\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction main(): Integer {\n    return u.Box<u.Named>(u.Named()).missing;\n}\n",
         )
         .expect("write main");
@@ -4226,17 +4230,17 @@ fn project_build_reports_demangled_non_function_call_type() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nclass Box<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction main(): Integer {\n    value: u.Box<Integer> = u.Box<Integer>(1);\n    return value(2);\n}\n",
         )
         .expect("write main");
@@ -4260,17 +4264,17 @@ fn project_build_reports_demangled_if_condition_type_mismatch() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nclass Flag { constructor() {} }\nfunction bad(): Integer {\n    if (Flag()) { return 1; }\n    return 0;\n}\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(); }\n",
     )
     .expect("write main");
@@ -4294,17 +4298,17 @@ fn project_build_reports_demangled_index_type_mismatch() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nclass Key { constructor() {} }\nfunction bad(): Integer {\n    xs: List<Integer> = List<Integer>();\n    xs.push(1);\n    return xs[Key()];\n}\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(); }\n",
     )
     .expect("write main");
@@ -4328,17 +4332,17 @@ fn project_build_reports_demangled_await_operand_type_mismatch() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nclass Job { constructor() {} }\nfunction bad(): Integer {\n    return await(Job());\n}\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(); }\n",
     )
     .expect("write main");
@@ -4362,17 +4366,17 @@ fn project_build_reports_demangled_match_arm_type_mismatch() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nclass Left { constructor() {} }\nclass Right { constructor() {} }\nfunction bad(flag: Boolean): Integer {\n    value: Integer = match (flag) {\n        true => Left(),\n        false => Right(),\n    };\n    return value;\n}\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport lib.bad as bad;\nfunction main(): Integer { return bad(true); }\n",
     )
     .expect("write main");
@@ -4397,17 +4401,17 @@ fn project_build_reports_demangled_pattern_type_mismatch() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nclass Token { constructor() {} }\nfunction bad(value: Token): Integer {\n    return match (value) {\n        1 => 0,\n        _ => 1,\n    };\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib.bad as bad;\nimport lib.Token as Token;\nfunction main(): Integer { return bad(Token()); }\n",
         )
         .expect("write main");
@@ -4431,17 +4435,17 @@ fn project_build_reports_demangled_option_some_argument_mismatch() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nclass Token { constructor() {} }\nfunction wrap(flag: Boolean): Option<Token> {\n    if (flag) {\n        return Option.some(1);\n    }\n    return Option.none();\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib.wrap as wrap;\nfunction main(): Integer { return if (wrap(true).is_some()) { 1 } else { 0 }; }\n",
         )
         .expect("write main");
@@ -4465,17 +4469,17 @@ fn project_build_reports_demangled_unknown_type_name() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\nmodule Api {\n    class Token { constructor() {} }\n}\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction read(value: u.Api.Missing): Integer {\n    return 0;\n}\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
@@ -4497,17 +4501,17 @@ fn project_build_reports_import_error_for_invalid_nested_namespace_aliased_exter
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nextern(c) function host(value: root.M.Api.Named): root.M.Api.Named;\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("write helper");
@@ -4541,17 +4545,17 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_lambda_
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer {\n    f: (root.M.Api.Named) -> Integer = (value: root.M.Api.Named) => 0;\n    return 0;\n}\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -4563,7 +4567,7 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_lambda_
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without namespace aliased lambda signature interface");
@@ -4590,17 +4594,17 @@ fn project_build_reports_import_error_for_invalid_nested_namespace_aliased_const
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer {\n    root.M.Box<root.M.Api.Named>();\n    return 0;\n}\n",
         )
         .expect("write main");
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M {\n    module Api { interface Labelled { function name(): Integer; } }\n    class Box<T> { constructor() {} }\n}\n",
         )
         .expect("write helper");
@@ -4628,17 +4632,17 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_functio
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer {\n    f: (root.M.Api.Named) -> Integer = (value: root.M.Api.Named) => 0;\n    return 0;\n}\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -4650,7 +4654,7 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_functio
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without namespace aliased function-type let annotation interface");
@@ -4678,17 +4682,17 @@ fn project_build_accepts_nested_namespace_aliased_function_type_inside_generic_c
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer {\n    values: List<(root.M.Api.Named) -> Integer> = List<(root.M.Api.Named) -> Integer>();\n    return 0;\n}\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -4708,9 +4712,9 @@ fn project_build_accepts_nested_module_local_function_type_inside_generic_constr
         "project-nested-module-local-function-type-inside-generic-constructor",
     );
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    interface Named { function name(): Integer; }\n    function make(): Integer {\n        values: List<(Named) -> Integer> = List<(Named) -> Integer>();\n        return 0;\n    }\n}\nfunction main(): Integer { return M.make(); }\n",
         )
         .expect("write main");
@@ -4730,17 +4734,17 @@ fn project_build_accepts_local_module_function_call_type_args() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.*;\nmodule M {\n    class Box { constructor() {} }\n    function make<T>(): None { }\n}\nfunction main(): None {\n    M.make<M.Box>();\n}\n",
         )
         .expect("write main");
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package util;\nmodule N {\n    module M {\n        class Box { constructor() {} }\n    }\n}\n",
         )
         .expect("write helper");
@@ -4757,9 +4761,9 @@ fn project_build_accepts_local_module_function_call_type_args() {
 fn project_build_accepts_module_local_generic_interface_references() {
     let temp_root = make_temp_project_root("project-module-local-generic-interface-references");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Payload { constructor() {} }\n    interface Named<T> { }\n    interface Child extends Named<Payload> { }\n    class Book implements Named<Payload> { constructor() {} }\n}\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
@@ -4777,9 +4781,9 @@ fn project_build_accepts_module_local_generic_function_values_with_local_type_ar
     let temp_root =
         make_temp_project_root("project-module-local-generic-function-values-local-type-args");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    class Box {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n    }\n    function id<T>(value: T): T { return value; }\n    function run(): Integer {\n        f: (Box) -> Box = id<Box>;\n        return f(Box(7)).value;\n    }\n}\nfunction main(): Integer { return M.run(); }\n",
         )
         .expect("write main");
@@ -4803,9 +4807,9 @@ fn project_build_accepts_module_local_generic_function_values_with_local_type_ar
 fn project_build_accepts_module_local_lambda_parameter_types() {
     let temp_root = make_temp_project_root("project-module-local-lambda-parameter-types");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    interface Named { function value(): Integer; }\n    class Box implements Named {\n        inner: Integer;\n        constructor(inner: Integer) { this.inner = inner; }\n        function value(): Integer { return this.inner; }\n    }\n    function run(): Integer {\n        f: (Named) -> Integer = (value: Named) => value.value();\n        return f(Box(21));\n    }\n}\nfunction main(): Integer { return M.run(); }\n",
         )
         .expect("write main");
@@ -4828,9 +4832,9 @@ fn project_build_accepts_module_local_lambda_parameter_types() {
 fn project_build_accepts_module_local_nested_enum_variant_patterns() {
     let temp_root = make_temp_project_root("project-module-local-nested-enum-variant-patterns");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    module N {\n        enum E { A(Integer), B(Integer) }\n    }\n    function run(): Integer {\n        value: N.E = N.E.A(44);\n        return match (value) {\n            N.E.A(v) => v,\n            N.E.B(v) => v,\n        };\n    }\n}\nfunction main(): Integer { return M.run(); }\n",
         )
         .expect("write main");
@@ -4855,17 +4859,17 @@ fn project_build_avoids_cascading_errors_for_stale_nested_namespace_aliased_inte
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { value: root.M.Api.Named = Book(); return value.name(); }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -4877,7 +4881,7 @@ fn project_build_avoids_cascading_errors_for_stale_nested_namespace_aliased_inte
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without nested namespace aliased interface");
@@ -4909,17 +4913,17 @@ fn project_build_reports_import_error_for_stale_exact_imported_interface_alias_i
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app.M.Api.Named as Named;\nclass Book implements Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -4931,7 +4935,7 @@ fn project_build_reports_import_error_for_stale_exact_imported_interface_alias_i
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without exact imported implemented interface");
@@ -4960,17 +4964,17 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -4982,7 +4986,7 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without namespace aliased implemented interface");
@@ -5011,17 +5015,17 @@ fn project_build_avoids_cascading_errors_for_stale_for_loop_namespace_aliased_in
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book implements root.M.Api.Named { constructor() {} function name(): Integer { return 1; } }\nfunction books(): List<Book> { values: List<Book> = List<Book>(); values.push(Book()); return values; }\nfunction main(): Integer { for (value: root.M.Api.Named in books()) { return value.name(); } return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -5037,7 +5041,7 @@ fn project_build_avoids_cascading_errors_for_stale_for_loop_namespace_aliased_in
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without for-loop namespace aliased interface");
@@ -5067,17 +5071,17 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book { value: root.M.Api.Named; constructor() {} }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -5089,7 +5093,7 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without namespace aliased class field interface");
@@ -5116,17 +5120,17 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nenum Wrap { Named(root.M.Api.Named) }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -5138,7 +5142,7 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without namespace aliased enum payload interface");
@@ -5166,17 +5170,17 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book { constructor() {} function take(value: root.M.Api.Named): Integer { return 0; } }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -5188,7 +5192,7 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without namespace aliased method signature interface");
@@ -5217,17 +5221,17 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\nclass Book { constructor(value: root.M.Api.Named) {} }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -5239,7 +5243,7 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without namespace aliased constructor signature interface");
@@ -5268,17 +5272,17 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\ninterface NamedConsumer { function take(value: root.M.Api.Named): Integer; }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -5290,7 +5294,7 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without namespace aliased interface signature interface");
@@ -5319,17 +5323,17 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport app as root;\ninterface NamedFactory { function make(): root.M.Api.Named; }\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        src_dir.join("helper.apex"),
+        src_dir.join("helper.arden"),
         "package app;\nmodule M { module Api { interface Named { function name(): Integer; } } }\n",
     )
     .expect("write helper");
@@ -5341,7 +5345,7 @@ fn project_build_reports_import_error_for_stale_nested_namespace_aliased_interfa
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            src_dir.join("helper.apex"),
+            src_dir.join("helper.arden"),
             "package app;\nmodule M { module Api { interface Labelled { function name(): Integer; } } }\n",
         )
         .expect("rewrite helper without namespace aliased interface return signature interface");
@@ -5367,17 +5371,17 @@ fn project_build_reports_demangled_list_constructor_capacity_type_mismatch() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\nclass Token { constructor() {} }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib.Token as Token;\nfunction main(): Integer {\n    xs: List<Integer> = List<Integer>(Token());\n    return xs.length();\n}\n",
         )
         .expect("write main");
@@ -5403,17 +5407,17 @@ fn project_build_rejects_unknown_interface_signature_types() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\ninterface Api {\n    function decode(value: Missing): Missing;\n}\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction main(): Integer { return 0; }\n",
     )
     .expect("write main");
@@ -5431,9 +5435,9 @@ fn project_build_rejects_unknown_interface_signature_types() {
 fn project_build_rejects_unknown_extern_signature_types() {
     let temp_root = make_temp_project_root("project-unknown-extern-signature-types");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nextern(c) function host(value: Missing): Missing;\nfunction main(): Integer { return 0; }\n",
         )
         .expect("write main");
@@ -5453,17 +5457,17 @@ fn project_build_rejects_unknown_enum_payload_types() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\nenum Message { Value(Missing) }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction main(): Integer { return 0; }\n",
     )
     .expect("write main");
@@ -5483,17 +5487,17 @@ fn project_build_reports_demangled_unknown_implemented_interface() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nmodule Api {\n    class Report implements Missing {\n        constructor() {}\n    }\n}\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction main(): Integer { return 0; }\n",
     )
     .expect("write main");
@@ -5517,17 +5521,17 @@ fn project_build_reports_demangled_unknown_variant_enum_name() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nenum Choice { Left, Right }\nfunction read(): Integer {\n    return match (Choice.Left) {\n        Choice.Missing => 0,\n        _ => 1,\n    };\n}\n",
         )
         .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport lib.read as read;\nfunction main(): Integer { return read(); }\n",
     )
     .expect("write main");
@@ -5551,13 +5555,17 @@ fn project_build_supports_async_block_namespace_alias_unit_enum_tail_runtime() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
-    fs::write(src_dir.join("lib.apex"), "package util;\nenum E { A, B }\n").expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+        src_dir.join("lib.arden"),
+        "package util;\nenum E { A, B }\n",
+    )
+    .expect("write lib");
+    fs::write(
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): Integer { task: Task<u.E> = async { u.E.A }; value: u.E = await(task); match (value) { u.E.A => { return 0; } u.E.B => { return 1; } } }\n",
         )
         .expect("write main");
@@ -5581,17 +5589,17 @@ fn project_build_supports_async_block_import_alias_function_value_tail_runtime()
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nfunction main(): Integer { task: Task<(Integer) -> Integer> = async { inc }; f: (Integer) -> Integer = await(task); return f(1); }\n",
         )
         .expect("write main");
@@ -5615,17 +5623,17 @@ fn project_build_supports_async_block_import_alias_tail_expression_runtime() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nfunction main(): Integer { task: Task<Integer> = async { inc(1) }; return await(task); }\n",
         )
         .expect("write main");
@@ -5649,13 +5657,17 @@ fn project_build_supports_namespace_alias_unit_enum_values() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
-    fs::write(src_dir.join("lib.apex"), "package util;\nenum E { A, B }\n").expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+        src_dir.join("lib.arden"),
+        "package util;\nenum E { A, B }\n",
+    )
+    .expect("write lib");
+    fs::write(
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { e: u.E = u.E.A; match (e) { u.E.A => { } u.E.B => { } } return None; }\n",
         )
         .expect("write main");
@@ -5672,9 +5684,9 @@ fn project_build_supports_namespace_alias_unit_enum_values() {
 fn project_build_supports_try_expression_function_value_callees() {
     let temp_root = make_temp_project_root("try-function-callee-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction choose(): Result<(Integer) -> Integer, String> { return Result.ok(inc); }\nfunction compute(): Result<Integer, String> { value: Integer = (choose()?)(1); return Result.ok(value); }\nfunction main(): Integer { value: Integer = compute().unwrap(); require(value == 2); return 0; }\n",
         )
         .expect("write main");
@@ -5693,17 +5705,17 @@ fn project_build_supports_imported_explicit_generic_free_calls() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nfunction id<T>(x: T): T { return x; }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.id;\nfunction main(): None { value: Integer = id<Integer>(1); require(value == 1); return None; }\n",
         )
         .expect("write main");
@@ -5722,17 +5734,17 @@ fn project_build_supports_imported_generic_class_instance_methods() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nclass Boxed<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function get(): T { return this.value; }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.Boxed;\nfunction main(): None { value: Integer = Boxed<Integer>(7).get(); require(value == 7); return None; }\n",
         )
         .expect("write main");
@@ -5751,17 +5763,17 @@ fn project_run_supports_top_level_destructor_alias_rewrite() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util.add1 as inc;\nclass Boxed {\n    value: Integer;\n    constructor(value: Integer) { this.value = value; }\n    destructor() { require(inc(this.value) == 2); }\n}\nfunction main(): Integer { box: Boxed = Boxed(1); return 0; }\n",
         )
         .expect("write main");
@@ -5783,9 +5795,9 @@ fn project_run_supports_top_level_destructor_alias_rewrite() {
 fn project_run_supports_module_local_destructor_function_rewrite() {
     let temp_root = make_temp_project_root("module-destructor-rewrite-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    function score(x: Integer): Integer { return x + 1; }\n    class Boxed {\n        value: Integer;\n        constructor(value: Integer) { this.value = value; }\n        destructor() { require(score(this.value) == 2); }\n    }\n    function make(): Boxed { return Boxed(1); }\n}\nfunction main(): Integer { box: M.Boxed = M.make(); return 0; }\n",
         )
         .expect("write main");
@@ -5807,9 +5819,9 @@ fn project_run_supports_module_local_destructor_function_rewrite() {
 fn project_build_supports_method_calls_on_function_returned_objects() {
     let temp_root = make_temp_project_root("function-return-method-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nclass Boxed<T> {\n    value: T;\n    constructor(value: T) { this.value = value; }\n    function get(): T { return this.value; }\n}\nfunction make_box(): Boxed<Integer> { return Boxed<Integer>(9); }\nfunction main(): None { value: Integer = make_box().get(); require(value == 9); return None; }\n",
         )
         .expect("write main");
@@ -5828,17 +5840,17 @@ fn project_check_supports_namespace_alias_nested_module_generic_class_constructo
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package util;\nmodule M {\n    class Box<T> {\n        value: T;\n        constructor(value: T) { this.value = value; }\n    }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): None { b: u.M.Box<Integer> = u.M.Box<Integer>(1); return None; }\n",
         )
         .expect("write main");
@@ -5856,9 +5868,9 @@ fn project_check_supports_namespace_alias_nested_module_generic_class_constructo
 fn project_build_supports_module_local_interface_implements() {
     let temp_root = make_temp_project_root("module-local-interface-implements-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    interface Named { function name(): Integer; }\n    class Book implements Named {\n        constructor() {}\n        function name(): Integer { return 1; }\n    }\n}\nfunction main(): None { return None; }\n",
         )
         .expect("write main");
@@ -5875,9 +5887,9 @@ fn project_build_supports_module_local_interface_implements() {
 fn project_build_supports_module_local_nested_interface_implements() {
     let temp_root = make_temp_project_root("module-local-nested-interface-implements-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    module Api { interface Named { function name(): Integer; } }\n    class Book implements Api.Named {\n        constructor() {}\n        function name(): Integer { return 1; }\n    }\n}\nfunction main(): None { return None; }\n",
         )
         .expect("write main");
@@ -5894,9 +5906,9 @@ fn project_build_supports_module_local_nested_interface_implements() {
 fn project_build_supports_module_local_interface_extends() {
     let temp_root = make_temp_project_root("module-local-interface-extends-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    interface Named { function name(): Integer; }\n    interface Printable extends Named { function print_me(): Integer; }\n    class Report implements Printable {\n        constructor() {}\n        function name(): Integer { return 1; }\n        function print_me(): Integer { return 2; }\n    }\n}\nfunction main(): None { return None; }\n",
         )
         .expect("write main");
@@ -5913,9 +5925,9 @@ fn project_build_supports_module_local_interface_extends() {
 fn project_build_supports_module_local_nested_interface_extends() {
     let temp_root = make_temp_project_root("module-local-nested-interface-extends-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M {\n    module Api { interface Named { function name(): Integer; } }\n    interface Printable extends Api.Named { function print_me(): Integer; }\n    class Report implements Printable {\n        constructor() {}\n        function name(): Integer { return 1; }\n        function print_me(): Integer { return 2; }\n    }\n}\nfunction main(): None { return None; }\n",
         )
         .expect("write main");
@@ -5934,17 +5946,17 @@ fn project_build_supports_namespace_alias_interface_extends_on_seeded_semantic_p
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\ninterface Named { function name(): Integer; }\n",
     )
     .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib as u;\ninterface Printable extends u.Named { function print_me(): Integer; }\nclass Report implements Printable {\n    constructor() {}\n    function name(): Integer { return 1; }\n    function print_me(): Integer { return 2; }\n}\nfunction main(): None { return None; }\n",
         )
         .expect("write main");
@@ -5963,17 +5975,17 @@ fn project_build_supports_nested_namespace_alias_interface_extends_on_seeded_sem
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\nmodule Api {\n    interface Named { function name(): Integer; }\n    interface Printable { function print_me(): Integer; }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib as u;\ninterface Reportable extends u.Api.Named, u.Api.Printable {}\nclass Report implements Reportable {\n    constructor() {}\n    function name(): Integer { return 1; }\n    function print_me(): Integer { return 2; }\n}\nfunction main(): None { return None; }\n",
         )
         .expect("write main");
@@ -5992,17 +6004,17 @@ fn project_build_supports_namespace_alias_generic_bounds() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            src_dir.join("lib.apex"),
+            src_dir.join("lib.arden"),
             "package lib;\ninterface Named { function name(): Integer; }\nclass Person implements Named {\n    constructor() {}\n    function name(): Integer { return 1; }\n}\n",
         )
         .expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nimport lib as u;\nfunction read_name<T extends u.Named>(value: T): Integer { return value.name(); }\nfunction main(): None { person: u.Person = u.Person(); require(read_name(person) == 1); return None; }\n",
         )
         .expect("write main");
@@ -6022,17 +6034,17 @@ fn project_build_no_check_rejects_namespace_alias_generic_bound_method_signature
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\ninterface Named { function name(): Integer; }\nclass Person implements Named {\n    constructor() {}\n    function name(): Integer { return 1; }\n}\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport lib as u;\nfunction read_name<T extends u.Named>(value: T): Integer { f: (Integer) -> Integer = value.name; return f(1); }\nfunction main(): None { person: u.Person = u.Person(); require(read_name(person) == 1); return None; }\n",
     )
     .expect("write main");
@@ -6054,9 +6066,9 @@ fn project_build_no_check_rejects_namespace_alias_generic_bound_method_signature
 fn project_build_supports_dereferenced_function_value_callees() {
     let temp_root = make_temp_project_root("deref-function-callee-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): None { f: &(Integer) -> Integer = &inc; value: Integer = (*f)(1); require(value == 2); return None; }\n",
         )
         .expect("write main");
@@ -6073,9 +6085,9 @@ fn project_build_supports_dereferenced_function_value_callees() {
 fn project_check_rejects_async_borrowed_reference_results() {
     let temp_root = make_temp_project_root("async-borrowed-result-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nfunction inc(x: Integer): Integer { return x + 1; }\nfunction main(): None { task: Task<&(Integer) -> Integer> = async { return &inc; }; return None; }\n",
         )
         .expect("write main");
@@ -6096,9 +6108,9 @@ fn project_check_rejects_async_borrowed_reference_results() {
 fn project_check_rejects_async_borrowed_reference_params_and_captures() {
     let temp_root = make_temp_project_root("async-borrowed-param-capture-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nasync function read_ref(r: &Integer): Task<Integer> { return *r; }\nfunction main(): None { x: Integer = 1; alias: &Integer = &x; task: Task<Integer> = async { return *alias; }; return None; }\n",
         )
         .expect("write main");
@@ -6128,12 +6140,12 @@ fn project_build_runs_float_interpolation_from_aliased_async_module_runtime() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         r#"
 package util;
 module Api {
@@ -6151,7 +6163,7 @@ module Api {
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         r#"
 package app;
 import std.io.*;
@@ -6195,12 +6207,12 @@ fn project_build_runs_dotted_package_async_float_await_runtime() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/lib.apex", "src/main.apex"],
-        "src/main.apex",
+        &["src/lib.arden", "src/main.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         r#"
 package demo.analytics;
 module Api {
@@ -6214,7 +6226,7 @@ module Api {
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         r#"
 package app;
 import std.io.*;
@@ -6261,12 +6273,12 @@ fn project_build_runs_dotted_package_async_function_value_runtime() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/lib.apex", "src/main.apex"],
-        "src/main.apex",
+        &["src/lib.arden", "src/main.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         r#"
 package demo.analytics;
 module Api {
@@ -6280,7 +6292,7 @@ module Api {
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         r#"
 package app;
 import std.io.*;
@@ -6323,13 +6335,17 @@ fn project_run_supports_namespace_alias_unit_enum_match_expressions() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
-    fs::write(src_dir.join("lib.apex"), "package util;\nenum E { A, B }\n").expect("write lib");
     fs::write(
-            src_dir.join("main.apex"),
+        src_dir.join("lib.arden"),
+        "package util;\nenum E { A, B }\n",
+    )
+    .expect("write lib");
+    fs::write(
+            src_dir.join("main.arden"),
             "package app;\nimport util as u;\nfunction main(): Integer { value: Integer = match (u.E.A) { u.E.A => { 1 } u.E.B => { 2 } }; require(value == 1); return 0; }\n",
         )
         .expect("write main");
@@ -6351,9 +6367,9 @@ fn project_run_supports_namespace_alias_unit_enum_match_expressions() {
 fn project_run_supports_direct_constructor_method_calls() {
     let temp_root = make_temp_project_root("direct-ctor-method-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nclass Boxed { value: Integer; constructor(value: Integer) { this.value = value; } function get(): Integer { return this.value; } }\nfunction main(): Integer { return Boxed(23).get(); }\n",
         )
         .expect("write main");
@@ -6376,9 +6392,9 @@ fn project_run_supports_direct_constructor_method_calls() {
 fn project_run_no_check_rejects_main_with_string_return_type_cleanly() {
     let temp_root = make_temp_project_root("project-main-string-return-type-nocheck");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nfunction main(): String { return \"oops\"; }\n",
     )
     .expect("write main");
@@ -6398,12 +6414,12 @@ fn project_run_rejects_non_binary_output_kind() {
     let temp_root = make_temp_project_root("run-non-binary-project");
     let src_dir = temp_root.join("src");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\noutput_kind = \"static\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\noutput = \"smoke\"\noutput_kind = \"static\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "function main(): None { return None; }\n",
     )
     .expect("write main");
@@ -6425,9 +6441,9 @@ fn project_run_rejects_non_binary_output_kind() {
 fn project_run_supports_local_qualified_nested_enum_match_expressions() {
     let temp_root = make_temp_project_root("local-nested-enum-match-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M { enum E { A(Integer), B(Integer) } class Box { value: Integer; constructor(value: Integer) { this.value = value; } } }\nfunction main(): Integer { return (match (M.E.A(42)) { M.E.A(v) => M.Box(v), M.E.B(v) => M.Box(v) }).value; }\n",
         )
         .expect("write main");
@@ -6450,9 +6466,9 @@ fn project_run_supports_local_qualified_nested_enum_match_expressions() {
 fn project_run_supports_module_local_qualified_async_function_paths() {
     let temp_root = make_temp_project_root("module-local-qualified-async-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M { class Box { value: Integer; constructor(value: Integer) { this.value = value; } } async function mk(): M.Box { return M.Box(43); } }\nfunction main(): Integer { return await(M.mk()).value; }\n",
         )
         .expect("write main");
@@ -6475,9 +6491,9 @@ fn project_run_supports_module_local_qualified_async_function_paths() {
 fn project_run_supports_deeper_local_nested_module_function_paths() {
     let temp_root = make_temp_project_root("deeper-local-nested-module-function-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M { module N { class Box { value: Integer; constructor(value: Integer) { this.value = value; } function get(): Integer { return this.value; } } function mk(): Box { return Box(51); } } }\nfunction main(): Integer { return M.N.mk().get(); }\n",
         )
         .expect("write main");
@@ -6500,9 +6516,9 @@ fn project_run_supports_deeper_local_nested_module_function_paths() {
 fn project_run_supports_deeper_local_nested_module_async_paths() {
     let temp_root = make_temp_project_root("deeper-local-nested-module-async-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-            src_dir.join("main.apex"),
+            src_dir.join("main.arden"),
             "package app;\nmodule M { module N { class Box { value: Integer; constructor(value: Integer) { this.value = value; } } async function mk(): Box { return Box(53); } } }\nfunction main(): Integer { return await(M.N.mk()).value; }\n",
         )
         .expect("write main");
@@ -6527,17 +6543,17 @@ fn project_run_supports_nested_module_destructors_with_import_alias_calls() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package util;\nfunction add1(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport util.add1 as inc;\nmodule M { module N { class Box { constructor() {} destructor() { require(inc(1) == 2); } } } }\nfunction main(): Integer { b: M.N.Box = M.N.Box(); return 0; }\n",
     )
     .expect("write main");
@@ -6563,17 +6579,17 @@ fn project_build_supports_nested_module_generic_bounds_through_file_scope_aliase
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package app;\ninterface Named { function name(): Integer; }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport app.Named as NamedAlias;\nmodule M { module N { class Box<T extends NamedAlias> { value: T; constructor(value: T) { this.value = value; } function get(): Integer { return this.value.name(); } } } }\nclass Item implements NamedAlias { function name(): Integer { return 7; } }\nfunction main(): Integer { return M.N.Box<Item>(Item()).get(); }\n",
     )
     .expect("write main");
@@ -6599,17 +6615,17 @@ fn project_build_supports_nested_module_interface_generic_bounds_through_file_sc
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package app;\ninterface Named { function name(): Integer; }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport app.Named as NamedAlias;\nmodule M { module N { interface Reader<T extends NamedAlias> { function read(value: T): Integer; } class Box implements Reader<Item> { constructor() {} function read(value: Item): Integer { return value.name(); } } } }\nclass Item implements NamedAlias { function name(): Integer { return 7; } }\nfunction main(): Integer { reader: M.N.Reader<Item> = M.N.Box(); return reader.read(Item()); }\n",
     )
     .expect("write main");
@@ -6633,9 +6649,9 @@ fn project_build_supports_nested_module_interface_generic_bounds_through_file_sc
 fn project_build_supports_nested_module_generic_base_classes() {
     let temp_root = make_temp_project_root("nested-module-generic-base-class-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nmodule M { module N { class Payload { constructor() {} } class Base<T> { constructor() {} } class Child extends Base<Payload> { constructor() {} } } }\nfunction main(): Integer { value: M.N.Child = M.N.Child(); return 0; }\n",
     )
     .expect("write main");
@@ -6660,17 +6676,17 @@ fn project_build_supports_generic_exact_import_alias_base_classes() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\nclass Payload { constructor() {} }\nclass Base<T> { constructor() {} }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport lib.Base as BaseAlias;\nimport lib.Payload as PayloadAlias;\nclass Child extends BaseAlias<PayloadAlias> { constructor() {} }\nfunction main(): Integer { value: Child = Child(); return 0; }\n",
     )
     .expect("write main");
@@ -6694,17 +6710,17 @@ fn project_build_supports_generic_namespace_alias_base_classes() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\nclass Payload { constructor() {} }\nclass Base<T> { constructor() {} }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nimport lib as u;\nclass Child extends u.Base<u.Payload> { constructor() {} }\nfunction main(): Integer { value: Child = Child(); return 0; }\n",
     )
     .expect("write main");
@@ -6728,17 +6744,17 @@ fn project_build_supports_module_local_namespace_alias_imports() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } function get(): T { return this.value; } }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nmodule M { import lib as u; function make(): Integer { f: (Integer) -> u.Box<Integer> = u.Box<Integer>; value: u.Box<Integer> = f(7); return value.get(); } }\nfunction main(): Integer { return M.make(); }\n",
     )
     .expect("write main");
@@ -6762,17 +6778,17 @@ fn project_build_supports_module_local_exact_import_aliases() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/lib.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/lib.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        src_dir.join("lib.apex"),
+        src_dir.join("lib.arden"),
         "package lib;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } function get(): T { return this.value; } }\n",
     )
     .expect("write lib");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nmodule M { import lib.Box as Boxed; function make(): Integer { f: (Integer) -> Boxed<Integer> = Boxed<Integer>; value: Boxed<Integer> = f(7); return value.get(); } }\nfunction main(): Integer { return M.make(); }\n",
     )
     .expect("write main");
@@ -6794,9 +6810,9 @@ fn project_build_supports_module_local_exact_import_aliases() {
 fn project_build_no_check_rejects_module_local_wildcard_import_leaking_to_top_level() {
     let temp_root = make_temp_project_root("module-local-wildcard-import-leak-project");
     let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "package app;\nmodule Inner { import std.math.*; function keep(): Float { return abs(-1.0); } }\nfunction main(): Float { return abs(-1.0); }\n",
     )
     .expect("write main");
@@ -6820,17 +6836,17 @@ fn project_build_rechecks_module_local_wildcard_import_dependents_after_symbol_r
     let temp_root = make_temp_project_root("project-build-module-local-wildcard-symbol-removal");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nmodule Inner { import lib.*; function run(): Integer { return add(1); } }\nfunction main(): Integer { return Inner.run(); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -6842,7 +6858,7 @@ fn project_build_rechecks_module_local_wildcard_import_dependents_after_symbol_r
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction plus(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite helper without module-local wildcard imported symbol");
@@ -6868,17 +6884,17 @@ fn project_build_rechecks_module_local_exact_import_alias_dependents_after_symbo
         make_temp_project_root("project-build-module-local-exact-import-alias-symbol-removal");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nmodule Inner { import lib.add as plus_one; function run(): Integer { return plus_one(1); } }\nfunction main(): Integer { return Inner.run(); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -6890,7 +6906,7 @@ fn project_build_rechecks_module_local_exact_import_alias_dependents_after_symbo
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction plus(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite helper without module-local exact-import alias symbol");
@@ -6916,17 +6932,17 @@ fn project_build_rechecks_module_local_namespace_alias_dependents_after_symbol_r
         make_temp_project_root("project-build-module-local-namespace-alias-symbol-removal");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nmodule Inner { import lib as l; function run(): Integer { return l.add(1); } }\nfunction main(): Integer { return Inner.run(); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -6938,7 +6954,7 @@ fn project_build_rechecks_module_local_namespace_alias_dependents_after_symbol_r
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction plus(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite helper without module-local namespace-alias symbol");
@@ -6961,31 +6977,31 @@ fn project_build_rechecks_module_local_namespace_alias_dependents_after_symbol_r
 fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
     let temp_root = make_temp_project_root("project-check-invalid-files-list-fix");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/helper.txt\", \"src/main.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/helper.txt\", \"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write invalid apex.toml");
+        .expect("write invalid arden.toml");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
     .expect("write main");
-    fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+    fs::write(temp_root.join("src/helper.txt"), "not arden\n").expect("write helper");
 
     with_current_dir(&temp_root, || {
         let err = check_file(None).expect_err("check should reject invalid files list entry");
         assert!(
-            err.contains("src/helper.txt") || err.contains("is not an .apex file"),
+            err.contains("src/helper.txt") || err.contains("is not an .arden file"),
             "{err}"
         );
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("rewrite valid apex.toml");
+        .expect("rewrite valid arden.toml");
 
     with_current_dir(&temp_root, || {
         check_file(None).expect("check should recover cleanly after fixing files list");
@@ -6998,12 +7014,12 @@ fn project_check_recovers_cleanly_after_invalid_files_list_fix() {
 fn project_commands_recover_after_repeated_helper_validity_toggles() {
     let temp_root = make_temp_project_root("project-commands-helper-validity-toggles");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
@@ -7011,7 +7027,7 @@ fn project_commands_recover_after_repeated_helper_validity_toggles() {
     let invalid_helper = "package lib;\nfunction add(: Integer { return 1; }\n";
     let valid_helper = "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n";
 
-    fs::write(temp_root.join("src/helper.apex"), invalid_helper).expect("write invalid helper");
+    fs::write(temp_root.join("src/helper.arden"), invalid_helper).expect("write invalid helper");
     with_current_dir(&temp_root, || {
         check_command(None, false).expect_err("check should fail on first invalid helper");
         build_project(false, false, true, false, false)
@@ -7019,7 +7035,7 @@ fn project_commands_recover_after_repeated_helper_validity_toggles() {
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
-    fs::write(temp_root.join("src/helper.apex"), valid_helper).expect("write valid helper");
+    fs::write(temp_root.join("src/helper.arden"), valid_helper).expect("write valid helper");
     with_current_dir(&temp_root, || {
         check_command(None, false).expect("check should pass on first valid helper");
         build_project(false, false, true, false, false)
@@ -7027,7 +7043,7 @@ fn project_commands_recover_after_repeated_helper_validity_toggles() {
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
-    fs::write(temp_root.join("src/helper.apex"), invalid_helper).expect("rewrite invalid helper");
+    fs::write(temp_root.join("src/helper.arden"), invalid_helper).expect("rewrite invalid helper");
     with_current_dir(&temp_root, || {
         check_command(None, false).expect_err("check should fail on second invalid helper");
         build_project(false, false, true, false, false)
@@ -7035,7 +7051,8 @@ fn project_commands_recover_after_repeated_helper_validity_toggles() {
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
-    fs::write(temp_root.join("src/helper.apex"), valid_helper).expect("rewrite valid helper again");
+    fs::write(temp_root.join("src/helper.arden"), valid_helper)
+        .expect("rewrite valid helper again");
     with_current_dir(&temp_root, || {
         check_command(None, false).expect("check should pass after repeated validity toggles");
         build_project(false, false, true, false, false)
@@ -7049,17 +7066,17 @@ fn project_commands_recover_after_repeated_helper_validity_toggles() {
 fn project_commands_ignore_metadata_only_touch_after_recovery() {
     let temp_root = make_temp_project_root("project-commands-metadata-touch-after-recovery");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(: Integer { return 1; }\n",
     )
     .expect("write malformed helper");
@@ -7072,7 +7089,7 @@ fn project_commands_ignore_metadata_only_touch_after_recovery() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     let fixed_helper = "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n";
-    fs::write(temp_root.join("src/helper.apex"), fixed_helper).expect("rewrite valid helper");
+    fs::write(temp_root.join("src/helper.arden"), fixed_helper).expect("rewrite valid helper");
 
     with_current_dir(&temp_root, || {
         check_command(None, false).expect("project check should recover after helper fix");
@@ -7081,7 +7098,7 @@ fn project_commands_ignore_metadata_only_touch_after_recovery() {
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
-    fs::write(temp_root.join("src/helper.apex"), fixed_helper)
+    fs::write(temp_root.join("src/helper.arden"), fixed_helper)
         .expect("rewrite identical helper for metadata touch");
 
     with_current_dir(&temp_root, || {
@@ -7098,17 +7115,17 @@ fn project_commands_ignore_metadata_only_touch_after_recovery() {
 fn project_commands_recover_cleanly_after_metadata_only_config_edit() {
     let temp_root = make_temp_project_root("project-commands-metadata-config-edit");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -7120,10 +7137,10 @@ fn project_commands_recover_cleanly_after_metadata_only_config_edit() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.1\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke2\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.1\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke2\"\n",
         )
-        .expect("rewrite metadata-only apex.toml");
+        .expect("rewrite metadata-only arden.toml");
 
     with_current_dir(&temp_root, || {
         check_command(None, false)
@@ -7139,17 +7156,17 @@ fn project_commands_recover_cleanly_after_metadata_only_config_edit() {
 fn project_commands_recover_cleanly_after_output_only_config_edit() {
     let temp_root = make_temp_project_root("project-commands-output-only-config-edit");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -7161,10 +7178,10 @@ fn project_commands_recover_cleanly_after_output_only_config_edit() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-renamed\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-renamed\"\n",
         )
-        .expect("rewrite output-only apex.toml");
+        .expect("rewrite output-only arden.toml");
 
     with_current_dir(&temp_root, || {
         check_command(None, false).expect("project check should ignore output-only config edit");
@@ -7179,10 +7196,15 @@ fn project_commands_recover_cleanly_after_output_only_config_edit() {
 #[test]
 fn project_build_rebuilds_after_same_length_source_edit_with_preserved_mtime() {
     let temp_root = make_temp_project_root("project-build-same-length-preserved-mtime");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "build/out");
-    let source_path = temp_root.join("src/main.apex");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden"],
+        "src/main.arden",
+        "build/out",
+    );
+    let source_path = temp_root.join("src/main.arden");
     let output_path = temp_root.join("build/out");
-    let mtime_reference = temp_root.join("src/main.mtime_ref.apex");
+    let mtime_reference = temp_root.join("src/main.mtime_ref.arden");
 
     fs::write(
         &source_path,
@@ -7229,8 +7251,8 @@ fn project_build_rebuilds_after_same_length_source_edit_with_preserved_mtime() {
 #[test]
 fn parse_project_unit_reparses_after_same_length_source_edit_with_preserved_mtime() {
     let temp_root = make_temp_project_root("parse-cache-same-length-preserved-mtime");
-    let source_path = temp_root.join("src/main.apex");
-    let mtime_reference = temp_root.join("src/main.mtime_ref.apex");
+    let source_path = temp_root.join("src/main.arden");
+    let mtime_reference = temp_root.join("src/main.mtime_ref.arden");
 
     fs::write(
         &source_path,
@@ -7282,17 +7304,17 @@ fn safe_rewrite_cache_reuse_requires_matching_entry_namespace() {
 fn project_commands_recover_after_repeated_output_path_toggles() {
     let temp_root = make_temp_project_root("project-commands-repeated-output-toggles");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -7303,8 +7325,8 @@ fn project_commands_recover_after_repeated_output_path_toggles() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-a\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-a\"\n",
         )
         .expect("rewrite output path a");
     with_current_dir(&temp_root, || {
@@ -7314,8 +7336,8 @@ fn project_commands_recover_after_repeated_output_path_toggles() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-b\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-b\"\n",
         )
         .expect("rewrite output path b");
     with_current_dir(&temp_root, || {
@@ -7330,17 +7352,17 @@ fn project_commands_recover_after_repeated_output_path_toggles() {
 fn project_commands_recover_after_repeated_output_and_version_toggles() {
     let temp_root = make_temp_project_root("project-commands-output-version-toggles");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -7351,8 +7373,8 @@ fn project_commands_recover_after_repeated_output_and_version_toggles() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.1\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-a\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.1\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-a\"\n",
         )
         .expect("rewrite output/version a");
     with_current_dir(&temp_root, || {
@@ -7362,8 +7384,8 @@ fn project_commands_recover_after_repeated_output_and_version_toggles() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.2\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-b\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.2\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-b\"\n",
         )
         .expect("rewrite output/version b");
     with_current_dir(&temp_root, || {
@@ -7378,17 +7400,17 @@ fn project_commands_recover_after_repeated_output_and_version_toggles() {
 fn project_commands_ignore_files_order_only_toggles() {
     let temp_root = make_temp_project_root("project-commands-files-order-toggles");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -7400,8 +7422,8 @@ fn project_commands_ignore_files_order_only_toggles() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/helper.apex\", \"src/main.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/helper.arden\", \"src/main.arden\"]\noutput = \"smoke\"\n",
         )
         .expect("rewrite file order");
 
@@ -7418,32 +7440,32 @@ fn project_commands_ignore_files_order_only_toggles() {
 fn project_build_recovers_cleanly_after_invalid_files_list_fix() {
     let temp_root = make_temp_project_root("project-build-invalid-files-list-fix");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/helper.txt\", \"src/main.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/helper.txt\", \"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write invalid apex.toml");
+        .expect("write invalid arden.toml");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
     .expect("write main");
-    fs::write(temp_root.join("src/helper.txt"), "not apex\n").expect("write helper");
+    fs::write(temp_root.join("src/helper.txt"), "not arden\n").expect("write helper");
 
     with_current_dir(&temp_root, || {
         let err = build_project(false, false, true, false, false)
             .expect_err("build should reject invalid files list entry");
         assert!(
-            err.contains("src/helper.txt") || err.contains("is not an .apex file"),
+            err.contains("src/helper.txt") || err.contains("is not an .arden file"),
             "{err}"
         );
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("rewrite valid apex.toml");
+        .expect("rewrite valid arden.toml");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false)
@@ -7457,17 +7479,17 @@ fn project_build_recovers_cleanly_after_invalid_files_list_fix() {
 fn project_commands_recover_cleanly_after_malformed_helper_fix() {
     let temp_root = make_temp_project_root("project-commands-recover-malformed-helper");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(: Integer { return 1; }\n",
     )
     .expect("write malformed helper");
@@ -7483,7 +7505,7 @@ fn project_commands_recover_cleanly_after_malformed_helper_fix() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite valid helper");
@@ -7502,17 +7524,17 @@ fn project_commands_recover_cleanly_after_malformed_helper_fix() {
 fn project_commands_recover_after_malformed_source_then_output_toggle() {
     let temp_root = make_temp_project_root("project-commands-malformed-then-output-toggle");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(: Integer { return 1; }\n",
     )
     .expect("write malformed helper");
@@ -7525,13 +7547,13 @@ fn project_commands_recover_after_malformed_source_then_output_toggle() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite valid helper");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke-renamed\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke-renamed\"\n",
         )
         .expect("rewrite output path after recovery");
 
@@ -7549,17 +7571,17 @@ fn project_commands_recover_after_malformed_source_then_output_toggle() {
 fn project_build_recovers_after_malformed_helper_fix_with_cache_history() {
     let temp_root = make_temp_project_root("project-build-recover-malformed-helper");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"smoke\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"smoke\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport lib.add;\nfunction main(): None { value: Integer = add(1); return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(: Integer { return 1; }\n",
     )
     .expect("write malformed helper");
@@ -7575,7 +7597,7 @@ fn project_build_recovers_after_malformed_helper_fix_with_cache_history() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite valid helper");
@@ -7625,7 +7647,7 @@ fn project_build_rejects_output_paths_outside_project_root() {
     let outside_dir = temp_root
         .parent()
         .expect("temp dir should have parent")
-        .join("apex-output-escape-target");
+        .join("arden-output-escape-target");
     let rel_outside = format!(
         "../{}/smoke",
         outside_dir
@@ -7634,15 +7656,15 @@ fn project_build_rejects_output_paths_outside_project_root() {
             .expect("outside dir name")
     );
     fs::write(
-            temp_root.join("apex.toml"),
+            temp_root.join("arden.toml"),
             format!(
-                "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\"]\noutput = \"{}\"\n",
+                "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\"]\noutput = \"{}\"\n",
                 rel_outside
             ),
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "function main(): None { return None; }\n",
     )
     .expect("write main");
@@ -7666,17 +7688,17 @@ fn project_build_rejects_output_paths_outside_project_root() {
 fn project_build_rejects_output_path_matching_source_file() {
     let temp_root = make_temp_project_root("project-output-source-collision");
     fs::write(
-            temp_root.join("apex.toml"),
-            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.apex\"\nfiles = [\"src/main.apex\", \"src/helper.apex\"]\noutput = \"src/helper.apex\"\n",
+            temp_root.join("arden.toml"),
+            "name = \"smoke\"\nversion = \"0.1.0\"\nentry = \"src/main.arden\"\nfiles = [\"src/main.arden\", \"src/helper.arden\"]\noutput = \"src/helper.arden\"\n",
         )
-        .expect("write apex.toml");
+        .expect("write arden.toml");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nimport lib.helper;\nfunction main(): Integer { return helper(); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction helper(): Integer { return 1; }\n",
     )
     .expect("write helper");
@@ -7696,12 +7718,12 @@ fn project_build_creates_missing_nested_output_parent_directory() {
     let src_dir = temp_root.join("src");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex"],
-        "src/main.apex",
+        &["src/main.arden"],
+        "src/main.arden",
         "build/bin/smoke",
     );
     fs::write(
-        src_dir.join("main.apex"),
+        src_dir.join("main.arden"),
         "function main(): Integer { return 0; }\n",
     )
     .expect("write main");
@@ -7720,12 +7742,12 @@ fn project_build_creates_missing_nested_output_parent_directory() {
 fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
     let temp_root = make_temp_project_root("rewrite-fp-body-only");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let helper_file = src_dir.join("helper.apex");
+    let main_file = src_dir.join("main.arden");
+    let helper_file = src_dir.join("helper.arden");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
@@ -7918,12 +7940,12 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
 fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
     let temp_root = make_temp_project_root("rewrite-fp-api-change");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let helper_file = src_dir.join("helper.apex");
+    let main_file = src_dir.join("main.arden");
+    let helper_file = src_dir.join("helper.arden");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
@@ -8116,12 +8138,12 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
 {
     let temp_root = make_temp_project_root("rewrite-fp-nested-alias-interface-implements");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let helper_file = src_dir.join("helper.apex");
+    let main_file = src_dir.join("main.arden");
+    let helper_file = src_dir.join("helper.arden");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
@@ -8416,12 +8438,12 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
 fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
     let temp_root = make_temp_project_root("rewrite-fp-keyword-alias-change");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let helper_file = src_dir.join("helper.apex");
+    let main_file = src_dir.join("main.arden");
+    let helper_file = src_dir.join("helper.arden");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
@@ -8624,13 +8646,17 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
 fn project_rewrite_fingerprint_ignores_body_only_alias_target_change() {
     let temp_root = make_temp_project_root("rewrite-fp-alias-body-only");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let helper_file = src_dir.join("helper.apex");
-    let helper_impl_file = src_dir.join("helper_impl.apex");
+    let main_file = src_dir.join("main.arden");
+    let helper_file = src_dir.join("helper.arden");
+    let helper_impl_file = src_dir.join("helper_impl.arden");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex", "src/helper_impl.apex"],
-        "src/main.apex",
+        &[
+            "src/main.arden",
+            "src/helper.arden",
+            "src/helper_impl.arden",
+        ],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
@@ -8679,12 +8705,12 @@ fn project_rewrite_fingerprint_ignores_body_only_alias_target_change() {
 fn project_rewrite_fingerprint_changes_on_same_namespace_enum_api_change_without_import() {
     let temp_root = make_temp_project_root("rewrite-fp-same-namespace-enum-api-change");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let enum_file = src_dir.join("enum.apex");
+    let main_file = src_dir.join("main.arden");
+    let enum_file = src_dir.join("enum.arden");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/enum.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/enum.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
@@ -8719,12 +8745,12 @@ fn project_rewrite_fingerprint_changes_on_same_namespace_enum_api_change_without
 fn project_rewrite_fingerprint_ignores_body_only_change_for_alias_heavy_builtin_consumer() {
     let temp_root = make_temp_project_root("rewrite-fp-alias-heavy-builtin-body-only");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let helper_file = src_dir.join("helper.apex");
+    let main_file = src_dir.join("main.arden");
+    let helper_file = src_dir.join("helper.arden");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
@@ -8776,12 +8802,12 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
     for helper_after in body_only_variants {
         let temp_root = make_temp_project_root("generated-rewrite-body");
         let src_dir = temp_root.join("src");
-        let main_file = src_dir.join("main.apex");
-        let helper_file = src_dir.join("helper.apex");
+        let main_file = src_dir.join("main.arden");
+        let helper_file = src_dir.join("helper.arden");
         write_test_project_config(
             &temp_root,
-            &["src/main.apex", "src/helper.apex"],
-            "src/main.apex",
+            &["src/main.arden", "src/helper.arden"],
+            "src/main.arden",
             "smoke",
         );
         fs::write(
@@ -8979,12 +9005,12 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
     for helper_after in import_breaking_variants {
         let temp_root = make_temp_project_root("generated-rewrite-api");
         let src_dir = temp_root.join("src");
-        let main_file = src_dir.join("main.apex");
-        let helper_file = src_dir.join("helper.apex");
+        let main_file = src_dir.join("main.arden");
+        let helper_file = src_dir.join("helper.arden");
         write_test_project_config(
             &temp_root,
-            &["src/main.apex", "src/helper.apex"],
-            "src/main.apex",
+            &["src/main.arden", "src/helper.arden"],
+            "src/main.arden",
             "smoke",
         );
         fs::write(
@@ -9222,7 +9248,7 @@ fn empty_global_interface_file_map() -> &'static HashMap<String, PathBuf> {
 
 #[test]
 fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes() {
-    let unit = make_unit("src/main.apex", "app", &["lib.foo"]);
+    let unit = make_unit("src/main.arden", "app", &["lib.foo"]);
 
     let namespace_functions = HashMap::from([(
         "lib".to_string(),
@@ -9233,14 +9259,14 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
         ("bar".to_string(), "lib".to_string()),
     ]);
     let global_function_file_map = HashMap::from([
-        ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-        ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+        ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+        ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
     ]);
     let namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
-            ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-            ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+            ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+            ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
         ]),
     )]);
     let namespace_classes = HashMap::new();
@@ -9255,8 +9281,14 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
     let global_module_file_map = HashMap::new();
     let namespace_api_fingerprints = HashMap::from([("lib".to_string(), "ns-v1".to_string())]);
     let file_api_fingerprints = HashMap::from([
-        (PathBuf::from("src/lib_foo.apex"), "file-foo-v1".to_string()),
-        (PathBuf::from("src/lib_bar.apex"), "file-bar-v1".to_string()),
+        (
+            PathBuf::from("src/lib_foo.arden"),
+            "file-foo-v1".to_string(),
+        ),
+        (
+            PathBuf::from("src/lib_bar.arden"),
+            "file-bar-v1".to_string(),
+        ),
     ]);
     let ctx_a = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
@@ -9293,8 +9325,14 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
     let fp_a = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_a);
     let namespace_api_fingerprints_b = HashMap::from([("lib".to_string(), "ns-v2".to_string())]);
     let file_api_fingerprints_b = HashMap::from([
-        (PathBuf::from("src/lib_foo.apex"), "file-foo-v1".to_string()),
-        (PathBuf::from("src/lib_bar.apex"), "file-bar-v2".to_string()),
+        (
+            PathBuf::from("src/lib_foo.arden"),
+            "file-foo-v1".to_string(),
+        ),
+        (
+            PathBuf::from("src/lib_bar.arden"),
+            "file-bar-v2".to_string(),
+        ),
     ]);
     let ctx_b = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
@@ -9334,7 +9372,7 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
 
 #[test]
 fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
-    let unit = make_unit("src/main.apex", "app", &["lib.*"]);
+    let unit = make_unit("src/main.arden", "app", &["lib.*"]);
 
     let namespace_functions = HashMap::from([(
         "lib".to_string(),
@@ -9345,14 +9383,14 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
         ("bar".to_string(), "lib".to_string()),
     ]);
     let global_function_file_map = HashMap::from([
-        ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-        ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+        ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+        ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
     ]);
     let namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
-            ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-            ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+            ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+            ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
         ]),
     )]);
     let namespace_classes = HashMap::new();
@@ -9437,17 +9475,17 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
 
 #[test]
 fn dependency_graph_tracks_specific_symbol_owner_file_only() {
-    let app = make_unit("src/main.apex", "app", &["lib.foo"]);
-    let foo = make_unit("src/lib_foo.apex", "lib", &[]);
-    let bar = make_unit("src/lib_bar.apex", "lib", &[]);
+    let app = make_unit("src/main.arden", "app", &["lib.foo"]);
+    let foo = make_unit("src/lib_foo.arden", "lib", &[]);
+    let bar = make_unit("src/lib_bar.arden", "lib", &[]);
     let parsed_files = vec![app.clone(), foo, bar];
     let namespace_files_map = HashMap::from([
-        ("app".to_string(), vec![PathBuf::from("src/main.apex")]),
+        ("app".to_string(), vec![PathBuf::from("src/main.arden")]),
         (
             "lib".to_string(),
             vec![
-                PathBuf::from("src/lib_bar.apex"),
-                PathBuf::from("src/lib_foo.apex"),
+                PathBuf::from("src/lib_bar.arden"),
+                PathBuf::from("src/lib_foo.arden"),
             ],
         ),
     ]);
@@ -9457,8 +9495,8 @@ fn dependency_graph_tracks_specific_symbol_owner_file_only() {
         ("bar".to_string(), "lib".to_string()),
     ]);
     let global_function_file_map = HashMap::from([
-        ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-        ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+        ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+        ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
     ]);
     let global_class_map = HashMap::new();
     let global_class_file_map = HashMap::new();
@@ -9469,8 +9507,8 @@ fn dependency_graph_tracks_specific_symbol_owner_file_only() {
     let namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
-            ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-            ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+            ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+            ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
         ]),
     )]);
     let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
@@ -9506,33 +9544,33 @@ fn dependency_graph_tracks_specific_symbol_owner_file_only() {
 
     assert_eq!(
         graph.get(&app.file).cloned().unwrap_or_default(),
-        HashSet::from([PathBuf::from("src/lib_foo.apex")])
+        HashSet::from([PathBuf::from("src/lib_foo.arden")])
     );
 }
 
 #[test]
 fn dependency_graph_tracks_same_namespace_symbol_references() {
-    let mut app = make_unit("src/app.apex", "app", &[]);
+    let mut app = make_unit("src/app.arden", "app", &[]);
     app.referenced_symbols = vec!["helper".to_string()];
-    let mut helper = make_unit("src/helper.apex", "app", &[]);
+    let mut helper = make_unit("src/helper.arden", "app", &[]);
     helper.function_names = vec!["helper".to_string()];
     let parsed_files = vec![app.clone(), helper.clone()];
     let namespace_files_map = HashMap::from([(
         "app".to_string(),
         vec![
-            PathBuf::from("src/app.apex"),
-            PathBuf::from("src/helper.apex"),
+            PathBuf::from("src/app.arden"),
+            PathBuf::from("src/helper.arden"),
         ],
     )]);
     let namespace_function_files = HashMap::from([(
         "app".to_string(),
-        HashMap::from([("helper".to_string(), PathBuf::from("src/helper.apex"))]),
+        HashMap::from([("helper".to_string(), PathBuf::from("src/helper.arden"))]),
     )]);
     let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_function_map = HashMap::from([("helper".to_string(), "app".to_string())]);
     let global_function_file_map =
-        HashMap::from([("helper".to_string(), PathBuf::from("src/helper.apex"))]);
+        HashMap::from([("helper".to_string(), PathBuf::from("src/helper.arden"))]);
     let global_class_map = HashMap::new();
     let global_class_file_map = HashMap::new();
     let global_enum_map = HashMap::new();
@@ -9571,7 +9609,7 @@ fn dependency_graph_tracks_same_namespace_symbol_references() {
 
     assert_eq!(
         graph.get(&app.file).cloned().unwrap_or_default(),
-        HashSet::from([PathBuf::from("src/helper.apex")])
+        HashSet::from([PathBuf::from("src/helper.arden")])
     );
     assert!(graph
         .get(&helper.file)
@@ -9582,28 +9620,28 @@ fn dependency_graph_tracks_same_namespace_symbol_references() {
 
 #[test]
 fn dependency_graph_limits_wildcard_imports_to_used_owner_files() {
-    let mut app = make_unit("src/main.apex", "app", &["lib.*"]);
+    let mut app = make_unit("src/main.arden", "app", &["lib.*"]);
     app.referenced_symbols = vec!["foo".to_string()];
-    let mut foo = make_unit("src/lib_foo.apex", "lib", &[]);
+    let mut foo = make_unit("src/lib_foo.arden", "lib", &[]);
     foo.function_names = vec!["foo".to_string()];
-    let mut bar = make_unit("src/lib_bar.apex", "lib", &[]);
+    let mut bar = make_unit("src/lib_bar.arden", "lib", &[]);
     bar.function_names = vec!["bar".to_string()];
     let parsed_files = vec![app.clone(), foo, bar];
     let namespace_files_map = HashMap::from([
-        ("app".to_string(), vec![PathBuf::from("src/main.apex")]),
+        ("app".to_string(), vec![PathBuf::from("src/main.arden")]),
         (
             "lib".to_string(),
             vec![
-                PathBuf::from("src/lib_bar.apex"),
-                PathBuf::from("src/lib_foo.apex"),
+                PathBuf::from("src/lib_bar.arden"),
+                PathBuf::from("src/lib_foo.arden"),
             ],
         ),
     ]);
     let namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
-            ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-            ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+            ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+            ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
         ]),
     )]);
     let ctx = DependencyResolutionContext {
@@ -9613,8 +9651,8 @@ fn dependency_graph_limits_wildcard_imports_to_used_owner_files() {
             ("bar".to_string(), "lib".to_string()),
         ]),
         global_function_file_map: &HashMap::from([
-            ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-            ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+            ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+            ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
         ]),
         global_class_map: &HashMap::new(),
         global_class_file_map: &HashMap::new(),
@@ -9631,8 +9669,8 @@ fn dependency_graph_limits_wildcard_imports_to_used_owner_files() {
                     ("bar".to_string(), "lib".to_string()),
                 ]),
                 function_file_map: &HashMap::from([
-                    ("foo".to_string(), PathBuf::from("src/lib_foo.apex")),
-                    ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+                    ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+                    ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
                 ]),
                 class_map: &HashMap::new(),
                 class_file_map: &HashMap::new(),
@@ -9649,34 +9687,34 @@ fn dependency_graph_limits_wildcard_imports_to_used_owner_files() {
     let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
     assert_eq!(
         graph.get(&app.file).cloned().unwrap_or_default(),
-        HashSet::from([PathBuf::from("src/lib_foo.apex")])
+        HashSet::from([PathBuf::from("src/lib_foo.arden")])
     );
 }
 
 #[test]
 fn dependency_graph_keeps_wildcard_namespace_dependencies_when_symbol_disappears() {
-    let mut app = make_unit("src/main.apex", "app", &["lib.*"]);
+    let mut app = make_unit("src/main.arden", "app", &["lib.*"]);
     app.referenced_symbols = vec!["foo".to_string()];
-    let mut foo = make_unit("src/lib_foo.apex", "lib", &[]);
+    let mut foo = make_unit("src/lib_foo.arden", "lib", &[]);
     foo.function_names = vec!["other".to_string()];
-    let mut bar = make_unit("src/lib_bar.apex", "lib", &[]);
+    let mut bar = make_unit("src/lib_bar.arden", "lib", &[]);
     bar.function_names = vec!["bar".to_string()];
     let parsed_files = vec![app.clone(), foo, bar];
     let namespace_files_map = HashMap::from([
-        ("app".to_string(), vec![PathBuf::from("src/main.apex")]),
+        ("app".to_string(), vec![PathBuf::from("src/main.arden")]),
         (
             "lib".to_string(),
             vec![
-                PathBuf::from("src/lib_bar.apex"),
-                PathBuf::from("src/lib_foo.apex"),
+                PathBuf::from("src/lib_bar.arden"),
+                PathBuf::from("src/lib_foo.arden"),
             ],
         ),
     ]);
     let namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
-            ("other".to_string(), PathBuf::from("src/lib_foo.apex")),
-            ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+            ("other".to_string(), PathBuf::from("src/lib_foo.arden")),
+            ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
         ]),
     )]);
     let ctx = DependencyResolutionContext {
@@ -9686,8 +9724,8 @@ fn dependency_graph_keeps_wildcard_namespace_dependencies_when_symbol_disappears
             ("bar".to_string(), "lib".to_string()),
         ]),
         global_function_file_map: &HashMap::from([
-            ("other".to_string(), PathBuf::from("src/lib_foo.apex")),
-            ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+            ("other".to_string(), PathBuf::from("src/lib_foo.arden")),
+            ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
         ]),
         global_class_map: &HashMap::new(),
         global_class_file_map: &HashMap::new(),
@@ -9704,8 +9742,8 @@ fn dependency_graph_keeps_wildcard_namespace_dependencies_when_symbol_disappears
                     ("bar".to_string(), "lib".to_string()),
                 ]),
                 function_file_map: &HashMap::from([
-                    ("other".to_string(), PathBuf::from("src/lib_foo.apex")),
-                    ("bar".to_string(), PathBuf::from("src/lib_bar.apex")),
+                    ("other".to_string(), PathBuf::from("src/lib_foo.arden")),
+                    ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
                 ]),
                 class_map: &HashMap::new(),
                 class_file_map: &HashMap::new(),
@@ -9723,36 +9761,36 @@ fn dependency_graph_keeps_wildcard_namespace_dependencies_when_symbol_disappears
     assert_eq!(
         graph.get(&app.file).cloned().unwrap_or_default(),
         HashSet::from([
-            PathBuf::from("src/lib_bar.apex"),
-            PathBuf::from("src/lib_foo.apex")
+            PathBuf::from("src/lib_bar.arden"),
+            PathBuf::from("src/lib_foo.arden")
         ])
     );
 }
 
 #[test]
 fn dependency_graph_keeps_nested_module_wildcard_namespace_dependencies_when_symbol_disappears() {
-    let mut app = make_unit("src/main.apex", "app", &["app.U.*"]);
+    let mut app = make_unit("src/main.arden", "app", &["app.U.*"]);
     app.referenced_symbols = vec!["id".to_string()];
-    let mut helper = make_unit("src/helper.apex", "app", &[]);
+    let mut helper = make_unit("src/helper.arden", "app", &[]);
     helper.module_names = vec!["U".to_string()];
     let parsed_files = vec![app.clone(), helper];
     let namespace_files_map = HashMap::from([
         (
             "app".to_string(),
             vec![
-                PathBuf::from("src/helper.apex"),
-                PathBuf::from("src/main.apex"),
+                PathBuf::from("src/helper.arden"),
+                PathBuf::from("src/main.arden"),
             ],
         ),
-        ("app.U".to_string(), vec![PathBuf::from("src/helper.apex")]),
+        ("app.U".to_string(), vec![PathBuf::from("src/helper.arden")]),
     ]);
     let namespace_module_files = HashMap::from([(
         "app".to_string(),
-        HashMap::from([("U".to_string(), PathBuf::from("src/helper.apex"))]),
+        HashMap::from([("U".to_string(), PathBuf::from("src/helper.arden"))]),
     )]);
     let global_module_map = HashMap::from([("U".to_string(), "app".to_string())]);
     let global_module_file_map =
-        HashMap::from([("U".to_string(), PathBuf::from("src/helper.apex"))]);
+        HashMap::from([("U".to_string(), PathBuf::from("src/helper.arden"))]);
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
         global_function_map: &HashMap::new(),
@@ -9784,15 +9822,15 @@ fn dependency_graph_keeps_nested_module_wildcard_namespace_dependencies_when_sym
     let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
     assert_eq!(
         graph.get(&app.file).cloned().unwrap_or_default(),
-        HashSet::from([PathBuf::from("src/helper.apex")])
+        HashSet::from([PathBuf::from("src/helper.arden")])
     );
 }
 
 #[test]
 fn parsed_dependency_graph_tracks_nested_module_wildcard_import_owner_files() {
     let temp_root = make_temp_project_root("nested-module-wildcard-dependency-graph");
-    let main_file = temp_root.join("src/main.apex");
-    let helper_file = temp_root.join("src/helper.apex");
+    let main_file = temp_root.join("src/main.arden");
+    let helper_file = temp_root.join("src/helper.arden");
     fs::write(
         &main_file,
         "package app;\nimport app.U.*;\nfunction main(): Integer { return id(1); }\n",
@@ -9864,17 +9902,17 @@ fn project_build_rechecks_wildcard_import_dependents_after_symbol_removal() {
     let temp_root = make_temp_project_root("project-build-wildcard-symbol-removal");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nimport lib.*;\nfunction main(): Integer { return add(1); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -9886,7 +9924,7 @@ fn project_build_rechecks_wildcard_import_dependents_after_symbol_removal() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite helper without imported symbol");
@@ -9910,17 +9948,17 @@ fn project_build_rechecks_nested_module_wildcard_import_dependents_after_symbol_
     let temp_root = make_temp_project_root("project-build-nested-module-wildcard-symbol-removal");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nimport app.U.*;\nfunction main(): Integer { return id(1); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("write helper");
@@ -9932,7 +9970,7 @@ fn project_build_rechecks_nested_module_wildcard_import_dependents_after_symbol_
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("rewrite helper without nested-module imported symbol");
@@ -9957,17 +9995,17 @@ fn project_build_reports_user_facing_error_for_stale_nested_module_wildcard_gene
     let temp_root = make_temp_project_root("project-build-nested-module-wildcard-generic-fn-value");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app.U.*;\nfunction main(): Integer { f: (Integer) -> Integer = id<Integer>; return f(1); }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id<T>(x: T): T { return x; } }\n",
     )
     .expect("write helper");
@@ -9979,7 +10017,7 @@ fn project_build_reports_user_facing_error_for_stale_nested_module_wildcard_gene
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus<T>(x: T): T { return x; } }\n",
     )
     .expect("rewrite helper without nested-module wildcard generic symbol");
@@ -10004,17 +10042,17 @@ fn project_build_rechecks_nested_exact_import_alias_dependents_after_symbol_remo
         make_temp_project_root("project-build-nested-exact-import-alias-symbol-removal");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nimport app.U.id as ident;\nfunction main(): Integer { return ident(1); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("write helper");
@@ -10026,7 +10064,7 @@ fn project_build_rechecks_nested_exact_import_alias_dependents_after_symbol_remo
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("rewrite helper without nested exact-import alias symbol");
@@ -10052,17 +10090,17 @@ fn project_build_reports_user_facing_error_for_stale_nested_exact_import_alias_f
         make_temp_project_root("project-build-stale-nested-exact-import-alias-function-value");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app.U.id as ident;\nfunction main(): Integer {\n    f: (Integer) -> Integer = ident;\n    return f(1);\n}\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("write helper");
@@ -10074,7 +10112,7 @@ fn project_build_reports_user_facing_error_for_stale_nested_exact_import_alias_f
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("rewrite helper without nested exact-import alias function-value symbol");
@@ -10100,17 +10138,17 @@ fn project_build_rechecks_namespace_alias_dependents_after_symbol_removal() {
     let temp_root = make_temp_project_root("project-build-namespace-alias-symbol-removal");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nimport lib as l;\nfunction main(): Integer { return l.add(1); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -10122,7 +10160,7 @@ fn project_build_rechecks_namespace_alias_dependents_after_symbol_removal() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite helper without namespace-alias symbol");
@@ -10145,17 +10183,17 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_call()
     let temp_root = make_temp_project_root("project-build-stale-root-namespace-alias-call");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nimport app as root;\nfunction main(): Integer { return root.U.id(1); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("write helper");
@@ -10167,7 +10205,7 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_call()
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("rewrite helper without stale root namespace alias call symbol");
@@ -10192,17 +10230,17 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_nested
         make_temp_project_root("project-build-stale-root-namespace-alias-nested-enum-variant");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer { return match (root.M.E.A(5)) { root.M.E.A(v) => v, root.M.E.B(v) => v, }; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { A(Integer), B(Integer) } }\n",
     )
     .expect("write helper");
@@ -10214,7 +10252,7 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_nested
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { C(Integer), D(Integer) } }\n",
     )
     .expect("rewrite helper without nested enum alias variant");
@@ -10240,17 +10278,17 @@ fn project_build_reports_user_facing_error_for_stale_exact_import_alias_generic_
         make_temp_project_root("project-build-stale-exact-import-alias-generic-fn-value");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app.U.id as ident;\nfunction main(): Integer { f: (Integer) -> Integer = ident<Integer>; return f(7); }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
     .expect("write helper");
@@ -10262,7 +10300,7 @@ fn project_build_reports_user_facing_error_for_stale_exact_import_alias_generic_
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function other<T>(value: T): T { return value; } }\n",
     )
     .expect("rewrite helper without exact-import alias generic symbol");
@@ -10288,17 +10326,17 @@ fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_
         make_temp_project_root("project-build-stale-exact-imported-nested-enum-variant-alias");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app.M.E.B as Variant;\nfunction main(): None { e: M.E = Variant(2); match (e) { Variant(v) => { require(v == 2); } M.E.A(v) => { require(false); } } return None; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { A(Integer) B(Integer) } }\n",
     )
     .expect("write helper");
@@ -10310,7 +10348,7 @@ fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { C(Integer) D(Integer) } }\n",
     )
     .expect("rewrite helper without exact imported nested enum variant alias");
@@ -10337,17 +10375,17 @@ fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_
         make_temp_project_root("project-build-stale-exact-imported-nested-enum-alias-type");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app.M.E as Enum;\nfunction main(): Integer { value: Enum = Enum.B(2); return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { A(Integer), B(Integer) } }\n",
     )
     .expect("write helper");
@@ -10359,7 +10397,7 @@ fn project_build_reports_user_facing_error_for_stale_exact_imported_nested_enum_
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum F { A(Integer), B(Integer) } }\n",
     )
     .expect("rewrite helper without exact imported nested enum alias type");
@@ -10391,17 +10429,17 @@ fn project_build_reports_user_facing_error_for_stale_wildcard_imported_nested_en
         make_temp_project_root("project-build-stale-wildcard-imported-nested-enum-type");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app.M.*;\nfunction main(): Integer { value: E = E.B(2); return 0; }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum E { A(Integer), B(Integer) } }\n",
     )
     .expect("write helper");
@@ -10413,7 +10451,7 @@ fn project_build_reports_user_facing_error_for_stale_wildcard_imported_nested_en
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule M { enum F { A(Integer), B(Integer) } }\n",
     )
     .expect("rewrite helper without wildcard imported nested enum type");
@@ -10438,17 +10476,17 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_generi
         make_temp_project_root("project-build-stale-root-namespace-alias-generic-fn-value");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer { f: (Integer) -> Integer = root.U.id<Integer>; return f(7); }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id<T>(value: T): T { return value; } }\n",
     )
     .expect("write helper");
@@ -10460,7 +10498,7 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_generi
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function other<T>(value: T): T { return value; } }\n",
     )
     .expect("rewrite helper without root namespace alias generic symbol");
@@ -10486,17 +10524,17 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_functi
         make_temp_project_root("project-build-stale-root-namespace-alias-function-value");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-            temp_root.join("src/main.apex"),
+            temp_root.join("src/main.arden"),
             "package app;\nimport app as root;\nfunction main(): Integer { f: (Integer) -> Integer = root.U.id; return f(1); }\n",
         )
         .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function id(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("write helper");
@@ -10508,7 +10546,7 @@ fn project_build_reports_user_facing_error_for_stale_root_namespace_alias_functi
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package app;\nmodule U { function plus(x: Integer): Integer { return x + 1; } }\n",
     )
     .expect("rewrite helper without root namespace alias function value symbol");
@@ -10533,17 +10571,17 @@ fn project_build_rechecks_exact_import_alias_dependents_after_symbol_removal() {
     let temp_root = make_temp_project_root("project-build-exact-import-alias-symbol-removal");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         "package app;\nimport lib.add as inc;\nfunction main(): Integer { return inc(1); }\n",
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -10555,7 +10593,7 @@ fn project_build_rechecks_exact_import_alias_dependents_after_symbol_removal() {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite helper without exact-import alias symbol");
@@ -10580,12 +10618,12 @@ fn project_build_keeps_shadowed_exact_import_alias_calls_local_after_symbol_remo
     let temp_root = make_temp_project_root("project-build-shadowed-exact-import-alias-call");
     write_test_project_config(
         &temp_root,
-        &["src/main.apex", "src/helper.apex"],
-        "src/main.apex",
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
         "smoke",
     );
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         r#"
 package app;
 import lib.add as inc;
@@ -10598,7 +10636,7 @@ function main(): Integer {
     )
     .expect("write main");
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction add(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("write helper");
@@ -10610,7 +10648,7 @@ function main(): Integer {
 
     std::thread::sleep(std::time::Duration::from_millis(5));
     fs::write(
-        temp_root.join("src/helper.apex"),
+        temp_root.join("src/helper.arden"),
         "package lib;\nfunction other(x: Integer): Integer { return x + 1; }\n",
     )
     .expect("rewrite helper without shadowed exact-import alias symbol");
@@ -10639,9 +10677,9 @@ function main(): Integer {
 #[test]
 fn project_build_runs_module_local_nested_module_constructor_and_generic_function_value() {
     let temp_root = make_temp_project_root("project-build-module-local-nested-members");
-    write_test_project_config(&temp_root, &["src/main.apex"], "src/main.apex", "smoke");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
-        temp_root.join("src/main.apex"),
+        temp_root.join("src/main.arden"),
         r#"
 package app;
 
@@ -10695,10 +10733,10 @@ function main(): Integer {
 
 #[test]
 fn dependency_graph_recomputes_direct_neighbors_after_api_change() {
-    let mut app = make_unit("src/app.apex", "app", &["lib.foo"]);
+    let mut app = make_unit("src/app.arden", "app", &["lib.foo"]);
     app.api_fingerprint = "app-v1".to_string();
     app.semantic_fingerprint = "app-v1".to_string();
-    let mut foo = make_unit("src/lib_foo.apex", "lib", &[]);
+    let mut foo = make_unit("src/lib_foo.arden", "lib", &[]);
     foo.function_names = vec!["foo".to_string()];
     foo.api_fingerprint = "foo-v2".to_string();
     foo.semantic_fingerprint = "foo-v2".to_string();
@@ -10709,13 +10747,13 @@ fn dependency_graph_recomputes_direct_neighbors_after_api_change() {
         entry_namespace: "app".to_string(),
         files: vec![
             DependencyGraphFileEntry {
-                file: PathBuf::from("src/app.apex"),
+                file: PathBuf::from("src/app.arden"),
                 semantic_fingerprint: "app-v1".to_string(),
                 api_fingerprint: "app-v1".to_string(),
-                direct_dependencies: vec![PathBuf::from("src/lib_foo.apex")],
+                direct_dependencies: vec![PathBuf::from("src/lib_foo.arden")],
             },
             DependencyGraphFileEntry {
-                file: PathBuf::from("src/lib_foo.apex"),
+                file: PathBuf::from("src/lib_foo.arden"),
                 semantic_fingerprint: "foo-v1".to_string(),
                 api_fingerprint: "foo-v1".to_string(),
                 direct_dependencies: vec![],
@@ -10725,19 +10763,19 @@ fn dependency_graph_recomputes_direct_neighbors_after_api_change() {
 
     let parsed_files = vec![app.clone(), foo.clone()];
     let namespace_files_map = HashMap::from([
-        ("app".to_string(), vec![PathBuf::from("src/app.apex")]),
-        ("lib".to_string(), vec![PathBuf::from("src/lib_foo.apex")]),
+        ("app".to_string(), vec![PathBuf::from("src/app.arden")]),
+        ("lib".to_string(), vec![PathBuf::from("src/lib_foo.arden")]),
     ]);
     let namespace_function_files = HashMap::from([(
         "lib".to_string(),
-        HashMap::from([("foo".to_string(), PathBuf::from("src/lib_foo.apex"))]),
+        HashMap::from([("foo".to_string(), PathBuf::from("src/lib_foo.arden"))]),
     )]);
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
         global_function_map: &HashMap::from([("foo".to_string(), "lib".to_string())]),
         global_function_file_map: &HashMap::from([(
             "foo".to_string(),
-            PathBuf::from("src/lib_foo.apex"),
+            PathBuf::from("src/lib_foo.arden"),
         )]),
         global_class_map: &HashMap::new(),
         global_class_file_map: &HashMap::new(),
@@ -10752,7 +10790,7 @@ fn dependency_graph_recomputes_direct_neighbors_after_api_change() {
                 function_map: &HashMap::from([("foo".to_string(), "lib".to_string())]),
                 function_file_map: &HashMap::from([(
                     "foo".to_string(),
-                    PathBuf::from("src/lib_foo.apex"),
+                    PathBuf::from("src/lib_foo.arden"),
                 )]),
                 class_map: &HashMap::new(),
                 class_file_map: &HashMap::new(),
@@ -10774,10 +10812,13 @@ fn dependency_graph_recomputes_direct_neighbors_after_api_change() {
 #[test]
 fn typecheck_summary_cache_matches_identical_component_fingerprints() {
     let current = HashMap::from([
-        (PathBuf::from("a.apex"), "sem-a".to_string()),
-        (PathBuf::from("b.apex"), "sem-b".to_string()),
+        (PathBuf::from("a.arden"), "sem-a".to_string()),
+        (PathBuf::from("b.arden"), "sem-b".to_string()),
     ]);
-    let components = vec![vec![PathBuf::from("a.apex")], vec![PathBuf::from("b.apex")]];
+    let components = vec![
+        vec![PathBuf::from("a.arden")],
+        vec![PathBuf::from("b.arden")],
+    ];
     let cache = typecheck_summary_cache_from_state(&current, &components);
 
     assert!(typecheck_summary_cache_matches(
@@ -10791,23 +10832,23 @@ fn typecheck_summary_cache_matches_identical_component_fingerprints() {
 fn reusable_component_fingerprints_allows_partial_semantic_reuse() {
     let previous = typecheck_summary_cache_from_state(
         &HashMap::from([
-            (PathBuf::from("a.apex"), "sem-a".to_string()),
-            (PathBuf::from("b.apex"), "sem-b".to_string()),
-            (PathBuf::from("c.apex"), "sem-c-old".to_string()),
+            (PathBuf::from("a.arden"), "sem-a".to_string()),
+            (PathBuf::from("b.arden"), "sem-b".to_string()),
+            (PathBuf::from("c.arden"), "sem-c-old".to_string()),
         ]),
         &[
-            vec![PathBuf::from("a.apex"), PathBuf::from("b.apex")],
-            vec![PathBuf::from("c.apex")],
+            vec![PathBuf::from("a.arden"), PathBuf::from("b.arden")],
+            vec![PathBuf::from("c.arden")],
         ],
     );
     let current = HashMap::from([
-        (PathBuf::from("a.apex"), "sem-a".to_string()),
-        (PathBuf::from("b.apex"), "sem-b".to_string()),
-        (PathBuf::from("c.apex"), "sem-c-new".to_string()),
+        (PathBuf::from("a.arden"), "sem-a".to_string()),
+        (PathBuf::from("b.arden"), "sem-b".to_string()),
+        (PathBuf::from("c.arden"), "sem-c-new".to_string()),
     ]);
     let components = vec![
-        vec![PathBuf::from("a.apex"), PathBuf::from("b.apex")],
-        vec![PathBuf::from("c.apex")],
+        vec![PathBuf::from("a.arden"), PathBuf::from("b.arden")],
+        vec![PathBuf::from("c.arden")],
     ];
 
     let reusable = reusable_component_fingerprints(&previous, &current, &components);
@@ -10820,24 +10861,24 @@ fn reusable_component_fingerprints_allows_partial_semantic_reuse() {
 fn reverse_dependency_graph_returns_only_transitive_dependents() {
     let reverse = build_reverse_dependency_graph(&HashMap::from([
         (
-            PathBuf::from("a.apex"),
-            HashSet::from([PathBuf::from("b.apex")]),
+            PathBuf::from("a.arden"),
+            HashSet::from([PathBuf::from("b.arden")]),
         ),
         (
-            PathBuf::from("c.apex"),
-            HashSet::from([PathBuf::from("a.apex")]),
+            PathBuf::from("c.arden"),
+            HashSet::from([PathBuf::from("a.arden")]),
         ),
-        (PathBuf::from("d.apex"), HashSet::new()),
+        (PathBuf::from("d.arden"), HashSet::new()),
     ]));
 
-    let impacted = transitive_dependents(&reverse, &HashSet::from([PathBuf::from("b.apex")]));
+    let impacted = transitive_dependents(&reverse, &HashSet::from([PathBuf::from("b.arden")]));
 
     assert_eq!(
         impacted,
         HashSet::from([
-            PathBuf::from("b.apex"),
-            PathBuf::from("a.apex"),
-            PathBuf::from("c.apex"),
+            PathBuf::from("b.arden"),
+            PathBuf::from("a.arden"),
+            PathBuf::from("c.arden"),
         ])
     );
 }
@@ -10872,7 +10913,8 @@ fn link_manifest_skip_requires_exact_manifest_match_and_no_object_misses() {
 
 #[test]
 fn link_manifest_skip_allows_relink_elision_for_identical_cached_inputs() {
-    let temp = std::env::temp_dir().join(format!("apex-link-manifest-test-{}", std::process::id()));
+    let temp =
+        std::env::temp_dir().join(format!("arden-link-manifest-test-{}", std::process::id()));
     fs::write(&temp, b"bin").expect("write output placeholder");
     let link_inputs = vec![PathBuf::from("a.o"), PathBuf::from("b.o")];
     let link = LinkConfig {
@@ -10897,8 +10939,8 @@ fn link_manifest_skip_allows_relink_elision_for_identical_cached_inputs() {
 
 #[test]
 fn object_shard_cache_key_ignores_member_order() {
-    let a = vec![PathBuf::from("src/a.apex"), PathBuf::from("src/b.apex")];
-    let b = vec![PathBuf::from("src/b.apex"), PathBuf::from("src/a.apex")];
+    let a = vec![PathBuf::from("src/a.arden"), PathBuf::from("src/b.arden")];
+    let b = vec![PathBuf::from("src/b.arden"), PathBuf::from("src/a.arden")];
 
     assert_eq!(object_shard_cache_key(&a), object_shard_cache_key(&b));
 }
@@ -10906,30 +10948,30 @@ fn object_shard_cache_key_ignores_member_order() {
 #[test]
 fn object_shard_cache_hit_ignores_member_order() {
     let temp_root = make_temp_project_root("object-shard-cache-member-order");
-    let files_ab = vec![PathBuf::from("src/a.apex"), PathBuf::from("src/b.apex")];
-    let files_ba = vec![PathBuf::from("src/b.apex"), PathBuf::from("src/a.apex")];
+    let files_ab = vec![PathBuf::from("src/a.arden"), PathBuf::from("src/b.arden")];
+    let files_ba = vec![PathBuf::from("src/b.arden"), PathBuf::from("src/a.arden")];
     let cache_paths = object_shard_cache_paths(&temp_root, &files_ab);
     let fingerprint = "obj-fp";
     let members_ab = vec![
         ObjectShardMemberFingerprint {
-            file: PathBuf::from("src/a.apex"),
+            file: PathBuf::from("src/a.arden"),
             semantic_fingerprint: "sem-a".to_string(),
             rewrite_context_fingerprint: "rw-a".to_string(),
         },
         ObjectShardMemberFingerprint {
-            file: PathBuf::from("src/b.apex"),
+            file: PathBuf::from("src/b.arden"),
             semantic_fingerprint: "sem-b".to_string(),
             rewrite_context_fingerprint: "rw-b".to_string(),
         },
     ];
     let members_ba = vec![
         ObjectShardMemberFingerprint {
-            file: PathBuf::from("src/b.apex"),
+            file: PathBuf::from("src/b.arden"),
             semantic_fingerprint: "sem-b".to_string(),
             rewrite_context_fingerprint: "rw-b".to_string(),
         },
         ObjectShardMemberFingerprint {
-            file: PathBuf::from("src/a.apex"),
+            file: PathBuf::from("src/a.arden"),
             semantic_fingerprint: "sem-a".to_string(),
             rewrite_context_fingerprint: "rw-a".to_string(),
         },
@@ -10958,7 +11000,7 @@ fn object_shard_cache_hit_ignores_member_order() {
 fn load_link_manifest_cache_reports_io_errors_instead_of_silent_cache_miss() {
     let temp_root = make_temp_project_root("link-manifest-io-error");
     let manifest_path = temp_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("link")
         .join("latest.json");
     fs::create_dir_all(&manifest_path).expect("create manifest path as directory");
@@ -10974,7 +11016,7 @@ fn load_link_manifest_cache_reports_io_errors_instead_of_silent_cache_miss() {
 fn read_cache_blob_reports_decode_errors_instead_of_silent_cache_miss() {
     let temp_root = make_temp_project_root("cache-decode-error");
     let cache_path = temp_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("parsed")
         .join("broken.bin");
     fs::create_dir_all(
@@ -10995,7 +11037,7 @@ fn read_cache_blob_reports_decode_errors_instead_of_silent_cache_miss() {
 #[test]
 fn load_cached_fingerprint_reports_io_errors_instead_of_silent_cache_miss() {
     let temp_root = make_temp_project_root("build-fingerprint-io-error");
-    let cache_path = temp_root.join(".apexcache").join("build_fingerprint");
+    let cache_path = temp_root.join(".ardencache").join("build_fingerprint");
     fs::create_dir_all(&cache_path).expect("create directory-shaped build cache path");
 
     let err = load_cached_fingerprint(&temp_root)
@@ -11009,7 +11051,7 @@ fn load_cached_fingerprint_reports_io_errors_instead_of_silent_cache_miss() {
 fn load_semantic_cached_fingerprint_reports_io_errors_instead_of_silent_cache_miss() {
     let temp_root = make_temp_project_root("semantic-fingerprint-io-error");
     let cache_path = temp_root
-        .join(".apexcache")
+        .join(".ardencache")
         .join("semantic_build_fingerprint");
     fs::create_dir_all(&cache_path).expect("create directory-shaped semantic cache path");
 
@@ -11044,8 +11086,8 @@ fn dedupe_link_inputs_removes_duplicate_object_paths_stably() {
 fn project_parse_cache_recovers_cleanly_after_invalid_sibling_fix() {
     let temp_root = make_temp_project_root("parse-cache-invalid-sibling-fix");
     let src_dir = temp_root.join("src");
-    let main_file = src_dir.join("main.apex");
-    let helper_file = src_dir.join("helper.apex");
+    let main_file = src_dir.join("main.arden");
+    let helper_file = src_dir.join("helper.arden");
 
     fs::write(
             &main_file,
@@ -11085,7 +11127,7 @@ fn project_parse_cache_recovers_cleanly_after_invalid_sibling_fix() {
 #[test]
 fn parse_cache_reuses_same_content_even_after_metadata_change() {
     let temp_root = std::env::temp_dir().join(format!(
-        "apex-parse-cache-test-{}-{}",
+        "arden-parse-cache-test-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -11094,7 +11136,7 @@ fn parse_cache_reuses_same_content_even_after_metadata_change() {
     ));
     let src_dir = temp_root.join("src");
     fs::create_dir_all(&src_dir).expect("create temp src dir");
-    let file = src_dir.join("main.apex");
+    let file = src_dir.join("main.arden");
     let source = "function main(): None { return None; }\n";
     fs::write(&file, source).expect("write source");
 
@@ -11123,27 +11165,27 @@ fn response_file_args_escape_quotes_and_backslashes() {
 fn precompute_transitive_dependencies_matches_expected_closure() {
     let graph = HashMap::from([
         (
-            PathBuf::from("a.apex"),
-            HashSet::from([PathBuf::from("b.apex"), PathBuf::from("c.apex")]),
+            PathBuf::from("a.arden"),
+            HashSet::from([PathBuf::from("b.arden"), PathBuf::from("c.arden")]),
         ),
         (
-            PathBuf::from("b.apex"),
-            HashSet::from([PathBuf::from("d.apex")]),
+            PathBuf::from("b.arden"),
+            HashSet::from([PathBuf::from("d.arden")]),
         ),
         (
-            PathBuf::from("c.apex"),
-            HashSet::from([PathBuf::from("d.apex")]),
+            PathBuf::from("c.arden"),
+            HashSet::from([PathBuf::from("d.arden")]),
         ),
-        (PathBuf::from("d.apex"), HashSet::new()),
+        (PathBuf::from("d.arden"), HashSet::new()),
     ]);
 
     let all = precompute_all_transitive_dependencies(&graph);
     assert_eq!(
-        transitive_dependencies_from_precomputed(&all, Path::new("a.apex")),
+        transitive_dependencies_from_precomputed(&all, Path::new("a.arden")),
         HashSet::from([
-            PathBuf::from("b.apex"),
-            PathBuf::from("c.apex"),
-            PathBuf::from("d.apex"),
+            PathBuf::from("b.arden"),
+            PathBuf::from("c.arden"),
+            PathBuf::from("d.arden"),
         ])
     );
 }
@@ -11205,20 +11247,20 @@ fn codegen_program_for_unit_uses_api_for_dependencies_and_projection_for_special
     };
 
     let rewritten_files = vec![
-        make_unit("a.apex", "fa", 3, 0, 1, false),
-        make_unit("b.apex", "fb", 4, 0, 1, false),
-        make_unit("c.apex", "fc", 5, 0, 1, true),
+        make_unit("a.arden", "fa", 3, 0, 1, false),
+        make_unit("b.arden", "fb", 4, 0, 1, false),
+        make_unit("c.arden", "fc", 5, 0, 1, true),
     ];
     let rewritten_file_indices = HashMap::from([
-        (PathBuf::from("a.apex"), 0usize),
-        (PathBuf::from("b.apex"), 1usize),
-        (PathBuf::from("c.apex"), 2usize),
+        (PathBuf::from("a.arden"), 0usize),
+        (PathBuf::from("b.arden"), 1usize),
+        (PathBuf::from("c.arden"), 2usize),
     ]);
     let program = codegen_program_for_unit(
         &rewritten_files,
         &rewritten_file_indices,
-        Path::new("a.apex"),
-        Some(&HashSet::from([PathBuf::from("b.apex")])),
+        Path::new("a.arden"),
+        Some(&HashSet::from([PathBuf::from("b.arden")])),
         Some(&HashSet::from(["fb".to_string()])),
     );
 

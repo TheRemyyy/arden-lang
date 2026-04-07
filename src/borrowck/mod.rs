@@ -1,4 +1,4 @@
-//! Apex Borrow Checker - Ownership and lifetime analysis
+//! Arden Borrow Checker - Ownership and lifetime analysis
 //!
 //! This module provides:
 //! - Move semantics checking

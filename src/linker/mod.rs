@@ -222,7 +222,7 @@ pub(crate) fn compile_ir(
         #[cfg(not(windows))]
         cmd.arg("-lm").arg("-pthread");
 
-        // GitHub Actions Ubuntu links executables as PIE by default; Apex bin objects/IR are
+        // GitHub Actions Ubuntu links executables as PIE by default; Arden bin objects/IR are
         // regular executable codegen, so request non-PIE explicitly on ELF toolchains.
         #[cfg(all(unix, not(target_os = "macos")))]
         if should_force_no_pie(link) {

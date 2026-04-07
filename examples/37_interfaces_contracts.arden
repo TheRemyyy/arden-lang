@@ -35,7 +35,7 @@ function render(item: Printable): None {
 
 function main(): None {
     println("=== Interfaces ===");
-    b: Book = Book("Apex Language");
+    b: Book = Book("Arden Language");
     println("name={b.get_name()}");
     render(b);
     return None;

@@ -1,0 +1,12 @@
+name = "insane_showcase_project"
+version = "1.0.0"
+entry = "src/main.arden"
+files = [
+    "src/domain.arden",
+    "src/analytics.arden",
+    "src/score.arden",
+    "src/runtime.arden",
+    "src/main.arden"
+]
+output = "insane_showcase_project"
+output_kind = "bin"

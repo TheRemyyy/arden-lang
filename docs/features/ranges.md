@@ -14,7 +14,7 @@ The `Range<T>` type represents a half-open interval `[start, end)` that can be i
 
 Use the `range()` function to create a range:
 
-```apex
+```arden
 // Range from 0 to 5 (exclusive) - step defaults to 1
 r = range(0, 5);        // 0, 1, 2, 3, 4
 
@@ -32,7 +32,7 @@ r = range(0.5, 2.0, 0.5); // 0.5, 1.0, 1.5
 
 `range` is also a first-class builtin function value when a typed function is expected:
 
-```apex
+```arden
 build_ints: (Integer, Integer) -> Range<Integer> = range;
 build_floats: (Float, Float, Float) -> Range<Float> = range;
 ```
@@ -41,7 +41,7 @@ build_floats: (Float, Float, Float) -> Range<Float> = range;
 
 Explicitly type your range variables:
 
-```apex
+```arden
 r: Range<Integer> = range(0, 10);
 r2: Range<Float> = range(0.0, 1.0, 0.25);
 ```
@@ -54,7 +54,7 @@ Ranges implement the iterator protocol with two methods:
 
 Returns `true` if there are more elements to iterate over:
 
-```apex
+```arden
 r = range(0, 5);
 while (r.has_next()) {
     // Will execute 5 times
@@ -65,7 +65,7 @@ while (r.has_next()) {
 
 Returns the current value and advances the iterator:
 
-```apex
+```arden
 r = range(0, 5);
 val: Integer = r.next();  // Returns 0, iterator now at 1
 val = r.next();           // Returns 1, iterator now at 2
@@ -75,7 +75,7 @@ val = r.next();           // Returns 1, iterator now at 2
 
 ### Basic Iteration
 
-```apex
+```arden
 import std.io.*;
 
 function main(): None {
@@ -101,7 +101,7 @@ Counting to 5:
 
 ### Even Numbers
 
-```apex
+```arden
 function print_even_numbers(): None {
     println("Even numbers from 0 to 10:");
     r = range(0, 11, 2);  // Include 10 by going to 11
@@ -113,7 +113,7 @@ function print_even_numbers(): None {
 
 ### Countdown
 
-```apex
+```arden
 function countdown(): None {
     println("Launch countdown:");
     r = range(10, 0, -1);
@@ -126,7 +126,7 @@ function countdown(): None {
 
 ### Float Steps
 
-```apex
+```arden
 function sample_curve(): None {
     r: Range<Float> = range(0.0, 1.0, 0.25);
     while (r.has_next()) {
@@ -137,7 +137,7 @@ function sample_curve(): None {
 
 ### Sum Calculation
 
-```apex
+```arden
 function sum_range(start: Integer, end: Integer): Integer {
     mut sum: Integer = 0;
     r: Range<Integer> = range(start, end);
