@@ -2174,10 +2174,25 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Literal(Literal::Char(_)) => Some(Type::Char),
             Expr::Literal(Literal::None) => Some(Type::None),
             Expr::StringInterp(_) => Some(Type::String),
-            Expr::Construct { ty, .. } => {
+            Expr::Construct { ty, args } => {
                 if let Some((base_name, explicit_type_args)) =
                     Self::parse_construct_nominal_type_source(ty)
                 {
+                    let builtin_callee = Spanned::new(
+                        Expr::Ident(base_name.clone()),
+                        crate::ast::Span::default(),
+                    );
+                    if self
+                        .resolve_contextual_function_value_name(&builtin_callee.node)
+                        .is_some()
+                    {
+                        let builtin_call = Expr::Call {
+                            callee: Box::new(builtin_callee),
+                            args: args.clone(),
+                            type_args: Vec::new(),
+                        };
+                        return Some(self.infer_expr_type(&builtin_call, &[]));
+                    }
                     if let Some(resolved_name) =
                         self.resolve_alias_qualified_codegen_type_name(&base_name)
                     {
@@ -3595,10 +3610,25 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 Type::Integer
             }
-            Expr::Construct { ty, .. } => {
+            Expr::Construct { ty, args } => {
                 if let Some((base_name, explicit_type_args)) =
                     Self::parse_construct_nominal_type_source(ty)
                 {
+                    let builtin_callee = Spanned::new(
+                        Expr::Ident(base_name.clone()),
+                        crate::ast::Span::default(),
+                    );
+                    if self
+                        .resolve_contextual_function_value_name(&builtin_callee.node)
+                        .is_some()
+                    {
+                        let builtin_call = Expr::Call {
+                            callee: Box::new(builtin_callee),
+                            args: args.clone(),
+                            type_args: Vec::new(),
+                        };
+                        return self.infer_expr_type(&builtin_call, params);
+                    }
                     if let Some(resolved_name) =
                         self.resolve_alias_qualified_codegen_type_name(&base_name)
                     {

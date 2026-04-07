@@ -51,8 +51,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - codegen-side direct-call validation now recognizes exact zero-argument builtin aliases as materialized values before constructor/type lookup instead of misreporting them as unknown types
   - this fixes cases such as `CurrentDir()`, which previously failed in `--no-check` mode with `Unknown type: CurrentDir` instead of the correct user-facing type error for calling a `String`
 - Fixed capitalized exact-import stdlib calls lowering through constructor syntax:
-  - codegen-side construct lowering now dispatches capitalized exact-import builtin aliases to the stdlib call path before constructor lookup, while still rejecting materialized zero-argument builtin values as non-callable values
-  - this fixes cases such as `import std.args.get as ArgGet; ArgGet(1)`, which previously failed in both checked and `--no-check` builds with `Unknown type: ArgGet`
+  - codegen-side construct lowering and construct-type inference now dispatch capitalized exact-import builtin aliases through the stdlib call path before constructor lookup, while still rejecting materialized zero-argument builtin values as non-callable values
+  - this fixes cases such as `import std.args.get as ArgGet; ArgGet(1)`, which previously failed in both checked and `--no-check` builds with `Unknown type: ArgGet`, and `import std.math.abs as Abs; Abs(-7)`, which previously mis-inferred the call result as `Abs` and failed with `Cannot compare Abs and Integer`
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`
