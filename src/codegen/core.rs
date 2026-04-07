@@ -7983,6 +7983,31 @@ impl<'ctx> Codegen<'ctx> {
         (matches.len() == 1).then(|| (matches[0].clone(), variant_name.to_string()))
     }
 
+    pub(crate) fn resolve_pattern_variant_alias(
+        &self,
+        alias_ident: &str,
+    ) -> Option<(String, String, bool)> {
+        if let Some((enum_name, variant_name)) = self.resolve_import_alias_variant(alias_ident) {
+            if matches!(enum_name.as_str(), "Option" | "Result") {
+                return Some((
+                    enum_name,
+                    variant_name.clone(),
+                    matches!(variant_name.as_str(), "None"),
+                ));
+            }
+            let variant_info = self.enums.get(&enum_name)?.variants.get(&variant_name)?;
+            return Some((enum_name, variant_name, variant_info.fields.is_empty()));
+        }
+
+        match self.resolve_function_alias(alias_ident).as_str() {
+            "Option__some" => Some(("Option".to_string(), "Some".to_string(), false)),
+            "Option__none" => Some(("Option".to_string(), "None".to_string(), true)),
+            "Result__ok" => Some(("Result".to_string(), "Ok".to_string(), false)),
+            "Result__error" => Some(("Result".to_string(), "Error".to_string(), false)),
+            _ => None,
+        }
+    }
+
     fn resolve_wildcard_import_module_function_candidate(
         &self,
         module_name: &str,
@@ -11559,17 +11584,15 @@ impl<'ctx> Codegen<'ctx> {
 
     pub fn compile_match_stmt(&mut self, expr: &Spanned<Expr>, arms: &[MatchArm]) -> Result<()> {
         let imported_variant = |this: &Self, name: &str| -> Option<(String, String, bool)> {
-            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
-            let variant_info = this.enums.get(&enum_name)?.variants.get(&variant_name)?;
-            Some((enum_name, variant_name, variant_info.fields.is_empty()))
+            this.resolve_pattern_variant_alias(name)
         };
         let imported_unit_variant = |this: &Self, name: &str| -> Option<(String, String, u8)> {
-            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
+            let (enum_name, variant_name, is_unit) = this.resolve_pattern_variant_alias(name)?;
+            if !is_unit {
+                return None;
+            }
             let variant_info = this.enums.get(&enum_name)?.variants.get(&variant_name)?;
-            variant_info
-                .fields
-                .is_empty()
-                .then_some((enum_name, variant_name, variant_info.tag))
+            Some((enum_name, variant_name, variant_info.tag))
         };
         let match_ty = self.infer_builtin_argument_type(&expr.node);
         let option_inner_ty = match &match_ty {

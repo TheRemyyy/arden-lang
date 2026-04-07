@@ -1361,17 +1361,15 @@ impl<'ctx> Codegen<'ctx> {
         expected_result_ty: Option<&Type>,
     ) -> Result<BasicValueEnum<'ctx>> {
         let imported_variant = |this: &Self, name: &str| -> Option<(String, String, bool)> {
-            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
-            let variant_info = this.enums.get(&enum_name)?.variants.get(&variant_name)?;
-            Some((enum_name, variant_name, variant_info.fields.is_empty()))
+            this.resolve_pattern_variant_alias(name)
         };
         let imported_unit_variant = |this: &Self, name: &str| -> Option<(String, String, u8)> {
-            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
+            let (enum_name, variant_name, is_unit) = this.resolve_pattern_variant_alias(name)?;
+            if !is_unit {
+                return None;
+            }
             let variant_info = this.enums.get(&enum_name)?.variants.get(&variant_name)?;
-            variant_info
-                .fields
-                .is_empty()
-                .then_some((enum_name, variant_name, variant_info.tag))
+            Some((enum_name, variant_name, variant_info.tag))
         };
         fn pattern_variant_leaf(name: &str) -> &str {
             name.rsplit('.').next().unwrap_or(name)

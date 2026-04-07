@@ -53,6 +53,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed capitalized exact-import stdlib calls lowering through constructor syntax:
   - codegen-side construct lowering and construct-type inference now dispatch capitalized exact-import builtin aliases through the stdlib call path before constructor lookup, while still rejecting materialized zero-argument builtin values as non-callable values
   - this fixes cases such as `import std.args.get as ArgGet; ArgGet(1)`, which previously failed in both checked and `--no-check` builds with `Unknown type: ArgGet`, and `import std.math.abs as Abs; Abs(-7)`, which previously mis-inferred the call result as `Abs` and failed with `Cannot compare Abs and Integer`
+- Fixed imported builtin variant aliases in codegen match patterns:
+  - codegen-side pattern variant resolution now falls back through canonical builtin alias resolution for imported `Option` and `Result` variants before rejecting a pattern as incompatible with the scrutinee type
+  - this fixes single-file builds such as `import Option.Some as Present; import Option.None as Empty; match (value) { Present(inner) => ..., Empty => ... }`, which previously failed during codegen with `Cannot match variant Present on type Option<Integer>`
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`

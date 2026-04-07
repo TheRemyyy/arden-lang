@@ -11016,6 +11016,36 @@ fn compile_source_no_check_runs_inferred_generic_class_constructor_function_valu
 }
 
 #[test]
+fn compile_source_no_check_runs_imported_option_alias_match_runtime() {
+    let temp_root = make_temp_project_root("no-check-imported-option-alias-match-runtime");
+    let source_path = temp_root.join("no_check_imported_option_alias_match_runtime.apex");
+    let output_path = temp_root.join("no_check_imported_option_alias_match_runtime");
+    let source = r#"
+            import Option.Some as Present;
+            import Option.None as Empty;
+
+            function main(): Integer {
+                value: Option<Integer> = Present(7);
+                return match (value) {
+                    Present(inner) => if (inner == 7) { 0 } else { 1 },
+                    Empty => 2,
+                };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect("unchecked imported Option alias match should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled unchecked imported Option alias match binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_runs_imported_inferred_generic_class_constructor_function_value_runtime()
 {
     let temp_root =
@@ -15109,6 +15139,36 @@ fn compile_source_runs_imported_option_some_alias_function_value_runtime() {
     let status = std::process::Command::new(&output_path)
         .status()
         .expect("run compiled imported Option.Some alias function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_imported_option_alias_match_runtime() {
+    let temp_root = make_temp_project_root("imported-option-alias-match-runtime");
+    let source_path = temp_root.join("imported_option_alias_match_runtime.apex");
+    let output_path = temp_root.join("imported_option_alias_match_runtime");
+    let source = r#"
+            import Option.Some as Present;
+            import Option.None as Empty;
+
+            function main(): Integer {
+                value: Option<Integer> = Present(7);
+                return match (value) {
+                    Present(inner) => if (inner == 7) { 0 } else { 1 },
+                    Empty => 2,
+                };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("imported Option alias match should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled imported Option alias match binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
