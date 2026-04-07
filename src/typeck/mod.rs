@@ -4167,6 +4167,18 @@ impl TypeChecker {
                             );
                             return ResolvedType::Unknown;
                         }
+                        if let Some(value_ty) =
+                            Self::concrete_zero_arg_builtin_value_type(&canonical_name)
+                        {
+                            self.error(
+                                format!(
+                                    "Cannot call non-function type {}",
+                                    Self::format_resolved_type_for_diagnostic(&value_ty)
+                                ),
+                                span.clone(),
+                            );
+                            return ResolvedType::Unknown;
+                        }
                         return self
                             .check_builtin_call(&canonical_name, args, span.clone())
                             .unwrap_or(ResolvedType::Unknown);

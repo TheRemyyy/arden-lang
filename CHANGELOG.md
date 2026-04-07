@@ -56,6 +56,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed imported builtin variant aliases in codegen match patterns:
   - codegen-side pattern variant resolution now falls back through canonical builtin alias resolution for imported `Option` and `Result` variants before rejecting a pattern as incompatible with the scrutinee type
   - this fixes single-file builds such as `import Option.Some as Present; import Option.None as Empty; match (value) { Present(inner) => ..., Empty => ... }`, which previously failed during codegen with `Cannot match variant Present on type Option<Integer>`
+- Fixed checked-build diagnostics for exact zero-argument builtin alias calls:
+  - type-checking now rejects materialized exact-import zero-argument builtin values at the constructor-style call boundary instead of treating them as valid builtin calls and surfacing a later, misleading error
+  - this fixes cases such as `CurrentDir()` and `ArgCount()`, which previously either failed late with `Return type mismatch` or escaped to codegen before reporting the correct `Cannot call non-function type ...` diagnostic
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`

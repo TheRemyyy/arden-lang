@@ -6743,6 +6743,61 @@ fn compile_source_no_check_rejects_literal_call_with_non_function_type_diagnosti
 }
 
 #[test]
+fn compile_source_rejects_exact_import_alias_non_function_call_with_type_diagnostic() {
+    let temp_root = make_temp_project_root("checked-exact-import-alias-call-non-function-type");
+    let source_path = temp_root.join("checked_exact_import_alias_call_non_function_type.apex");
+    let output_path = temp_root.join("checked_exact_import_alias_call_non_function_type");
+    let source = r#"
+            import std.system.cwd as CurrentDir;
+
+            function main(): Integer {
+                return CurrentDir();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect_err("exact import alias non-function call should fail in checked build");
+    assert!(
+        err.contains("Cannot call non-function type String"),
+        "{err}"
+    );
+    assert!(
+        !err.contains("Return type mismatch: expected Integer, found String"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_rejects_exact_import_integer_alias_non_function_call_with_type_diagnostic() {
+    let temp_root =
+        make_temp_project_root("checked-exact-import-integer-alias-call-non-function-type");
+    let source_path =
+        temp_root.join("checked_exact_import_integer_alias_call_non_function_type.apex");
+    let output_path =
+        temp_root.join("checked_exact_import_integer_alias_call_non_function_type");
+    let source = r#"
+            import std.args.count as ArgCount;
+
+            function main(): Integer {
+                return ArgCount();
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect_err("integer exact import alias non-function call should fail in checked build");
+    assert!(
+        err.contains("Cannot call non-function type Integer"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_local_non_function_call_with_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-local-call-non-function-type");
     let source_path = temp_root.join("no_check_local_call_non_function_type.apex");
