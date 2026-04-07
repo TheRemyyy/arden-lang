@@ -986,6 +986,13 @@ impl TypeChecker {
         span: Span,
     ) -> Option<ResolvedType> {
         let mut type_source = Self::nominal_function_value_type_source(expr)?;
+        if let Expr::Ident(name) = expr {
+            if let Some(path) = self.lookup_import_alias_path(name) {
+                if !path.ends_with(".*") && self.resolve_known_type_name(path).is_some() {
+                    type_source = path.to_string();
+                }
+            }
+        }
         if let Some(type_args) = explicit_type_args {
             type_source = format!(
                 "{}<{}>",

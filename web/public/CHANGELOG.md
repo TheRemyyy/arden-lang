@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed exact-import generic constructor function values in project builds:
+  - project expression rewrite now lowers exact-import and directly visible class symbols to the mangled constructor symbol in bare identifier expression contexts, so generic constructor function values are preserved the same way constructor calls already were
+  - this fixes valid project builds such as `import app.Box as BoxCtor; ctor: (Integer) -> Box<Integer> = BoxCtor<Integer>;` and nested forms like `async { if (flag) { BoxCtor<Integer> } else { BoxCtor<Integer> } }`, which previously failed during semantic checking with `Undefined variable: BoxCtor`
 - Fixed enum variant function-value adaptation for compatible expected signatures:
   - codegen now emits the closure for the variant's real constructor signature first and then applies the same function-value adapter path used by named functions and class constructors instead of requiring an exact signature match up front
   - this fixes valid builds such as `ctor: (Box) -> E = E.Wrap` when `E.Wrap` actually accepts an interface like `Named` implemented by `Box`, which previously failed in codegen with `Type mismatch: expected (app.Box) -> app.E, got (app.Named) -> app.E`

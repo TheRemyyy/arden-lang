@@ -5707,6 +5707,78 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_async_tail() {
 }
 
 #[test]
+fn project_build_accepts_imported_generic_constructor_function_values_in_async_if_tail() {
+    let temp_root = make_temp_project_root("project-async-if-imported-generic-constructor-fn");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("util.arden"),
+        "package app;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } }\n",
+    )
+    .expect("write util");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nimport app.Box as BoxCtor;\nfunction choose(flag: Boolean): Task<(Integer) -> Box<Integer>> { return async { if (flag) { BoxCtor<Integer> } else { BoxCtor<Integer> } }; }\nfunction main(): Integer { return (await(choose(true)))(7).value - 7; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should accept imported generic constructor function values in async if tails",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled imported generic constructor async-if binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_accepts_exact_import_alias_generic_constructor_function_values() {
+    let temp_root = make_temp_project_root("project-exact-import-generic-constructor-fn-value");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("util.arden"),
+        "package app;\nclass Box<T> { value: T; constructor(value: T) { this.value = value; } }\n",
+    )
+    .expect("write util");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nimport app.Box as BoxCtor;\nfunction main(): Integer { ctor: (Integer) -> Box<Integer> = BoxCtor<Integer>; return ctor(7).value - 7; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should accept exact-import alias generic constructor function values",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled exact-import generic constructor function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_accepts_module_local_nested_enum_variant_patterns() {
     let temp_root = make_temp_project_root("project-module-local-nested-enum-variant-patterns");
     let src_dir = temp_root.join("src");

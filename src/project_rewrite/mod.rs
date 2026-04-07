@@ -7179,6 +7179,16 @@ fn rewrite_expr_calls_for_project(
         Expr::Ident(name) => {
             if is_shadowed(name, scopes) {
                 Expr::Ident(name.clone())
+            } else if local_classes.contains(name) {
+                Expr::Ident(mangle_project_symbol(
+                    current_namespace,
+                    entry_namespace,
+                    name,
+                ))
+            } else if let Some((owner_ns, class_name)) = imported_classes.get(name) {
+                Expr::Ident(mangle_project_symbol(owner_ns, entry_namespace, class_name))
+            } else if let Some(owner_ns) = global_class_map.get(name) {
+                Expr::Ident(mangle_project_symbol(owner_ns, entry_namespace, name))
             } else if local_functions.contains(name) {
                 Expr::Ident(mangle_project_symbol(
                     current_namespace,
