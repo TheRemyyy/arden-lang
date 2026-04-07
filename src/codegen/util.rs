@@ -367,7 +367,10 @@ impl<'ctx> Codegen<'ctx> {
                     });
                 }
                 Stmt::Expr(expr) => {
-                    ret = Some(self.infer_expr_type(&expr.node, &scoped_params));
+                    ret = Some(
+                        self.builtin_argument_type_hint(&expr.node)
+                            .unwrap_or_else(|| self.infer_expr_type(&expr.node, &scoped_params)),
+                    );
                 }
                 _ => {}
             }
@@ -1788,7 +1791,10 @@ impl<'ctx> Codegen<'ctx> {
             for (idx, stmt) in arm.body.iter().enumerate() {
                 if idx + 1 == arm.body.len() {
                     if let Stmt::Expr(e) = &stmt.node {
-                        arm_result = if let Some(expected_ty) = &expected_match_result_ty {
+                        let arm_expected_ty = expected_match_result_ty
+                            .cloned()
+                            .or_else(|| self.builtin_argument_type_hint(&e.node));
+                        arm_result = if let Some(expected_ty) = arm_expected_ty.as_ref() {
                             self.compile_expr_with_expected_type(&e.node, expected_ty)?
                         } else {
                             self.compile_expr(&e.node)?

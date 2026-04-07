@@ -1917,6 +1917,68 @@ fn project_build_supports_builtin_option_none_alias_as_method_receiver() {
 }
 
 #[test]
+fn project_build_supports_zero_arg_exact_import_values_in_if_expr_method_receivers() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-if-receiver-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if ((if (true) { CurrentDir } else { CurrentDir }).length() >= 1) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support zero-arg exact import values in if-expression method receivers",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import if-expression method receiver binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_zero_arg_exact_import_values_in_block_expr_method_receivers() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-block-receiver-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if (({ CurrentDir }).length() >= 1) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support zero-arg exact import values in block-expression method receivers",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import block-expression method receiver binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_builtin_option_some_alias_calls() {
     let temp_root = make_temp_project_root("builtin-option-some-alias-project");
     let src_dir = temp_root.join("src");

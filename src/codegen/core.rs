@@ -12873,6 +12873,21 @@ impl<'ctx> Codegen<'ctx> {
                 Some(expected_ty),
             );
         }
+        if let Expr::Block(body) = expr {
+            let mut result = self.context.i8_type().const_int(0, false).into();
+            for (idx, stmt) in body.iter().enumerate() {
+                if let Stmt::Expr(inner_expr) = &stmt.node {
+                    result = if idx + 1 == body.len() {
+                        self.compile_expr_with_expected_type(&inner_expr.node, expected_ty)?
+                    } else {
+                        self.compile_expr(&inner_expr.node)?
+                    };
+                } else {
+                    self.compile_stmt(&stmt.node)?;
+                }
+            }
+            return Ok(result);
+        }
         if let Expr::Lambda { params, body } = expr {
             if matches!(expected_ty, Type::Function(_, _)) {
                 return self.compile_lambda(params, body, Some(expected_ty));
@@ -14819,11 +14834,53 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn infer_builtin_argument_type(&self, expr: &Expr) -> Type {
-        if let Some(name) = self.resolve_contextual_function_value_name(expr) {
-            if let Some(ty) = Self::concrete_zero_arg_builtin_value_type(&name) {
-                return ty;
+    pub(crate) fn builtin_argument_type_hint(&self, expr: &Expr) -> Option<Type> {
+        match expr {
+            Expr::Ident(_) | Expr::Field { .. } => self
+                .resolve_contextual_function_value_name(expr)
+                .and_then(|name| Self::concrete_zero_arg_builtin_value_type(&name)),
+            Expr::Literal(lit) => Some(match lit {
+                Literal::Integer(_) => Type::Integer,
+                Literal::Float(_) => Type::Float,
+                Literal::Boolean(_) => Type::Boolean,
+                Literal::String(_) => Type::String,
+                Literal::Char(_) => Type::Char,
+                Literal::None => Type::None,
+            }),
+            Expr::StringInterp(_) => Some(Type::String),
+            Expr::Block(body) => self.builtin_argument_block_type_hint(body),
+            Expr::IfExpr {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                let then_ty = self.builtin_argument_block_type_hint(then_branch)?;
+                let else_ty = self.builtin_argument_block_type_hint(else_branch.as_ref()?)?;
+                self.common_compatible_codegen_type(&then_ty, &else_ty)
             }
+            Expr::Match { arms, .. } => {
+                let mut arm_types = arms
+                    .iter()
+                    .filter_map(|arm| self.builtin_argument_block_type_hint(&arm.body));
+                let first = arm_types.next()?;
+                arm_types.try_fold(first, |acc, ty| {
+                    self.common_compatible_codegen_type(&acc, &ty)
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn builtin_argument_block_type_hint(&self, body: &[Spanned<Stmt>]) -> Option<Type> {
+        body.iter().rev().find_map(|stmt| match &stmt.node {
+            Stmt::Expr(expr) => self.builtin_argument_type_hint(&expr.node),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn infer_builtin_argument_type(&self, expr: &Expr) -> Type {
+        if let Some(ty) = self.builtin_argument_type_hint(expr) {
+            return ty;
         }
         self.infer_expr_type(expr, &[])
     }

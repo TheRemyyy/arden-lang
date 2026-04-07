@@ -3003,11 +3003,54 @@ impl TypeChecker {
         }
     }
 
-    fn check_builtin_argument_expr(&mut self, expr: &Expr, span: Span) -> ResolvedType {
-        if let Some(name) = self.resolve_contextual_function_value_name(expr) {
-            if let Some(ty) = Self::concrete_zero_arg_builtin_value_type(&name) {
-                return ty;
+    fn builtin_argument_expr_type_hint(&self, expr: &Expr) -> Option<ResolvedType> {
+        match expr {
+            Expr::Ident(_) | Expr::Field { .. } => self
+                .resolve_contextual_function_value_name(expr)
+                .and_then(|name| Self::concrete_zero_arg_builtin_value_type(&name)),
+            Expr::Literal(lit) => Some(match lit {
+                Literal::Integer(_) => ResolvedType::Integer,
+                Literal::Float(_) => ResolvedType::Float,
+                Literal::Boolean(_) => ResolvedType::Boolean,
+                Literal::String(_) => ResolvedType::String,
+                Literal::Char(_) => ResolvedType::Char,
+                Literal::None => ResolvedType::None,
+            }),
+            Expr::StringInterp(_) => Some(ResolvedType::String),
+            Expr::Block(body) => self.builtin_argument_block_type_hint(body),
+            Expr::IfExpr {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                let then_ty = self.builtin_argument_block_type_hint(then_branch)?;
+                let else_ty = self.builtin_argument_block_type_hint(else_branch.as_ref()?)?;
+                self.common_compatible_type(&then_ty, &else_ty)
             }
+            Expr::Match { arms, .. } => {
+                let mut arm_types = arms
+                    .iter()
+                    .filter_map(|arm| self.builtin_argument_block_type_hint(&arm.body));
+                let first = arm_types.next()?;
+                arm_types.try_fold(first, |acc, ty| self.common_compatible_type(&acc, &ty))
+            }
+            _ => None,
+        }
+    }
+
+    fn builtin_argument_block_type_hint(
+        &self,
+        body: &[Spanned<Stmt>],
+    ) -> Option<ResolvedType> {
+        body.iter().rev().find_map(|stmt| match &stmt.node {
+            Stmt::Expr(expr) => self.builtin_argument_expr_type_hint(&expr.node),
+            _ => None,
+        })
+    }
+
+    fn check_builtin_argument_expr(&mut self, expr: &Expr, span: Span) -> ResolvedType {
+        if let Some(expected) = self.builtin_argument_expr_type_hint(expr) {
+            return self.check_expr_with_expected_type(expr, span, Some(&expected));
         }
         self.check_expr(expr, span)
     }
