@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
+  - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
+  - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values
 - Fixed exact-import generic constructor function values in project builds:
   - project expression rewrite now lowers exact-import and directly visible class symbols to the mangled constructor symbol in bare identifier expression contexts, so generic constructor function values are preserved the same way constructor calls already were
   - this fixes valid project builds such as `import app.Box as BoxCtor; ctor: (Integer) -> Box<Integer> = BoxCtor<Integer>;` and nested forms like `async { if (flag) { BoxCtor<Integer> } else { BoxCtor<Integer> } }`, which previously failed during semantic checking with `Undefined variable: BoxCtor`

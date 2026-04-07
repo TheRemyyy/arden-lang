@@ -16670,6 +16670,32 @@ fn compile_source_runs_direct_args_count_function_value_runtime() {
 }
 
 #[test]
+fn compile_source_no_check_rejects_extern_function_values_even_with_adapter_signature() {
+    let temp_root = make_temp_project_root("no-check-extern-function-value-adapter");
+    let source_path = temp_root.join("no_check_extern_function_value_adapter.arden");
+    let output_path = temp_root.join("no_check_extern_function_value_adapter");
+    let source = r#"
+            extern(c, "puts") function puts(s: String): Integer;
+
+            function main(): Integer {
+                f: (String) -> Float = puts;
+                value: Float = f("hi");
+                return if (value > 0.0) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("extern function values with adapter signatures should fail in codegen");
+    assert!(
+        err.contains("extern function 'puts' cannot be used as a first-class value yet"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");

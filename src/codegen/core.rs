@@ -13291,6 +13291,12 @@ impl<'ctx> Codegen<'ctx> {
         let Some((func, actual_ty)) = self.functions.get(name).cloned() else {
             return Ok(None);
         };
+        if self.extern_functions.contains(name) {
+            return Err(CodegenError::new(format!(
+                "extern function '{}' cannot be used as a first-class value yet",
+                name
+            )));
+        }
         let (expected_params, expected_ret) = match expected_ty {
             Type::Function(params, ret) => (params, ret),
             _ => return Ok(None),
@@ -13308,13 +13314,6 @@ impl<'ctx> Codegen<'ctx> {
             .any(|(expected, actual)| expected != actual);
         let return_needs_adapter = actual_ret.as_ref() != expected_ret.as_ref();
         if !params_need_adapter && !return_needs_adapter {
-            if self.extern_functions.contains(name) {
-                return Err(CodegenError::new(format!(
-                    "extern function '{}' cannot be used as a first-class value yet",
-                    name
-                )));
-            }
-
             let struct_ty = self.llvm_type(expected_ty).into_struct_type();
             let mut closure = struct_ty.get_undef();
             let fn_ptr = func.as_global_value().as_pointer_value();
