@@ -1589,8 +1589,9 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                 )
                                             },
                                         );
-                                        let mut scopes =
-                                            vec![f.params.iter().map(|p| p.name.clone()).collect()];
+                                        let param_scope: HashSet<String> =
+                                            f.params.iter().map(|p| p.name.clone()).collect();
+                                        let mut scopes = vec![param_scope.clone()];
                                         f.params = f
                                             .params
                                             .iter()
@@ -1620,7 +1621,7 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                             &module_imported_modules,
                                             global_interface_map,
                                         );
-                                        f.body = self::fix_module_local_block(
+                                        f.body = self::fix_module_local_block_with_scopes(
                                             &self::rewrite_block_calls_for_project(
                                                 &f.body,
                                                 module_call_ctx,
@@ -1631,7 +1632,14 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                 call_ctx: module_call_ctx
                                                     .with_expected_return_type(&f.return_type),
                                             },
+                                            &[param_scope],
                                         );
+                                        (f.params, f.body) =
+                                            rename_shadowed_module_imports_in_callable(
+                                                &f.params,
+                                                &f.body,
+                                                module_call_ctx.imported_map,
+                                            );
                                         Decl::Function(f)
                                     }
                                     Decl::Class(class) => {
@@ -1676,14 +1684,13 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                             .collect();
                                         if let Some(ctor) = &class.constructor {
                                             let mut new_ctor = ctor.clone();
-                                            let mut scopes: Vec<HashSet<String>> = vec![new_ctor
+                                            let mut param_scope: HashSet<String> = new_ctor
                                                 .params
                                                 .iter()
                                                 .map(|p| p.name.clone())
-                                                .collect()];
-                                            if let Some(scope) = scopes.last_mut() {
-                                                scope.insert("this".to_string());
-                                            }
+                                                .collect();
+                                            param_scope.insert("this".to_string());
+                                            let mut scopes = vec![param_scope.clone()];
                                             new_ctor.params = new_ctor
                                                 .params
                                                 .iter()
@@ -1709,14 +1716,22 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                     mode: p.mode,
                                                 })
                                                 .collect();
-                                            new_ctor.body = self::fix_module_local_block(
+                                            new_ctor.body =
+                                                self::fix_module_local_block_with_scopes(
                                                 &self::rewrite_block_calls_for_project(
                                                     &new_ctor.body,
                                                     module_call_ctx,
                                                     &mut scopes,
                                                 ),
                                                 module_rewrite_ctx,
+                                                &[param_scope],
                                             );
+                                            (new_ctor.params, new_ctor.body) =
+                                                rename_shadowed_module_imports_in_callable(
+                                                    &new_ctor.params,
+                                                    &new_ctor.body,
+                                                    module_call_ctx.imported_map,
+                                                );
                                             c.constructor = Some(new_ctor);
                                         }
                                         if let Some(dtor) = &class.destructor {
@@ -1748,14 +1763,13 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                             )
                                                         },
                                                     );
-                                                let mut scopes: Vec<HashSet<String>> = vec![nm
+                                                let mut param_scope: HashSet<String> = nm
                                                     .params
                                                     .iter()
                                                     .map(|p| p.name.clone())
-                                                    .collect()];
-                                                if let Some(scope) = scopes.last_mut() {
-                                                    scope.insert("this".to_string());
-                                                }
+                                                    .collect();
+                                                param_scope.insert("this".to_string());
+                                                let mut scopes = vec![param_scope.clone()];
                                                 nm.params = nm
                                                     .params
                                                     .iter()
@@ -1785,7 +1799,7 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                     &module_imported_modules,
                                                     global_interface_map,
                                                 );
-                                                nm.body = self::fix_module_local_block(
+                                                nm.body = self::fix_module_local_block_with_scopes(
                                                     &self::rewrite_block_calls_for_project(
                                                         &nm.body,
                                                         module_call_ctx,
@@ -1798,7 +1812,14 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                                 &nm.return_type,
                                                             ),
                                                     },
+                                                    &[param_scope],
                                                 );
+                                                (nm.params, nm.body) =
+                                                    rename_shadowed_module_imports_in_callable(
+                                                        &nm.params,
+                                                        &nm.body,
+                                                        module_call_ctx.imported_map,
+                                                    );
                                                 nm
                                             })
                                             .collect();
@@ -1889,15 +1910,13 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                             .iter()
                                             .map(|method| {
                                                 let mut new_method = method.clone();
-                                                let mut scopes: Vec<HashSet<String>> =
-                                                    vec![new_method
-                                                        .params
-                                                        .iter()
-                                                        .map(|p| p.name.clone())
-                                                        .collect()];
-                                                if let Some(scope) = scopes.last_mut() {
-                                                    scope.insert("this".to_string());
-                                                }
+                                                let mut param_scope: HashSet<String> = new_method
+                                                    .params
+                                                    .iter()
+                                                    .map(|p| p.name.clone())
+                                                    .collect();
+                                                param_scope.insert("this".to_string());
+                                                let mut scopes = vec![param_scope.clone()];
                                                 new_method.params = new_method
                                                     .params
                                                     .iter()
@@ -1929,15 +1948,26 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                 );
                                                 new_method.default_impl =
                                                     method.default_impl.as_ref().map(|block| {
-                                                        self::fix_module_local_block(
+                                                        self::fix_module_local_block_with_scopes(
                                                             &self::rewrite_block_calls_for_project(
                                                                 block,
                                                                 module_call_ctx,
                                                                 &mut scopes,
                                                             ),
                                                             module_rewrite_ctx,
+                                                            &[param_scope.clone()],
                                                         )
                                                     });
+                                                if let Some(default_impl) = &new_method.default_impl {
+                                                    let (params, default_impl) =
+                                                        rename_shadowed_module_imports_in_callable(
+                                                            &new_method.params,
+                                                            default_impl,
+                                                            module_call_ctx.imported_map,
+                                                        );
+                                                    new_method.params = params;
+                                                    new_method.default_impl = Some(default_impl);
+                                                }
                                                 new_method
                                             })
                                             .collect();
@@ -3093,7 +3123,8 @@ fn rewrite_nested_module_decl_for_project(
                     global_enum_map,
                 )
             });
-            let mut scopes = vec![f.params.iter().map(|p| p.name.clone()).collect()];
+            let param_scope: HashSet<String> = f.params.iter().map(|p| p.name.clone()).collect();
+            let mut scopes = vec![param_scope.clone()];
             f.params = f
                 .params
                 .iter()
@@ -3135,7 +3166,7 @@ fn rewrite_nested_module_decl_for_project(
                 imported_modules,
                 global_interface_map,
             );
-            f.body = self::fix_module_local_block(
+            f.body = self::fix_module_local_block_with_scopes(
                 &rewrite_block_calls_for_project(
                     &f.body,
                     current_namespace,
@@ -3160,6 +3191,12 @@ fn rewrite_nested_module_decl_for_project(
                     module_prefix,
                     call_ctx: module_call_ctx.with_expected_return_type(&f.return_type),
                 },
+                &[param_scope],
+            );
+            (f.params, f.body) = rename_shadowed_module_imports_in_callable(
+                &f.params,
+                &f.body,
+                module_call_ctx.imported_map,
             );
             Decl::Function(f)
         }
@@ -3238,11 +3275,10 @@ fn rewrite_nested_module_decl_for_project(
                 .collect();
             if let Some(ctor) = &class.constructor {
                 let mut new_ctor = ctor.clone();
-                let mut scopes: Vec<HashSet<String>> =
-                    vec![new_ctor.params.iter().map(|p| p.name.clone()).collect()];
-                if let Some(scope) = scopes.last_mut() {
-                    scope.insert("this".to_string());
-                }
+                let mut param_scope: HashSet<String> =
+                    new_ctor.params.iter().map(|p| p.name.clone()).collect();
+                param_scope.insert("this".to_string());
+                let mut scopes = vec![param_scope.clone()];
                 new_ctor.params = new_ctor
                     .params
                     .iter()
@@ -3268,7 +3304,7 @@ fn rewrite_nested_module_decl_for_project(
                         mode: p.mode,
                     })
                     .collect();
-                new_ctor.body = self::fix_module_local_block(
+                new_ctor.body = self::fix_module_local_block_with_scopes(
                     &rewrite_block_calls_for_project(
                         &new_ctor.body,
                         current_namespace,
@@ -3290,6 +3326,12 @@ fn rewrite_nested_module_decl_for_project(
                         &mut scopes,
                     ),
                     module_rewrite_ctx,
+                    &[param_scope],
+                );
+                (new_ctor.params, new_ctor.body) = rename_shadowed_module_imports_in_callable(
+                    &new_ctor.params,
+                    &new_ctor.body,
+                    module_call_ctx.imported_map,
                 );
                 c.constructor = Some(new_ctor);
             }
@@ -3346,11 +3388,10 @@ fn rewrite_nested_module_decl_for_project(
                                 global_enum_map,
                             )
                         });
-                    let mut scopes: Vec<HashSet<String>> =
-                        vec![nm.params.iter().map(|p| p.name.clone()).collect()];
-                    if let Some(scope) = scopes.last_mut() {
-                        scope.insert("this".to_string());
-                    }
+                    let mut param_scope: HashSet<String> =
+                        nm.params.iter().map(|p| p.name.clone()).collect();
+                    param_scope.insert("this".to_string());
+                    let mut scopes = vec![param_scope.clone()];
                     nm.params = nm
                         .params
                         .iter()
@@ -3392,7 +3433,7 @@ fn rewrite_nested_module_decl_for_project(
                         imported_modules,
                         global_interface_map,
                     );
-                    nm.body = self::fix_module_local_block(
+                    nm.body = self::fix_module_local_block_with_scopes(
                         &rewrite_block_calls_for_project(
                             &nm.body,
                             current_namespace,
@@ -3417,6 +3458,12 @@ fn rewrite_nested_module_decl_for_project(
                             module_prefix,
                             call_ctx: module_call_ctx.with_expected_return_type(&nm.return_type),
                         },
+                        &[param_scope],
+                    );
+                    (nm.params, nm.body) = rename_shadowed_module_imports_in_callable(
+                        &nm.params,
+                        &nm.body,
+                        module_call_ctx.imported_map,
                     );
                     nm
                 })
@@ -3570,11 +3617,10 @@ fn rewrite_nested_module_decl_for_project(
                 .iter()
                 .map(|method| {
                     let mut new_method = method.clone();
-                    let mut scopes: Vec<HashSet<String>> =
-                        vec![new_method.params.iter().map(|p| p.name.clone()).collect()];
-                    if let Some(scope) = scopes.last_mut() {
-                        scope.insert("this".to_string());
-                    }
+                    let mut param_scope: HashSet<String> =
+                        new_method.params.iter().map(|p| p.name.clone()).collect();
+                    param_scope.insert("this".to_string());
+                    let mut scopes = vec![param_scope.clone()];
                     new_method.params = new_method
                         .params
                         .iter()
@@ -3617,7 +3663,7 @@ fn rewrite_nested_module_decl_for_project(
                         global_interface_map,
                     );
                     new_method.default_impl = method.default_impl.as_ref().map(|block| {
-                        self::fix_module_local_block(
+                        self::fix_module_local_block_with_scopes(
                             &rewrite_block_calls_for_project(
                                 block,
                                 current_namespace,
@@ -3639,8 +3685,18 @@ fn rewrite_nested_module_decl_for_project(
                                 &mut scopes,
                             ),
                             module_rewrite_ctx,
+                            &[param_scope.clone()],
                         )
                     });
+                    if let Some(default_impl) = &new_method.default_impl {
+                        let (params, default_impl) = rename_shadowed_module_imports_in_callable(
+                            &new_method.params,
+                            default_impl,
+                            module_call_ctx.imported_map,
+                        );
+                        new_method.params = params;
+                        new_method.default_impl = Some(default_impl);
+                    }
                     new_method
                 })
                 .collect();
@@ -3761,6 +3817,43 @@ fn lookup_module_local_rename(
         .iter()
         .rev()
         .find_map(|scope| scope.get(name).cloned())
+}
+
+fn rename_shadowed_module_import_params(
+    params: &[ast::Parameter],
+    imported_map: &ImportedMap,
+    rename_scopes: &mut [HashMap<String, String>],
+) -> Vec<ast::Parameter> {
+    params
+        .iter()
+        .map(|param| {
+            let renamed = if imported_map.contains_key(&param.name) {
+                format!("__module_local_{}", param.name)
+            } else {
+                param.name.clone()
+            };
+            if let Some(scope) = rename_scopes.last_mut() {
+                scope.insert(param.name.clone(), renamed.clone());
+            }
+            ast::Parameter {
+                name: renamed,
+                ty: param.ty.clone(),
+                mutable: param.mutable,
+                mode: param.mode,
+            }
+        })
+        .collect()
+}
+
+fn rename_shadowed_module_imports_in_callable(
+    params: &[ast::Parameter],
+    body: &ast::Block,
+    imported_map: &ImportedMap,
+) -> (Vec<ast::Parameter>, ast::Block) {
+    let mut rename_scopes = vec![HashMap::new()];
+    let params = rename_shadowed_module_import_params(params, imported_map, &mut rename_scopes);
+    let body = rename_shadowed_module_imports_in_block(body, imported_map, &mut rename_scopes);
+    (params, body)
 }
 
 fn rename_shadowed_module_imports_in_expr(
@@ -4829,7 +4922,11 @@ fn fix_module_local_stmt(
     }
 }
 
-fn fix_module_local_block(block: &ast::Block, ctx: ModuleRewriteContext<'_>) -> ast::Block {
+fn fix_module_local_block_with_scopes(
+    block: &ast::Block,
+    ctx: ModuleRewriteContext<'_>,
+    initial_scopes: &[HashSet<String>],
+) -> ast::Block {
     let module_rewrite_ctx = ctx;
     let module_prefix = ctx.module_prefix;
     let module_call_ctx = ctx.call_ctx;
@@ -4864,7 +4961,11 @@ fn fix_module_local_block(block: &ast::Block, ctx: ModuleRewriteContext<'_>) -> 
         imported_modules,
         global_interface_map,
     );
-    let mut scopes = vec![HashSet::new()];
+    let mut scopes = if initial_scopes.is_empty() {
+        vec![HashSet::new()]
+    } else {
+        initial_scopes.to_vec()
+    };
     let mut rewritten = Vec::with_capacity(block.len());
     for stmt in block {
         let rewritten_stmt = self::fix_module_local_stmt(&stmt.node, module_rewrite_ctx, &scopes);
@@ -4877,6 +4978,10 @@ fn fix_module_local_block(block: &ast::Block, ctx: ModuleRewriteContext<'_>) -> 
     }
     let mut rename_scopes = Vec::new();
     rename_shadowed_module_imports_in_block(&rewritten, imported_map, &mut rename_scopes)
+}
+
+fn fix_module_local_block(block: &ast::Block, ctx: ModuleRewriteContext<'_>) -> ast::Block {
+    fix_module_local_block_with_scopes(block, ctx, &[])
 }
 
 fn rewrite_module_local_type(ty: &ast::Type, ctx: ModuleRewriteContext<'_>) -> ast::Type {

@@ -1313,6 +1313,60 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_return_value
 }
 
 #[test]
+fn project_build_supports_module_local_shadowed_builtin_option_none_param_return_values() {
+    let temp_root =
+        make_temp_project_root("module-local-shadowed-builtin-option-none-param-return-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(Empty: Option<Integer>): Option<Integer> { return Empty; } }\nfunction main(): Integer { return match (Inner.keep(Option.Some(7))) { Some(v) => v - 7, None => 1, }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support module-local shadowed builtin Option.None parameter return values",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled module-local shadowed builtin Option.None parameter return binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_module_local_shadowed_builtin_option_none_param_lambda_values() {
+    let temp_root =
+        make_temp_project_root("module-local-shadowed-builtin-option-none-param-lambda-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(Empty: Integer): Integer { f: () -> Integer = || Empty; return f(); } }\nfunction main(): Integer { return Inner.keep(7) - 7; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support module-local shadowed builtin Option.None parameter lambda values",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled module-local shadowed builtin Option.None parameter lambda binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_module_wildcard_import_calls() {
     let temp_root = make_temp_project_root("module-wildcard-import-call-project");
     let src_dir = temp_root.join("src");
