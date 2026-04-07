@@ -414,11 +414,10 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Block(block) => self
                 .infer_block_tail_type_with_expected(block, params, expected_ty)
                 .unwrap_or(Type::None),
-            Expr::AsyncBlock(block) => Some(Type::Task(Box::new(
+            Expr::AsyncBlock(block) => Type::Task(Box::new(
                 self.infer_block_tail_type_with_expected(block, params, expected_ty)
                     .unwrap_or(Type::None),
-            )))
-            .unwrap_or(Type::None),
+            )),
             _ => self.infer_expr_type(expr, params),
         }
     }
@@ -1223,20 +1222,22 @@ impl<'ctx> Codegen<'ctx> {
         // 1. Identify captures
         let captures = self.identify_captures(&body.node, params);
         let effective_params: Vec<Parameter> = match expected_fn_ty {
-            Some(Type::Function(expected_params, _)) if expected_params.len() == params.len() => params
-                .iter()
-                .zip(expected_params.iter())
-                .map(|(param, expected_ty)| Parameter {
-                    name: param.name.clone(),
-                    ty: if matches!(param.ty, Type::None) {
-                        expected_ty.clone()
-                    } else {
-                        param.ty.clone()
-                    },
-                    mutable: param.mutable,
-                    mode: param.mode,
-                })
-                .collect(),
+            Some(Type::Function(expected_params, _)) if expected_params.len() == params.len() => {
+                params
+                    .iter()
+                    .zip(expected_params.iter())
+                    .map(|(param, expected_ty)| Parameter {
+                        name: param.name.clone(),
+                        ty: if matches!(param.ty, Type::None) {
+                            expected_ty.clone()
+                        } else {
+                            param.ty.clone()
+                        },
+                        mutable: param.mutable,
+                        mode: param.mode,
+                    })
+                    .collect()
+            }
             _ => params.to_vec(),
         };
 

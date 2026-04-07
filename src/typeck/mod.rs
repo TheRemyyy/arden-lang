@@ -3762,8 +3762,15 @@ impl TypeChecker {
         for stmt in body {
             match &stmt.node {
                 Stmt::Expr(expr) => {
-                    tail_expr_type =
-                        Some(self.check_builtin_argument_expr(&expr.node, expr.span.clone()));
+                    tail_expr_type = Some(if let Some(expected_inner) = expected_inner {
+                        self.check_expr_with_expected_type(
+                            &expr.node,
+                            expr.span.clone(),
+                            Some(expected_inner),
+                        )
+                    } else {
+                        self.check_builtin_argument_expr(&expr.node, expr.span.clone())
+                    });
                 }
                 _ => {
                     tail_expr_type = None;
