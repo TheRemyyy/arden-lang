@@ -549,6 +549,22 @@ fn materialize_builtin_import_value_for_type(
     materialize_builtin_import_value(expr, imported_map, imported_modules, scopes)
 }
 
+fn scopes_with_block_locals(
+    block: &ast::Block,
+    scopes: &[HashSet<String>],
+) -> Vec<HashSet<String>> {
+    let mut extended = scopes.to_vec();
+    extended.push(HashSet::new());
+    if let Some(scope) = extended.last_mut() {
+        for stmt in block.iter().take(block.len().saturating_sub(1)) {
+            if let Stmt::Let { name, .. } = &stmt.node {
+                scope.insert(name.clone());
+            }
+        }
+    }
+    extended
+}
+
 fn materialize_builtin_async_tail_block(
     block: &ast::Block,
     imported_map: &ImportedMap,
@@ -556,12 +572,17 @@ fn materialize_builtin_async_tail_block(
     scopes: &[HashSet<String>],
 ) -> Option<ast::Block> {
     let mut rewritten = block.clone();
+    let block_scopes = scopes_with_block_locals(block, scopes);
     let last_stmt = rewritten.last_mut()?;
     let Stmt::Expr(expr) = &last_stmt.node else {
         return None;
     };
-    let materialized =
-        materialize_builtin_async_tail_expr(&expr.node, imported_map, imported_modules, scopes)?;
+    let materialized = materialize_builtin_async_tail_expr(
+        &expr.node,
+        imported_map,
+        imported_modules,
+        &block_scopes,
+    )?;
     last_stmt.node = Stmt::Expr(ast::Spanned::new(materialized, expr.span.clone()));
     Some(rewritten)
 }
@@ -771,6 +792,252 @@ fn extend_wildcard_import_map(
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
 }
 
+fn namespace_exists_in_global_map(
+    namespace: &str,
+    global_symbol_map: &HashMap<String, String>,
+) -> bool {
+    global_symbol_map
+        .values()
+        .any(|owner_ns| owner_ns == namespace)
+}
+
+fn insert_namespace_members_from_global_map(
+    import_key: &str,
+    namespace: &str,
+    global_symbol_map: &HashMap<String, String>,
+    imported: &mut ImportedMap,
+) {
+    for (symbol_name, owner_ns) in global_symbol_map {
+        if owner_ns == namespace {
+            imported.insert(
+                alias_qualified_symbol_name(import_key, symbol_name),
+                (owner_ns.clone(), symbol_name.clone()),
+            );
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn extend_import_maps_with_imports(
+    imports: &[ImportDecl],
+    namespace_functions: &HashMap<String, HashSet<String>>,
+    global_function_map: &HashMap<String, String>,
+    namespace_classes: &HashMap<String, HashSet<String>>,
+    global_class_map: &HashMap<String, String>,
+    namespace_interfaces: &HashMap<String, HashSet<String>>,
+    global_interface_map: &HashMap<String, String>,
+    namespace_enums: &HashMap<String, HashSet<String>>,
+    global_enum_map: &HashMap<String, String>,
+    namespace_modules: &HashMap<String, HashSet<String>>,
+    global_module_map: &HashMap<String, String>,
+    imported_map: &mut ImportedMap,
+    imported_classes: &mut ImportedMap,
+    imported_interfaces: &mut ImportedMap,
+    imported_enums: &mut ImportedMap,
+    imported_modules: &mut ImportedMap,
+) {
+    for import in imports {
+        let import_key = import
+            .alias
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| import.path.rsplit('.').next().unwrap_or("").to_string());
+        if import.path.ends_with(".*") {
+            let import_path = import.path.trim_end_matches(".*");
+            let imported_map_before = imported_map.len();
+            extend_wildcard_import_map(import_path, namespace_functions, imported_map);
+            if imported_map.len() == imported_map_before {
+                for (symbol_name, owner_ns) in global_function_map {
+                    if let Some(imported_name) = direct_wildcard_member_name(
+                        import_path,
+                        owner_ns,
+                        symbol_name,
+                    )
+                    .or_else(|| {
+                        direct_stdlib_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    }) {
+                        imported_map.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
+                }
+                for (symbol_name, owner_ns) in stdlib_registry().get_functions() {
+                    if let Some(imported_name) =
+                        direct_stdlib_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_map.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
+                }
+            }
+            let imported_classes_before = imported_classes.len();
+            extend_wildcard_import_map(import_path, namespace_classes, imported_classes);
+            if imported_classes.len() == imported_classes_before {
+                for (symbol_name, owner_ns) in global_class_map {
+                    if let Some(imported_name) =
+                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_classes
+                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
+                }
+            }
+            let imported_interfaces_before = imported_interfaces.len();
+            extend_wildcard_import_map(import_path, namespace_interfaces, imported_interfaces);
+            if imported_interfaces.len() == imported_interfaces_before {
+                for (symbol_name, owner_ns) in global_interface_map {
+                    if let Some(imported_name) =
+                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_interfaces
+                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
+                }
+            }
+            let imported_enums_before = imported_enums.len();
+            extend_wildcard_import_map(import_path, namespace_enums, imported_enums);
+            if imported_enums.len() == imported_enums_before {
+                for (symbol_name, owner_ns) in global_enum_map {
+                    if let Some(imported_name) =
+                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_enums
+                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
+                }
+            }
+            let imported_modules_before = imported_modules.len();
+            extend_wildcard_import_map(import_path, namespace_modules, imported_modules);
+            if imported_modules.len() == imported_modules_before {
+                for (symbol_name, owner_ns) in global_module_map {
+                    if let Some(imported_name) =
+                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
+                    {
+                        imported_modules
+                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
+                    }
+                }
+            }
+        } else if import.path.contains('.') {
+            let mut parts = import.path.split('.').collect::<Vec<_>>();
+            if let Some(source_name) = parts.pop() {
+                let ns = parts.join(".");
+                if let Some((owner_ns, function_name)) =
+                    resolve_exact_imported_symbol_from_namespaces(
+                        &ns,
+                        source_name,
+                        namespace_functions,
+                    )
+                    .or_else(|| {
+                        resolve_exact_imported_symbol_path(&ns, source_name, global_function_map)
+                    })
+                    .or_else(|| resolve_exact_stdlib_imported_symbol(&ns, source_name))
+                    .or_else(|| {
+                        resolve_exact_builtin_imported_symbol(&ns, source_name)
+                            .map(|canonical| (String::new(), canonical))
+                    })
+                {
+                    imported_map.insert(import_key.clone(), (owner_ns, function_name));
+                }
+                if let Some((owner_ns, class_name)) = resolve_exact_imported_symbol_from_namespaces(
+                    &ns,
+                    source_name,
+                    namespace_classes,
+                )
+                .or_else(|| resolve_exact_imported_symbol_path(&ns, source_name, global_class_map))
+                {
+                    imported_classes.insert(import_key.clone(), (owner_ns, class_name));
+                }
+                if let Some((owner_ns, interface_name)) =
+                    resolve_exact_imported_symbol_from_namespaces(
+                        &ns,
+                        source_name,
+                        namespace_interfaces,
+                    )
+                    .or_else(|| {
+                        resolve_exact_imported_symbol_path(&ns, source_name, global_interface_map)
+                    })
+                {
+                    imported_interfaces.insert(import_key.clone(), (owner_ns, interface_name));
+                }
+                if let Some((owner_ns, enum_name)) =
+                    resolve_exact_imported_symbol_from_namespaces(&ns, source_name, namespace_enums)
+                        .or_else(|| {
+                            resolve_exact_imported_symbol_path(&ns, source_name, global_enum_map)
+                        })
+                {
+                    imported_enums.insert(import_key.clone(), (owner_ns, enum_name));
+                }
+                imported_modules.insert(import_key, (ns, source_name.to_string()));
+            }
+        } else if namespace_functions.contains_key(&import.path)
+            || namespace_classes.contains_key(&import.path)
+            || namespace_interfaces.contains_key(&import.path)
+            || namespace_enums.contains_key(&import.path)
+            || namespace_modules.contains_key(&import.path)
+            || namespace_exists_in_global_map(&import.path, global_function_map)
+            || namespace_exists_in_global_map(&import.path, global_class_map)
+            || namespace_exists_in_global_map(&import.path, global_interface_map)
+            || namespace_exists_in_global_map(&import.path, global_enum_map)
+            || namespace_exists_in_global_map(&import.path, global_module_map)
+        {
+            imported_modules.insert(import_key.clone(), (import.path.clone(), String::new()));
+            if let Some(symbols) = namespace_classes.get(&import.path) {
+                for symbol_name in symbols {
+                    imported_classes.insert(
+                        alias_qualified_symbol_name(&import_key, symbol_name),
+                        (import.path.clone(), symbol_name.clone()),
+                    );
+                }
+            } else {
+                insert_namespace_members_from_global_map(
+                    &import_key,
+                    &import.path,
+                    global_class_map,
+                    imported_classes,
+                );
+            }
+            if let Some(symbols) = namespace_interfaces.get(&import.path) {
+                for symbol_name in symbols {
+                    imported_interfaces.insert(
+                        alias_qualified_symbol_name(&import_key, symbol_name),
+                        (import.path.clone(), symbol_name.clone()),
+                    );
+                }
+            } else {
+                insert_namespace_members_from_global_map(
+                    &import_key,
+                    &import.path,
+                    global_interface_map,
+                    imported_interfaces,
+                );
+            }
+            if let Some(symbols) = namespace_enums.get(&import.path) {
+                for symbol_name in symbols {
+                    imported_enums.insert(
+                        alias_qualified_symbol_name(&import_key, symbol_name),
+                        (import.path.clone(), symbol_name.clone()),
+                    );
+                }
+            } else {
+                insert_namespace_members_from_global_map(
+                    &import_key,
+                    &import.path,
+                    global_enum_map,
+                    imported_enums,
+                );
+            }
+        }
+    }
+}
+
+fn collect_import_decls(declarations: &[ast::Spanned<Decl>]) -> Vec<ImportDecl> {
+    declarations
+        .iter()
+        .filter_map(|decl| match &decl.node {
+            Decl::Import(import) => Some(import.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 fn format_type_string(ty: &ast::Type) -> String {
     match ty {
         ast::Type::Integer => "Integer".to_string(),
@@ -907,172 +1174,24 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
     let mut imported_interfaces: ImportedMap = HashMap::new();
     let mut imported_enums: ImportedMap = HashMap::new();
     let mut imported_modules: ImportedMap = HashMap::new();
-    for import in imports {
-        let import_key = import
-            .alias
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| import.path.rsplit('.').next().unwrap_or("").to_string());
-        if import.path.ends_with(".*") {
-            let import_path = import.path.trim_end_matches(".*");
-            let imported_map_before = imported_map.len();
-            extend_wildcard_import_map(import_path, namespace_functions, &mut imported_map);
-            if imported_map.len() == imported_map_before {
-                for (symbol_name, owner_ns) in global_function_map {
-                    if let Some(imported_name) = direct_wildcard_member_name(
-                        import_path,
-                        owner_ns,
-                        symbol_name,
-                    )
-                    .or_else(|| {
-                        direct_stdlib_wildcard_member_name(import_path, owner_ns, symbol_name)
-                    }) {
-                        imported_map.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
-                    }
-                }
-                for (symbol_name, owner_ns) in stdlib_registry().get_functions() {
-                    if let Some(imported_name) =
-                        direct_stdlib_wildcard_member_name(import_path, owner_ns, symbol_name)
-                    {
-                        imported_map.insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
-                    }
-                }
-            }
-            let imported_classes_before = imported_classes.len();
-            extend_wildcard_import_map(import_path, namespace_classes, &mut imported_classes);
-            if imported_classes.len() == imported_classes_before {
-                for (symbol_name, owner_ns) in global_class_map {
-                    if let Some(imported_name) =
-                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
-                    {
-                        imported_classes
-                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
-                    }
-                }
-            }
-            let imported_interfaces_before = imported_interfaces.len();
-            extend_wildcard_import_map(import_path, namespace_interfaces, &mut imported_interfaces);
-            if imported_interfaces.len() == imported_interfaces_before {
-                for (symbol_name, owner_ns) in global_interface_map {
-                    if let Some(imported_name) =
-                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
-                    {
-                        imported_interfaces
-                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
-                    }
-                }
-            }
-            let imported_enums_before = imported_enums.len();
-            extend_wildcard_import_map(import_path, namespace_enums, &mut imported_enums);
-            if imported_enums.len() == imported_enums_before {
-                for (symbol_name, owner_ns) in global_enum_map {
-                    if let Some(imported_name) =
-                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
-                    {
-                        imported_enums
-                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
-                    }
-                }
-            }
-            let imported_modules_before = imported_modules.len();
-            extend_wildcard_import_map(import_path, namespace_modules, &mut imported_modules);
-            if imported_modules.len() == imported_modules_before {
-                for (symbol_name, owner_ns) in global_module_map {
-                    if let Some(imported_name) =
-                        direct_wildcard_member_name(import_path, owner_ns, symbol_name)
-                    {
-                        imported_modules
-                            .insert(imported_name, (owner_ns.clone(), symbol_name.clone()));
-                    }
-                }
-            }
-        } else if import.path.contains('.') {
-            let mut parts = import.path.split('.').collect::<Vec<_>>();
-            if let Some(source_name) = parts.pop() {
-                let ns = parts.join(".");
-                if let Some((owner_ns, function_name)) =
-                    resolve_exact_imported_symbol_from_namespaces(
-                        &ns,
-                        source_name,
-                        namespace_functions,
-                    )
-                    .or_else(|| {
-                        resolve_exact_imported_symbol_path(&ns, source_name, global_function_map)
-                    })
-                    .or_else(|| resolve_exact_stdlib_imported_symbol(&ns, source_name))
-                    .or_else(|| {
-                        resolve_exact_builtin_imported_symbol(&ns, source_name)
-                            .map(|canonical| (String::new(), canonical))
-                    })
-                {
-                    imported_map.insert(import_key.clone(), (owner_ns, function_name));
-                }
-                if let Some((owner_ns, class_name)) = resolve_exact_imported_symbol_from_namespaces(
-                    &ns,
-                    source_name,
-                    namespace_classes,
-                )
-                .or_else(|| resolve_exact_imported_symbol_path(&ns, source_name, global_class_map))
-                {
-                    imported_classes.insert(import_key.clone(), (owner_ns, class_name));
-                }
-                if let Some((owner_ns, interface_name)) =
-                    resolve_exact_imported_symbol_from_namespaces(
-                        &ns,
-                        source_name,
-                        namespace_interfaces,
-                    )
-                    .or_else(|| {
-                        resolve_exact_imported_symbol_path(&ns, source_name, global_interface_map)
-                    })
-                {
-                    imported_interfaces.insert(import_key.clone(), (owner_ns, interface_name));
-                }
-                if let Some((owner_ns, enum_name)) =
-                    resolve_exact_imported_symbol_from_namespaces(&ns, source_name, namespace_enums)
-                        .or_else(|| {
-                            resolve_exact_imported_symbol_path(&ns, source_name, global_enum_map)
-                        })
-                {
-                    imported_enums.insert(import_key.clone(), (owner_ns, enum_name));
-                }
-                imported_modules.insert(import_key, (ns, source_name.to_string()));
-            }
-        } else if namespace_functions.contains_key(&import.path)
-            || namespace_classes.contains_key(&import.path)
-            || namespace_interfaces.contains_key(&import.path)
-            || namespace_enums.contains_key(&import.path)
-            || namespace_modules.contains_key(&import.path)
-        {
-            // Namespace import without explicit symbol (e.g. `import math_utils as mu`)
-            // should allow `mu.someFunction()` rewrite resolution.
-            imported_modules.insert(import_key.clone(), (import.path.clone(), String::new()));
-            if let Some(symbols) = namespace_classes.get(&import.path) {
-                for symbol_name in symbols {
-                    imported_classes.insert(
-                        alias_qualified_symbol_name(&import_key, symbol_name),
-                        (import.path.clone(), symbol_name.clone()),
-                    );
-                }
-            }
-            if let Some(symbols) = namespace_interfaces.get(&import.path) {
-                for symbol_name in symbols {
-                    imported_interfaces.insert(
-                        alias_qualified_symbol_name(&import_key, symbol_name),
-                        (import.path.clone(), symbol_name.clone()),
-                    );
-                }
-            }
-            if let Some(symbols) = namespace_enums.get(&import.path) {
-                for symbol_name in symbols {
-                    imported_enums.insert(
-                        alias_qualified_symbol_name(&import_key, symbol_name),
-                        (import.path.clone(), symbol_name.clone()),
-                    );
-                }
-            }
-        }
-    }
+    extend_import_maps_with_imports(
+        imports,
+        namespace_functions,
+        global_function_map,
+        namespace_classes,
+        global_class_map,
+        namespace_interfaces,
+        global_interface_map,
+        namespace_enums,
+        global_enum_map,
+        namespace_modules,
+        global_module_map,
+        &mut imported_map,
+        &mut imported_classes,
+        &mut imported_interfaces,
+        &mut imported_enums,
+        &mut imported_modules,
+    );
     REWRITE_INTERNAL_TIMING_TOTALS
         .import_map_build_ns
         .fetch_add(elapsed_nanos_u64(import_map_started_at), Ordering::Relaxed);
@@ -1281,6 +1400,44 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                         let mut m = module.clone();
                         m.name = mangle_project_symbol(current_namespace, entry_namespace, &m.name);
                         let module_prefix = module.name.clone();
+                        let module_imports = collect_import_decls(&module.declarations);
+                        let mut module_imported_map = imported_map.clone();
+                        let mut module_imported_classes = imported_classes.clone();
+                        let mut module_imported_interfaces = imported_interfaces.clone();
+                        let mut module_imported_enums = imported_enums.clone();
+                        let mut module_imported_modules = imported_modules.clone();
+                        extend_import_maps_with_imports(
+                            &module_imports,
+                            namespace_functions,
+                            global_function_map,
+                            namespace_classes,
+                            global_class_map,
+                            namespace_interfaces,
+                            global_interface_map,
+                            namespace_enums,
+                            global_enum_map,
+                            namespace_modules,
+                            global_module_map,
+                            &mut module_imported_map,
+                            &mut module_imported_classes,
+                            &mut module_imported_interfaces,
+                            &mut module_imported_enums,
+                            &mut module_imported_modules,
+                        );
+                        let module_resolved_ctx = ResolvedRewriteContext {
+                            current_namespace,
+                            entry_namespace,
+                            imported_map: &module_imported_map,
+                            imported_classes: &module_imported_classes,
+                            imported_interfaces: &module_imported_interfaces,
+                            imported_enums: &module_imported_enums,
+                            imported_modules: &module_imported_modules,
+                            global_function_map,
+                            global_class_map,
+                            global_interface_map,
+                            global_enum_map,
+                            global_module_map,
+                        };
                         let (
                             module_local_functions,
                             module_local_classes,
@@ -1288,7 +1445,7 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                             module_local_enums,
                             module_local_modules,
                         ) = collect_direct_module_symbol_names(&module.declarations);
-                        let module_call_ctx = resolved_ctx.with_locals(
+                        let module_call_ctx = module_resolved_ctx.with_locals(
                             &module_local_functions,
                             &module_local_classes,
                             &module_local_interfaces,
@@ -1391,7 +1548,7 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                             _global_interface_map: &HashMap<String, String>,
                             _global_module_map: &HashMap<String, String>,
                         | {
-                            let nested_call_ctx = resolved_ctx.with_locals(
+                            let nested_call_ctx = module_resolved_ctx.with_locals(
                                 nested_local_functions,
                                 nested_local_classes,
                                 nested_local_interfaces,
@@ -1456,20 +1613,24 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                             &module_local_interfaces,
                                             &module_local_enums,
                                             &module_local_modules,
-                                            &imported_classes,
+                                            &module_imported_classes,
                                             global_class_map,
-                                            &imported_enums,
+                                            &module_imported_enums,
                                             global_enum_map,
-                                            &imported_modules,
+                                            &module_imported_modules,
                                             global_interface_map,
                                         );
                                         f.body = self::fix_module_local_block(
                                             &self::rewrite_block_calls_for_project(
                                                 &f.body,
-                            module_call_ctx,
-                            &mut scopes,
-                        ),
-                                            module_rewrite_ctx,
+                                                module_call_ctx,
+                                                &mut scopes,
+                                            ),
+                                            ModuleRewriteContext {
+                                                module_prefix: &module_prefix,
+                                                call_ctx: module_call_ctx
+                                                    .with_expected_return_type(&f.return_type),
+                                            },
                                         );
                                         Decl::Function(f)
                                     }
@@ -1537,11 +1698,11 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                         &module_local_interfaces,
                                                         &module_local_enums,
                                                         &module_local_modules,
-                                                        &imported_classes,
+                                                        &module_imported_classes,
                                                         global_class_map,
-                                                        &imported_enums,
+                                                        &module_imported_enums,
                                                         global_enum_map,
-                                                        &imported_modules,
+                                                        &module_imported_modules,
                                                         global_interface_map,
                                                     ),
                                                     mutable: p.mutable,
@@ -1617,11 +1778,11 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                     &module_local_interfaces,
                                                     &module_local_enums,
                                                     &module_local_modules,
-                                                    &imported_classes,
+                                                    &module_imported_classes,
                                                     global_class_map,
-                                                    &imported_enums,
+                                                    &module_imported_enums,
                                                     global_enum_map,
-                                                    &imported_modules,
+                                                    &module_imported_modules,
                                                     global_interface_map,
                                                 );
                                                 nm.body = self::fix_module_local_block(
@@ -1630,7 +1791,13 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                         module_call_ctx,
                                                         &mut scopes,
                                                     ),
-                                                    module_rewrite_ctx,
+                                                    ModuleRewriteContext {
+                                                        module_prefix: &module_prefix,
+                                                        call_ctx: module_call_ctx
+                                                            .with_expected_return_type(
+                                                                &nm.return_type,
+                                                            ),
+                                                    },
                                                 );
                                                 nm
                                             })
@@ -1684,7 +1851,7 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                             inner,
                                 ModuleRewriteContext {
                                     module_prefix: &nested_prefix,
-                                    call_ctx: resolved_ctx.with_locals(
+                                    call_ctx: module_resolved_ctx.with_locals(
                                         &nested_local_functions,
                                         &nested_local_classes,
                                         &nested_local_interfaces,
@@ -1753,11 +1920,11 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                                                     &module_local_interfaces,
                                                     &module_local_enums,
                                                     &module_local_modules,
-                                                    &imported_classes,
+                                                    &module_imported_classes,
                                                     global_class_map,
-                                                    &imported_enums,
+                                                    &module_imported_enums,
                                                     global_enum_map,
-                                                    &imported_modules,
+                                                    &module_imported_modules,
                                                     global_interface_map,
                                                 );
                                                 new_method.default_impl =
@@ -2750,14 +2917,41 @@ fn rewrite_nested_module_decl_for_project(
     let imported_modules = module_type_ctx.imported_modules;
     let global_interface_map = module_type_ctx.global_interface_map;
     let global_module_map = module_call_ctx.global_module_map;
+    let module_imports = collect_import_decls(match &decl.node {
+        Decl::Module(module) => &module.declarations,
+        _ => &[],
+    });
+    let mut module_imported_map = imported_map.clone();
+    let mut module_imported_classes = imported_classes.clone();
+    let mut module_imported_interfaces = imported_interfaces.clone();
+    let mut module_imported_enums = imported_enums.clone();
+    let mut module_imported_modules = imported_modules.clone();
+    extend_import_maps_with_imports(
+        &module_imports,
+        &HashMap::new(),
+        global_function_map,
+        &HashMap::new(),
+        global_class_map,
+        &HashMap::new(),
+        global_interface_map,
+        &HashMap::new(),
+        global_enum_map,
+        &HashMap::new(),
+        global_module_map,
+        &mut module_imported_map,
+        &mut module_imported_classes,
+        &mut module_imported_interfaces,
+        &mut module_imported_enums,
+        &mut module_imported_modules,
+    );
     let resolved_ctx = ResolvedRewriteContext {
         current_namespace,
         entry_namespace,
-        imported_map,
-        imported_classes,
-        imported_interfaces,
-        imported_enums,
-        imported_modules,
+        imported_map: &module_imported_map,
+        imported_classes: &module_imported_classes,
+        imported_interfaces: &module_imported_interfaces,
+        imported_enums: &module_imported_enums,
+        imported_modules: &module_imported_modules,
         global_function_map,
         global_class_map,
         global_interface_map,
@@ -2962,7 +3156,10 @@ fn rewrite_nested_module_decl_for_project(
                     global_module_map,
                     &mut scopes,
                 ),
-                module_rewrite_ctx,
+                ModuleRewriteContext {
+                    module_prefix,
+                    call_ctx: module_call_ctx.with_expected_return_type(&f.return_type),
+                },
             );
             Decl::Function(f)
         }
@@ -3216,7 +3413,10 @@ fn rewrite_nested_module_decl_for_project(
                             global_module_map,
                             &mut scopes,
                         ),
-                        module_rewrite_ctx,
+                        ModuleRewriteContext {
+                            module_prefix,
+                            call_ctx: module_call_ctx.with_expected_return_type(&nm.return_type),
+                        },
                     );
                     nm
                 })
@@ -3551,6 +3751,397 @@ fn rewrite_module_local_construct_type_name(ty: &str, ctx: ModuleRewriteContext<
             )
             .unwrap_or_else(|| ty.to_string())
         })
+}
+
+fn lookup_module_local_rename(
+    rename_scopes: &[HashMap<String, String>],
+    name: &str,
+) -> Option<String> {
+    rename_scopes
+        .iter()
+        .rev()
+        .find_map(|scope| scope.get(name).cloned())
+}
+
+fn rename_shadowed_module_imports_in_expr(
+    expr: &Expr,
+    imported_map: &ImportedMap,
+    rename_scopes: &mut Vec<HashMap<String, String>>,
+) -> Expr {
+    match expr {
+        Expr::Ident(name) => lookup_module_local_rename(rename_scopes, name)
+            .map(Expr::Ident)
+            .unwrap_or_else(|| Expr::Ident(name.clone())),
+        Expr::Call {
+            callee,
+            args,
+            type_args,
+        } => Expr::Call {
+            callee: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&callee.node, imported_map, rename_scopes),
+                callee.span.clone(),
+            )),
+            args: args
+                .iter()
+                .map(|arg| {
+                    ast::Spanned::new(
+                        rename_shadowed_module_imports_in_expr(
+                            &arg.node,
+                            imported_map,
+                            rename_scopes,
+                        ),
+                        arg.span.clone(),
+                    )
+                })
+                .collect(),
+            type_args: type_args.clone(),
+        },
+        Expr::Construct { ty, args } => Expr::Construct {
+            ty: ty.clone(),
+            args: args
+                .iter()
+                .map(|arg| {
+                    ast::Spanned::new(
+                        rename_shadowed_module_imports_in_expr(
+                            &arg.node,
+                            imported_map,
+                            rename_scopes,
+                        ),
+                        arg.span.clone(),
+                    )
+                })
+                .collect(),
+        },
+        Expr::GenericFunctionValue { callee, type_args } => Expr::GenericFunctionValue {
+            callee: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&callee.node, imported_map, rename_scopes),
+                callee.span.clone(),
+            )),
+            type_args: type_args.clone(),
+        },
+        Expr::Field { object, field } => Expr::Field {
+            object: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&object.node, imported_map, rename_scopes),
+                object.span.clone(),
+            )),
+            field: field.clone(),
+        },
+        Expr::Binary { op, left, right } => Expr::Binary {
+            op: *op,
+            left: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&left.node, imported_map, rename_scopes),
+                left.span.clone(),
+            )),
+            right: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&right.node, imported_map, rename_scopes),
+                right.span.clone(),
+            )),
+        },
+        Expr::Unary { op, expr } => Expr::Unary {
+            op: *op,
+            expr: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&expr.node, imported_map, rename_scopes),
+                expr.span.clone(),
+            )),
+        },
+        Expr::IfExpr {
+            condition,
+            then_branch,
+            else_branch,
+        } => Expr::IfExpr {
+            condition: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(
+                    &condition.node,
+                    imported_map,
+                    rename_scopes,
+                ),
+                condition.span.clone(),
+            )),
+            then_branch: rename_shadowed_module_imports_in_block(
+                then_branch,
+                imported_map,
+                rename_scopes,
+            ),
+            else_branch: else_branch.as_ref().map(|block| {
+                rename_shadowed_module_imports_in_block(block, imported_map, rename_scopes)
+            }),
+        },
+        Expr::Block(block) => Expr::Block(rename_shadowed_module_imports_in_block(
+            block,
+            imported_map,
+            rename_scopes,
+        )),
+        Expr::AsyncBlock(body) => Expr::AsyncBlock(rename_shadowed_module_imports_in_block(
+            body,
+            imported_map,
+            rename_scopes,
+        )),
+        Expr::Match { expr, arms } => Expr::Match {
+            expr: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&expr.node, imported_map, rename_scopes),
+                expr.span.clone(),
+            )),
+            arms: arms
+                .iter()
+                .map(|arm| ast::MatchArm {
+                    pattern: arm.pattern.clone(),
+                    body: rename_shadowed_module_imports_in_block(
+                        &arm.body,
+                        imported_map,
+                        rename_scopes,
+                    ),
+                })
+                .collect(),
+        },
+        Expr::Index { object, index } => Expr::Index {
+            object: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&object.node, imported_map, rename_scopes),
+                object.span.clone(),
+            )),
+            index: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&index.node, imported_map, rename_scopes),
+                index.span.clone(),
+            )),
+        },
+        Expr::Borrow(inner) => Expr::Borrow(Box::new(ast::Spanned::new(
+            rename_shadowed_module_imports_in_expr(&inner.node, imported_map, rename_scopes),
+            inner.span.clone(),
+        ))),
+        Expr::MutBorrow(inner) => Expr::MutBorrow(Box::new(ast::Spanned::new(
+            rename_shadowed_module_imports_in_expr(&inner.node, imported_map, rename_scopes),
+            inner.span.clone(),
+        ))),
+        Expr::Deref(inner) => Expr::Deref(Box::new(ast::Spanned::new(
+            rename_shadowed_module_imports_in_expr(&inner.node, imported_map, rename_scopes),
+            inner.span.clone(),
+        ))),
+        Expr::Await(inner) => Expr::Await(Box::new(ast::Spanned::new(
+            rename_shadowed_module_imports_in_expr(&inner.node, imported_map, rename_scopes),
+            inner.span.clone(),
+        ))),
+        Expr::Lambda { params, body } => {
+            rename_scopes.push(HashMap::new());
+            let params = params
+                .iter()
+                .map(|param| {
+                    let renamed = if imported_map.contains_key(&param.name) {
+                        format!("__module_local_{}", param.name)
+                    } else {
+                        param.name.clone()
+                    };
+                    if let Some(scope) = rename_scopes.last_mut() {
+                        scope.insert(param.name.clone(), renamed.clone());
+                    }
+                    ast::Parameter {
+                        name: renamed,
+                        ty: param.ty.clone(),
+                        mutable: param.mutable,
+                        mode: param.mode,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let body = Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&body.node, imported_map, rename_scopes),
+                body.span.clone(),
+            ));
+            rename_scopes.pop();
+            Expr::Lambda { params, body }
+        }
+        Expr::Require { condition, message } => Expr::Require {
+            condition: Box::new(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(
+                    &condition.node,
+                    imported_map,
+                    rename_scopes,
+                ),
+                condition.span.clone(),
+            )),
+            message: message.as_ref().map(|msg| {
+                Box::new(ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(&msg.node, imported_map, rename_scopes),
+                    msg.span.clone(),
+                ))
+            }),
+        },
+        Expr::Range {
+            start,
+            end,
+            inclusive,
+        } => Expr::Range {
+            start: start.as_ref().map(|expr| {
+                Box::new(ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(&expr.node, imported_map, rename_scopes),
+                    expr.span.clone(),
+                ))
+            }),
+            end: end.as_ref().map(|expr| {
+                Box::new(ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(&expr.node, imported_map, rename_scopes),
+                    expr.span.clone(),
+                ))
+            }),
+            inclusive: *inclusive,
+        },
+        Expr::StringInterp(parts) => Expr::StringInterp(
+            parts
+                .iter()
+                .map(|part| match part {
+                    ast::StringPart::Literal(text) => ast::StringPart::Literal(text.clone()),
+                    ast::StringPart::Expr(expr) => ast::StringPart::Expr(ast::Spanned::new(
+                        rename_shadowed_module_imports_in_expr(
+                            &expr.node,
+                            imported_map,
+                            rename_scopes,
+                        ),
+                        expr.span.clone(),
+                    )),
+                })
+                .collect(),
+        ),
+        _ => expr.clone(),
+    }
+}
+
+fn rename_shadowed_module_imports_in_block(
+    block: &ast::Block,
+    imported_map: &ImportedMap,
+    rename_scopes: &mut Vec<HashMap<String, String>>,
+) -> ast::Block {
+    rename_scopes.push(HashMap::new());
+    let mut rewritten = Vec::with_capacity(block.len());
+    for stmt in block {
+        let rewritten_stmt = match &stmt.node {
+            Stmt::Let {
+                name,
+                ty,
+                value,
+                mutable,
+            } => {
+                let rewritten_value = ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(
+                        &value.node,
+                        imported_map,
+                        rename_scopes,
+                    ),
+                    value.span.clone(),
+                );
+                let renamed = if imported_map.contains_key(name) {
+                    format!("__module_local_{}", name)
+                } else {
+                    name.clone()
+                };
+                if let Some(scope) = rename_scopes.last_mut() {
+                    scope.insert(name.clone(), renamed.clone());
+                }
+                Stmt::Let {
+                    name: renamed,
+                    ty: ty.clone(),
+                    value: rewritten_value,
+                    mutable: *mutable,
+                }
+            }
+            Stmt::Assign { target, value } => Stmt::Assign {
+                target: ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(
+                        &target.node,
+                        imported_map,
+                        rename_scopes,
+                    ),
+                    target.span.clone(),
+                ),
+                value: ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(
+                        &value.node,
+                        imported_map,
+                        rename_scopes,
+                    ),
+                    value.span.clone(),
+                ),
+            },
+            Stmt::Expr(expr) => Stmt::Expr(ast::Spanned::new(
+                rename_shadowed_module_imports_in_expr(&expr.node, imported_map, rename_scopes),
+                expr.span.clone(),
+            )),
+            Stmt::Return(expr) => Stmt::Return(expr.as_ref().map(|expr| {
+                ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(&expr.node, imported_map, rename_scopes),
+                    expr.span.clone(),
+                )
+            })),
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => Stmt::If {
+                condition: ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(
+                        &condition.node,
+                        imported_map,
+                        rename_scopes,
+                    ),
+                    condition.span.clone(),
+                ),
+                then_block: rename_shadowed_module_imports_in_block(
+                    then_block,
+                    imported_map,
+                    rename_scopes,
+                ),
+                else_block: else_block.as_ref().map(|block| {
+                    rename_shadowed_module_imports_in_block(block, imported_map, rename_scopes)
+                }),
+            },
+            Stmt::While { condition, body } => Stmt::While {
+                condition: ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(
+                        &condition.node,
+                        imported_map,
+                        rename_scopes,
+                    ),
+                    condition.span.clone(),
+                ),
+                body: rename_shadowed_module_imports_in_block(body, imported_map, rename_scopes),
+            },
+            Stmt::For {
+                var,
+                var_type,
+                iterable,
+                body,
+            } => Stmt::For {
+                var: var.clone(),
+                var_type: var_type.clone(),
+                iterable: ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(
+                        &iterable.node,
+                        imported_map,
+                        rename_scopes,
+                    ),
+                    iterable.span.clone(),
+                ),
+                body: rename_shadowed_module_imports_in_block(body, imported_map, rename_scopes),
+            },
+            Stmt::Match { expr, arms } => Stmt::Match {
+                expr: ast::Spanned::new(
+                    rename_shadowed_module_imports_in_expr(&expr.node, imported_map, rename_scopes),
+                    expr.span.clone(),
+                ),
+                arms: arms
+                    .iter()
+                    .map(|arm| ast::MatchArm {
+                        pattern: arm.pattern.clone(),
+                        body: rename_shadowed_module_imports_in_block(
+                            &arm.body,
+                            imported_map,
+                            rename_scopes,
+                        ),
+                    })
+                    .collect(),
+            },
+            _ => stmt.node.clone(),
+        };
+        rewritten.push(ast::Spanned::new(rewritten_stmt, stmt.span.clone()));
+    }
+    rename_scopes.pop();
+    rewritten
 }
 
 fn fix_module_local_expr(expr: &Expr, ctx: ModuleRewriteContext<'_>) -> Expr {
@@ -4074,7 +4665,11 @@ fn fix_module_local_expr(expr: &Expr, ctx: ModuleRewriteContext<'_>) -> Expr {
     }
 }
 
-fn fix_module_local_stmt(stmt: &Stmt, ctx: ModuleRewriteContext<'_>) -> Stmt {
+fn fix_module_local_stmt(
+    stmt: &Stmt,
+    ctx: ModuleRewriteContext<'_>,
+    scopes: &[HashSet<String>],
+) -> Stmt {
     let module_rewrite_ctx = ctx;
     let module_prefix = ctx.module_prefix;
     let module_call_ctx = ctx.call_ctx;
@@ -4123,16 +4718,18 @@ fn fix_module_local_stmt(stmt: &Stmt, ctx: ModuleRewriteContext<'_>) -> Stmt {
                     },
                     ast::Type::Function(_, return_type),
                 ) => {
+                    let mut lambda_scopes = scopes.to_vec();
                     let param_scope = params
                         .iter()
                         .map(|param| param.name.clone())
                         .collect::<HashSet<_>>();
+                    lambda_scopes.push(param_scope);
                     let lambda_body = materialize_builtin_import_value_for_type(
                         &original_body.node,
                         return_type.as_ref(),
                         imported_map,
                         imported_modules,
-                        &[param_scope],
+                        &lambda_scopes,
                     )
                     .unwrap_or_else(|| rewritten_body.node.clone());
                     Expr::Lambda {
@@ -4236,6 +4833,7 @@ fn fix_module_local_block(block: &ast::Block, ctx: ModuleRewriteContext<'_>) -> 
     let module_rewrite_ctx = ctx;
     let module_prefix = ctx.module_prefix;
     let module_call_ctx = ctx.call_ctx;
+    let imported_map = module_call_ctx.imported_map;
     let module_type_ctx = module_call_ctx.type_ctx;
     let current_namespace = module_type_ctx.current_namespace;
     let entry_namespace = module_type_ctx.entry_namespace;
@@ -4250,49 +4848,35 @@ fn fix_module_local_block(block: &ast::Block, ctx: ModuleRewriteContext<'_>) -> 
     let global_enum_map = module_type_ctx.global_enum_map;
     let imported_modules = module_type_ctx.imported_modules;
     let global_interface_map = module_type_ctx.global_interface_map;
-    let fix_module_local_stmt =
-        |stmt: &Stmt,
-         _current_namespace: &str,
-         _entry_namespace: &str,
-         _module_prefix: &str,
-         _local_functions: &HashSet<String>,
-         _local_classes: &HashSet<String>,
-         _local_interfaces: &HashSet<String>,
-         _local_enums: &HashSet<String>,
-         _local_modules: &HashSet<String>,
-         _imported_classes: &ImportedMap,
-         _global_class_map: &HashMap<String, String>,
-         _imported_enums: &ImportedMap,
-         _global_enum_map: &HashMap<String, String>,
-         _imported_modules: &ImportedMap,
-         _global_interface_map: &HashMap<String, String>| {
-            self::fix_module_local_stmt(stmt, module_rewrite_ctx)
-        };
-    block
-        .iter()
-        .map(|stmt| {
-            ast::Spanned::new(
-                fix_module_local_stmt(
-                    &stmt.node,
-                    current_namespace,
-                    entry_namespace,
-                    module_prefix,
-                    local_functions,
-                    local_classes,
-                    local_interfaces,
-                    local_enums,
-                    local_modules,
-                    imported_classes,
-                    global_class_map,
-                    imported_enums,
-                    global_enum_map,
-                    imported_modules,
-                    global_interface_map,
-                ),
-                stmt.span.clone(),
-            )
-        })
-        .collect()
+    let _ = (
+        current_namespace,
+        entry_namespace,
+        module_prefix,
+        local_functions,
+        local_classes,
+        local_interfaces,
+        local_enums,
+        local_modules,
+        imported_classes,
+        global_class_map,
+        imported_enums,
+        global_enum_map,
+        imported_modules,
+        global_interface_map,
+    );
+    let mut scopes = vec![HashSet::new()];
+    let mut rewritten = Vec::with_capacity(block.len());
+    for stmt in block {
+        let rewritten_stmt = self::fix_module_local_stmt(&stmt.node, module_rewrite_ctx, &scopes);
+        if let Stmt::Let { name, .. } = &rewritten_stmt {
+            if let Some(scope) = scopes.last_mut() {
+                scope.insert(name.clone());
+            }
+        }
+        rewritten.push(ast::Spanned::new(rewritten_stmt, stmt.span.clone()));
+    }
+    let mut rename_scopes = Vec::new();
+    rename_shadowed_module_imports_in_block(&rewritten, imported_map, &mut rename_scopes)
 }
 
 fn rewrite_module_local_type(ty: &ast::Type, ctx: ModuleRewriteContext<'_>) -> ast::Type {
