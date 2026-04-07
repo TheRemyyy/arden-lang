@@ -4603,7 +4603,7 @@ impl TypeChecker {
                 inclusive: _,
             } => {
                 if let Some(s) = start {
-                    let start_type = self.check_expr(&s.node, s.span.clone());
+                    let start_type = self.check_builtin_argument_expr(&s.node, s.span.clone());
                     if !matches!(start_type, ResolvedType::Unknown)
                         && !matches!(start_type, ResolvedType::Integer)
                     {
@@ -4617,7 +4617,7 @@ impl TypeChecker {
                     }
                 }
                 if let Some(e) = end {
-                    let end_type = self.check_expr(&e.node, e.span.clone());
+                    let end_type = self.check_builtin_argument_expr(&e.node, e.span.clone());
                     if !matches!(end_type, ResolvedType::Unknown)
                         && !matches!(end_type, ResolvedType::Integer)
                     {

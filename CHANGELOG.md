@@ -23,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed async return coercion for exact zero-argument aliases:
   - async blocks with a known expected inner return type now propagate that expectation into explicit `return` statements, so zero-argument aliases are checked against the concrete expected value type instead of as unresolved raw builtin symbols
   - this fixes valid project builds such as `task: Task<Integer> = async { return ArgCount; };`, which previously failed with `Undefined variable: Args__count`
+- Fixed range-syntax coercion for exact zero-argument aliases:
+  - `start..end` range expressions now type-check and codegen their bounds through the same builtin-aware integer boundary used by range builtins instead of validating alias bounds as unresolved raw builtin symbols
+  - this fixes valid project builds such as `ArgCount..(ArgCount + 1)` and `for (value in ArgCount..(ArgCount + 1)) { ... }`, which previously failed with `Undefined variable: Args__count`
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`

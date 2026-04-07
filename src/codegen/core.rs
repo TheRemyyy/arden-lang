@@ -12719,21 +12719,33 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Range {
                 start,
                 end,
-                inclusive: _,
+                inclusive,
             } => {
-                // Ranges are handled specially in for loops
-                // For now, return a dummy value
                 let start_val = if let Some(s) = start {
-                    self.compile_expr(&s.node)?
+                    self.compile_expr_with_expected_type(&s.node, &Type::Integer)?
                 } else {
                     self.context.i64_type().const_int(0, false).into()
                 };
-                let _end_val = if let Some(e) = end {
-                    self.compile_expr(&e.node)?
+                let end_val = if let Some(e) = end {
+                    self.compile_expr_with_expected_type(&e.node, &Type::Integer)?
                 } else {
                     self.context.i64_type().const_int(0, false).into()
                 };
-                Ok(start_val)
+                let step = self.context.i64_type().const_int(1, false).into();
+                let end_val = if *inclusive {
+                    let incremented = self
+                        .builder
+                        .build_int_add(
+                            end_val.into_int_value(),
+                            self.context.i64_type().const_int(1, false),
+                            "range_inclusive_end",
+                        )
+                        .unwrap();
+                    incremented.into()
+                } else {
+                    end_val
+                };
+                Ok(self.create_range(start_val, end_val, step)?.into())
             }
 
             Expr::IfExpr {
@@ -14803,14 +14815,16 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn compile_integer_iteration_bound(&mut self, expr: &Expr) -> Result<IntValue<'ctx>> {
-        let expr_ty = self.infer_expr_type(expr, &[]);
+        let expr_ty = self.infer_builtin_argument_type(expr);
         if !matches!(expr_ty, Type::Integer) {
             return Err(CodegenError::new(format!(
                 "Cannot iterate over {}",
                 Self::format_diagnostic_type(&expr_ty)
             )));
         }
-        Ok(self.compile_expr(expr)?.into_int_value())
+        Ok(self
+            .compile_expr_with_expected_type(expr, &expr_ty)?
+            .into_int_value())
     }
 
     fn compile_string_argument_expr(
