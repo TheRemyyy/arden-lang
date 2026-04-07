@@ -4454,12 +4454,12 @@ impl TypeChecker {
             }
 
             Expr::Borrow(inner) => {
-                let inner_type = self.check_expr(&inner.node, inner.span.clone());
+                let inner_type = self.check_builtin_argument_expr(&inner.node, inner.span.clone());
                 ResolvedType::Ref(Box::new(inner_type))
             }
 
             Expr::MutBorrow(inner) => {
-                let inner_type = self.check_expr(&inner.node, inner.span.clone());
+                let inner_type = self.check_builtin_argument_expr(&inner.node, inner.span.clone());
 
                 // Check that we're borrowing something mutable
                 if let Expr::Ident(name) = &inner.node {

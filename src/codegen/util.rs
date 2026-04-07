@@ -1090,8 +1090,8 @@ impl<'ctx> Codegen<'ctx> {
 
         // Materialize non-lvalue values into a temporary slot so first-class
         // functions and other expression results can still be borrowed.
-        let value = self.compile_expr(expr)?;
-        let value_ty = self.infer_expr_type(expr, &[]);
+        let value_ty = self.infer_builtin_argument_type(expr);
+        let value = self.compile_expr_with_expected_type(expr, &value_ty)?;
         let alloca = self
             .builder
             .build_alloca(self.llvm_type(&value_ty), "borrow_tmp")
