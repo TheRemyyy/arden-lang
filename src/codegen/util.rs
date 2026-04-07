@@ -265,7 +265,7 @@ impl<'ctx> Codegen<'ctx> {
             }
             "range" => args
                 .first()
-                .map(|arg| Type::Range(Box::new(self.infer_expr_type(&arg.node, &[]))))
+                .map(|arg| Type::Range(Box::new(self.infer_builtin_argument_type(&arg.node))))
                 .or_else(|| Some(Type::Range(Box::new(Type::Integer)))),
             _ => None,
         }
@@ -307,19 +307,19 @@ impl<'ctx> Codegen<'ctx> {
                     ("Args", "count") => Some(Type::Integer),
                     ("Args", "get") => Some(Type::String),
                     ("Option", "some") => args.first().map(|first_arg| {
-                        Type::Option(Box::new(self.infer_expr_type(&first_arg.node, &[])))
+                        Type::Option(Box::new(self.infer_builtin_argument_type(&first_arg.node)))
                     }),
                     ("Option", "none") => Some(Type::Option(Box::new(Type::Integer))),
                     ("Result", "ok") => args.first().map(|first_arg| {
                         Type::Result(
-                            Box::new(self.infer_expr_type(&first_arg.node, &[])),
+                            Box::new(self.infer_builtin_argument_type(&first_arg.node)),
                             Box::new(Type::String),
                         )
                     }),
                     ("Result", "error") => args.first().map(|first_arg| {
                         Type::Result(
                             Box::new(Type::Integer),
-                            Box::new(self.infer_expr_type(&first_arg.node, &[])),
+                            Box::new(self.infer_builtin_argument_type(&first_arg.node)),
                         )
                     }),
                     _ => None,

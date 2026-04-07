@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `for` iterable coercion for exact zero-argument aliases:
   - `for (... in iterable)` now type-checks and compiles the iterable expression through the same contextual builtin-aware zero-argument alias path used by other collection-like boundaries instead of treating aliases as unresolved raw builtin symbols
   - this fixes valid project builds such as `for (ch in CurrentDir) { ... }`, which previously failed with `Undefined variable: System__cwd` followed by `Cannot iterate over unknown`
+- Fixed builtin return-type inference for exact zero-argument aliases:
+  - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
+  - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`
 - Fixed builtin-call argument coercion for exact zero-argument aliases:
   - builtin argument validation and codegen now route string, integer, and numeric builtin parameters through the same contextual zero-argument alias coercion used by typed values and regular function-call arguments, covering cases such as `to_string(Pi)`, `Str.len(CurrentDir)`, `File.read(CurrentDir)`, `Args.get(ArgCount)`, and numeric `range(...)` bounds
   - this fixes valid project builds that still rewrote exact aliases like `import std.math.pi as Pi;` or `import std.system.cwd as CurrentDir;` to raw builtin symbols such as `Math__pi` or `System__cwd` inside builtin calls and then failed with `Undefined variable` diagnostics

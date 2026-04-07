@@ -1826,6 +1826,37 @@ fn project_build_supports_zero_arg_exact_import_values_in_result_ok() {
 }
 
 #[test]
+fn project_build_supports_zero_arg_exact_import_values_in_direct_result_ok_receivers() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-direct-result-ok-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.math.pi as Pi;\nfunction main(): Integer { return if (Result.ok(Pi).unwrap() > 3.14) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support zero-arg exact import values in direct Result.ok receivers",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import direct Result.ok receiver binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_zero_arg_exact_import_values_in_println_calls() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-println-project");
     let src_dir = temp_root.join("src");
