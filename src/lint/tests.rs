@@ -299,7 +299,8 @@ return None;
     let result = lint_source(source, false).expect("lint succeeds");
     assert!(result.findings.iter().any(|f| {
         f.code == "L003"
-            && f.message.contains("specific import 'util.helper as helper' appears unused")
+            && f.message
+                .contains("specific import 'util.helper as helper' appears unused")
     }));
 }
 
@@ -315,9 +316,10 @@ return None;
 }
 "#;
     let result = lint_source(source, false).expect("lint succeeds");
-    assert!(result.findings.iter().any(|f| {
-        f.code == "L001" && f.message.contains("duplicate import 'util.helper'")
-    }));
+    assert!(result
+        .findings
+        .iter()
+        .any(|f| { f.code == "L001" && f.message.contains("duplicate import 'util.helper'") }));
 }
 
 #[test]
@@ -355,7 +357,9 @@ return None;
     let result = lint_source(source, true).expect("lint succeeds");
     let fixed = result.fixed_source.expect("fixed source");
     assert!(
-        fixed.starts_with("package demo;\n\nimport std.io.*;\nimport std.string.*;\n\nmodule Inner {"),
+        fixed.starts_with(
+            "package demo;\n\nimport std.io.*;\nimport std.string.*;\n\nmodule Inner {"
+        ),
         "{fixed}"
     );
     assert_eq!(fixed.matches("import util.helper;").count(), 1, "{fixed}");

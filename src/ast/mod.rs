@@ -275,6 +275,7 @@ pub(crate) fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
 }
 
 pub(crate) fn builtin_exact_import_alias_canonical(path: &str) -> Option<&'static str> {
+    let path = path.strip_prefix("app.").unwrap_or(path);
     match path {
         "Option.Some" => Some("Option__some"),
         "Option.None" => Some("Option__none"),

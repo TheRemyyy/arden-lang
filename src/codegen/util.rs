@@ -1917,7 +1917,9 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Index { object, index } => {
                 if let Expr::Ident(name) = &object.node {
                     if !self.variables.contains_key(name)
-                        && self.resolve_contextual_function_value_name(&object.node).is_none()
+                        && self
+                            .resolve_contextual_function_value_name(&object.node)
+                            .is_none()
                     {
                         return Err(Self::undefined_variable_error(name));
                     }
@@ -2176,10 +2178,8 @@ impl<'ctx> Codegen<'ctx> {
                 if let Some((base_name, explicit_type_args)) =
                     Self::parse_construct_nominal_type_source(ty)
                 {
-                    let builtin_callee = Spanned::new(
-                        Expr::Ident(base_name.clone()),
-                        crate::ast::Span::default(),
-                    );
+                    let builtin_callee =
+                        Spanned::new(Expr::Ident(base_name.clone()), crate::ast::Span::default());
                     if self
                         .resolve_contextual_function_value_name(&builtin_callee.node)
                         .is_some()
@@ -3612,10 +3612,8 @@ impl<'ctx> Codegen<'ctx> {
                 if let Some((base_name, explicit_type_args)) =
                     Self::parse_construct_nominal_type_source(ty)
                 {
-                    let builtin_callee = Spanned::new(
-                        Expr::Ident(base_name.clone()),
-                        crate::ast::Span::default(),
-                    );
+                    let builtin_callee =
+                        Spanned::new(Expr::Ident(base_name.clone()), crate::ast::Span::default());
                     if self
                         .resolve_contextual_function_value_name(&builtin_callee.node)
                         .is_some()

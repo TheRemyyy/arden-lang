@@ -354,8 +354,8 @@ fn resolve_exact_stdlib_imported_value_symbol(
 ) -> Option<String> {
     let (_, canonical) = resolve_exact_stdlib_imported_symbol(namespace_path, symbol_name)?;
     match canonical.as_str() {
-        "read_line" | "System__cwd" | "System__os" | "Time__unix" | "Args__count"
-        | "Math__pi" | "Math__e" | "Math__random" => Some(canonical),
+        "read_line" | "System__cwd" | "System__os" | "Time__unix" | "Args__count" | "Math__pi"
+        | "Math__e" | "Math__random" => Some(canonical),
         _ => None,
     }
 }
@@ -379,8 +379,9 @@ fn builtin_exact_import_static_container_parts(
     namespace_path: &str,
     symbol_name: &str,
 ) -> Option<(&'static str, &'static str)> {
-    match crate::ast::builtin_exact_import_alias_canonical(&format!("{namespace_path}.{symbol_name}"))
-    {
+    match crate::ast::builtin_exact_import_alias_canonical(&format!(
+        "{namespace_path}.{symbol_name}"
+    )) {
         Some("Option__some") => Some(("Option", "some")),
         Some("Option__none") => Some(("Option", "none")),
         Some("Result__ok") => Some(("Result", "ok")),
@@ -393,8 +394,9 @@ fn builtin_exact_import_pattern_variant(
     namespace_path: &str,
     symbol_name: &str,
 ) -> Option<&'static str> {
-    match crate::ast::builtin_exact_import_alias_canonical(&format!("{namespace_path}.{symbol_name}"))
-    {
+    match crate::ast::builtin_exact_import_alias_canonical(&format!(
+        "{namespace_path}.{symbol_name}"
+    )) {
         Some("Option__some") => Some("Some"),
         Some("Option__none") => Some("None"),
         Some("Result__ok") => Some("Ok"),
@@ -403,10 +405,7 @@ fn builtin_exact_import_pattern_variant(
     }
 }
 
-fn builtin_exact_import_value_expr(
-    namespace_path: &str,
-    symbol_name: &str,
-) -> Option<Expr> {
+fn builtin_exact_import_value_expr(namespace_path: &str, symbol_name: &str) -> Option<Expr> {
     let canonical = if namespace_path.is_empty() {
         Some(symbol_name)
     } else {
@@ -1985,13 +1984,13 @@ fn rewrite_named_reference_for_project_with_interfaces(
         Ok(parsed @ ast::Type::Named(_)) | Ok(parsed @ ast::Type::Generic(_, _)) => {
             format_type_string(&rewrite_type_for_project_with_interfaces(&parsed, ctx))
         }
-        Ok(_) | Err(_) => match rewrite_type_for_project_with_interfaces(
-            &ast::Type::Named(name.to_string()),
-            ctx,
-        ) {
-            ast::Type::Named(rewritten) => rewritten,
-            _ => name.to_string(),
-        },
+        Ok(_) | Err(_) => {
+            match rewrite_type_for_project_with_interfaces(&ast::Type::Named(name.to_string()), ctx)
+            {
+                ast::Type::Named(rewritten) => rewritten,
+                _ => name.to_string(),
+            }
+        }
     }
 }
 
@@ -2317,10 +2316,7 @@ fn rewrite_pattern_for_project(
                     if let Some(variant_name) =
                         builtin_exact_import_pattern_variant(import_ns, symbol_name)
                     {
-                        return ast::Pattern::Variant(
-                            variant_name.to_string(),
-                            bindings.clone(),
-                        );
+                        return ast::Pattern::Variant(variant_name.to_string(), bindings.clone());
                     }
                     if let Some((owner_ns, enum_name, variant_name)) =
                         resolve_exact_imported_variant_alias(
@@ -2409,10 +2405,7 @@ fn rewrite_pattern_for_module(
                     if let Some(variant_name) =
                         builtin_exact_import_pattern_variant(import_ns, symbol_name)
                     {
-                        return ast::Pattern::Variant(
-                            variant_name.to_string(),
-                            bindings.clone(),
-                        );
+                        return ast::Pattern::Variant(variant_name.to_string(), bindings.clone());
                     }
                     if let Some((owner_ns, enum_name, variant_name)) =
                         resolve_exact_imported_variant_alias(
@@ -2798,9 +2791,10 @@ fn rewrite_nested_module_decl_for_project(
                     global_enum_map,
                 )
             });
-            c.extends = class.extends.as_ref().map(|extends| {
-                rewrite_nominal_type_source_for_module(extends, module_rewrite_ctx)
-            });
+            c.extends = class
+                .extends
+                .as_ref()
+                .map(|extends| rewrite_nominal_type_source_for_module(extends, module_rewrite_ctx));
             c.implements = class
                 .implements
                 .iter()
@@ -2908,8 +2902,7 @@ fn rewrite_nested_module_decl_for_project(
             }
             if let Some(dtor) = &class.destructor {
                 let mut new_dtor = dtor.clone();
-                let mut scopes: Vec<HashSet<String>> =
-                    vec![HashSet::from(["this".to_string()])];
+                let mut scopes: Vec<HashSet<String>> = vec![HashSet::from(["this".to_string()])];
                 new_dtor.body = self::fix_module_local_block(
                     &rewrite_block_calls_for_project(
                         &new_dtor.body,
@@ -4427,8 +4420,7 @@ fn rewrite_stmt_calls_for_project(
             value,
             mutable,
         } => {
-            let rewritten_value =
-                self::rewrite_expr_calls_for_project(&value.node, ctx, scopes);
+            let rewritten_value = self::rewrite_expr_calls_for_project(&value.node, ctx, scopes);
             let rewritten_value = materialize_builtin_exact_import_value_for_type(
                 &value.node,
                 ty,
@@ -4487,10 +4479,7 @@ fn rewrite_stmt_calls_for_project(
                     )
                 })
                 .unwrap_or(rewritten_expr);
-            Stmt::Return(Some(ast::Spanned::new(
-                rewritten_expr,
-                expr.span.clone(),
-            )))
+            Stmt::Return(Some(ast::Spanned::new(rewritten_expr, expr.span.clone())))
         }
         Stmt::If {
             condition,
@@ -5752,9 +5741,7 @@ fn rewrite_expr_calls_for_project(
                             name,
                         ))
                     } else if let Some((ns, symbol_name)) = imported_modules.get(name) {
-                        if let Some(value_expr) =
-                            builtin_exact_import_value_expr(ns, symbol_name)
-                        {
+                        if let Some(value_expr) = builtin_exact_import_value_expr(ns, symbol_name) {
                             value_expr
                         } else if let Some(canonical) =
                             resolve_exact_stdlib_imported_value_symbol(ns, symbol_name)

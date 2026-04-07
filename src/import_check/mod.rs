@@ -145,16 +145,6 @@ fn looks_like_function_symbol(name: &str) -> bool {
         .is_some_and(|ch| ch.is_ascii_lowercase() || ch == '_')
 }
 
-fn builtin_exact_import_alias_canonical(path: &str) -> Option<&'static str> {
-    match path {
-        "Option.Some" => Some("Option__some"),
-        "Option.None" => Some("Option__none"),
-        "Result.Ok" => Some("Result__ok"),
-        "Result.Error" => Some("Result__error"),
-        _ => None,
-    }
-}
-
 fn direct_wildcard_member_name(
     import_path: &str,
     owner_ns: &str,
@@ -173,7 +163,11 @@ fn direct_wildcard_member_name(
     (!remainder.is_empty() && !remainder.contains("__")).then(|| remainder.to_string())
 }
 
-fn direct_stdlib_wildcard_member_name(import_path: &str, owner_ns: &str, symbol_name: &str) -> Option<String> {
+fn direct_stdlib_wildcard_member_name(
+    import_path: &str,
+    owner_ns: &str,
+    symbol_name: &str,
+) -> Option<String> {
     if owner_ns != import_path {
         return None;
     }
@@ -249,7 +243,7 @@ impl<'a> ImportChecker<'a> {
                     .function_namespaces
                     .get(symbol)
                     .is_some_and(|ns| ns == &symbol_ns)
-                    || builtin_exact_import_alias_canonical(&path).is_some()
+                    || crate::ast::builtin_exact_import_alias_canonical(&path).is_some()
                     || known_namespaces.contains(&symbol_ns)
                     || known_namespaces.contains(&current_qualified_symbol_ns)
                     || Self::path_has_known_namespace_prefix(&self.known_namespace_paths, &path)
@@ -284,7 +278,8 @@ impl<'a> ImportChecker<'a> {
                 if known_namespaces.contains(&current_qualified_path)
                     || is_current_namespace_symbol_alias
                 {
-                    self.namespace_aliases.insert(alias_name, current_qualified_path);
+                    self.namespace_aliases
+                        .insert(alias_name, current_qualified_path);
                 } else {
                     self.invalid_namespace_aliases.insert(alias_name);
                 }
@@ -303,9 +298,7 @@ impl<'a> ImportChecker<'a> {
             }
 
             for (func, func_ns) in self.stdlib.get_functions() {
-                if let Some(imported_name) =
-                    direct_stdlib_wildcard_member_name(ns, func_ns, func)
-                {
+                if let Some(imported_name) = direct_stdlib_wildcard_member_name(ns, func_ns, func) {
                     self.imported_functions.insert(imported_name);
                 }
             }
@@ -934,7 +927,7 @@ impl<'a> ImportChecker<'a> {
     }
 
     fn exact_import_alias_resolves(&self, path: &str) -> bool {
-        if builtin_exact_import_alias_canonical(path).is_some() {
+        if crate::ast::builtin_exact_import_alias_canonical(path).is_some() {
             return true;
         }
         let mut path_candidates = vec![path.to_string()];

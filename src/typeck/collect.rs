@@ -99,9 +99,8 @@ impl TypeChecker {
             .collect::<Vec<_>>();
         let mut class_updates = Vec::new();
         for (name, extends, implements) in class_inputs {
-            self.current_module_prefix = name
-                .rsplit_once("__")
-                .map(|(prefix, _)| prefix.to_string());
+            self.current_module_prefix =
+                name.rsplit_once("__").map(|(prefix, _)| prefix.to_string());
             class_updates.push((
                 name,
                 extends.as_ref().map(|parent| {
@@ -132,9 +131,8 @@ impl TypeChecker {
             .collect::<Vec<_>>();
         let mut interface_updates = Vec::new();
         for (name, extends) in interface_inputs {
-            self.current_module_prefix = name
-                .rsplit_once("__")
-                .map(|(prefix, _)| prefix.to_string());
+            self.current_module_prefix =
+                name.rsplit_once("__").map(|(prefix, _)| prefix.to_string());
             interface_updates.push((
                 name,
                 extends

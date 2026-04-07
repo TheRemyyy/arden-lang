@@ -505,23 +505,15 @@ pub(crate) fn decl_has_codegen_specialization_demand(decl: &Decl) -> bool {
                     .any(|stmt| stmt_has_codegen_specialization_demand(&stmt.node))
         }
         Decl::Class(class) => {
-            class
-                .extends
-                .as_ref()
-                .is_some_and(|parent| {
-                    parse_type_source(parent)
-                        .ok()
-                        .is_some_and(|ty| type_has_codegen_specialization_demand(&ty))
-                })
-                || class
-                    .implements
-                    .iter()
-                    .any(|implemented| {
-                        parse_type_source(implemented)
-                            .ok()
-                            .is_some_and(|ty| type_has_codegen_specialization_demand(&ty))
-                    })
-                || class
+            class.extends.as_ref().is_some_and(|parent| {
+                parse_type_source(parent)
+                    .ok()
+                    .is_some_and(|ty| type_has_codegen_specialization_demand(&ty))
+            }) || class.implements.iter().any(|implemented| {
+                parse_type_source(implemented)
+                    .ok()
+                    .is_some_and(|ty| type_has_codegen_specialization_demand(&ty))
+            }) || class
                 .fields
                 .iter()
                 .any(|field| type_has_codegen_specialization_demand(&field.ty))

@@ -7363,16 +7363,16 @@ impl<'ctx> Codegen<'ctx> {
                 match &decl.node {
                     Decl::Import(import) => {
                         if let Some(alias) = &import.alias {
-                            import_aliases.entry(alias.clone()).or_default().push((
-                                module_prefix.map(str::to_string),
-                                import.path.clone(),
-                            ));
+                            import_aliases
+                                .entry(alias.clone())
+                                .or_default()
+                                .push((module_prefix.map(str::to_string), import.path.clone()));
                             *import_alias_count += 1;
                         } else if import.path.ends_with(".*") {
-                            import_aliases.entry(import.path.clone()).or_default().push((
-                                module_prefix.map(str::to_string),
-                                import.path.clone(),
-                            ));
+                            import_aliases
+                                .entry(import.path.clone())
+                                .or_default()
+                                .push((module_prefix.map(str::to_string), import.path.clone()));
                             *import_alias_count += 1;
                         }
                     }
@@ -8349,9 +8349,11 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(Some(closure.into()));
         }
 
-        if let Some(adapted) =
-            self.compile_function_value_adapter_from_closure(closure.into(), &actual_ty, expected_ty)?
-        {
+        if let Some(adapted) = self.compile_function_value_adapter_from_closure(
+            closure.into(),
+            &actual_ty,
+            expected_ty,
+        )? {
             return Ok(Some(adapted));
         }
 
@@ -8824,7 +8826,11 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn declare_module_functions_with_prefix(&mut self, module: &ModuleDecl, prefix: &str) -> Result<()> {
+    fn declare_module_functions_with_prefix(
+        &mut self,
+        module: &ModuleDecl,
+        prefix: &str,
+    ) -> Result<()> {
         for decl in &module.declarations {
             match &decl.node {
                 Decl::Function(func) => {
@@ -9156,24 +9162,24 @@ impl<'ctx> Codegen<'ctx> {
             return Some(());
         }
 
-        let (base_name, args) = if let Ok(Type::Generic(base_name, args)) = parse_type_source(parent)
-        {
-            (base_name, args)
-        } else if let Some((base_name, suffixes)) = parent.split_once("__spec__") {
-            let (decoded_args, consumed) = Self::decode_generic_specialization_args(suffixes)
-                .into_iter()
-                .find(|(_, consumed)| *consumed == suffixes.len())?;
-            if consumed != suffixes.len() {
+        let (base_name, args) =
+            if let Ok(Type::Generic(base_name, args)) = parse_type_source(parent) {
+                (base_name, args)
+            } else if let Some((base_name, suffixes)) = parent.split_once("__spec__") {
+                let (decoded_args, consumed) = Self::decode_generic_specialization_args(suffixes)
+                    .into_iter()
+                    .find(|(_, consumed)| *consumed == suffixes.len())?;
+                if consumed != suffixes.len() {
+                    return None;
+                }
+                let parsed_args = decoded_args
+                    .into_iter()
+                    .map(|arg| parse_type_source(&arg).ok())
+                    .collect::<Option<Vec<_>>>()?;
+                (base_name.to_string(), parsed_args)
+            } else {
                 return None;
-            }
-            let parsed_args = decoded_args
-                .into_iter()
-                .map(|arg| parse_type_source(&arg).ok())
-                .collect::<Option<Vec<_>>>()?;
-            (base_name.to_string(), parsed_args)
-        } else {
-            return None;
-        };
+            };
 
         let base_info = self.classes.get(&base_name)?;
         if base_info.generic_params.len() != args.len() {
@@ -10667,20 +10673,12 @@ impl<'ctx> Codegen<'ctx> {
                         let ptr = self.compile_lvalue(&target.node)?;
                         let current = self
                             .builder
-                            .build_load(
-                                self.llvm_type(&target_ty),
-                                ptr,
-                                "compound_current",
-                            )
+                            .build_load(self.llvm_type(&target_ty), ptr, "compound_current")
                             .unwrap();
-                        let rhs_value = self.compile_expr_with_expected_type(&rhs.node, &target_ty)?;
-                        let result = self.compile_binary_values(
-                            op,
-                            current,
-                            rhs_value,
-                            &target_ty,
-                            &rhs_ty,
-                        )?;
+                        let rhs_value =
+                            self.compile_expr_with_expected_type(&rhs.node, &target_ty)?;
+                        let result = self
+                            .compile_binary_values(op, current, rhs_value, &target_ty, &rhs_ty)?;
                         self.builder.build_store(ptr, result).unwrap();
                         return Ok(());
                     }
@@ -10770,7 +10768,10 @@ impl<'ctx> Codegen<'ctx> {
                                         .type_contains_active_generic_placeholder(&inferred_expr_ty)
                                     && compiled.get_type() != self.llvm_type(&ret_ty)
                                 {
-                                    return Err(Self::type_mismatch_error(&ret_ty, &inferred_expr_ty));
+                                    return Err(Self::type_mismatch_error(
+                                        &ret_ty,
+                                        &inferred_expr_ty,
+                                    ));
                                 }
                                 compiled
                             } else {
@@ -12945,8 +12946,8 @@ impl<'ctx> Codegen<'ctx> {
             if let Some(name) = self.resolve_contextual_function_value_name(expr) {
                 if let Some(actual_ty) = self.functions.get(&name).map(|(_, ty)| ty.clone()) {
                     if let Type::Function(_, _) = actual_ty {
-                        if let Some(adapted) =
-                            self.compile_named_function_value_with_expected_type(&name, expected_ty)?
+                        if let Some(adapted) = self
+                            .compile_named_function_value_with_expected_type(&name, expected_ty)?
                         {
                             return Ok(adapted);
                         }
@@ -15540,7 +15541,9 @@ impl<'ctx> Codegen<'ctx> {
                         }
                         let mut values = Vec::with_capacity(args.len());
                         for (arg, expected_ty) in args.iter().zip(variant_info.fields.iter()) {
-                            values.push(self.compile_expr_with_expected_type(&arg.node, expected_ty)?);
+                            values.push(
+                                self.compile_expr_with_expected_type(&arg.node, expected_ty)?,
+                            );
                         }
                         return self.build_enum_value(&resolved_owner, &variant_info, &values);
                     }
@@ -15649,7 +15652,9 @@ impl<'ctx> Codegen<'ctx> {
                             }
                             let mut values = Vec::with_capacity(args.len());
                             for (arg, expected_ty) in args.iter().zip(variant_info.fields.iter()) {
-                                values.push(self.compile_expr_with_expected_type(&arg.node, expected_ty)?);
+                                values.push(
+                                    self.compile_expr_with_expected_type(&arg.node, expected_ty)?,
+                                );
                             }
                             return self.build_enum_value(&resolved_owner, &variant_info, &values);
                         }
@@ -15995,7 +16000,10 @@ impl<'ctx> Codegen<'ctx> {
 
                 // Fall back to global function lookup
                 if let Some((f, _)) = self.functions.get(looked_up_name) {
-                    (*f, self.functions.get(looked_up_name).map(|(_, ty)| ty.clone()))
+                    (
+                        *f,
+                        self.functions.get(looked_up_name).map(|(_, ty)| ty.clone()),
+                    )
                 } else if let Some(f) = self.module.get_function(looked_up_name) {
                     (f, None)
                 } else {
@@ -16072,7 +16080,9 @@ impl<'ctx> Codegen<'ctx> {
         }
         if let Expr::Ident(name) = object {
             if !self.variables.contains_key(name)
-                && self.resolve_contextual_function_value_name(object).is_none()
+                && self
+                    .resolve_contextual_function_value_name(object)
+                    .is_none()
             {
                 return Err(Self::undefined_variable_error(name));
             }
@@ -18349,7 +18359,9 @@ impl<'ctx> Codegen<'ctx> {
     pub fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>> {
         if let Expr::Ident(name) = object {
             if !self.variables.contains_key(name)
-                && self.resolve_contextual_function_value_name(object).is_none()
+                && self
+                    .resolve_contextual_function_value_name(object)
+                    .is_none()
             {
                 return Err(Self::undefined_variable_error(name));
             }
@@ -18368,7 +18380,10 @@ impl<'ctx> Codegen<'ctx> {
 
         if !supports_indexing {
             if inferred_object_ty.is_none() {
-                let _ = self.compile_expr_with_expected_type(object, &self.infer_builtin_argument_type(object))?;
+                let _ = self.compile_expr_with_expected_type(
+                    object,
+                    &self.infer_builtin_argument_type(object),
+                )?;
             }
             let diagnostic_ty = deref_object_ty.clone().unwrap_or_else(|| {
                 self.deref_codegen_type(&self.infer_builtin_argument_type(object))
@@ -18380,7 +18395,8 @@ impl<'ctx> Codegen<'ctx> {
             )));
         }
 
-        let obj_val = self.compile_expr_with_expected_type(object, &self.infer_builtin_argument_type(object))?;
+        let obj_val = self
+            .compile_expr_with_expected_type(object, &self.infer_builtin_argument_type(object))?;
         if let Some(Type::Map(_, _)) = &deref_object_ty {
             let index_arg = [Spanned::new(index.clone(), 0..0)];
             if let Some(map_ty) = &deref_object_ty {
@@ -18701,7 +18717,8 @@ impl<'ctx> Codegen<'ctx> {
                         resolved_builtin.replace("__", ".")
                     )));
                 }
-                if let Some(value_ty) = Self::concrete_zero_arg_builtin_value_type(&resolved_builtin)
+                if let Some(value_ty) =
+                    Self::concrete_zero_arg_builtin_value_type(&resolved_builtin)
                 {
                     return Err(Self::non_function_call_error(&value_ty));
                 }
@@ -19282,9 +19299,7 @@ impl<'ctx> Codegen<'ctx> {
         match self.module.get_global("_apex_argv") {
             Some(global) => global,
             None => {
-                let argv_ty = self
-                    .context
-                    .ptr_type(AddressSpace::default());
+                let argv_ty = self.context.ptr_type(AddressSpace::default());
                 let global = self.module.add_global(argv_ty, None, "_apex_argv");
                 global.set_initializer(&argv_ty.const_null());
                 global
@@ -19830,8 +19845,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 let s =
                     self.compile_string_argument_expr(&args[0].node, "Str.len() requires String")?;
-                self.compile_utf8_string_length_runtime(s)
-                    .map(Some)
+                self.compile_utf8_string_length_runtime(s).map(Some)
             }
             "Str__compare" => {
                 let s1 = self.compile_string_argument_expr(
@@ -20657,8 +20671,10 @@ impl<'ctx> Codegen<'ctx> {
                         Self::format_diagnostic_type(&path_ty)
                     )));
                 }
-                let path = self
-                    .compile_string_argument_expr(&args[0].node, "File.read() requires String path")?;
+                let path = self.compile_string_argument_expr(
+                    &args[0].node,
+                    "File.read() requires String path",
+                )?;
 
                 let fopen = self.get_or_declare_fopen();
                 let fseek = self.get_or_declare_fseek();

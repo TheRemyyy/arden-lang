@@ -2011,9 +2011,9 @@ impl TypeChecker {
 
             Stmt::Return(expr) => {
                 let expected_return_type = self.current_return_type.clone().or_else(|| {
-                    self.current_async_return_type.clone().and_then(|ty| {
-                        (!matches!(ty, ResolvedType::None)).then_some(ty)
-                    })
+                    self.current_async_return_type
+                        .clone()
+                        .and_then(|ty| (!matches!(ty, ResolvedType::None)).then_some(ty))
                 });
                 let return_type = expr
                     .as_ref()
@@ -2985,8 +2985,7 @@ impl TypeChecker {
         name: &str,
         expected: &ResolvedType,
     ) -> Option<ResolvedType> {
-        let synthetic_function_type =
-            ResolvedType::Function(vec![], Box::new(expected.clone()));
+        let synthetic_function_type = ResolvedType::Function(vec![], Box::new(expected.clone()));
         if Self::builtin_matches_expected_function_type(name, &synthetic_function_type) {
             Some(expected.clone())
         } else {
@@ -3038,10 +3037,7 @@ impl TypeChecker {
         }
     }
 
-    fn builtin_argument_block_type_hint(
-        &self,
-        body: &[Spanned<Stmt>],
-    ) -> Option<ResolvedType> {
+    fn builtin_argument_block_type_hint(&self, body: &[Spanned<Stmt>]) -> Option<ResolvedType> {
         body.iter().rev().find_map(|stmt| match &stmt.node {
             Stmt::Expr(expr) => self.builtin_argument_expr_type_hint(&expr.node),
             _ => None,
@@ -3551,16 +3547,14 @@ impl TypeChecker {
         let saved_return_type = self.current_return_type.clone();
         let saved_async_return_type = self.current_async_return_type.clone();
         self.current_return_type = None;
-        self.current_async_return_type = Some(
-            expected_inner.cloned().unwrap_or(ResolvedType::None),
-        );
+        self.current_async_return_type =
+            Some(expected_inner.cloned().unwrap_or(ResolvedType::None));
 
         for stmt in body {
             match &stmt.node {
                 Stmt::Expr(expr) => {
-                    tail_expr_type = Some(
-                        self.check_builtin_argument_expr(&expr.node, expr.span.clone()),
-                    );
+                    tail_expr_type =
+                        Some(self.check_builtin_argument_expr(&expr.node, expr.span.clone()));
                 }
                 _ => {
                     tail_expr_type = None;
@@ -5939,10 +5933,8 @@ impl TypeChecker {
                 };
                 self.check_arg_count(name, args, 2, span.clone());
                 if args.len() >= 2 {
-                    let t1 =
-                        self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
-                    let t2 =
-                        self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
+                    let t1 = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
+                    let t2 = self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
                     if matches!(t1, ResolvedType::Unknown) || matches!(t2, ResolvedType::Unknown) {
                         Some(ResolvedType::Unknown)
                     } else if !t1.is_numeric() || !t2.is_numeric() {
@@ -5995,10 +5987,8 @@ impl TypeChecker {
             "Math__pow" => {
                 self.check_arg_count(name, args, 2, span.clone());
                 if args.len() >= 2 {
-                    let t1 =
-                        self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
-                    let t2 =
-                        self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
+                    let t1 = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
+                    let t2 = self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
                     if !matches!(t1, ResolvedType::Unknown)
                         && !matches!(t2, ResolvedType::Unknown)
                         && (!t1.is_numeric() || !t2.is_numeric())
@@ -6151,10 +6141,8 @@ impl TypeChecker {
             "Str__contains" => {
                 self.check_arg_count(name, args, 2, span.clone());
                 if args.len() >= 2 {
-                    let t1 =
-                        self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
-                    let t2 =
-                        self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
+                    let t1 = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
+                    let t2 = self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
                     if matches!(t1, ResolvedType::Unknown) || matches!(t2, ResolvedType::Unknown) {
                         return Some(ResolvedType::Boolean);
                     }
@@ -6170,10 +6158,8 @@ impl TypeChecker {
             "Str__startsWith" | "Str__endsWith" => {
                 self.check_arg_count(name, args, 2, span.clone());
                 if args.len() >= 2 {
-                    let t1 =
-                        self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
-                    let t2 =
-                        self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
+                    let t1 = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
+                    let t2 = self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
                     if matches!(t1, ResolvedType::Unknown) || matches!(t2, ResolvedType::Unknown) {
                         return Some(ResolvedType::Boolean);
                     }
@@ -6464,10 +6450,8 @@ impl TypeChecker {
                 // assert_ne(a: T, b: T): None
                 self.check_arg_count(name, args, 2, span.clone());
                 if args.len() >= 2 {
-                    let t1 =
-                        self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
-                    let t2 =
-                        self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
+                    let t1 = self.check_builtin_argument_expr(&args[0].node, args[0].span.clone());
+                    let t2 = self.check_builtin_argument_expr(&args[1].node, args[1].span.clone());
                     if self.common_compatible_type(&t1, &t2).is_none() {
                         self.error(
                             format!(

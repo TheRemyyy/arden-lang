@@ -2328,12 +2328,24 @@ fn rewrites_builtin_exact_value_alias_method_receivers_to_materialized_values() 
     let Expr::Field { object, field } = &callee.node else {
         panic!("expected field receiver call");
     };
-    let Expr::Call { callee, args, type_args } = &object.node else {
+    let Expr::Call {
+        callee,
+        args,
+        type_args,
+    } = &object.node
+    else {
         panic!("expected materialized builtin value call");
     };
     assert!(args.is_empty(), "Option.none() should stay zero-arg");
-    assert!(type_args.is_empty(), "Option.none() should not gain type args");
-    let Expr::Field { object, field: builtin_field } = &callee.node else {
+    assert!(
+        type_args.is_empty(),
+        "Option.none() should not gain type args"
+    );
+    let Expr::Field {
+        object,
+        field: builtin_field,
+    } = &callee.node
+    else {
         panic!("expected Option.none() field callee");
     };
     let Expr::Ident(owner) = &object.node else {

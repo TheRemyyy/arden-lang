@@ -6596,7 +6596,9 @@ fn compile_source_no_check_rejects_module_local_wildcard_import_leaking_to_top_l
 
     fs::write(&source_path, source).expect("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("module-local wildcard import should not resolve at top level in no-check mode");
+        .expect_err(
+            "module-local wildcard import should not resolve at top level in no-check mode",
+        );
     assert!(err.contains("Undefined function: abs"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -6776,8 +6778,7 @@ fn compile_source_rejects_exact_import_integer_alias_non_function_call_with_type
         make_temp_project_root("checked-exact-import-integer-alias-call-non-function-type");
     let source_path =
         temp_root.join("checked_exact_import_integer_alias_call_non_function_type.apex");
-    let output_path =
-        temp_root.join("checked_exact_import_integer_alias_call_non_function_type");
+    let output_path = temp_root.join("checked_exact_import_integer_alias_call_non_function_type");
     let source = r#"
             import std.args.count as ArgCount;
 
@@ -11076,8 +11077,7 @@ fn compile_source_no_check_runs_exact_imported_nested_enum_variant_aliases_runti
         make_temp_project_root("no-check-exact-imported-nested-enum-variant-aliases-runtime");
     let source_path =
         temp_root.join("no_check_exact_imported_nested_enum_variant_aliases_runtime.apex");
-    let output_path =
-        temp_root.join("no_check_exact_imported_nested_enum_variant_aliases_runtime");
+    let output_path = temp_root.join("no_check_exact_imported_nested_enum_variant_aliases_runtime");
     let source = r#"
             module util { enum Result { Ok(Integer), Error(String) } }
             import util.Result.Ok as Success;
@@ -13765,8 +13765,7 @@ fn compile_source_runs_if_expression_float_function_value_with_integer_argument_
         make_temp_project_root("if-expression-float-function-value-integer-argument-runtime");
     let source_path =
         temp_root.join("if_expression_float_function_value_integer_argument_runtime.apex");
-    let output_path =
-        temp_root.join("if_expression_float_function_value_integer_argument_runtime");
+    let output_path = temp_root.join("if_expression_float_function_value_integer_argument_runtime");
     let source = r#"
             function scale(value: Float): Float {
                 return value * 2.0;
@@ -13779,8 +13778,9 @@ fn compile_source_runs_if_expression_float_function_value_with_integer_argument_
         "#;
 
     fs::write(&source_path, source).expect("write source");
-    compile_source(source, &source_path, &output_path, false, true, None, None)
-        .expect("if-expression Float function value should lower Integer arguments through expected types");
+    compile_source(source, &source_path, &output_path, false, true, None, None).expect(
+        "if-expression Float function value should lower Integer arguments through expected types",
+    );
 
     let status = std::process::Command::new(&output_path)
         .status()
@@ -14388,8 +14388,7 @@ fn compile_source_no_check_rejects_generic_bound_method_function_value_signature
         make_temp_project_root("no-check-generic-bound-method-function-signature-mismatch");
     let source_path =
         temp_root.join("no_check_generic_bound_method_function_signature_mismatch.apex");
-    let output_path =
-        temp_root.join("no_check_generic_bound_method_function_signature_mismatch");
+    let output_path = temp_root.join("no_check_generic_bound_method_function_signature_mismatch");
     let source = r#"
             interface Named {
                 function name(): Integer;
@@ -15541,11 +15540,10 @@ fn compile_source_no_check_rejects_named_function_value_signature_mismatch_with_
 
 #[test]
 fn compile_source_no_check_rejects_constructor_function_value_signature_mismatch() {
-    let temp_root = make_temp_project_root("no-check-constructor-function-value-signature-mismatch");
-    let source_path =
-        temp_root.join("no_check_constructor_function_value_signature_mismatch.apex");
-    let output_path =
-        temp_root.join("no_check_constructor_function_value_signature_mismatch");
+    let temp_root =
+        make_temp_project_root("no-check-constructor-function-value-signature-mismatch");
+    let source_path = temp_root.join("no_check_constructor_function_value_signature_mismatch.apex");
+    let output_path = temp_root.join("no_check_constructor_function_value_signature_mismatch");
     let source = r#"
             class Box {
                 value: Integer;
@@ -15592,7 +15590,9 @@ fn compile_source_no_check_formats_specialized_constructor_function_value_signat
 
     fs::write(&source_path, source).expect("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
-        .expect_err("specialized constructor function value signature mismatch should fail in codegen");
+        .expect_err(
+            "specialized constructor function value signature mismatch should fail in codegen",
+        );
     assert!(
         err.contains("Cannot use function value (Integer) -> Box<Integer> as () -> Box<Integer>"),
         "{err}"
@@ -15608,8 +15608,7 @@ fn compile_source_no_check_formats_specialized_builtin_function_value_signature_
         make_temp_project_root("no-check-specialized-builtin-function-signature-mismatch");
     let source_path =
         temp_root.join("no_check_specialized_builtin_function_signature_mismatch.apex");
-    let output_path =
-        temp_root.join("no_check_specialized_builtin_function_signature_mismatch");
+    let output_path = temp_root.join("no_check_specialized_builtin_function_signature_mismatch");
     let source = r#"
             class Box<T> {
                 value: T;
@@ -15626,7 +15625,9 @@ fn compile_source_no_check_formats_specialized_builtin_function_value_signature_
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
         .expect_err("specialized builtin function value signature mismatch should fail in codegen");
     assert!(
-        err.contains("Type mismatch: expected () -> Option<Box<Integer>>, got (unknown) -> Option<unknown>"),
+        err.contains(
+            "Type mismatch: expected () -> Option<Box<Integer>>, got (unknown) -> Option<unknown>"
+        ),
         "{err}"
     );
     assert!(!err.contains("Box__spec__I64"), "{err}");
@@ -15636,12 +15637,9 @@ fn compile_source_no_check_formats_specialized_builtin_function_value_signature_
 
 #[test]
 fn compile_source_no_check_formats_specialized_constructor_builtin_diagnostics() {
-    let temp_root =
-        make_temp_project_root("no-check-specialized-constructor-builtin-diagnostics");
-    let source_path =
-        temp_root.join("no_check_specialized_constructor_builtin_diagnostics.apex");
-    let output_path =
-        temp_root.join("no_check_specialized_constructor_builtin_diagnostics");
+    let temp_root = make_temp_project_root("no-check-specialized-constructor-builtin-diagnostics");
+    let source_path = temp_root.join("no_check_specialized_constructor_builtin_diagnostics.apex");
+    let output_path = temp_root.join("no_check_specialized_constructor_builtin_diagnostics");
     let source = r#"
             class Box<T> {
                 value: T;
@@ -17959,7 +17957,10 @@ fn compile_file_no_check_rejects_main_with_boolean_return_type_cleanly() {
     fs::write(&source_path, source).expect("write source");
     let err = compile_file(&source_path, None, false, false, None, None)
         .expect_err("unchecked main boolean return type should fail before codegen");
-    assert!(err.contains("Type mismatch: expected Integer, got Boolean"), "{err}");
+    assert!(
+        err.contains("Type mismatch: expected Integer, got Boolean"),
+        "{err}"
+    );
     assert!(!err.contains("Clang failed"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -17983,7 +17984,10 @@ fn compile_source_no_check_rejects_function_with_boolean_return_type_cleanly() {
     fs::write(&source_path, source).expect("write source");
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
         .expect_err("unchecked function boolean return type should fail before codegen");
-    assert!(err.contains("Type mismatch: expected Integer, got Boolean"), "{err}");
+    assert!(
+        err.contains("Type mismatch: expected Integer, got Boolean"),
+        "{err}"
+    );
     assert!(!err.contains("Clang failed"), "{err}");
 
     let _ = fs::remove_dir_all(temp_root);
@@ -19858,6 +19862,88 @@ function main(): Integer {
     assert_eq!(
         output.status.code(),
         Some(22),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_package_qualified_builtin_option_variant_alias_patterns() {
+    let temp_root = make_temp_project_root("package-qualified-builtin-option-variant-aliases");
+    let source_path = temp_root.join("package_qualified_builtin_option_variant_aliases.apex");
+    let output_path = temp_root.join("package_qualified_builtin_option_variant_aliases");
+    let source = r#"
+package app;
+
+import app.Option.Some as Present;
+import app.Option.None as Empty;
+
+function classify(value: Option<Integer>): Integer {
+    return match (value) {
+        Present(inner) => inner,
+        Empty => 0,
+    };
+}
+
+function main(): Integer {
+    return classify(Present(4));
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("package-qualified builtin Option variant aliases should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled package-qualified builtin Option alias binary");
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_package_qualified_builtin_result_variant_alias_patterns() {
+    let temp_root = make_temp_project_root("package-qualified-builtin-result-variant-aliases");
+    let source_path = temp_root.join("package_qualified_builtin_result_variant_aliases.apex");
+    let output_path = temp_root.join("package_qualified_builtin_result_variant_aliases");
+    let source = r#"
+package app;
+
+import app.Result.Ok as Success;
+import app.Result.Error as Failure;
+
+function classify(value: Result<Integer, String>): Integer {
+    return match (value) {
+        Success(inner) => inner,
+        Failure(err) => 0,
+    };
+}
+
+function main(): Integer {
+    return classify(Success(4));
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("package-qualified builtin Result variant aliases should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled package-qualified builtin Result alias binary");
+    assert_eq!(
+        output.status.code(),
+        Some(4),
         "stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)

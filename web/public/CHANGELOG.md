@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed `package app` builtin exact-import variant aliases during single-file import checking:
+  - builtin exact-import canonicalization now accepts the package-qualified forms `app.Option.{Some,None}` and `app.Result.{Ok,Error}` through the same shared helper used by later compiler stages instead of treating those imports as stale aliases only inside `import_check`
+  - this fixes single-file builds such as `import app.Option.Some as Present;` and `import app.Result.Ok as Success;`, which previously failed before codegen with `Imported alias 'Present' no longer resolves in 'app'`
 - Fixed compound-assignment coercion for exact zero-argument aliases:
   - non-container compound assignments now carry the contextual builtin-aware RHS type all the way into binary operator validation/codegen instead of falling back to the raw unresolved expression type after expected-type lowering
   - this fixes valid project builds such as `mut value: String = ""; value += CurrentDir;`, which previously failed in codegen with incorrect numeric-operator diagnostics like `Arithmetic operator requires numeric types, got String and Integer`
