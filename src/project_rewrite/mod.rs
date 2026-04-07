@@ -3845,6 +3845,40 @@ fn rename_shadowed_module_import_params(
         .collect()
 }
 
+fn rename_shadowed_module_import_pattern(
+    pattern: &ast::Pattern,
+    imported_map: &ImportedMap,
+    rename_scope: &mut HashMap<String, String>,
+) -> ast::Pattern {
+    match pattern {
+        ast::Pattern::Ident(name) => {
+            let renamed = if imported_map.contains_key(name) {
+                format!("__module_local_{}", name)
+            } else {
+                name.clone()
+            };
+            rename_scope.insert(name.clone(), renamed.clone());
+            ast::Pattern::Ident(renamed)
+        }
+        ast::Pattern::Variant(name, bindings) => ast::Pattern::Variant(
+            name.clone(),
+            bindings
+                .iter()
+                .map(|binding| {
+                    let renamed = if imported_map.contains_key(binding) {
+                        format!("__module_local_{}", binding)
+                    } else {
+                        binding.clone()
+                    };
+                    rename_scope.insert(binding.clone(), renamed.clone());
+                    renamed
+                })
+                .collect(),
+        ),
+        _ => pattern.clone(),
+    }
+}
+
 fn rename_shadowed_module_imports_in_callable(
     params: &[ast::Parameter],
     body: &ast::Block,
@@ -3976,13 +4010,20 @@ fn rename_shadowed_module_imports_in_expr(
             )),
             arms: arms
                 .iter()
-                .map(|arm| ast::MatchArm {
-                    pattern: arm.pattern.clone(),
-                    body: rename_shadowed_module_imports_in_block(
+                .map(|arm| {
+                    rename_scopes.push(HashMap::new());
+                    let pattern = if let Some(scope) = rename_scopes.last_mut() {
+                        rename_shadowed_module_import_pattern(&arm.pattern, imported_map, scope)
+                    } else {
+                        arm.pattern.clone()
+                    };
+                    let body = rename_shadowed_module_imports_in_block(
                         &arm.body,
                         imported_map,
                         rename_scopes,
-                    ),
+                    );
+                    rename_scopes.pop();
+                    ast::MatchArm { pattern, body }
                 })
                 .collect(),
         },
@@ -4238,13 +4279,20 @@ fn rename_shadowed_module_imports_in_block(
                 ),
                 arms: arms
                     .iter()
-                    .map(|arm| ast::MatchArm {
-                        pattern: arm.pattern.clone(),
-                        body: rename_shadowed_module_imports_in_block(
+                    .map(|arm| {
+                        rename_scopes.push(HashMap::new());
+                        let pattern = if let Some(scope) = rename_scopes.last_mut() {
+                            rename_shadowed_module_import_pattern(&arm.pattern, imported_map, scope)
+                        } else {
+                            arm.pattern.clone()
+                        };
+                        let body = rename_shadowed_module_imports_in_block(
                             &arm.body,
                             imported_map,
                             rename_scopes,
-                        ),
+                        );
+                        rename_scopes.pop();
+                        ast::MatchArm { pattern, body }
                     })
                     .collect(),
             },
@@ -4671,8 +4719,8 @@ fn fix_module_local_expr(expr: &Expr, ctx: ModuleRewriteContext<'_>) -> Expr {
             )),
             arms: arms
                 .iter()
-                .map(|arm| ast::MatchArm {
-                    pattern: rewrite_pattern_for_module(
+                .map(|arm| {
+                    let pattern = rewrite_pattern_for_module(
                         &arm.pattern,
                         module_prefix,
                         current_namespace,
@@ -4680,8 +4728,17 @@ fn fix_module_local_expr(expr: &Expr, ctx: ModuleRewriteContext<'_>) -> Expr {
                         local_modules,
                         imported_modules,
                         global_enum_map,
-                    ),
-                    body: self::fix_module_local_block(&arm.body, module_rewrite_ctx),
+                    );
+                    let mut arm_scopes = vec![HashSet::new()];
+                    if let Some(scope) = arm_scopes.last_mut() {
+                        bind_pattern_locals(&pattern, scope);
+                    }
+                    let body = self::fix_module_local_block_with_scopes(
+                        &arm.body,
+                        module_rewrite_ctx,
+                        &arm_scopes,
+                    );
+                    ast::MatchArm { pattern, body }
                 })
                 .collect(),
         },
@@ -4929,8 +4986,8 @@ fn fix_module_local_stmt(
             ),
             arms: arms
                 .iter()
-                .map(|arm| ast::MatchArm {
-                    pattern: rewrite_pattern_for_module(
+                .map(|arm| {
+                    let pattern = rewrite_pattern_for_module(
                         &arm.pattern,
                         module_prefix,
                         current_namespace,
@@ -4938,8 +4995,17 @@ fn fix_module_local_stmt(
                         local_modules,
                         imported_modules,
                         global_enum_map,
-                    ),
-                    body: self::fix_module_local_block(&arm.body, module_rewrite_ctx),
+                    );
+                    let mut arm_scopes = scopes.to_vec();
+                    let mut arm_scope = HashSet::new();
+                    bind_pattern_locals(&pattern, &mut arm_scope);
+                    arm_scopes.push(arm_scope);
+                    let body = self::fix_module_local_block_with_scopes(
+                        &arm.body,
+                        module_rewrite_ctx,
+                        &arm_scopes,
+                    );
+                    ast::MatchArm { pattern, body }
                 })
                 .collect(),
         },

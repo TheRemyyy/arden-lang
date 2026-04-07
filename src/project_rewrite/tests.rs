@@ -6199,3 +6199,110 @@ fn renames_module_local_exact_import_alias_shadowed_for_var_in_lambda() {
     };
     assert_eq!(name, "__module_local_Empty");
 }
+
+#[test]
+fn renames_module_local_exact_import_alias_shadowed_match_binding_in_lambda() {
+    let program = Program {
+        package: Some("app".to_string()),
+        declarations: vec![sp(Decl::Module(ast::ModuleDecl {
+            name: "Inner".to_string(),
+            declarations: vec![
+                sp(Decl::Import(ast::ImportDecl {
+                    path: "Option.None".to_string(),
+                    alias: Some("Empty".to_string()),
+                })),
+                sp(Decl::Function(ast::FunctionDecl {
+                    name: "keep".to_string(),
+                    generic_params: vec![],
+                    params: vec![ast::Parameter {
+                        name: "value".to_string(),
+                        ty: ast::Type::Generic("Option".to_string(), vec![ast::Type::Integer]),
+                        mutable: false,
+                        mode: ast::ParamMode::Owned,
+                    }],
+                    is_variadic: false,
+                    extern_abi: None,
+                    extern_link_name: None,
+                    return_type: ast::Type::Integer,
+                    body: vec![sp(Stmt::Return(Some(sp(Expr::Match {
+                        expr: Box::new(sp(Expr::Ident("value".to_string()))),
+                        arms: vec![
+                            ast::MatchArm {
+                                pattern: ast::Pattern::Variant(
+                                    "Some".to_string(),
+                                    vec!["Empty".to_string()],
+                                ),
+                                body: vec![sp(Stmt::Expr(sp(Expr::Lambda {
+                                    params: vec![],
+                                    body: Box::new(sp(Expr::Ident("Empty".to_string()))),
+                                })))],
+                            },
+                            ast::MatchArm {
+                                pattern: ast::Pattern::Variant("None".to_string(), vec![]),
+                                body: vec![sp(Stmt::Expr(sp(Expr::Literal(
+                                    ast::Literal::Integer(1),
+                                ))))],
+                            },
+                        ],
+                    }))))],
+                    is_async: false,
+                    is_extern: false,
+                    visibility: ast::Visibility::Private,
+                    attributes: vec![],
+                })),
+            ],
+        }))],
+    };
+
+    let rewritten = rewrite_program_for_project(
+        &program,
+        "app",
+        "app",
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &[],
+    );
+
+    let module = rewritten
+        .declarations
+        .iter()
+        .find_map(|decl| match &decl.node {
+            Decl::Module(module) => Some(module),
+            _ => None,
+        })
+        .expect("expected module declaration");
+    let function = module
+        .declarations
+        .iter()
+        .find_map(|decl| match &decl.node {
+            Decl::Function(func) if func.name == "keep" => Some(func),
+            _ => None,
+        })
+        .expect("expected nested function declaration");
+    let Stmt::Return(Some(expr)) = &function.body[0].node else {
+        panic!("expected return statement");
+    };
+    let Expr::Match { arms, .. } = &expr.node else {
+        panic!("expected match expression");
+    };
+    let ast::Pattern::Variant(_, bindings) = &arms[0].pattern else {
+        panic!("expected variant pattern");
+    };
+    assert_eq!(bindings[0], "__module_local_Empty");
+    let Stmt::Expr(expr) = &arms[0].body[0].node else {
+        panic!("expected expr statement");
+    };
+    let Expr::Lambda { body, .. } = &expr.node else {
+        panic!("expected lambda expression");
+    };
+    let Expr::Ident(name) = &body.node else {
+        panic!("expected lambda body ident");
+    };
+    assert_eq!(name, "__module_local_Empty");
+}
