@@ -1142,7 +1142,7 @@ impl<'ctx> Codegen<'ctx> {
         // 2. Infer return type
         let ret_apex_ty = match expected_fn_ty {
             Some(Type::Function(_, expected_ret)) => (**expected_ret).clone(),
-            _ => self.infer_expr_type(&body.node, params),
+            _ => self.infer_builtin_argument_type(&body.node),
         };
         let ret_llvm_ty = self.llvm_type(&ret_apex_ty);
 
@@ -2440,7 +2440,7 @@ impl<'ctx> Codegen<'ctx> {
             }
             Expr::Lambda { params, body } => Some(Type::Function(
                 params.iter().map(|param| param.ty.clone()).collect(),
-                Box::new(self.infer_expr_type(&body.node, params)),
+                Box::new(self.infer_builtin_argument_type(&body.node)),
             )),
             Expr::Field { object, field } => {
                 if let Expr::Ident(owner_name) = &object.node {

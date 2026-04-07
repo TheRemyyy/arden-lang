@@ -41,6 +41,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed direct borrow-dereference coercion for exact zero-argument aliases:
   - codegen-side borrow and dereference inference now materializes exact zero-argument builtin aliases through the same builtin-aware path used by typed borrow boundaries instead of collapsing direct dereferences to the fallback `Integer` type
   - this fixes valid project builds such as `(*(&CurrentDir)).length()`, which previously failed in codegen with `Cannot call method on type Integer`
+- Fixed immediate zero-argument pipe lambda coercion for exact zero-argument aliases:
+  - lambda object-type inference now materializes exact zero-argument builtin aliases through the same builtin-aware path used by annotated lambda boundaries instead of inferring raw unresolved alias symbols for immediate lambda calls
+  - this fixes valid project builds such as `(|| CurrentDir)().length()`, which previously failed in codegen with `Undefined variable: CurrentDir`
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`
