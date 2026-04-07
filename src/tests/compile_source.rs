@@ -7780,6 +7780,31 @@ fn compile_source_no_check_rejects_literal_deref_with_type_diagnostic() {
 }
 
 #[test]
+fn compile_source_no_check_rejects_exact_import_alias_deref_with_type_diagnostic() {
+    let temp_root = make_temp_project_root("no-check-exact-import-alias-deref-type");
+    let source_path = temp_root.join("no_check_exact_import_alias_deref_type.apex");
+    let output_path = temp_root.join("no_check_exact_import_alias_deref_type");
+    let source = r#"
+            import std.system.cwd as CurrentDir;
+
+            function main(): Integer {
+                return *CurrentDir;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("exact import alias deref should fail in codegen without checks");
+    assert!(
+        err.contains("Cannot dereference non-pointer type String"),
+        "{err}"
+    );
+    assert!(!err.contains("Undefined variable: CurrentDir"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_module_local_deref_with_user_facing_type_diagnostic() {
     let temp_root = make_temp_project_root("no-check-module-local-deref-type");
     let source_path = temp_root.join("no_check_module_local_deref_type.apex");

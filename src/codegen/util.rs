@@ -1102,7 +1102,7 @@ impl<'ctx> Codegen<'ctx> {
 
     pub fn compile_deref(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
         let inferred_expr_ty = self.infer_object_type(expr);
-        let expr_ty = self.infer_expr_type(expr, &[]);
+        let expr_ty = self.infer_builtin_argument_type(expr);
         let pointee_ty = match &expr_ty {
             Type::Ref(inner)
             | Type::MutRef(inner)
@@ -1111,7 +1111,7 @@ impl<'ctx> Codegen<'ctx> {
             | Type::Rc(inner)
             | Type::Arc(inner) => self.llvm_type(inner),
             _ => {
-                if inferred_expr_ty.is_none() {
+                if inferred_expr_ty.is_none() && self.builtin_argument_type_hint(expr).is_none() {
                     let _ = self.compile_expr(expr)?;
                 }
                 return Err(CodegenError::new(format!(
