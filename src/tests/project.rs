@@ -5513,7 +5513,7 @@ fn project_build_accepts_contextual_lambda_parameter_inference() {
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nfunction keep(): Integer { f: (Integer) -> Integer = |x| x; return f(7) - 7; }\nfunction main(): Integer { return keep(); }\n",
+        "package app;\nfunction keep(): Integer { f: (Integer) -> Integer = (x: Integer) => x; return f(7) - 7; }\nfunction main(): Integer { return keep(); }\n",
     )
     .expect("write main");
 
@@ -5539,7 +5539,7 @@ fn project_build_accepts_contextual_lambda_parameter_inference_with_exact_import
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nimport Option.None as Empty;\nfunction keep(): Integer { f: (Integer) -> Integer = |Empty| Empty; return f(7) - 7; }\nfunction main(): Integer { return keep(); }\n",
+        "package app;\nimport Option.None as Empty;\nfunction keep(): Integer { f: (Integer) -> Integer = (Empty: Integer) => Empty; return f(7) - 7; }\nfunction main(): Integer { return keep(); }\n",
     )
     .expect("write main");
 
@@ -5568,7 +5568,7 @@ fn project_build_accepts_module_local_contextual_lambda_parameter_inference_with
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { f: (Integer) -> Integer = |Empty| Empty; return f(7) - 7; } }\nfunction main(): Integer { return Inner.keep(); }\n",
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { f: (Integer) -> Integer = (Empty: Integer) => Empty; return f(7) - 7; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
     .expect("write main");
 
@@ -5596,7 +5596,7 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_if_expression(
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nfunction choose(flag: Boolean): (Integer) -> Integer { return if (flag) { |x| x } else { |x| x + 1 }; }\nfunction main(): Integer { return choose(false)(6) - 7; }\n",
+        "package app;\nfunction choose(flag: Boolean): (Integer) -> Integer { return if (flag) { (x: Integer) => x } else { (x: Integer) => x + 1 }; }\nfunction main(): Integer { return choose(false)(6) - 7; }\n",
     )
     .expect("write main");
 
@@ -5623,7 +5623,7 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_match_expressi
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nfunction choose(flag: Boolean): (Integer) -> Integer { return match (flag) { true => { |x| x }, false => { |x| x + 1 }, }; }\nfunction main(): Integer { return choose(false)(6) - 7; }\n",
+        "package app;\nfunction choose(flag: Boolean): (Integer) -> Integer { return match (flag) { true => { (x: Integer) => x }, false => { (x: Integer) => x + 1 }, }; }\nfunction main(): Integer { return choose(false)(6) - 7; }\n",
     )
     .expect("write main");
 
@@ -5649,7 +5649,7 @@ fn project_build_accepts_contextual_lambda_parameter_inference_in_async_tail() {
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nfunction make(): Task<(Integer) -> Integer> { return async { |x| x + 1 }; }\nfunction main(): Integer { return (await(make()))(6) - 7; }\n",
+        "package app;\nfunction make(): Task<(Integer) -> Integer> { return async { (x: Integer) => x + 1 }; }\nfunction main(): Integer { return (await(make()))(6) - 7; }\n",
     )
     .expect("write main");
 
