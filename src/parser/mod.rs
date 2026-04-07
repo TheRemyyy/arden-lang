@@ -1931,7 +1931,7 @@ impl<'src> Parser<'src> {
                 self.advance();
                 while self.check(&Token::Dot) {
                     self.advance();
-                    let segment = self.parse_ident()?;
+                    let segment = self.parse_member_ident()?;
                     name.push('.');
                     name.push_str(&segment);
                 }

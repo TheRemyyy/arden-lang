@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed parser handling for builtin `Option.None()` static constructor syntax:
   - field/member parsing now accepts `None` after `.` as a valid member segment instead of only as the standalone literal keyword, so constructor forms like `Option.None()` and `root.Option.None()` parse through the same static-call path as `Option.Some(...)`
   - this fixes package-scoped builds that previously failed during parsing with `Expected identifier, found Some(None)`
+- Fixed parser handling for builtin `Option.None` match patterns:
+  - pattern parsing now accepts `None` after `.` inside qualified variant names instead of routing only identifier tokens through dotted pattern segments, so `Option.None` and `root.Option.None` parse through the same variant-pattern path as `Option.Some(...)`
+  - this fixes package-scoped matches that previously failed during parsing with `Expected identifier, found Some(None)`
 - Fixed inline method chains on direct builtin constructors inside `package app`:
   - codegen-side builtin call inference now derives `Option`/`Result` return types from the shared canonical constructor names for `Option.{Some,None}` and `Result.{Ok,Error}` instead of falling back to raw scalar inference in expression-only chains
   - this fixes package-scoped expressions such as `Option.Some(4).unwrap()` and `Result.Ok(4).unwrap()`, which previously reached codegen as `Integer` values and failed with `Cannot call method on type Integer`

@@ -20199,6 +20199,76 @@ function main(): Integer {
 }
 
 #[test]
+fn compile_source_runs_package_qualified_builtin_option_none_pattern() {
+    let temp_root = make_temp_project_root("package-qualified-builtin-option-none-pattern");
+    let source_path = temp_root.join("package_qualified_builtin_option_none_pattern.arden");
+    let output_path = temp_root.join("package_qualified_builtin_option_none_pattern");
+    let source = r#"
+package app;
+
+function main(): Integer {
+    return match (Option.None()) {
+        Option.None => 0,
+        Option.Some(_) => 1,
+    };
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("package-qualified Option.None pattern should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled package-qualified Option.None pattern binary");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_root_namespace_alias_builtin_option_none_pattern() {
+    let temp_root = make_temp_project_root("root-namespace-alias-builtin-option-none-pattern");
+    let source_path = temp_root.join("root_namespace_alias_builtin_option_none_pattern.arden");
+    let output_path = temp_root.join("root_namespace_alias_builtin_option_none_pattern");
+    let source = r#"
+package app;
+
+import app as root;
+
+function main(): Integer {
+    return match (root.Option.None()) {
+        root.Option.None => 0,
+        root.Option.Some(_) => 1,
+    };
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("root namespace alias Option.None pattern should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled root alias Option.None pattern binary");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_root_namespace_alias_inline_result_constructor_method_chain() {
     let temp_root =
         make_temp_project_root("root-namespace-alias-inline-result-constructor-method-chain");

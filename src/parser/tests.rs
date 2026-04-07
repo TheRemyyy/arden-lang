@@ -85,6 +85,37 @@ fn parses_root_namespace_alias_builtin_option_none_static_constructor_call() {
 }
 
 #[test]
+fn parses_builtin_option_none_variant_pattern() {
+    let source = r#"
+        function main(): Integer {
+            return match (Option.None()) {
+                Option.None => 0,
+                Option.Some(_) => 1,
+            };
+        }
+    "#;
+
+    parse_source(source).expect("Option.None pattern should parse");
+}
+
+#[test]
+fn parses_root_namespace_alias_builtin_option_none_variant_pattern() {
+    let source = r#"
+        package app;
+        import app as root;
+
+        function main(): Integer {
+            return match (root.Option.None()) {
+                root.Option.None => 0,
+                root.Option.Some(_) => 1,
+            };
+        }
+    "#;
+
+    parse_source(source).expect("root.Option.None pattern should parse");
+}
+
+#[test]
 fn test_parse_function_without_attributes() {
     let source = r#"
         package test;
