@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { usePageContext } from 'vike-react/usePageContext';
 import { Footer } from '../src/components/Footer';
 import { Header } from '../src/components/Header';
@@ -13,6 +15,8 @@ export default function Layout({ children }: { children: ReactNode }) {
             <Header />
             <main className="flex-grow">{children}</main>
             {!isDocsPage && <Footer />}
+            <Analytics />
+            <SpeedInsights />
         </div>
     );
 }

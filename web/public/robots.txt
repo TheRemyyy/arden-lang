@@ -1,3 +1,13 @@
 User-agent: *
 Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
 Sitemap: https://apex-compiler.vercel.app/sitemap.xml

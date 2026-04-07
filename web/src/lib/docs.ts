@@ -115,3 +115,38 @@ export function getDocNeighbors(pathname: string): {
                 : null,
     };
 }
+
+export function getDocBreadcrumbs(pathname: string): DocLink[] {
+    const normalizedPath = normalizeDocsPath(pathname);
+    const breadcrumbs: DocLink[] = [
+        { title: 'Home', path: '/' },
+        { title: 'Documentation', path: '/docs/overview' },
+    ];
+
+    const section = NAV_ITEMS.find((item) =>
+        'items' in item
+            ? item.items.some((entry) => entry.path === normalizedPath)
+            : item.path === normalizedPath,
+    );
+
+    if (!section) {
+        return breadcrumbs;
+    }
+
+    if ('items' in section) {
+        breadcrumbs.push({
+            title: section.title,
+            path: section.items[0]?.path ?? '/docs/overview',
+        });
+
+        const currentDoc = section.items.find((entry) => entry.path === normalizedPath);
+        if (currentDoc) {
+            breadcrumbs.push(currentDoc);
+        }
+
+        return breadcrumbs;
+    }
+
+    breadcrumbs.push(section);
+    return breadcrumbs;
+}

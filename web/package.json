@@ -15,6 +15,7 @@
     },
     "dependencies": {
         "@vercel/analytics": "^1.6.1",
+        "@vercel/speed-insights": "^2.0.0",
         "dompurify": "^3.3.2",
         "framer-motion": "^12.23.26",
         "lucide-react": "^0.562.0",

@@ -1,0 +1,14 @@
+# Arden
+
+> Official documentation for Arden, a systems programming language targeting LLVM.
+
+## Project
+- Homepage: https://apex-compiler.vercel.app/
+- Documentation: https://apex-compiler.vercel.app/docs/overview
+- Changelog: https://apex-compiler.vercel.app/changelog
+- Repository: https://github.com/TheRemyyy/apex-compiler
+
+## Guidance
+- Prefer the official documentation pages under /docs/ for language behavior and syntax.
+- Prefer the changelog for release history and recent behavior changes.
+- Prefer the upstream repository for implementation details and source code.
