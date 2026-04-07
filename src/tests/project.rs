@@ -3634,6 +3634,42 @@ fn project_build_supports_imported_payload_enum_variant_function_value_aliases()
 }
 
 #[test]
+fn project_build_adapts_enum_variant_function_values_to_expected_signature() {
+    let temp_root = make_temp_project_root("enum-variant-function-value-adapter-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden", "src/util.arden"],
+        "src/main.arden",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("util.arden"),
+        "package app;\ninterface Named { function value(): Integer; }\nclass Box implements Named { inner: Integer; constructor(inner: Integer) { this.inner = inner; } function value(): Integer { return this.inner; } }\nenum E { Wrap(Named) }\n",
+    )
+    .expect("write util");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nfunction main(): Integer { ctor: (Box) -> E = E.Wrap; value: E = ctor(Box(7)); return match (value) { E.Wrap(named) => named.value() - 7, }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should adapt enum variant function values to expected signatures",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run adapted enum variant function value binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_imported_unit_enum_variant_function_value_aliases() {
     let temp_root = make_temp_project_root("imported-unit-enum-variant-fn-alias-project");
     let src_dir = temp_root.join("src");

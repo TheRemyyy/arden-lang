@@ -13159,7 +13159,7 @@ impl<'ctx> Codegen<'ctx> {
         expr: &Expr,
         expected_ty: &Type,
     ) -> Result<Option<BasicValueEnum<'ctx>>> {
-        let Type::Function(param_types, ret_type) = expected_ty else {
+        let Type::Function(_, _) = expected_ty else {
             return Ok(None);
         };
         let Some((enum_name, variant_info)) = self.resolve_enum_variant_function_value(expr) else {
@@ -13169,19 +13169,15 @@ impl<'ctx> Codegen<'ctx> {
             variant_info.fields.clone(),
             Box::new(Type::Named(enum_name.clone())),
         );
-        if &actual_ty != expected_ty {
-            return Err(CodegenError::new(format!(
-                "Type mismatch: expected {}, got {}",
-                Self::format_diagnostic_type(expected_ty),
-                Self::format_diagnostic_type(&actual_ty)
-            )));
-        }
+        let Type::Function(param_types, ret_type) = &actual_ty else {
+            return Ok(None);
+        };
 
         let wrapper_name = format!(
             "__enum_variant_fn_value_{}_{}_{}",
             enum_name,
             variant_info.tag,
-            Self::type_specialization_suffix(expected_ty)
+            Self::type_specialization_suffix(&actual_ty)
         );
         let wrapper_fn = if let Some(existing) = self.module.get_function(&wrapper_name) {
             existing
@@ -13207,7 +13203,7 @@ impl<'ctx> Codegen<'ctx> {
             let saved_insert_block = self.builder.get_insert_block();
 
             self.current_function = Some(wrapper_fn);
-            self.current_return_type = Some(expected_ty.clone());
+            self.current_return_type = Some(actual_ty.clone());
 
             let entry = self.context.append_basic_block(wrapper_fn, "entry");
             self.builder.position_at_end(entry);
@@ -13234,9 +13230,7 @@ impl<'ctx> Codegen<'ctx> {
         };
 
         let ptr_type = self.context.ptr_type(AddressSpace::default());
-        let closure_ty = self
-            .context
-            .struct_type(&[ptr_type.into(), ptr_type.into()], false);
+        let closure_ty = self.llvm_type(&actual_ty).into_struct_type();
         let mut closure = closure_ty.get_undef();
         closure = self
             .builder
@@ -13253,7 +13247,24 @@ impl<'ctx> Codegen<'ctx> {
             .build_insert_value(closure, ptr_type.const_null(), 1, "enum_variant_env")
             .unwrap()
             .into_struct_value();
-        Ok(Some(closure.into()))
+
+        if &actual_ty == expected_ty {
+            return Ok(Some(closure.into()));
+        }
+
+        if let Some(adapted) = self.compile_function_value_adapter_from_closure(
+            closure.into(),
+            &actual_ty,
+            expected_ty,
+        )? {
+            return Ok(Some(adapted));
+        }
+
+        Err(CodegenError::new(format!(
+            "Type mismatch: expected {}, got {}",
+            Self::format_diagnostic_type(expected_ty),
+            Self::format_diagnostic_type(&actual_ty)
+        )))
     }
 
     fn compile_expr_for_llvm_param(
