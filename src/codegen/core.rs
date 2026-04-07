@@ -18681,6 +18681,15 @@ impl<'ctx> Codegen<'ctx> {
                 {
                     return Err(Self::non_function_call_error(&value_ty));
                 }
+                if resolved_builtin == "println" || resolved_builtin == "print" {
+                    return self.compile_print(args, resolved_builtin == "println");
+                }
+                if Self::is_stdlib_function(&resolved_builtin) {
+                    if let Some(result) = self.compile_stdlib_function(&resolved_builtin, args)? {
+                        return Ok(result);
+                    }
+                    return Ok(self.context.i8_type().const_int(0, false).into());
+                }
                 match resolved_builtin.as_str() {
                     "Option__some" => {
                         if args.len() != 1 {
