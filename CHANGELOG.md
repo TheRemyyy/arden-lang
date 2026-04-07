@@ -47,6 +47,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `--no-check` dereference diagnostics for exact zero-argument aliases:
   - codegen-side dereference validation now diagnoses exact zero-argument builtin aliases through the same builtin-aware type path used by checked builds instead of trying to lower raw unresolved alias symbols first
   - this fixes cases such as `*CurrentDir`, which previously failed in `--no-check` mode with `Undefined variable: CurrentDir` instead of the correct user-facing type error for dereferencing a `String`
+- Fixed `--no-check` non-function call diagnostics for exact zero-argument aliases:
+  - codegen-side direct-call validation now recognizes exact zero-argument builtin aliases as materialized values before constructor/type lookup instead of misreporting them as unknown types
+  - this fixes cases such as `CurrentDir()`, which previously failed in `--no-check` mode with `Unknown type: CurrentDir` instead of the correct user-facing type error for calling a `String`
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`

@@ -18677,6 +18677,10 @@ impl<'ctx> Codegen<'ctx> {
                         resolved_builtin.replace("__", ".")
                     )));
                 }
+                if let Some(value_ty) = Self::concrete_zero_arg_builtin_value_type(&resolved_builtin)
+                {
+                    return Err(Self::non_function_call_error(&value_ty));
+                }
                 match resolved_builtin.as_str() {
                     "Option__some" => {
                         if args.len() != 1 {
