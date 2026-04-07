@@ -5507,6 +5507,89 @@ fn project_build_accepts_module_local_lambda_parameter_types() {
 }
 
 #[test]
+fn project_build_accepts_contextual_lambda_parameter_inference() {
+    let temp_root = make_temp_project_root("project-contextual-lambda-parameter-inference");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nfunction keep(): Integer { f: (Integer) -> Integer = |x| x; return f(7) - 7; }\nfunction main(): Integer { return keep(); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should accept contextual lambda parameter inference");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled contextual lambda parameter inference binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_accepts_contextual_lambda_parameter_inference_with_exact_import_shadowing() {
+    let temp_root =
+        make_temp_project_root("project-contextual-lambda-parameter-inference-exact-shadowing");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nimport Option.None as Empty;\nfunction keep(): Integer { f: (Integer) -> Integer = |Empty| Empty; return f(7) - 7; }\nfunction main(): Integer { return keep(); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should accept contextual lambda parameter inference with exact import shadowing",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled contextual lambda parameter inference exact import shadowing binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_accepts_module_local_contextual_lambda_parameter_inference_with_exact_import_shadowing(
+) {
+    let temp_root = make_temp_project_root(
+        "project-module-local-contextual-lambda-parameter-inference-exact-shadowing",
+    );
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { f: (Integer) -> Integer = |Empty| Empty; return f(7) - 7; } }\nfunction main(): Integer { return Inner.keep(); }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should accept module-local contextual lambda parameter inference with exact import shadowing",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect(
+            "run compiled module-local contextual lambda parameter inference exact import shadowing binary",
+        );
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_accepts_module_local_nested_enum_variant_patterns() {
     let temp_root = make_temp_project_root("project-module-local-nested-enum-variant-patterns");
     let src_dir = temp_root.join("src");

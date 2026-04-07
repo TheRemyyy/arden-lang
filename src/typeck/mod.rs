@@ -3270,6 +3270,13 @@ impl TypeChecker {
                 expected_ty,
             );
         }
+        if let (Expr::Lambda { params, body }, Some(expected_ty)) = (expr, expected) {
+            if let Some(lambda_ty) =
+                self.check_lambda_expr_with_expected_type(params, body, span.clone(), expected_ty)
+            {
+                return lambda_ty;
+            }
+        }
         if let Some(expected_ty) = expected {
             if !matches!(expected_ty, ResolvedType::Function(_, _)) {
                 if let Some(name) = self.resolve_contextual_function_value_name(expr) {
@@ -3662,6 +3669,78 @@ impl TypeChecker {
         }
 
         result_type.unwrap_or(ResolvedType::None)
+    }
+
+    fn check_lambda_expr_with_expected_type(
+        &mut self,
+        params: &[Parameter],
+        body: &Spanned<Expr>,
+        span: Span,
+        expected: &ResolvedType,
+    ) -> Option<ResolvedType> {
+        let ResolvedType::Function(expected_params, expected_return) = expected else {
+            return None;
+        };
+
+        if params.len() != expected_params.len() {
+            self.error(
+                format!(
+                    "Lambda parameter count mismatch: expected {}, got {}",
+                    expected_params.len(),
+                    params.len()
+                ),
+                span,
+            );
+            return Some(ResolvedType::Unknown);
+        }
+
+        self.enter_scope();
+        let saved_return_type = self.current_return_type.clone();
+        self.current_return_type = None;
+
+        let param_types = params
+            .iter()
+            .zip(expected_params.iter())
+            .map(|(param, expected_param)| {
+                let resolved_param_type = if matches!(param.ty, Type::None) {
+                    expected_param.clone()
+                } else {
+                    self.resolve_type(&param.ty)
+                };
+                self.validate_resolved_type_exists(&resolved_param_type, span.clone());
+                self.check_type_visibility(&resolved_param_type, span.clone());
+                if !matches!(param.ty, Type::None)
+                    && !self.types_compatible(expected_param, &resolved_param_type)
+                {
+                    self.error(
+                        format!(
+                            "Lambda parameter type mismatch: expected {}, got {}",
+                            Self::format_resolved_type_for_diagnostic(expected_param),
+                            Self::format_resolved_type_for_diagnostic(&resolved_param_type)
+                        ),
+                        span.clone(),
+                    );
+                }
+                self.declare_variable(
+                    &param.name,
+                    resolved_param_type.clone(),
+                    param.mutable,
+                    span.clone(),
+                );
+                resolved_param_type
+            })
+            .collect::<Vec<_>>();
+
+        let return_type = self.check_expr_with_expected_type(
+            &body.node,
+            body.span.clone(),
+            Some(expected_return.as_ref()),
+        );
+
+        self.current_return_type = saved_return_type;
+        self.exit_scope();
+
+        Some(ResolvedType::Function(param_types, Box::new(return_type)))
     }
 
     fn check_async_block_expr(

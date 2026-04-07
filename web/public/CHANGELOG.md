@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed contextual typing for unannotated lambda parameters:
+  - type checking now applies the expected function signature to lambda parameters and body when a lambda expression appears in a typed function-value context, instead of inferring unannotated parameters as `None`
+  - this fixes valid builds such as `f: (Integer) -> Integer = |x| x`, plus exact-import shadowing forms like `import Option.None as Empty; f: (Integer) -> Integer = |Empty| Empty` and the same shape inside module-local functions, which previously failed with `(None) -> None` type mismatches
 - Fixed module-local shadowing of exact builtin import aliases:
   - project rewrite now extends nested module import maps with the module's own `import` declarations before doing module-local call/type rewriting and then alpha-renames shadowing bindings across locals, callable params, and lambda params for exact imported aliases such as `import Option.None as Empty`
   - this fixes valid project builds such as `module Inner { import Option.None as Empty; function keep(): Option<Integer> { Empty: Option<Integer> = Option.Some(7); return Empty; } }`, `function keep(Empty: Option<Integer>): Option<Integer> { return Empty; }`, `async { Empty: Integer = 7; Empty }`, and `f: () -> Integer = || Empty`, which previously resolved the shadowed binding back to the builtin alias and either returned `None` or failed with follow-on type mismatches
