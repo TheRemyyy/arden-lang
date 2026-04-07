@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { ArrowRight, Blocks, Shield, Terminal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -52,10 +51,10 @@ export function Home() {
                         Arden is a modern systems language built on LLVM. It gives teams low-level control and practical tooling without turning everyday development into a fight.
                     </p>
                     <div className="flex flex-wrap gap-3 pt-2">
-                        <Link to="/docs/overview" className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 text-sm font-semibold text-black transition hover:bg-zinc-200">
+                        <a href="/docs/overview" className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 text-sm font-semibold text-black transition hover:bg-zinc-200">
                             Get started
                             <ArrowRight size={16} />
-                        </Link>
+                        </a>
                         <a
                             href={GITHUB_REPO_URL}
                             target="_blank"
@@ -140,4 +139,3 @@ function FeatureRow({ icon: Icon, title, desc }: { icon: LucideIcon; title: stri
         </article>
     );
 }
-

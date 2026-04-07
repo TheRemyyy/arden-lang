@@ -1,14 +1,12 @@
 ﻿import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import compression from 'vite-plugin-compression'
-import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js'
 import { webfontDl } from 'vite-plugin-webfont-dl'
 
 export default defineConfig({
   plugins: [
     react(),
     compression({ algorithm: 'gzip', ext: '.gz' }),
-    cssInjectedByJsPlugin(),
     webfontDl()
   ],
   test: {

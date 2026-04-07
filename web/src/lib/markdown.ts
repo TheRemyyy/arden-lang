@@ -1,4 +1,3 @@
-import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 
 function slugifyHeading(text: string): string {
@@ -27,29 +26,21 @@ function createRenderer() {
 }
 
 export async function renderMarkdown(markdown: string): Promise<string> {
-    const html = await marked.parse(markdown, { renderer: createRenderer() });
-    return sanitizeMarkdownHtml(html);
+    return marked.parse(markdown, { renderer: createRenderer() });
 }
 
 export function sanitizeMarkdownHtml(html: string): string {
-    return DOMPurify.sanitize(html, {
-        USE_PROFILES: { html: true },
-    });
+    return html;
 }
 
 export function rewriteInternalDocLinks(html: string, currentPath: string): string {
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = html;
-
     const baseDocPath = `${currentPath}.md`;
-    const baseUrl = new URL(baseDocPath, window.location.origin);
-
     const isExternalHref = (href: string) => /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(href);
+    const baseUrl = new URL(baseDocPath, 'https://arden.local');
 
-    tempDiv.querySelectorAll('a').forEach((anchor) => {
-        const rawHref = anchor.getAttribute('href');
+    return html.replace(/<a\b([^>]*)href="([^"]+)"([^>]*)>/g, (full, before, rawHref, after) => {
         if (!rawHref || rawHref.startsWith('#') || isExternalHref(rawHref)) {
-            return;
+            return full;
         }
 
         const resolved = new URL(rawHref, baseUrl);
@@ -64,9 +55,6 @@ export function rewriteInternalDocLinks(html: string, currentPath: string): stri
         }
 
         const finalHref = `${path}${resolved.hash}`;
-        anchor.setAttribute('href', finalHref);
-        anchor.setAttribute('data-router-link', 'true');
+        return `<a${before}href="${finalHref}"${after}>`;
     });
-
-    return tempDiv.innerHTML;
 }

@@ -4,9 +4,12 @@
     "version": "0.0.0",
     "type": "module",
     "scripts": {
-        "dev": "vite",
-        "build": "vite build",
-        "preview": "vite preview",
+        "seo": "node ./scripts/generate-seo.mjs",
+        "predev": "npm run seo",
+        "dev": "vike dev",
+        "prebuild": "npm run seo",
+        "build": "vike build",
+        "preview": "vike preview",
         "check": "tsc",
         "test": "vitest run"
     },
@@ -18,7 +21,9 @@
         "marked": "^11.1.1",
         "react": "^19.2.3",
         "react-dom": "^19.2.3",
-        "react-router-dom": "^7.11.0"
+        "react-router-dom": "^7.11.0",
+        "vike": "^0.4.256",
+        "vike-react": "^0.6.21"
     },
     "devDependencies": {
         "@tailwindcss/typography": "^0.5.19",
@@ -37,7 +42,6 @@
         "typescript": "^5.2.2",
         "vite": "^6.0.0",
         "vite-plugin-compression": "^0.5.1",
-        "vite-plugin-css-injected-by-js": "^3.5.2",
         "vite-plugin-webfont-dl": "^3.11.1",
         "vitest": "^4.0.18"
     }
