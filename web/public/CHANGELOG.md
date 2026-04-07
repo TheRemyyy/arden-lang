@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed builtin `Option.None` alias materialization inside `async` tail `if` expressions:
+  - project rewrite now recursively materializes zero-argument builtin alias values through `async` tail branch boundaries such as `if { ... } else { ... }`, nested tail blocks, and match-arm tail blocks instead of only handling a bare tail expression
+  - this fixes valid project builds such as `await(async { if (flag) { Empty } else { Empty } })`, `await(async { if (flag) { root.Option.None } else { root.Option.None } })`, and the same forms inside module-local `async` blocks, which previously failed with `Undefined variable: Option__none`
 - Fixed corrupted compiler cache recovery:
   - cache blob decoding now treats invalid on-disk cache entries as cache misses with a warning instead of aborting the build on the first malformed bincode payload
   - this fixes interrupted or externally-corrupted project caches such as broken `.ardencache/parsed/*.json` entries, which previously failed valid rebuilds with `Failed to decode parse cache ...` instead of reparsing and continuing

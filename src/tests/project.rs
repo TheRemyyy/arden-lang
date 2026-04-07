@@ -1117,6 +1117,121 @@ fn project_build_supports_module_local_root_alias_builtin_option_none_async_tail
 }
 
 #[test]
+fn project_build_supports_builtin_option_none_async_if_tail_values() {
+    let temp_root = make_temp_project_root("builtin-option-none-async-if-tail-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nimport Option.None as Empty;\nfunction wrap(flag: Boolean): Option<Integer> { return await(async { if (flag) { Empty } else { Empty } }); }\nfunction main(): Integer { return if (wrap(true).is_none()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support builtin Option.None async if-tail values");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled builtin Option.None async if-tail binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_root_namespace_alias_builtin_option_none_async_if_tail_values() {
+    let temp_root = make_temp_project_root("root-alias-builtin-option-none-async-if-tail-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.arden", "src/helper.arden"],
+        "src/main.arden",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nimport app as root;\nfunction wrap(flag: Boolean): Option<Integer> { return await(async { if (flag) { root.Option.None } else { root.Option.None } }); }\nfunction main(): Integer { return if (wrap(true).is_none()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+    fs::write(
+        src_dir.join("helper.arden"),
+        "package app;\nfunction helper(): Integer { return 0; }\n",
+    )
+    .expect("write helper");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support root namespace alias builtin Option.None async if-tail values",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled root alias builtin Option.None async if-tail binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_module_local_builtin_option_none_async_if_tail_values() {
+    let temp_root =
+        make_temp_project_root("module-local-builtin-option-none-async-if-tail-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nmodule Inner { import Option.None as Empty; function wrap(flag: Boolean): Task<Option<Integer>> { return async { if (flag) { Empty } else { Empty } }; } }\nfunction main(): Integer { value: Option<Integer> = await(Inner.wrap(true)); return if (value.is_none()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support module-local builtin Option.None async if-tail values",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled module-local builtin Option.None async if-tail binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_module_local_root_alias_builtin_option_none_async_if_tail_values() {
+    let temp_root =
+        make_temp_project_root("module-local-root-alias-builtin-option-none-async-if-tail-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nmodule Inner { import app as root; function wrap(flag: Boolean): Task<Option<Integer>> { return async { if (flag) { root.Option.None } else { root.Option.None } }; } }\nfunction main(): Integer { value: Option<Integer> = await(Inner.wrap(true)); return if (value.is_none()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support module-local root alias builtin Option.None async if-tail values",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled module-local root alias builtin Option.None async if-tail binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_module_wildcard_import_calls() {
     let temp_root = make_temp_project_root("module-wildcard-import-call-project");
     let src_dir = temp_root.join("src");

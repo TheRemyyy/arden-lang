@@ -549,6 +549,92 @@ fn materialize_builtin_import_value_for_type(
     materialize_builtin_import_value(expr, imported_map, imported_modules, scopes)
 }
 
+fn materialize_builtin_async_tail_block(
+    block: &ast::Block,
+    imported_map: &ImportedMap,
+    imported_modules: &ImportedMap,
+    scopes: &[HashSet<String>],
+) -> Option<ast::Block> {
+    let mut rewritten = block.clone();
+    let last_stmt = rewritten.last_mut()?;
+    let Stmt::Expr(expr) = &last_stmt.node else {
+        return None;
+    };
+    let materialized =
+        materialize_builtin_async_tail_expr(&expr.node, imported_map, imported_modules, scopes)?;
+    last_stmt.node = Stmt::Expr(ast::Spanned::new(materialized, expr.span.clone()));
+    Some(rewritten)
+}
+
+fn materialize_builtin_async_tail_expr(
+    expr: &Expr,
+    imported_map: &ImportedMap,
+    imported_modules: &ImportedMap,
+    scopes: &[HashSet<String>],
+) -> Option<Expr> {
+    if let Some(materialized) =
+        materialize_builtin_import_value(expr, imported_map, imported_modules, scopes)
+    {
+        return Some(materialized);
+    }
+
+    match expr {
+        Expr::IfExpr {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            let rewritten_then = materialize_builtin_async_tail_block(
+                then_branch,
+                imported_map,
+                imported_modules,
+                scopes,
+            );
+            let rewritten_else = else_branch.as_ref().and_then(|branch| {
+                materialize_builtin_async_tail_block(branch, imported_map, imported_modules, scopes)
+            });
+            if rewritten_then.is_none() && rewritten_else.is_none() {
+                return None;
+            }
+            Some(Expr::IfExpr {
+                condition: condition.clone(),
+                then_branch: rewritten_then.unwrap_or_else(|| then_branch.clone()),
+                else_branch: rewritten_else.or_else(|| else_branch.clone()),
+            })
+        }
+        Expr::Block(block) => {
+            materialize_builtin_async_tail_block(block, imported_map, imported_modules, scopes)
+                .map(Expr::Block)
+        }
+        Expr::Match { expr, arms } => {
+            let mut changed = false;
+            let rewritten_arms = arms
+                .iter()
+                .map(|arm| {
+                    let rewritten_body = materialize_builtin_async_tail_block(
+                        &arm.body,
+                        imported_map,
+                        imported_modules,
+                        scopes,
+                    );
+                    if rewritten_body.is_some() {
+                        changed = true;
+                    }
+                    ast::MatchArm {
+                        pattern: arm.pattern.clone(),
+                        body: rewritten_body.unwrap_or_else(|| arm.body.clone()),
+                    }
+                })
+                .collect::<Vec<_>>();
+            changed.then(|| Expr::Match {
+                expr: expr.clone(),
+                arms: rewritten_arms,
+            })
+        }
+        _ => None,
+    }
+}
+
 fn direct_wildcard_member_name(
     import_path: &str,
     owner_ns: &str,
@@ -3865,18 +3951,13 @@ fn fix_module_local_expr(expr: &Expr, ctx: ModuleRewriteContext<'_>) -> Expr {
         Expr::Block(block) => Expr::Block(self::fix_module_local_block(block, module_rewrite_ctx)),
         Expr::AsyncBlock(body) => {
             let mut rewritten_body = self::fix_module_local_block(body, module_rewrite_ctx);
-            if let Some(last_stmt) = rewritten_body.last_mut() {
-                if let Stmt::Expr(expr) = &last_stmt.node {
-                    if let Some(materialized) = materialize_builtin_import_value(
-                        &expr.node,
-                        imported_map,
-                        imported_modules,
-                        &[],
-                    ) {
-                        last_stmt.node =
-                            Stmt::Expr(ast::Spanned::new(materialized, expr.span.clone()));
-                    }
-                }
+            if let Some(materialized) = materialize_builtin_async_tail_block(
+                &rewritten_body,
+                imported_map,
+                imported_modules,
+                &[],
+            ) {
+                rewritten_body = materialized;
             }
             Expr::AsyncBlock(rewritten_body)
         }
@@ -6272,7 +6353,16 @@ fn rewrite_expr_calls_for_project(
                 .collect(),
         ),
         Expr::AsyncBlock(body) => {
-            Expr::AsyncBlock(rewrite_block_calls_for_project(body, ctx, scopes))
+            let mut rewritten_body = rewrite_block_calls_for_project(body, ctx, scopes);
+            if let Some(materialized) = materialize_builtin_async_tail_block(
+                &rewritten_body,
+                imported_map,
+                imported_modules,
+                scopes,
+            ) {
+                rewritten_body = materialized;
+            }
+            Expr::AsyncBlock(rewritten_body)
         }
         Expr::Require { condition, message } => Expr::Require {
             condition: Box::new(ast::Spanned::new(
