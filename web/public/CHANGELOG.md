@@ -41,6 +41,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed method-receiver coercion for exact zero-argument aliases:
   - method-call receiver inference now treats exact zero-argument aliases as concrete values instead of unresolved canonical symbols before dispatching builtin or class methods
   - this fixes valid project builds such as `CurrentDir.length()`, which previously failed with `Undefined variable: std__system__cwd`
+- Fixed builtin exact import aliases as method receivers:
+  - `Option.None` and similar builtin exact import aliases now materialize their receiver values during project rewrite instead of being treated as unresolved static owners
+  - this fixes valid project builds such as `import Option.None as Empty; Empty.is_none();`, which previously failed with `Undefined variable: Option__None`
 - Fixed typed collection method arguments skipping exact zero-argument alias coercion:
   - collection methods such as `List.push`, `List.set`, `Map.insert`, `Map.set`, `Map.get`, `Map.contains`, and `Set.add`/`remove`/`contains` now type-check their value arguments through the same expected-type path as regular function calls instead of bypassing contextual coercions
   - this fixes valid project builds such as `values: List<Float> = List<Float>(); values.push(Pi);` for `import std.math.pi as Pi;`, which previously failed with `Undefined variable: Math__pi` even after zero-argument exact import values worked in direct `let`, `return`, and plain call-argument contexts

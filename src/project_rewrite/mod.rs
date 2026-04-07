@@ -5752,7 +5752,11 @@ fn rewrite_expr_calls_for_project(
                             name,
                         ))
                     } else if let Some((ns, symbol_name)) = imported_modules.get(name) {
-                        if let Some(canonical) =
+                        if let Some(value_expr) =
+                            builtin_exact_import_value_expr(ns, symbol_name)
+                        {
+                            value_expr
+                        } else if let Some(canonical) =
                             resolve_exact_stdlib_imported_value_symbol(ns, symbol_name)
                         {
                             Expr::Ident(canonical)

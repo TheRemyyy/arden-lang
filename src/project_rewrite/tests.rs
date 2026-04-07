@@ -2270,6 +2270,81 @@ fn rewrites_exact_stdlib_value_alias_method_receivers_to_canonical_builtin_ident
 }
 
 #[test]
+fn rewrites_builtin_exact_value_alias_method_receivers_to_materialized_values() {
+    let program = Program {
+        package: Some("app".to_string()),
+        declarations: vec![sp(Decl::Function(ast::FunctionDecl {
+            name: "main".to_string(),
+            generic_params: vec![],
+            params: vec![],
+            is_variadic: false,
+            extern_abi: None,
+            extern_link_name: None,
+            return_type: ast::Type::None,
+            body: vec![sp(Stmt::Expr(sp(Expr::Call {
+                callee: Box::new(sp(Expr::Field {
+                    object: Box::new(sp(Expr::Ident("Empty".to_string()))),
+                    field: "is_none".to_string(),
+                })),
+                args: vec![],
+                type_args: vec![],
+            })))],
+            is_async: false,
+            is_extern: false,
+            visibility: ast::Visibility::Private,
+            attributes: vec![],
+        }))],
+    };
+
+    let imports = vec![ast::ImportDecl {
+        path: "Option.None".to_string(),
+        alias: Some("Empty".to_string()),
+    }];
+
+    let rewritten = rewrite_program_for_project(
+        &program,
+        "app",
+        "app",
+        &HashMap::from([("app".to_string(), HashSet::from(["main".to_string()]))]),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &imports,
+    );
+
+    let Decl::Function(func) = &rewritten.declarations[0].node else {
+        panic!("expected function declaration");
+    };
+    let Stmt::Expr(call_stmt) = &func.body[0].node else {
+        panic!("expected expr statement");
+    };
+    let Expr::Call { callee, .. } = &call_stmt.node else {
+        panic!("expected call expression");
+    };
+    let Expr::Field { object, field } = &callee.node else {
+        panic!("expected field receiver call");
+    };
+    let Expr::Call { callee, args, type_args } = &object.node else {
+        panic!("expected materialized builtin value call");
+    };
+    assert!(args.is_empty(), "Option.none() should stay zero-arg");
+    assert!(type_args.is_empty(), "Option.none() should not gain type args");
+    let Expr::Field { object, field: builtin_field } = &callee.node else {
+        panic!("expected Option.none() field callee");
+    };
+    let Expr::Ident(owner) = &object.node else {
+        panic!("expected Option static owner ident");
+    };
+    assert_eq!(owner, "Option");
+    assert_eq!(builtin_field, "none");
+    assert_eq!(field, "is_none");
+}
+
+#[test]
 fn rewrites_function_value_identifiers_outside_call_positions() {
     let program = Program {
         package: Some("app".to_string()),

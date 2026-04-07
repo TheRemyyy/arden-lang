@@ -1887,6 +1887,36 @@ fn project_build_supports_zero_arg_exact_import_values_as_method_receivers() {
 }
 
 #[test]
+fn project_build_supports_builtin_option_none_alias_as_method_receiver() {
+    let temp_root = make_temp_project_root("builtin-option-none-method-receiver-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport Option.None as Empty;\nfunction main(): Integer { return if (Empty.is_none()) { 0 } else { 1 }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false)
+            .expect("project build should support builtin Option.None alias method receivers");
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled builtin Option.None alias method receiver binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_builtin_option_some_alias_calls() {
     let temp_root = make_temp_project_root("builtin-option-some-alias-project");
     let src_dir = temp_root.join("src");
