@@ -32,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `?`-expression coercion for exact zero-argument aliases:
   - try-expression validation, inference, and codegen now route the wrapped Option/Result expression through the same builtin-aware alias path used by other container boundaries instead of unwrapping unresolved raw builtin symbols
   - this fixes valid project builds such as `value: Integer = Option.some(ArgCount)?;`, which previously could panic the compiler via an internal `unwrap()` after failing to lower `Args__count`
+- Fixed zero-argument pipe lambda coercion for exact zero-argument aliases:
+  - lambda body validation and return-type inference now materialize exact zero-argument builtin aliases through the same builtin-aware path used by other expression boundaries instead of treating them as nested function values
+  - this fixes valid project builds such as `f: () -> Integer = || ArgCount;`, which previously failed with `Type mismatch: cannot assign () -> () -> Integer to variable of type () -> Integer`
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`

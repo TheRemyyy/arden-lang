@@ -3627,7 +3627,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Lambda { params, body } => {
-                let ret_ty = self.infer_expr_type(&body.node, params);
+                let ret_ty = self.infer_builtin_argument_type(&body.node);
                 Type::Function(
                     params.iter().map(|p| p.ty.clone()).collect(),
                     Box::new(ret_ty),

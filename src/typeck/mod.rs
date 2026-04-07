@@ -4361,7 +4361,7 @@ impl TypeChecker {
                     })
                     .collect();
 
-                let return_type = self.check_expr(&body.node, body.span.clone());
+                let return_type = self.check_builtin_argument_expr(&body.node, body.span.clone());
 
                 self.current_return_type = saved_return_type;
                 self.exit_scope();
