@@ -516,6 +516,9 @@ fn materialize_builtin_import_value(
             if is_shadowed(name, scopes) {
                 return None;
             }
+            if let Some(value_expr) = builtin_exact_import_value_expr("", name) {
+                return Some(value_expr);
+            }
             let (namespace_path, symbol_name) = imported_map.get(name)?;
             builtin_exact_import_value_expr(namespace_path, symbol_name)
         }
@@ -3980,6 +3983,7 @@ fn fix_module_local_stmt(stmt: &Stmt, ctx: ModuleRewriteContext<'_>) -> Stmt {
     let module_prefix = ctx.module_prefix;
     let module_call_ctx = ctx.call_ctx;
     let module_type_ctx = module_call_ctx.type_ctx;
+    let imported_map = module_call_ctx.imported_map;
     let current_namespace = module_type_ctx.current_namespace;
     let entry_namespace = module_type_ctx.entry_namespace;
     let local_functions = module_call_ctx.local_functions;
@@ -4009,15 +4013,47 @@ fn fix_module_local_stmt(stmt: &Stmt, ctx: ModuleRewriteContext<'_>) -> Stmt {
             ty,
             value,
             mutable,
-        } => Stmt::Let {
-            name: name.clone(),
-            ty: self::rewrite_module_local_type(ty, module_rewrite_ctx),
-            value: ast::Spanned::new(
-                fix_module_local_expr(&value.node, module_rewrite_ctx),
-                value.span.clone(),
-            ),
-            mutable: *mutable,
-        },
+        } => {
+            let rewritten_value = fix_module_local_expr(&value.node, module_rewrite_ctx);
+            let rewritten_value = match (&value.node, &rewritten_value, ty) {
+                (
+                    Expr::Lambda {
+                        params,
+                        body: original_body,
+                    },
+                    Expr::Lambda {
+                        params: rewritten_params,
+                        body: rewritten_body,
+                    },
+                    ast::Type::Function(_, return_type),
+                ) => {
+                    let param_scope = params
+                        .iter()
+                        .map(|param| param.name.clone())
+                        .collect::<HashSet<_>>();
+                    let lambda_body = materialize_builtin_import_value_for_type(
+                        &original_body.node,
+                        return_type.as_ref(),
+                        imported_map,
+                        imported_modules,
+                        &[param_scope],
+                    )
+                    .unwrap_or_else(|| rewritten_body.node.clone());
+                    Expr::Lambda {
+                        params: rewritten_params.clone(),
+                        body: Box::new(ast::Spanned::new(lambda_body, rewritten_body.span.clone())),
+                    }
+                }
+                _ => rewritten_value,
+            };
+
+            Stmt::Let {
+                name: name.clone(),
+                ty: self::rewrite_module_local_type(ty, module_rewrite_ctx),
+                value: ast::Spanned::new(rewritten_value, value.span.clone()),
+                mutable: *mutable,
+            }
+        }
         Stmt::Assign { target, value } => Stmt::Assign {
             target: ast::Spanned::new(
                 fix_module_local_expr(&target.node, module_rewrite_ctx),
