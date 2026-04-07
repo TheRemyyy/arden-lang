@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Blocks, Shield, Terminal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { CURRENT_VERSION, GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
 
 const principles = [
     'Memory safety with less ceremony',
@@ -29,41 +29,21 @@ const features = [
 ];
 
 export function Home() {
-    const [latestVersion, setLatestVersion] = useState('v1.3.1');
-
-    useEffect(() => {
-        const controller = new AbortController();
-
-        fetch('https://api.github.com/repos/TheRemyyy/arden/releases/latest', {
-            signal: controller.signal,
-            headers: {
-                Accept: 'application/vnd.github+json',
-            },
-        })
-            .then((res) => {
-                if (!res.ok) throw new Error(`GitHub API returned ${res.status}`);
-                return res.json() as Promise<{ tag_name?: string }>;
-            })
-            .then((data) => {
-                const tag = data.tag_name?.trim();
-                if (!tag) return;
-                setLatestVersion(tag.startsWith('v') ? tag : `v${tag}`);
-            })
-            .catch((err: unknown) => {
-                if (err instanceof Error && err.name === 'AbortError') return;
-                // Keep fallback version on errors (rate limit/network/etc.)
-            });
-
-        return () => controller.abort();
-    }, []);
-
     return (
         <div className="min-h-screen overflow-x-hidden bg-[#0a0a0a] text-zinc-100">
             <section className="mx-auto grid w-full max-w-6xl gap-14 overflow-hidden px-6 pb-24 pt-36 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="min-w-0 space-y-8">
                     <div className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-medium text-zinc-300">
-                        <img src="/logo.png" alt="" className="h-4 w-4 rounded-sm" aria-hidden="true" />
-                        Arden {latestVersion}
+                        <img
+                            src={UI_LOGO_SRC}
+                            alt=""
+                            width="16"
+                            height="16"
+                            decoding="async"
+                            className="h-4 w-4 rounded-sm"
+                            aria-hidden="true"
+                        />
+                        Arden {CURRENT_VERSION}
                     </div>
                     <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-white md:text-6xl break-words">
                         Build systems software with speed, safety, and less friction.
@@ -77,7 +57,7 @@ export function Home() {
                             <ArrowRight size={16} />
                         </Link>
                         <a
-                            href="https://github.com/TheRemyyy/arden"
+                            href={GITHUB_REPO_URL}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex h-11 items-center rounded-lg border border-zinc-700 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800"
@@ -91,7 +71,7 @@ export function Home() {
                     <div className="rounded-2xl border border-zinc-700 bg-[#111111] p-6">
                         <div className="mb-4 flex items-center justify-between">
                             <p className="text-sm font-medium text-zinc-200">Range Iterator</p>
-                            <span className="rounded-md bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-300">{latestVersion}</span>
+                            <span className="rounded-md bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-300">{CURRENT_VERSION}</span>
                         </div>
                         <div className="rounded-xl border border-zinc-700 bg-[#0d0d0d] p-5">
                             <pre className="overflow-x-auto whitespace-pre-wrap break-words text-sm leading-7 text-zinc-300">
@@ -160,5 +140,4 @@ function FeatureRow({ icon: Icon, title, desc }: { icon: LucideIcon; title: stri
         </article>
     );
 }
-
 

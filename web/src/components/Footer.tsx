@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
 
 export function Footer() {
     return (
@@ -6,7 +7,14 @@ export function Footer() {
             <div className="mx-auto grid max-w-6xl gap-10 px-6 md:grid-cols-4">
                 <div className="col-span-2">
                     <Link to="/" className="mb-4 inline-flex items-center gap-3 text-lg font-semibold text-white">
-                        <img src="/logo.png" alt="Arden logo" className="h-9 w-9 rounded-xl" />
+                        <img
+                            src={UI_LOGO_SRC}
+                            alt="Arden logo"
+                            width="36"
+                            height="36"
+                            decoding="async"
+                            className="h-9 w-9 rounded-xl"
+                        />
                         <span>Arden</span>
                     </Link>
                     <p className="max-w-sm text-sm leading-relaxed">
@@ -20,7 +28,7 @@ export function Footer() {
                         <li><Link to="/docs/overview" className="hover:text-white transition-colors">Documentation</Link></li>
                         <li><Link to="/docs/stdlib/overview" className="hover:text-white transition-colors">Standard Library</Link></li>
                         <li><Link to="/changelog" className="hover:text-white transition-colors">Changelog</Link></li>
-                        <li><a href="https://github.com/TheRemyyy/arden" className="hover:text-white transition-colors">GitHub</a></li>
+                        <li><a href={GITHUB_REPO_URL} className="hover:text-white transition-colors">GitHub</a></li>
                     </ul>
                 </div>
 
