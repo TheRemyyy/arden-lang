@@ -10636,6 +10636,7 @@ impl<'ctx> Codegen<'ctx> {
                     );
                     if !is_map_index_target {
                         let target_ty = self.infer_expr_type(&target.node, &[]);
+                        let rhs_ty = self.infer_builtin_argument_type(&rhs.node);
                         let ptr = self.compile_lvalue(&target.node)?;
                         let current = self
                             .builder
@@ -10651,7 +10652,7 @@ impl<'ctx> Codegen<'ctx> {
                             current,
                             rhs_value,
                             &target_ty,
-                            &self.infer_expr_type(&rhs.node, &[]),
+                            &rhs_ty,
                         )?;
                         self.builder.build_store(ptr, result).unwrap();
                         return Ok(());
