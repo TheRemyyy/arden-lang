@@ -4199,19 +4199,38 @@ fn rename_shadowed_module_imports_in_block(
                 var_type,
                 iterable,
                 body,
-            } => Stmt::For {
-                var: var.clone(),
-                var_type: var_type.clone(),
-                iterable: ast::Spanned::new(
-                    rename_shadowed_module_imports_in_expr(
-                        &iterable.node,
-                        imported_map,
-                        rename_scopes,
+            } => {
+                let renamed = if imported_map.contains_key(var) {
+                    format!("__module_local_{}", var)
+                } else {
+                    var.clone()
+                };
+                Stmt::For {
+                    var: renamed.clone(),
+                    var_type: var_type.clone(),
+                    iterable: ast::Spanned::new(
+                        rename_shadowed_module_imports_in_expr(
+                            &iterable.node,
+                            imported_map,
+                            rename_scopes,
+                        ),
+                        iterable.span.clone(),
                     ),
-                    iterable.span.clone(),
-                ),
-                body: rename_shadowed_module_imports_in_block(body, imported_map, rename_scopes),
-            },
+                    body: {
+                        rename_scopes.push(HashMap::new());
+                        if let Some(scope) = rename_scopes.last_mut() {
+                            scope.insert(var.clone(), renamed);
+                        }
+                        let body = rename_shadowed_module_imports_in_block(
+                            body,
+                            imported_map,
+                            rename_scopes,
+                        );
+                        rename_scopes.pop();
+                        body
+                    },
+                }
+            }
             Stmt::Match { expr, arms } => Stmt::Match {
                 expr: ast::Spanned::new(
                     rename_shadowed_module_imports_in_expr(&expr.node, imported_map, rename_scopes),
@@ -4895,7 +4914,13 @@ fn fix_module_local_stmt(
                 fix_module_local_expr(&iterable.node, module_rewrite_ctx),
                 iterable.span.clone(),
             ),
-            body: self::fix_module_local_block(body, module_rewrite_ctx),
+            body: {
+                let mut loop_scopes = scopes.to_vec();
+                let mut loop_scope = HashSet::new();
+                loop_scope.insert(var.clone());
+                loop_scopes.push(loop_scope);
+                self::fix_module_local_block_with_scopes(body, module_rewrite_ctx, &loop_scopes)
+            },
         },
         Stmt::Match { expr, arms } => Stmt::Match {
             expr: ast::Spanned::new(
