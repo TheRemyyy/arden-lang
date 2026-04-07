@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed enum variant function-value adaptation for compatible expected signatures:
+  - codegen now emits the closure for the variant's real constructor signature first and then applies the same function-value adapter path used by named functions and class constructors instead of requiring an exact signature match up front
+  - this fixes valid builds such as `ctor: (Box) -> E = E.Wrap` when `E.Wrap` actually accepts an interface like `Named` implemented by `Box`, which previously failed in codegen with `Type mismatch: expected (app.Box) -> app.E, got (app.Named) -> app.E`
 - Fixed contextual typing for unannotated lambdas returned from `if`, `match`, and `async` tail expressions:
   - codegen-side tail/branch inference now propagates the expected function signature through `if` branches, `match` arms, nested tail blocks, and async block tails instead of re-inferring branch lambdas without parameter context
   - this fixes valid builds such as `return if (flag) { (x: Integer) => x } else { (x: Integer) => x + 1 };`, `return match (flag) { true => { (x: Integer) => x }, false => { (x: Integer) => x + 1 } };`, and `return async { (x: Integer) => x + 1 };`, which previously collapsed lambda body types to `None` and failed in codegen with numeric-operator diagnostics
