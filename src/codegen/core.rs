@@ -13977,17 +13977,219 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     fn is_supported_function_adapter_param(&self, expected: &Type, actual: &Type) -> bool {
-        expected == actual
-            || self.llvm_type(&self.normalize_codegen_type(expected))
-                == self.llvm_type(&self.normalize_codegen_type(actual))
-            || matches!((expected, actual), (Type::Integer, Type::Float))
+        self.is_supported_function_adapter_assignment(actual, expected)
     }
 
     fn is_supported_function_adapter_return(&self, actual: &Type, expected: &Type) -> bool {
-        actual == expected
-            || self.llvm_type(&self.normalize_codegen_type(actual))
-                == self.llvm_type(&self.normalize_codegen_type(expected))
-            || matches!((actual, expected), (Type::Integer, Type::Float))
+        self.is_supported_function_adapter_assignment(expected, actual)
+    }
+
+    fn is_supported_function_adapter_assignment(&self, expected: &Type, actual: &Type) -> bool {
+        let expected = self.normalize_codegen_type(expected);
+        let actual = self.normalize_codegen_type(actual);
+        if expected == actual {
+            return true;
+        }
+        if matches!((&expected, &actual), (Type::Float, Type::Integer)) {
+            return true;
+        }
+
+        match (&expected, &actual) {
+            (Type::Named(_), Type::Named(_))
+            | (Type::Named(_), Type::Generic(_, _))
+            | (Type::Generic(_, _), Type::Named(_))
+            | (Type::Generic(_, _), Type::Generic(_, _)) => {
+                self.is_supported_function_adapter_nominal_assignment(&expected, &actual)
+            }
+            (Type::Ref(expected), Type::Ref(actual))
+            | (Type::MutRef(expected), Type::MutRef(actual))
+            | (Type::Ptr(expected), Type::Ptr(actual))
+            | (Type::Box(expected), Type::Box(actual))
+            | (Type::Rc(expected), Type::Rc(actual))
+            | (Type::Arc(expected), Type::Arc(actual))
+            | (Type::List(expected), Type::List(actual))
+            | (Type::Set(expected), Type::Set(actual))
+            | (Type::Option(expected), Type::Option(actual))
+            | (Type::Task(expected), Type::Task(actual))
+            | (Type::Range(expected), Type::Range(actual)) => {
+                self.is_supported_function_adapter_invariant(expected, actual)
+            }
+            (Type::Ref(expected), Type::MutRef(actual)) => {
+                self.is_supported_function_adapter_invariant(expected, actual)
+            }
+            (Type::Result(expected_ok, expected_err), Type::Result(actual_ok, actual_err)) => {
+                self.is_supported_function_adapter_invariant(expected_ok, actual_ok)
+                    && self.is_supported_function_adapter_invariant(expected_err, actual_err)
+            }
+            (Type::Map(expected_key, expected_value), Type::Map(actual_key, actual_value)) => {
+                self.is_supported_function_adapter_invariant(expected_key, actual_key)
+                    && self.is_supported_function_adapter_invariant(expected_value, actual_value)
+            }
+            (
+                Type::Function(expected_params, expected_ret),
+                Type::Function(actual_params, actual_ret),
+            ) => {
+                expected_params.len() == actual_params.len()
+                    && expected_params.iter().zip(actual_params.iter()).all(
+                        |(expected_param, actual_param)| {
+                            self.is_supported_function_adapter_assignment(
+                                actual_param,
+                                expected_param,
+                            )
+                        },
+                    )
+                    && self.is_supported_function_adapter_assignment(expected_ret, actual_ret)
+            }
+            _ => false,
+        }
+    }
+
+    fn is_supported_function_adapter_invariant(&self, expected: &Type, actual: &Type) -> bool {
+        let expected = self.normalize_codegen_type(expected);
+        let actual = self.normalize_codegen_type(actual);
+        if expected == actual {
+            return true;
+        }
+
+        match (&expected, &actual) {
+            (Type::Named(_), Type::Named(_))
+            | (Type::Named(_), Type::Generic(_, _))
+            | (Type::Generic(_, _), Type::Named(_))
+            | (Type::Generic(_, _), Type::Generic(_, _)) => {
+                self.function_adapter_same_nominal_arguments(&expected, &actual)
+            }
+            (Type::Ref(expected), Type::Ref(actual))
+            | (Type::MutRef(expected), Type::MutRef(actual))
+            | (Type::Ptr(expected), Type::Ptr(actual))
+            | (Type::Box(expected), Type::Box(actual))
+            | (Type::Rc(expected), Type::Rc(actual))
+            | (Type::Arc(expected), Type::Arc(actual))
+            | (Type::List(expected), Type::List(actual))
+            | (Type::Set(expected), Type::Set(actual))
+            | (Type::Option(expected), Type::Option(actual))
+            | (Type::Task(expected), Type::Task(actual))
+            | (Type::Range(expected), Type::Range(actual)) => {
+                self.is_supported_function_adapter_invariant(expected, actual)
+            }
+            (Type::Ref(expected), Type::MutRef(actual)) => {
+                self.is_supported_function_adapter_invariant(expected, actual)
+            }
+            (Type::Result(expected_ok, expected_err), Type::Result(actual_ok, actual_err)) => {
+                self.is_supported_function_adapter_invariant(expected_ok, actual_ok)
+                    && self.is_supported_function_adapter_invariant(expected_err, actual_err)
+            }
+            (Type::Map(expected_key, expected_value), Type::Map(actual_key, actual_value)) => {
+                self.is_supported_function_adapter_invariant(expected_key, actual_key)
+                    && self.is_supported_function_adapter_invariant(expected_value, actual_value)
+            }
+            (
+                Type::Function(expected_params, expected_ret),
+                Type::Function(actual_params, actual_ret),
+            ) => {
+                expected_params.len() == actual_params.len()
+                    && expected_params.iter().zip(actual_params.iter()).all(
+                        |(expected_param, actual_param)| {
+                            self.is_supported_function_adapter_invariant(
+                                expected_param,
+                                actual_param,
+                            )
+                        },
+                    )
+                    && self.is_supported_function_adapter_invariant(expected_ret, actual_ret)
+            }
+            _ => false,
+        }
+    }
+
+    fn is_supported_function_adapter_nominal_assignment(
+        &self,
+        expected: &Type,
+        actual: &Type,
+    ) -> bool {
+        let Some(expected_name) = Self::function_adapter_nominal_base_name(expected) else {
+            return false;
+        };
+        let Some(actual_name) = Self::function_adapter_nominal_base_name(actual) else {
+            return false;
+        };
+
+        if expected_name == actual_name {
+            return self.function_adapter_same_nominal_arguments(expected, actual);
+        }
+
+        if self.interfaces.contains_key(expected_name) {
+            return self
+                .interface_implementors
+                .get(expected_name)
+                .is_some_and(|implementors| implementors.contains(actual_name));
+        }
+
+        if self.classes.contains_key(expected_name) && self.classes.contains_key(actual_name) {
+            return self.is_same_or_subclass_for_function_adapter(actual_name, expected_name);
+        }
+
+        false
+    }
+
+    fn function_adapter_same_nominal_arguments(&self, expected: &Type, actual: &Type) -> bool {
+        match (expected, actual) {
+            (Type::Named(_), Type::Named(_)) => true,
+            (
+                Type::Generic(expected_name, expected_args),
+                Type::Generic(actual_name, actual_args),
+            ) if expected_name == actual_name && expected_args.len() == actual_args.len() => {
+                expected_args
+                    .iter()
+                    .zip(actual_args.iter())
+                    .all(|(expected_arg, actual_arg)| {
+                        self.is_supported_function_adapter_invariant(expected_arg, actual_arg)
+                    })
+            }
+            (Type::Named(expected_name), Type::Generic(actual_name, actual_args))
+                if expected_name == actual_name && actual_args.is_empty() =>
+            {
+                true
+            }
+            (Type::Generic(expected_name, expected_args), Type::Named(actual_name))
+                if expected_name == actual_name && expected_args.is_empty() =>
+            {
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn function_adapter_nominal_base_name(ty: &Type) -> Option<&str> {
+        match ty {
+            Type::Named(name) | Type::Generic(name, _) => {
+                Some(name.split('<').next().unwrap_or(name))
+            }
+            _ => None,
+        }
+    }
+
+    fn is_same_or_subclass_for_function_adapter(&self, class_name: &str, ancestor: &str) -> bool {
+        if class_name == ancestor {
+            return true;
+        }
+
+        let mut current = class_name;
+        let mut depth = 0usize;
+        while depth < 64 {
+            let Some(info) = self.classes.get(current) else {
+                return false;
+            };
+            let Some(parent) = &info.extends else {
+                return false;
+            };
+            let parent_base = parent.split('<').next().unwrap_or(parent);
+            if parent_base == ancestor {
+                return true;
+            }
+            current = parent_base;
+            depth += 1;
+        }
+        false
     }
 
     fn adapt_function_adapter_param(
@@ -13999,26 +14201,27 @@ impl<'ctx> Codegen<'ctx> {
         if expected_ty == actual_ty {
             return Ok(value);
         }
-        if self.llvm_type(&self.normalize_codegen_type(expected_ty))
-            == self.llvm_type(&self.normalize_codegen_type(actual_ty))
-        {
+        match (expected_ty, actual_ty) {
+            (Type::Integer, Type::Float) if value.is_int_value() => {
+                return Ok(self
+                    .builder
+                    .build_signed_int_to_float(
+                        value.into_int_value(),
+                        self.context.f64_type(),
+                        "fn_adapter_param_float",
+                    )
+                    .unwrap()
+                    .into())
+            }
+            _ => {}
+        }
+        if self.is_supported_function_adapter_assignment(actual_ty, expected_ty) {
             return Ok(value);
         }
-        match (expected_ty, actual_ty) {
-            (Type::Integer, Type::Float) if value.is_int_value() => Ok(self
-                .builder
-                .build_signed_int_to_float(
-                    value.into_int_value(),
-                    self.context.f64_type(),
-                    "fn_adapter_param_float",
-                )
-                .unwrap()
-                .into()),
-            _ => Err(CodegenError::new(format!(
-                "unsupported function adapter parameter conversion: {:?} -> {:?}",
-                expected_ty, actual_ty
-            ))),
-        }
+        Err(CodegenError::new(format!(
+            "unsupported function adapter parameter conversion: {:?} -> {:?}",
+            expected_ty, actual_ty
+        )))
     }
 
     fn adapt_function_adapter_return(
@@ -14031,22 +14234,27 @@ impl<'ctx> Codegen<'ctx> {
         if actual_ty == expected_ty {
             return Ok(value);
         }
-        if self.llvm_type(&self.normalize_codegen_type(actual_ty))
-            == self.llvm_type(&self.normalize_codegen_type(expected_ty))
-        {
+        match (actual_ty, expected_ty) {
+            (Type::Integer, Type::Float) if value.is_int_value() => {
+                return Ok(self
+                    .builder
+                    .build_signed_int_to_float(
+                        value.into_int_value(),
+                        self.context.f64_type(),
+                        name,
+                    )
+                    .unwrap()
+                    .into())
+            }
+            _ => {}
+        }
+        if self.is_supported_function_adapter_assignment(expected_ty, actual_ty) {
             return Ok(value);
         }
-        match (actual_ty, expected_ty) {
-            (Type::Integer, Type::Float) if value.is_int_value() => Ok(self
-                .builder
-                .build_signed_int_to_float(value.into_int_value(), self.context.f64_type(), name)
-                .unwrap()
-                .into()),
-            _ => Err(CodegenError::new(format!(
-                "unsupported function adapter return conversion: {:?} -> {:?}",
-                actual_ty, expected_ty
-            ))),
-        }
+        Err(CodegenError::new(format!(
+            "unsupported function adapter return conversion: {:?} -> {:?}",
+            actual_ty, expected_ty
+        )))
     }
 
     fn compile_char_to_string(&mut self, codepoint: IntValue<'ctx>) -> Result<PointerValue<'ctx>> {

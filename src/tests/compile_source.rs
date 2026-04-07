@@ -16696,6 +16696,42 @@ fn compile_source_no_check_rejects_extern_function_values_even_with_adapter_sign
 }
 
 #[test]
+fn compile_source_no_check_rejects_function_value_adapter_between_unrelated_nominal_returns() {
+    let temp_root = make_temp_project_root("no-check-fn-adapter-unrelated-nominal-return");
+    let source_path = temp_root.join("no_check_fn_adapter_unrelated_nominal_return.arden");
+    let output_path = temp_root.join("no_check_fn_adapter_unrelated_nominal_return");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function make_a(): A {
+                return A();
+            }
+
+            function main(): Integer {
+                f: () -> B = make_a;
+                value: B = f();
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated nominal return adapter should fail in codegen");
+    assert!(
+        err.contains("Cannot use function value () -> A as () -> B"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");
