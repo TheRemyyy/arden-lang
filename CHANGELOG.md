@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - this fixes valid builds such as `f: (Integer) -> Integer = (x: Integer) => x`, plus exact-import shadowing forms like `import Option.None as Empty; f: (Integer) -> Integer = (Empty: Integer) => Empty` and the same shape inside module-local functions, which previously failed with `(None) -> None` type mismatches
 - Fixed module-local shadowing of exact builtin import aliases:
   - project rewrite now extends nested module import maps with the module's own `import` declarations before doing module-local call/type rewriting and then alpha-renames shadowing bindings across locals, callable params, and lambda params for exact imported aliases such as `import Option.None as Empty`
-  - this fixes valid project builds such as `module Inner { import Option.None as Empty; function keep(): Option<Integer> { Empty: Option<Integer> = Option.Some(7); return Empty; } }`, `function keep(Empty: Option<Integer>): Option<Integer> { return Empty; }`, `async { Empty: Integer = 7; Empty }`, and `f: () -> Integer = || Empty`, which previously resolved the shadowed binding back to the builtin alias and either returned `None` or failed with follow-on type mismatches
+  - this fixes valid project builds such as `module Inner { import Option.None as Empty; function keep(): Option<Integer> { Empty: Option<Integer> = Option.Some(7); return Empty; } }`, `function keep(Empty: Option<Integer>): Option<Integer> { return Empty; }`, `async { Empty: Integer = 7; Empty }`, and `f: () -> Integer = () => Empty`, which previously resolved the shadowed binding back to the builtin alias and either returned `None` or failed with follow-on type mismatches
 - Fixed builtin `Option.None` alias materialization inside `async` tail `if` expressions:
   - project rewrite now recursively materializes zero-argument builtin alias values through `async` tail branch boundaries such as `if { ... } else { ... }`, nested tail blocks, and match-arm tail blocks instead of only handling a bare tail expression
   - this fixes valid project builds such as `await(async { if (flag) { Empty } else { Empty } })`, `await(async { if (flag) { root.Option.None } else { root.Option.None } })`, and the same forms inside module-local `async` blocks, which previously failed with `Undefined variable: Option__none`
@@ -29,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - this fixes valid project builds that previously failed with `Undefined variable: root`, `Undefined function: Option__none`, or stale namespace-alias diagnostics for cases such as `root.Option.None()`, `root.Option.None`, `root.Option.None.is_none()`, `root.Option.None` match patterns, and `root.Result.Error(...)` match patterns
 - Fixed project-mode zero-argument builtin alias values in lambda tails and `match` scrutinees:
   - project rewrite now materializes exact-import and root-namespace-alias `Option.None` values at lambda return and `match` scrutinee boundaries, including module-local import contexts and already-canonicalized `Option__none` rewrite forms, instead of leaving them as raw canonical function symbols outside direct `let`/`return` coercion paths
-  - this fixes valid project builds such as `empty: () -> Option<Integer> = || Empty`, `empty: () -> Option<Integer> = || root.Option.None`, `module Inner { import Option.None as Empty; ... || Empty ... }`, `module Inner { import app as root; ... || root.Option.None ... }`, `match (Empty) { None => ... }`, and `match (root.Option.None) { None => ... }`, which previously failed with `Undefined variable: Option__none` and follow-on `unknown` match diagnostics
+  - this fixes valid project builds such as `empty: () -> Option<Integer> = () => Empty`, `empty: () -> Option<Integer> = () => root.Option.None`, `module Inner { import Option.None as Empty; ... () => Empty ... }`, `module Inner { import app as root; ... () => root.Option.None ... }`, `match (Empty) { None => ... }`, and `match (root.Option.None) { None => ... }`, which previously failed with `Undefined variable: Option__none` and follow-on `unknown` match diagnostics
 - Fixed project-mode module-local `async` tail expressions for zero-argument builtin aliases:
   - module-local rewrite now materializes exact-import and root-namespace-alias `Option.None` values when they appear as the tail expression of `async { ... }` blocks inside modules instead of preserving the intermediate canonical function symbol in the rewritten async body
   - this fixes valid project builds such as `module Inner { import Option.None as Empty; return async { Empty }; }` and `module Inner { import app as root; return async { root.Option.None }; }`, which previously failed with `Undefined variable: Option__none`
@@ -77,7 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - this fixes valid project builds such as `value: Integer = Option.some(ArgCount)?;`, which previously could panic the compiler via an internal `unwrap()` after failing to lower `Args__count`
 - Fixed zero-argument pipe lambda coercion for exact zero-argument aliases:
   - lambda body validation and return-type inference now materialize exact zero-argument builtin aliases through the same builtin-aware path used by other expression boundaries instead of treating them as nested function values
-  - this fixes valid project builds such as `f: () -> Integer = || ArgCount;`, which previously failed with `Type mismatch: cannot assign () -> () -> Integer to variable of type () -> Integer`
+  - this fixes valid project builds such as `f: () -> Integer = () => ArgCount;`, which previously failed with `Type mismatch: cannot assign () -> () -> Integer to variable of type () -> Integer`
 - Fixed async tail-expression coercion for exact zero-argument aliases:
   - async block tail expression validation now materializes exact zero-argument builtin aliases through the same builtin-aware path used by explicit async returns instead of inferring nested function values from raw alias symbols
   - this fixes valid project builds such as `await(async { ArgCount })`, which previously failed with `Cannot compare () -> Integer and Integer`
@@ -86,7 +86,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - this fixes valid project builds such as `(*(&CurrentDir)).length()`, which previously failed in codegen with `Cannot call method on type Integer`
 - Fixed immediate zero-argument pipe lambda coercion for exact zero-argument aliases:
   - lambda object-type inference now materializes exact zero-argument builtin aliases through the same builtin-aware path used by annotated lambda boundaries instead of inferring raw unresolved alias symbols for immediate lambda calls
-  - this fixes valid project builds such as `(|| CurrentDir)().length()`, which previously failed in codegen with `Undefined variable: CurrentDir`
+  - this fixes valid project builds such as `(() => CurrentDir)().length()`, which previously failed in codegen with `Undefined variable: CurrentDir`
 - Fixed `--no-check` dereference diagnostics for exact zero-argument aliases:
   - codegen-side dereference validation now diagnoses exact zero-argument builtin aliases through the same builtin-aware type path used by checked builds instead of trying to lower raw unresolved alias symbols first
   - this fixes cases such as `*CurrentDir`, which previously failed in `--no-check` mode with `Undefined variable: CurrentDir` instead of the correct user-facing type error for dereferencing a `String`
@@ -757,9 +757,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed explicit generic function values:
   - expressions like `id<Integer>` now parse as specialized first-class function values instead of leaving `<Integer>` in the token stream and failing with parser errors such as `Expected expression, found Some(TyInteger)`
   - specialized function values now typecheck and codegen through the existing generic specialization pipeline, so assignments like `f: (Integer) -> Integer = id<Integer>; f(7)` compile and run
-- Fixed parser support for zero-argument pipe lambdas:
-  - `|| expr` now parses as a zero-argument lambda expression in prefix position instead of falling through to the binary-operator parser and failing with `Expected expression, found Some(Or)`
-  - zero-arg closures now compile and run through generic method returns and bound method values, so patterns like `function make(): () -> Integer { return || 7; }` and `b.lift` with `return || this.value` work end-to-end
+- Fixed parser support for zero-argument lambdas:
+  - `() => expr` parses as a zero-argument lambda expression in prefix position and lowers through the same lambda pipeline as parameterized forms
+  - zero-arg closures now compile and run through generic method returns and bound method values, so patterns like `function make(): () -> Integer { return () => 7; }` and `b.lift` with `return () => this.value` work end-to-end
 - Fixed order-dependent generic class resolution in the typechecker:
   - forward-declared nominal generic classes inside enum payloads no longer get misresolved as builtin wrappers like `Box<T>` during declaration collection
   - enum constructors, match-expression arm joins, and downstream method chains now accept matching forward-declared generic class payloads instead of emitting bogus diagnostics like `expected Box<String>, got Box<String>`
@@ -1022,7 +1022,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - builtin/static tails such as `Option.some(...)`, `Option.none()`, `Result.ok(...)`, and `Result.error(...)` now infer the correct `Task<T>` inner type instead of collapsing in expression-bodied async blocks
   - `Str.len`, `Str.compare`, `Str.concat`, `Str.upper`, `Str.lower`, `Str.trim`, `Str.contains`, `Str.startsWith`, and `Str.endsWith` now all preserve their return types in async/if/match tail positions instead of failing tail inference
   - global builtin tails `to_string(...)` and `println(...)` now infer as `String` and `None` in expression-bodied blocks instead of degrading to unknown/`Task<None>` behavior
-  - `require(...)`, `range(...)`, and lambda tails such as `async { |x: Integer| x + 1 }` now infer correctly in expression-bodied async blocks
+  - `require(...)`, `range(...)`, and lambda tails such as `async { (x: Integer) => x + 1 }` now infer correctly in expression-bodied async blocks
   - nested `if` / `match` tails that end in builtin/static expressions now compile and run correctly because tail inference no longer loses those return types in branch bodies
 - Fixed borrowed read access across typechecking and runtime dispatch:
   - field access through immutable and mutable references like `ref.value` now typechecks and codegens against the pointee class instead of failing as `Cannot access field on type &T` or reading through the wrong pointer layer at runtime

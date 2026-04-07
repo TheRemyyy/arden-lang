@@ -2534,7 +2534,7 @@ fn accepts_builtin_and_reference_async_block_tail_expression_types() {
             print_task: Task<None> = async { println("hi") };
             require_task: Task<None> = async { require(true) };
             range_task: Task<Range<Integer>> = async { range(0, 3) };
-            lambda_task: Task<(Integer) -> Integer> = async { |x: Integer| x + 1 };
+            lambda_task: Task<(Integer) -> Integer> = async { (x: Integer) => x + 1 };
             if_task: Task<Integer> = async { if (true) { Str.len("abc") } else { Str.len("ab") } };
             match_task: Task<String> = async {
                 match (1) {

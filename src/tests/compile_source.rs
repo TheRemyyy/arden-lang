@@ -673,7 +673,7 @@ fn compile_source_runs_builtin_and_reference_async_block_tail_expression_runtime
                 print_task: Task<None> = async { println("hi") };
                 require_task: Task<None> = async { require(true) };
                 range_task: Task<Range<Integer>> = async { range(0, 3) };
-                lambda_task: Task<(Integer) -> Integer> = async { |x: Integer| x + 1 };
+                lambda_task: Task<(Integer) -> Integer> = async { (x: Integer) => x + 1 };
                 if_task: Task<Integer> = async { if (true) { Str.len("abc") } else { Str.len("ab") } };
                 match_task: Task<String> = async {
                     match (1) {
@@ -19754,7 +19754,7 @@ fn compile_source_runs_zero_arg_pipe_lambda_runtime() {
     let source_path = temp_root.join("zero_arg_pipe_lambda_runtime.arden");
     let output_path = temp_root.join("zero_arg_pipe_lambda_runtime");
     let source = r#"
-            function make(): () -> Integer { return || 7; }
+            function make(): () -> Integer { return () => 7; }
 
             function main(): Integer {
                 f: () -> Integer = make();
@@ -19783,7 +19783,7 @@ fn compile_source_runs_generic_method_returning_zero_arg_pipe_lambda_runtime() {
             class Box<T> {
                 value: T;
                 constructor(value: T) { this.value = value; }
-                function lift(): () -> T { return || this.value; }
+                function lift(): () -> T { return () => this.value; }
             }
 
             function main(): Integer {

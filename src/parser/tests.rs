@@ -474,6 +474,38 @@ fn test_reject_nested_match_generic_tail_before_fatarrow_noise() {
 }
 
 #[test]
+fn test_reject_pipe_lambda_syntax() {
+    let source = r#"
+        function main(): None {
+            f: (Integer) -> Integer = |x: Integer| x + 1;
+            return None;
+        }
+    "#;
+    let err = parse_source(source).expect_err("pipe lambda syntax should fail");
+    assert!(
+        err.message.contains("Expected expression") || err.message.contains("Unexpected token"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn test_reject_zero_arg_pipe_lambda_syntax() {
+    let source = r#"
+        function main(): None {
+            f: () -> Integer = || 42;
+            return None;
+        }
+    "#;
+    let err = parse_source(source).expect_err("zero-arg pipe lambda syntax should fail");
+    assert!(
+        err.message.contains("Expected expression") || err.message.contains("Unexpected token"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
 fn parser_reports_rest_style_alias_nested_match_noise_with_single_primary_error() {
     let source = r#"
         import app.Option.Some as Present;
@@ -1900,7 +1932,7 @@ fn test_reject_extra_extern_option_argument() {
 fn test_reject_trailing_comma_in_lambda_parameter_list() {
     let source = r#"
         function main(): None {
-            f: None = |x: Integer,| 1;
+            f: (Integer) -> Integer = (x: Integer,) => 1;
             return None;
         }
     "#;
@@ -1914,15 +1946,15 @@ fn test_reject_trailing_comma_in_lambda_parameter_list() {
 }
 
 #[test]
-fn test_parse_zero_arg_pipe_lambda() {
+fn test_parse_zero_arg_lambda() {
     let source = r#"
         function main(): None {
-            f: () -> Integer = || 1;
+            f: () -> Integer = () => 1;
             return None;
         }
     "#;
 
-    parse_source(source).expect("zero-arg pipe lambda should parse");
+    parse_source(source).expect("zero-arg lambda should parse");
 }
 
 #[test]

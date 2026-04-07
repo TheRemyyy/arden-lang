@@ -887,19 +887,20 @@ fn project_build_supports_root_namespace_alias_builtin_patterns() {
 }
 
 #[test]
-fn project_build_supports_builtin_option_none_alias_lambda_tail_values() {
+fn project_build_supports_builtin_option_none_alias_zero_arg_lambda_tail_values() {
     let temp_root = make_temp_project_root("builtin-option-none-alias-lambda-tail-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nimport Option.None as Empty;\nfunction main(): Integer { empty: () -> Option<Integer> = || Empty; return if (empty().is_none()) { 0 } else { 1 }; }\n",
+        "package app;\nimport Option.None as Empty;\nfunction main(): Integer { empty: () -> Option<Integer> = () => Empty; return if (empty().is_none()) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
 
     with_current_dir(&temp_root, || {
-        build_project(false, false, true, false, false)
-            .expect("project build should support builtin Option.None alias lambda tail values");
+        build_project(false, false, true, false, false).expect(
+            "project build should support builtin Option.None alias zero-arg lambda tail values",
+        );
     });
 
     let output_path = temp_root.join("smoke");
@@ -912,7 +913,7 @@ fn project_build_supports_builtin_option_none_alias_lambda_tail_values() {
 }
 
 #[test]
-fn project_build_supports_root_namespace_alias_builtin_option_none_lambda_tail_values() {
+fn project_build_supports_root_namespace_alias_builtin_option_none_zero_arg_lambda_tail_values() {
     let temp_root = make_temp_project_root("root-alias-builtin-option-none-lambda-tail-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(
@@ -923,7 +924,7 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_lambda_tail_v
     );
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nimport app as root;\nfunction main(): Integer { empty: () -> Option<Integer> = || root.Option.None; return if (empty().is_none()) { 0 } else { 1 }; }\n",
+        "package app;\nimport app as root;\nfunction main(): Integer { empty: () -> Option<Integer> = () => root.Option.None; return if (empty().is_none()) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
     fs::write(
@@ -934,7 +935,7 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_lambda_tail_v
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect(
-            "project build should support root namespace alias builtin Option.None lambda tail values",
+            "project build should support root namespace alias builtin Option.None zero-arg lambda tail values",
         );
     });
 
@@ -1011,19 +1012,19 @@ fn project_build_supports_root_namespace_alias_builtin_option_none_match_scrutin
 }
 
 #[test]
-fn project_build_supports_module_local_builtin_option_none_alias_lambda_tail_values() {
+fn project_build_supports_module_local_builtin_option_none_alias_zero_arg_lambda_tail_values() {
     let temp_root = make_temp_project_root("module-local-builtin-option-none-lambda-tail-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { empty: () -> Option<Integer> = || Empty; return if (empty().is_none()) { 0 } else { 1 }; } }\nfunction main(): Integer { return Inner.keep(); }\n",
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { empty: () -> Option<Integer> = () => Empty; return if (empty().is_none()) { 0 } else { 1 }; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
     .expect("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect(
-            "project build should support module-local builtin Option.None alias lambda tail values",
+            "project build should support module-local builtin Option.None alias zero-arg lambda tail values",
         );
     });
 
@@ -1037,20 +1038,21 @@ fn project_build_supports_module_local_builtin_option_none_alias_lambda_tail_val
 }
 
 #[test]
-fn project_build_supports_module_local_root_alias_builtin_option_none_lambda_tail_values() {
+fn project_build_supports_module_local_root_alias_builtin_option_none_zero_arg_lambda_tail_values()
+{
     let temp_root =
         make_temp_project_root("module-local-root-alias-builtin-option-none-lambda-tail-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nmodule Inner { import app as root; function keep(): Integer { empty: () -> Option<Integer> = || root.Option.None; return if (empty().is_none()) { 0 } else { 1 }; } }\nfunction main(): Integer { return Inner.keep(); }\n",
+        "package app;\nmodule Inner { import app as root; function keep(): Integer { empty: () -> Option<Integer> = () => root.Option.None; return if (empty().is_none()) { 0 } else { 1 }; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
     .expect("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect(
-            "project build should support module-local root alias builtin Option.None lambda tail values",
+            "project build should support module-local root alias builtin Option.None zero-arg lambda tail values",
         );
     });
 
@@ -1259,20 +1261,20 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_async_tail_v
 }
 
 #[test]
-fn project_build_supports_module_local_shadowed_builtin_option_none_lambda_values() {
+fn project_build_supports_module_local_shadowed_builtin_option_none_zero_arg_lambda_values() {
     let temp_root =
         make_temp_project_root("module-local-shadowed-builtin-option-none-lambda-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { Empty: Integer = 7; f: () -> Integer = || Empty; return f(); } }\nfunction main(): Integer { return Inner.keep() - 7; }\n",
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { Empty: Integer = 7; f: () -> Integer = () => Empty; return f(); } }\nfunction main(): Integer { return Inner.keep() - 7; }\n",
     )
     .expect("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect(
-            "project build should support module-local shadowed builtin Option.None lambda values",
+            "project build should support module-local shadowed builtin Option.None zero-arg lambda values",
         );
     });
 
@@ -1340,20 +1342,20 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_param_return
 }
 
 #[test]
-fn project_build_supports_module_local_shadowed_builtin_option_none_param_lambda_values() {
+fn project_build_supports_module_local_shadowed_builtin_option_none_param_zero_arg_lambda_values() {
     let temp_root =
         make_temp_project_root("module-local-shadowed-builtin-option-none-param-lambda-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nmodule Inner { import Option.None as Empty; function keep(Empty: Integer): Integer { f: () -> Integer = || Empty; return f(); } }\nfunction main(): Integer { return Inner.keep(7) - 7; }\n",
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(Empty: Integer): Integer { f: () -> Integer = () => Empty; return f(); } }\nfunction main(): Integer { return Inner.keep(7) - 7; }\n",
     )
     .expect("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect(
-            "project build should support module-local shadowed builtin Option.None parameter lambda values",
+            "project build should support module-local shadowed builtin Option.None parameter zero-arg lambda values",
         );
     });
 
@@ -1367,20 +1369,20 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_param_lambda
 }
 
 #[test]
-fn project_build_supports_module_local_shadowed_builtin_option_none_for_lambda_values() {
+fn project_build_supports_module_local_shadowed_builtin_option_none_for_zero_arg_lambda_values() {
     let temp_root =
         make_temp_project_root("module-local-shadowed-builtin-option-none-for-lambda-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { for (Empty in 7..8) { f: () -> Integer = || Empty; return f() - 7; } return 1; } }\nfunction main(): Integer { return Inner.keep(); }\n",
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(): Integer { for (Empty in 7..8) { f: () -> Integer = () => Empty; return f() - 7; } return 1; } }\nfunction main(): Integer { return Inner.keep(); }\n",
     )
     .expect("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect(
-            "project build should support module-local shadowed builtin Option.None for-loop lambda values",
+            "project build should support module-local shadowed builtin Option.None for-loop zero-arg lambda values",
         );
     });
 
@@ -1394,20 +1396,20 @@ fn project_build_supports_module_local_shadowed_builtin_option_none_for_lambda_v
 }
 
 #[test]
-fn project_build_supports_module_local_shadowed_builtin_option_none_match_lambda_values() {
+fn project_build_supports_module_local_shadowed_builtin_option_none_match_zero_arg_lambda_values() {
     let temp_root =
         make_temp_project_root("module-local-shadowed-builtin-option-none-match-lambda-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nmodule Inner { import Option.None as Empty; function keep(value: Option<Integer>): Integer { return match (value) { Some(Empty) => { f: () -> Integer = || Empty; f() - 7 }, None => 1, }; } }\nfunction main(): Integer { return Inner.keep(Option.Some(7)); }\n",
+        "package app;\nmodule Inner { import Option.None as Empty; function keep(value: Option<Integer>): Integer { return match (value) { Some(Empty) => { f: () -> Integer = () => Empty; f() - 7 }, None => 1, }; } }\nfunction main(): Integer { return Inner.keep(Option.Some(7)); }\n",
     )
     .expect("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect(
-            "project build should support module-local shadowed builtin Option.None match-arm lambda values",
+            "project build should support module-local shadowed builtin Option.None match-arm zero-arg lambda values",
         );
     });
 
@@ -2577,52 +2579,52 @@ fn project_build_supports_zero_arg_exact_import_values_in_try_expressions() {
 }
 
 #[test]
-fn project_build_supports_zero_arg_exact_import_values_in_zero_arg_pipe_lambdas() {
-    let temp_root = make_temp_project_root("zero-arg-exact-import-pipe-lambda-project");
+fn project_build_supports_zero_arg_exact_import_values_in_zero_arg_lambdas() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-lambda-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { f: () -> Integer = || ArgCount; return if (f() == 1) { 0 } else { 1 }; }\n",
+        "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { f: () -> Integer = () => ArgCount; return if (f() == 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect(
-            "project build should support zero-arg exact import values in zero-arg pipe lambdas",
+            "project build should support zero-arg exact import values in zero-arg lambdas",
         );
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import pipe lambda binary");
+        .expect("run compiled zero-arg exact import lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
 }
 
 #[test]
-fn project_build_supports_zero_arg_exact_import_values_in_immediate_zero_arg_pipe_lambdas() {
-    let temp_root = make_temp_project_root("zero-arg-exact-import-immediate-pipe-lambda-project");
+fn project_build_supports_zero_arg_exact_import_values_in_immediate_zero_arg_lambdas() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-immediate-lambda-project");
     let src_dir = temp_root.join("src");
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if ((|| CurrentDir)().length() >= 1) { 0 } else { 1 }; }\n",
+        "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return if (((() => CurrentDir))().length() >= 1) { 0 } else { 1 }; }\n",
     )
     .expect("write main");
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect(
-            "project build should support zero-arg exact import values in immediate zero-arg pipe lambdas",
+            "project build should support zero-arg exact import values in immediate zero-arg lambdas",
         );
     });
 
     let output_path = temp_root.join("smoke");
     let status = std::process::Command::new(&output_path)
         .status()
-        .expect("run compiled zero-arg exact import immediate pipe lambda binary");
+        .expect("run compiled zero-arg exact import immediate lambda binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
@@ -4360,7 +4362,7 @@ fn project_run_supports_generic_namespace_alias_interface_lambda_parameters() {
     .expect("write util");
     fs::write(
             src_dir.join("main.arden"),
-            "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nfunction main(): Integer {\n    use_reader: (api.Reader<String>) -> Integer = |reader: api.Reader<String>| reader.read().length();\n    return use_reader(FileReader());\n}\n",
+            "package app;\nimport app.Api as api;\nclass FileReader implements api.Reader<String> { function read(): String { return \"ok\"; } }\nfunction main(): Integer {\n    use_reader: (api.Reader<String>) -> Integer = (reader: api.Reader<String>) => reader.read().length();\n    return use_reader(FileReader());\n}\n",
         )
         .expect("write main");
 

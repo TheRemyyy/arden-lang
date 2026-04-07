@@ -2480,50 +2480,6 @@ impl<'src> Parser<'src> {
                     self.current_span(),
                 ));
             }
-            Some(Token::Or) => {
-                // Zero-arg lambda: || body
-                self.advance();
-                let body = self.parse_expr()?;
-                Expr::Lambda {
-                    params: Vec::new(),
-                    body: Box::new(body),
-                }
-            }
-            Some(Token::Pipe) => {
-                // Lambda: |args| body
-                self.advance();
-                let mut params = Vec::new();
-                while !self.check(&Token::Pipe) && !self.is_at_end() {
-                    let name = self.parse_ident()?;
-                    let ty = if self.check(&Token::Colon) {
-                        self.advance();
-                        self.parse_type()?
-                    } else {
-                        Type::None // Default to None or inferred?
-                    };
-                    params.push(Parameter {
-                        name,
-                        ty,
-                        mutable: false,
-                        mode: ParamMode::Owned,
-                    });
-                    if self.check(&Token::Comma) {
-                        self.advance();
-                        if self.check(&Token::Pipe) {
-                            return Err(ParseError::new(
-                                "Trailing comma is not allowed in lambda parameter lists",
-                                self.current_span(),
-                            ));
-                        }
-                    }
-                }
-                self.eat(&Token::Pipe)?;
-                let body = self.parse_expr()?;
-                Expr::Lambda {
-                    params,
-                    body: Box::new(body),
-                }
-            }
             Some(Token::Ident(name)) => {
                 let name = name.to_string();
                 self.advance();
