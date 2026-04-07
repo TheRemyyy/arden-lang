@@ -1,8 +1,7 @@
 {
-  "rewrites": [
-    { "source": "/docs", "destination": "/index.html" },
-    { "source": "/docs/:path*", "destination": "/index.html" },
-    { "source": "/changelog", "destination": "/index.html" },
-    { "source": "/", "destination": "/index.html" }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/client",
+  "cleanUrls": true
 }
