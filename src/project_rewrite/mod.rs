@@ -3472,6 +3472,7 @@ fn fix_module_local_expr(expr: &Expr, ctx: ModuleRewriteContext<'_>) -> Expr {
     let module_prefix = ctx.module_prefix;
     let module_call_ctx = ctx.call_ctx;
     let module_type_ctx = module_call_ctx.type_ctx;
+    let imported_map = module_call_ctx.imported_map;
     let current_namespace = module_type_ctx.current_namespace;
     let entry_namespace = module_type_ctx.entry_namespace;
     let local_functions = module_call_ctx.local_functions;
@@ -3863,7 +3864,21 @@ fn fix_module_local_expr(expr: &Expr, ctx: ModuleRewriteContext<'_>) -> Expr {
         },
         Expr::Block(block) => Expr::Block(self::fix_module_local_block(block, module_rewrite_ctx)),
         Expr::AsyncBlock(body) => {
-            Expr::AsyncBlock(self::fix_module_local_block(body, module_rewrite_ctx))
+            let mut rewritten_body = self::fix_module_local_block(body, module_rewrite_ctx);
+            if let Some(last_stmt) = rewritten_body.last_mut() {
+                if let Stmt::Expr(expr) = &last_stmt.node {
+                    if let Some(materialized) = materialize_builtin_import_value(
+                        &expr.node,
+                        imported_map,
+                        imported_modules,
+                        &[],
+                    ) {
+                        last_stmt.node =
+                            Stmt::Expr(ast::Spanned::new(materialized, expr.span.clone()));
+                    }
+                }
+            }
+            Expr::AsyncBlock(rewritten_body)
         }
         Expr::Match { expr, arms } => Expr::Match {
             expr: Box::new(ast::Spanned::new(
