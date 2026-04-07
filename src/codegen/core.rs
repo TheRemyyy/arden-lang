@@ -11,7 +11,8 @@ use inkwell::module::{Linkage, Module};
 
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, StructType};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue, ValueKind,
+    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, GlobalValue, IntValue, PointerValue,
+    ValueKind,
 };
 use inkwell::{AddressSpace, AtomicOrdering, FloatPredicate, IntPredicate};
 use std::collections::{HashMap, HashSet};
@@ -19095,14 +19096,14 @@ impl<'ctx> Codegen<'ctx> {
             .ok_or_else(|| CodegenError::new("? operator used outside function"))?;
 
         // Compile the inner expression (should be Option<T> or Result<T, E>)
-        let inner_ty = self.infer_expr_type(inner, &[]);
+        let inner_ty = self.infer_builtin_argument_type(inner);
         if !matches!(inner_ty, Type::Option(_) | Type::Result(_, _)) {
             return Err(CodegenError::new(format!(
                 "'?' operator can only be used on Option or Result, got {}",
                 Self::format_diagnostic_type(&inner_ty)
             )));
         }
-        let value = self.compile_expr(inner)?;
+        let value = self.compile_expr_with_expected_type(inner, &inner_ty)?;
         let struct_val = value.into_struct_value();
 
         // Extract the tag (field 0): 0 = None/Error, 1 = Some/Ok
@@ -19225,6 +19226,33 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.position_at_end(merge_block);
 
         Ok(extracted)
+    }
+
+    fn ensure_argc_global(&self) -> GlobalValue<'ctx> {
+        match self.module.get_global("_apex_argc") {
+            Some(global) => global,
+            None => {
+                let global = self
+                    .module
+                    .add_global(self.context.i32_type(), None, "_apex_argc");
+                global.set_initializer(&self.context.i32_type().const_int(0, false));
+                global
+            }
+        }
+    }
+
+    fn ensure_argv_global(&self) -> GlobalValue<'ctx> {
+        match self.module.get_global("_apex_argv") {
+            Some(global) => global,
+            None => {
+                let argv_ty = self
+                    .context
+                    .ptr_type(AddressSpace::default());
+                let global = self.module.add_global(argv_ty, None, "_apex_argv");
+                global.set_initializer(&argv_ty.const_null());
+                global
+            }
+        }
     }
 
     pub fn compile_stdlib_function(
@@ -21938,7 +21966,7 @@ impl<'ctx> Codegen<'ctx> {
 
             // Args Functions
             "Args__count" => {
-                let argc_global = self.module.get_global("_apex_argc").unwrap();
+                let argc_global = self.ensure_argc_global();
                 let argc = self
                     .builder
                     .build_load(
@@ -21969,8 +21997,8 @@ impl<'ctx> Codegen<'ctx> {
                 let index = self
                     .compile_expr_with_expected_type(&args[0].node, &index_ty)?
                     .into_int_value();
-                let argc_global = self.module.get_global("_apex_argc").unwrap();
-                let argv_global = self.module.get_global("_apex_argv").unwrap();
+                let argc_global = self.ensure_argc_global();
+                let argv_global = self.ensure_argv_global();
                 let argc = self
                     .builder
                     .build_load(

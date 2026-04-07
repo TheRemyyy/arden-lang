@@ -4400,7 +4400,7 @@ impl TypeChecker {
             }
 
             Expr::Try(inner) => {
-                let inner_type = self.check_expr(&inner.node, inner.span.clone());
+                let inner_type = self.check_builtin_argument_expr(&inner.node, inner.span.clone());
                 match inner_type {
                     ResolvedType::Option(inner) => {
                         if !matches!(self.current_return_type, Some(ResolvedType::Option(_))) {

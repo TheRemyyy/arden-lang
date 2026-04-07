@@ -3648,7 +3648,7 @@ impl<'ctx> Codegen<'ctx> {
                 let inner_ty = self.infer_expr_type(&inner.node, params);
                 self.task_inner_type(&inner_ty).unwrap_or(Type::Integer)
             }
-            Expr::Try(inner) => match self.infer_expr_type(&inner.node, params) {
+            Expr::Try(inner) => match self.infer_builtin_argument_type(&inner.node) {
                 Type::Option(inner) => *inner,
                 Type::Result(ok, _) => *ok,
                 _ => Type::Integer,
