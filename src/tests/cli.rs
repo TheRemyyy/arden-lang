@@ -222,6 +222,28 @@ fn cli_build_recovers_from_corrupted_typecheck_summary_cache_blob() {
 }
 
 #[test]
+fn cli_build_recovers_from_corrupted_link_manifest_cache_blob() {
+    let temp_root = make_temp_project_root("cli-corrupt-link-manifest-cache");
+    write_simple_project(&temp_root);
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect("initial build should pass");
+
+        let link_manifest_cache = temp_root
+            .join(".ardencache")
+            .join("link")
+            .join("latest.json");
+        fs::write(&link_manifest_cache, b"not valid cache").expect("corrupt link manifest cache");
+        remove_incremental_build_fingerprints(&temp_root);
+
+        build_project(false, false, true, false, false)
+            .expect("build should ignore corrupted link manifest cache and recover");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn cli_format_targets_checks_and_formats_project_files() {
     let temp_root = make_temp_project_root("cli-fmt");
     let src_dir = temp_root.join("src");
