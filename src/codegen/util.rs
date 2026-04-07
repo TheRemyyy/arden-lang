@@ -2418,7 +2418,8 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             Expr::Match { expr, arms } => {
-                Some(self.infer_match_expr_result_type(&expr.node, arms, &[]))
+                let inferred = self.infer_match_expr_result_type(&expr.node, arms, &[]);
+                (!matches!(inferred, Type::None)).then_some(inferred)
             }
             Expr::Block(block) => self.infer_block_tail_type(block),
             Expr::AsyncBlock(block) => Some(Type::Task(Box::new(
@@ -2754,7 +2755,10 @@ impl<'ctx> Codegen<'ctx> {
                     });
                 }
                 Stmt::Expr(expr) => {
-                    ret = Some(self.infer_expr_type(&expr.node, &scoped_params));
+                    ret = Some(
+                        self.builtin_argument_type_hint(&expr.node)
+                            .unwrap_or_else(|| self.infer_expr_type(&expr.node, &scoped_params)),
+                    );
                 }
                 _ => {}
             }
