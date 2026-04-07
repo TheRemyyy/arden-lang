@@ -348,6 +348,18 @@ fn resolve_exact_stdlib_imported_symbol(
         .map(|canonical| (namespace_path.to_string(), canonical))
 }
 
+fn resolve_exact_stdlib_imported_value_symbol(
+    namespace_path: &str,
+    symbol_name: &str,
+) -> Option<String> {
+    let (_, canonical) = resolve_exact_stdlib_imported_symbol(namespace_path, symbol_name)?;
+    match canonical.as_str() {
+        "read_line" | "System__cwd" | "System__os" | "Time__unix" | "Args__count"
+        | "Math__pi" | "Math__e" | "Math__random" => Some(canonical),
+        _ => None,
+    }
+}
+
 fn resolve_exact_builtin_imported_symbol(
     namespace_path: &str,
     symbol_name: &str,
@@ -5740,7 +5752,11 @@ fn rewrite_expr_calls_for_project(
                             name,
                         ))
                     } else if let Some((ns, symbol_name)) = imported_modules.get(name) {
-                        if symbol_name.is_empty() {
+                        if let Some(canonical) =
+                            resolve_exact_stdlib_imported_value_symbol(ns, symbol_name)
+                        {
+                            Expr::Ident(canonical)
+                        } else if symbol_name.is_empty() {
                             Expr::Ident(name.clone())
                         } else {
                             Expr::Ident(mangle_project_symbol(ns, entry_namespace, symbol_name))

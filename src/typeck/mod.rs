@@ -5642,7 +5642,7 @@ impl TypeChecker {
                 }
             }
 
-            let obj_type = self.check_expr(&object.node, object.span.clone());
+            let obj_type = self.check_builtin_argument_expr(&object.node, object.span.clone());
             if let ResolvedType::Class(name) = &obj_type {
                 let (base_name, class_substitutions) = self.instantiated_class_substitutions(name);
                 if let Some((owner, field_type, _, visibility)) =

@@ -1245,7 +1245,7 @@ impl<'ctx> Codegen<'ctx> {
     fn infer_bound_field_function_type(&self, object: &Expr, field: &str) -> Option<Type> {
         let obj_ty = self
             .infer_object_type(object)
-            .or_else(|| Some(self.infer_expr_type(object, &[])))?;
+            .or_else(|| Some(self.infer_builtin_argument_type(object)))?;
         let (class_name, generic_args) = self.unwrap_class_like_type(&obj_ty)?;
 
         if let Some(class_info) = self.classes.get(&class_name) {
@@ -15973,12 +15973,16 @@ impl<'ctx> Codegen<'ctx> {
             return Err(err);
         }
         if let Expr::Ident(name) = object {
-            if !self.variables.contains_key(name) {
+            if !self.variables.contains_key(name)
+                && self.resolve_contextual_function_value_name(object).is_none()
+            {
                 return Err(Self::undefined_variable_error(name));
             }
         }
         // Infer object type first
-        let inferred_obj_ty = self.infer_object_type(object);
+        let inferred_obj_ty = self
+            .infer_object_type(object)
+            .or_else(|| Some(self.infer_builtin_argument_type(object)));
         let obj_ty = inferred_obj_ty
             .clone()
             .or_else(|| {
@@ -16010,7 +16014,7 @@ impl<'ctx> Codegen<'ctx> {
                     .filter(|resolved| self.classes.contains_key(resolved))
                     .map(Type::Named)
             })
-            .or_else(|| Some(self.infer_expr_type(object, &[])));
+            .or_else(|| Some(self.infer_builtin_argument_type(object)));
         let deref_obj_ty = obj_ty
             .clone()
             .map(|ty| self.deref_codegen_type(&ty).clone());
@@ -16077,11 +16081,11 @@ impl<'ctx> Codegen<'ctx> {
                     return self.compile_set_method_on_value(set_val, ty, method, args);
                 }
                 Type::Option(_) => {
-                    let option_val = self.compile_expr(object)?;
+                    let option_val = self.compile_expr_with_expected_type(object, ty)?;
                     return self.compile_option_method_on_value(option_val, ty, method, args);
                 }
                 Type::Result(_, _) => {
-                    let result_val = self.compile_expr(object)?;
+                    let result_val = self.compile_expr_with_expected_type(object, ty)?;
                     return self.compile_result_method_on_value(result_val, ty, method, args);
                 }
                 Type::Range(_) => {
@@ -16124,7 +16128,7 @@ impl<'ctx> Codegen<'ctx> {
                         let s = if is_reference_receiver {
                             self.compile_deref(object)?
                         } else {
-                            self.compile_expr(object)?
+                            self.compile_expr_with_expected_type(object, ty)?
                         };
                         return self.compile_utf8_string_length_runtime(s.into_pointer_value());
                     }
