@@ -7,6 +7,25 @@ use std::path::Path;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+fn write_simple_project(root: &Path) {
+    let src_dir = root.join("src");
+    write_test_project_config(root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nfunction main(): None { return None; }\n",
+    )
+    .expect("write main");
+}
+
+fn remove_incremental_build_fingerprints(root: &Path) {
+    for fingerprint in ["build_fingerprint", "semantic_build_fingerprint"] {
+        let path = root.join(".ardencache").join(fingerprint);
+        if path.exists() {
+            fs::remove_file(&path).expect("remove incremental build fingerprint");
+        }
+    }
+}
+
 #[test]
 fn cli_check_command_succeeds_for_temp_project() {
     let temp_root = make_temp_project_root("cli-check");
@@ -38,13 +57,7 @@ fn cli_check_command_succeeds_for_temp_project() {
 #[test]
 fn cli_build_recovers_from_corrupted_parse_cache_blob() {
     let temp_root = make_temp_project_root("cli-corrupt-parse-cache");
-    let src_dir = temp_root.join("src");
-    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
-    fs::write(
-        src_dir.join("main.arden"),
-        "package app;\nfunction main(): None { return None; }\n",
-    )
-    .expect("write main");
+    write_simple_project(&temp_root);
 
     with_current_dir(&temp_root, || {
         build_project(false, false, true, false, false).expect("initial build should pass");
@@ -58,13 +71,151 @@ fn cli_build_recovers_from_corrupted_parse_cache_blob() {
             .expect("parse cache file should exist");
         fs::write(&parsed_cache_file, b"not valid cache").expect("corrupt parse cache");
 
-        let build_fingerprint = temp_root.join(".ardencache").join("build_fingerprint");
-        if build_fingerprint.exists() {
-            fs::remove_file(&build_fingerprint).expect("remove build fingerprint");
-        }
+        remove_incremental_build_fingerprints(&temp_root);
 
         build_project(false, false, true, false, false)
             .expect("build should ignore corrupted parse cache and recover");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_build_recovers_from_corrupted_import_check_cache_blob() {
+    let temp_root = make_temp_project_root("cli-corrupt-import-cache");
+    write_simple_project(&temp_root);
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect("initial build should pass");
+
+        let import_cache_file = fs::read_dir(temp_root.join(".ardencache").join("import_check"))
+            .expect("read import cache dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.is_file())
+            .expect("import cache file should exist");
+        fs::write(&import_cache_file, b"not valid cache").expect("corrupt import cache");
+        remove_incremental_build_fingerprints(&temp_root);
+
+        build_project(false, false, true, false, false)
+            .expect("build should ignore corrupted import cache and recover");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_build_recovers_from_corrupted_rewrite_cache_blob() {
+    let temp_root = make_temp_project_root("cli-corrupt-rewrite-cache");
+    write_simple_project(&temp_root);
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect("initial build should pass");
+
+        let rewrite_cache_file = fs::read_dir(temp_root.join(".ardencache").join("rewritten"))
+            .expect("read rewrite cache dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.is_file())
+            .expect("rewrite cache file should exist");
+        fs::write(&rewrite_cache_file, b"not valid cache").expect("corrupt rewrite cache");
+        remove_incremental_build_fingerprints(&temp_root);
+
+        build_project(false, false, true, false, false)
+            .expect("build should ignore corrupted rewrite cache and recover");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_build_recovers_from_corrupted_object_cache_metadata_blob() {
+    let temp_root = make_temp_project_root("cli-corrupt-object-cache");
+    write_simple_project(&temp_root);
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect("initial build should pass");
+
+        let object_cache_file = fs::read_dir(temp_root.join(".ardencache").join("objects"))
+            .expect("read object cache dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("json"))
+            .expect("object cache metadata should exist");
+        fs::write(&object_cache_file, b"not valid cache").expect("corrupt object cache meta");
+        remove_incremental_build_fingerprints(&temp_root);
+
+        build_project(false, false, true, false, false)
+            .expect("build should ignore corrupted object cache metadata and recover");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_build_recovers_from_corrupted_dependency_graph_cache_blob() {
+    let temp_root = make_temp_project_root("cli-corrupt-dependency-cache");
+    write_simple_project(&temp_root);
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect("initial build should pass");
+
+        let dependency_graph_cache = temp_root
+            .join(".ardencache")
+            .join("dependency_graph")
+            .join("latest.json");
+        fs::write(&dependency_graph_cache, b"not valid cache")
+            .expect("corrupt dependency graph cache");
+        remove_incremental_build_fingerprints(&temp_root);
+
+        build_project(false, false, true, false, false)
+            .expect("build should ignore corrupted dependency graph cache and recover");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_build_recovers_from_corrupted_semantic_summary_cache_blob() {
+    let temp_root = make_temp_project_root("cli-corrupt-semantic-summary-cache");
+    write_simple_project(&temp_root);
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect("initial build should pass");
+
+        let semantic_summary_cache = temp_root
+            .join(".ardencache")
+            .join("semantic_summary")
+            .join("latest.json");
+        fs::write(&semantic_summary_cache, b"not valid cache")
+            .expect("corrupt semantic summary cache");
+        remove_incremental_build_fingerprints(&temp_root);
+
+        build_project(false, false, true, false, false)
+            .expect("build should ignore corrupted semantic summary cache and recover");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_build_recovers_from_corrupted_typecheck_summary_cache_blob() {
+    let temp_root = make_temp_project_root("cli-corrupt-typecheck-summary-cache");
+    write_simple_project(&temp_root);
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect("initial build should pass");
+
+        let typecheck_summary_cache = temp_root
+            .join(".ardencache")
+            .join("typecheck_summary")
+            .join("latest.json");
+        fs::write(&typecheck_summary_cache, b"not valid cache")
+            .expect("corrupt typecheck summary cache");
+        remove_incremental_build_fingerprints(&temp_root);
+
+        build_project(false, false, true, false, false)
+            .expect("build should ignore corrupted typecheck summary cache and recover");
     });
 
     let _ = fs::remove_dir_all(temp_root);
