@@ -1156,6 +1156,68 @@ fn project_build_supports_stdlib_zero_arg_exact_import_match_expressions() {
 }
 
 #[test]
+fn project_build_supports_stdlib_zero_arg_exact_import_match_scrutinees() {
+    let temp_root = make_temp_project_root("stdlib-zero-arg-exact-import-match-scrutinee-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { return match (CurrentDir) { \"\" => 1, _ => 0, }; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support zero-arg stdlib exact import match scrutinees",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg stdlib exact import match scrutinee binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn project_build_supports_stdlib_zero_arg_exact_import_match_statements() {
+    let temp_root = make_temp_project_root("stdlib-zero-arg-exact-import-match-stmt-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { mut result: Integer = 1; match (CurrentDir) { \"\" => { result = 1; } _ => { result = 0; } } return result; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support zero-arg stdlib exact import match statements",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg stdlib exact import match statement binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_module_local_stdlib_zero_arg_exact_import_values() {
     let temp_root =
         make_temp_project_root("module-local-stdlib-zero-arg-exact-import-value-project");

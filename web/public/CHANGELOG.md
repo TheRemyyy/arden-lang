@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed compound-assignment coercion for exact zero-argument aliases:
   - non-container compound assignments now carry the contextual builtin-aware RHS type all the way into binary operator validation/codegen instead of falling back to the raw unresolved expression type after expected-type lowering
   - this fixes valid project builds such as `mut value: String = ""; value += CurrentDir;`, which previously failed in codegen with incorrect numeric-operator diagnostics like `Arithmetic operator requires numeric types, got String and Integer`
+- Fixed match scrutinee coercion for exact zero-argument aliases:
+  - match statements and match expressions now type-check and compile their scrutinee through the same contextual builtin-aware zero-argument alias path used by other expression boundaries instead of treating aliases as unresolved raw builtin symbols
+  - this fixes valid project builds such as `match (CurrentDir) { ... }`, which previously failed with `Undefined variable: System__cwd`
 - Fixed builtin-call argument coercion for exact zero-argument aliases:
   - builtin argument validation and codegen now route string, integer, and numeric builtin parameters through the same contextual zero-argument alias coercion used by typed values and regular function-call arguments, covering cases such as `to_string(Pi)`, `Str.len(CurrentDir)`, `File.read(CurrentDir)`, `Args.get(ArgCount)`, and numeric `range(...)` bounds
   - this fixes valid project builds that still rewrote exact aliases like `import std.math.pi as Pi;` or `import std.system.cwd as CurrentDir;` to raw builtin symbols such as `Math__pi` or `System__cwd` inside builtin calls and then failed with `Undefined variable` diagnostics

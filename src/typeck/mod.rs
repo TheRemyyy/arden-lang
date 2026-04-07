@@ -2147,7 +2147,7 @@ impl TypeChecker {
             }
 
             Stmt::Match { expr, arms } => {
-                let match_type = self.check_expr(&expr.node, expr.span.clone());
+                let match_type = self.check_builtin_argument_expr(&expr.node, expr.span.clone());
 
                 for arm in arms {
                     self.enter_scope();
@@ -3498,7 +3498,7 @@ impl TypeChecker {
         span: Span,
         expected: &ResolvedType,
     ) -> ResolvedType {
-        let match_type = self.check_expr(expr, expr_span);
+        let match_type = self.check_builtin_argument_expr(expr, expr_span);
         let mut result_type: Option<ResolvedType> = None;
 
         for arm in arms {
@@ -4490,7 +4490,7 @@ impl TypeChecker {
             }
 
             Expr::Match { expr, arms } => {
-                let match_type = self.check_expr(&expr.node, expr.span.clone());
+                let match_type = self.check_builtin_argument_expr(&expr.node, expr.span.clone());
                 let mut result_type: Option<ResolvedType> = None;
 
                 for arm in arms {

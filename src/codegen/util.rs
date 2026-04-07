@@ -1377,7 +1377,7 @@ impl<'ctx> Codegen<'ctx> {
             name.rsplit('.').next().unwrap_or(name)
         }
 
-        let match_ty = self.infer_expr_type(expr, &[]);
+        let match_ty = self.infer_builtin_argument_type(expr);
         let option_inner_ty = match &match_ty {
             Type::Option(inner) => Some((**inner).clone()),
             _ => None,
@@ -1437,7 +1437,7 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        let val = self.compile_expr(expr)?;
+        let val = self.compile_expr_with_expected_type(expr, &match_ty)?;
         let func = self
             .current_function
             .ok_or_else(|| CodegenError::new("match expression used outside function"))?;

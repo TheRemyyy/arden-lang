@@ -11569,7 +11569,7 @@ impl<'ctx> Codegen<'ctx> {
                 .is_empty()
                 .then_some((enum_name, variant_name, variant_info.tag))
         };
-        let match_ty = self.infer_expr_type(&expr.node, &[]);
+        let match_ty = self.infer_builtin_argument_type(&expr.node);
         let option_inner_ty = match &match_ty {
             Type::Option(inner) => Some((**inner).clone()),
             _ => None,
@@ -11635,7 +11635,7 @@ impl<'ctx> Codegen<'ctx> {
             }
         }
 
-        let val = self.compile_expr(&expr.node)?;
+        let val = self.compile_expr_with_expected_type(&expr.node, &match_ty)?;
         let func = self
             .current_function
             .ok_or_else(|| CodegenError::new("match statement used outside function"))?;
