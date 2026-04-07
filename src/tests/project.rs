@@ -1735,6 +1735,37 @@ fn project_build_supports_zero_arg_exact_import_values_in_for_iterables() {
 }
 
 #[test]
+fn project_build_supports_zero_arg_exact_import_values_in_async_returns() {
+    let temp_root = make_temp_project_root("zero-arg-exact-import-async-return-project");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(
+        &temp_root,
+        &["src/main.apex"],
+        "src/main.apex",
+        "smoke",
+    );
+    fs::write(
+        src_dir.join("main.apex"),
+        "package app;\nimport std.args.count as ArgCount;\nfunction main(): Integer { task: Task<Integer> = async { return ArgCount; }; return 0; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect(
+            "project build should support zero-arg exact import values in async returns",
+        );
+    });
+
+    let output_path = temp_root.join("smoke");
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled zero-arg exact import async return binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn project_build_supports_zero_arg_exact_import_values_in_task_await_timeout() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-value-await-timeout-project");
     let src_dir = temp_root.join("src");

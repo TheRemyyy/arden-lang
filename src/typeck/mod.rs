@@ -2010,7 +2010,11 @@ impl TypeChecker {
             }
 
             Stmt::Return(expr) => {
-                let expected_return_type = self.current_return_type.clone();
+                let expected_return_type = self.current_return_type.clone().or_else(|| {
+                    self.current_async_return_type.clone().and_then(|ty| {
+                        (!matches!(ty, ResolvedType::None)).then_some(ty)
+                    })
+                });
                 let return_type = expr
                     .as_ref()
                     .map(|e| {
@@ -3552,7 +3556,9 @@ impl TypeChecker {
         let saved_return_type = self.current_return_type.clone();
         let saved_async_return_type = self.current_async_return_type.clone();
         self.current_return_type = None;
-        self.current_async_return_type = Some(ResolvedType::None);
+        self.current_async_return_type = Some(
+            expected_inner.cloned().unwrap_or(ResolvedType::None),
+        );
 
         for stmt in body {
             match &stmt.node {

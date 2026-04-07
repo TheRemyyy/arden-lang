@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed `for` iterable coercion for exact zero-argument aliases:
   - `for (... in iterable)` now type-checks and compiles the iterable expression through the same contextual builtin-aware zero-argument alias path used by other collection-like boundaries instead of treating aliases as unresolved raw builtin symbols
   - this fixes valid project builds such as `for (ch in CurrentDir) { ... }`, which previously failed with `Undefined variable: System__cwd` followed by `Cannot iterate over unknown`
+- Fixed async return coercion for exact zero-argument aliases:
+  - async blocks with a known expected inner return type now propagate that expectation into explicit `return` statements, so zero-argument aliases are checked against the concrete expected value type instead of as unresolved raw builtin symbols
+  - this fixes valid project builds such as `task: Task<Integer> = async { return ArgCount; };`, which previously failed with `Undefined variable: Args__count`
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`
