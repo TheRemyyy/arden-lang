@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed inline method chains on direct builtin constructors inside `package app`:
+  - codegen-side builtin call inference now derives `Option`/`Result` return types from the shared canonical constructor names for `Option.{Some,None}` and `Result.{Ok,Error}` instead of falling back to raw scalar inference in expression-only chains
+  - this fixes package-scoped expressions such as `Option.Some(4).unwrap()` and `Result.Ok(4).unwrap()`, which previously reached codegen as `Integer` values and failed with `Cannot call method on type Integer`
 - Fixed direct builtin `Option`/`Result` constructors inside `package app`:
   - qualified static constructor resolution now canonicalizes `Option.{Some,None}` and `Result.{Ok,Error}` through the shared builtin alias helper instead of assembling mixed-case internal names like `Option__Some` that never matched the real builtin symbols
   - this fixes package-scoped builds such as `value: Option<Integer> = Option.Some(4);` and `value: Result<Integer, String> = Result.Ok(4);`, which previously failed with `Undefined variable: Option` or `Undefined variable: Result`

@@ -253,6 +253,22 @@ impl<'ctx> Codegen<'ctx> {
         args: &[Spanned<Expr>],
     ) -> Option<Type> {
         match function_name {
+            "Option__some" => args.first().map(|first_arg| {
+                Type::Option(Box::new(self.infer_builtin_argument_type(&first_arg.node)))
+            }),
+            "Option__none" => Some(Type::Option(Box::new(Type::Integer))),
+            "Result__ok" => args.first().map(|first_arg| {
+                Type::Result(
+                    Box::new(self.infer_builtin_argument_type(&first_arg.node)),
+                    Box::new(Type::String),
+                )
+            }),
+            "Result__error" => args.first().map(|first_arg| {
+                Type::Result(
+                    Box::new(Type::Integer),
+                    Box::new(self.infer_builtin_argument_type(&first_arg.node)),
+                )
+            }),
             "println" | "print" | "assert" | "assert_eq" | "assert_ne" | "assert_true"
             | "assert_false" | "fail" | "exit" | "System__exit" | "Time__sleep" => Some(Type::None),
             "read_line" | "to_string" | "File__read" | "Time__now" | "System__getenv"
@@ -283,6 +299,11 @@ impl<'ctx> Codegen<'ctx> {
                     return None;
                 };
                 let resolved_owner = self.resolve_module_alias(owner_name);
+                if let Some(canonical_builtin) = crate::ast::builtin_exact_import_alias_canonical(
+                    &format!("{}.{}", resolved_owner, field),
+                ) {
+                    return self.infer_builtin_function_return_type(canonical_builtin, args);
+                }
                 match (resolved_owner.as_str(), field.as_str()) {
                     ("Str", "len") | ("Str", "compare") => Some(Type::Integer),
                     ("Str", "concat") | ("Str", "upper") | ("Str", "lower") | ("Str", "trim") => {
@@ -3479,6 +3500,18 @@ impl<'ctx> Codegen<'ctx> {
                                         "contains" | "startsWith" | "endsWith" => Type::Boolean,
                                         _ => Type::Integer,
                                     };
+                                }
+                                if let Some(canonical_builtin) =
+                                    crate::ast::builtin_exact_import_alias_canonical(&format!(
+                                        "{}.{}",
+                                        resolved_owner, field
+                                    ))
+                                {
+                                    if let Some(ret_ty) = self
+                                        .infer_builtin_function_return_type(canonical_builtin, args)
+                                    {
+                                        return ret_ty;
+                                    }
                                 }
                                 match (resolved_owner.as_str(), field.as_str()) {
                                     ("Option", "some") => {

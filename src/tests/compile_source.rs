@@ -20015,3 +20015,69 @@ function main(): Integer {
 
     let _ = fs::remove_dir_all(temp_root);
 }
+
+#[test]
+fn compile_source_runs_package_qualified_inline_option_constructor_method_chain() {
+    let temp_root =
+        make_temp_project_root("package-qualified-inline-option-constructor-method-chain");
+    let source_path =
+        temp_root.join("package_qualified_inline_option_constructor_method_chain.apex");
+    let output_path = temp_root.join("package_qualified_inline_option_constructor_method_chain");
+    let source = r#"
+package app;
+
+function main(): Integer {
+    return Option.Some(4).unwrap();
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("package-qualified inline Option constructor method chain should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled package-qualified inline Option constructor binary");
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_package_qualified_inline_result_constructor_method_chain() {
+    let temp_root =
+        make_temp_project_root("package-qualified-inline-result-constructor-method-chain");
+    let source_path =
+        temp_root.join("package_qualified_inline_result_constructor_method_chain.apex");
+    let output_path = temp_root.join("package_qualified_inline_result_constructor_method_chain");
+    let source = r#"
+package app;
+
+function main(): Integer {
+    return Result.Ok(4).unwrap();
+}
+"#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("package-qualified inline Result constructor method chain should compile");
+
+    let output = std::process::Command::new(&output_path)
+        .output()
+        .expect("run compiled package-qualified inline Result constructor binary");
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
