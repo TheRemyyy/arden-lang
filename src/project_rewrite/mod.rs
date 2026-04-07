@@ -505,17 +505,12 @@ fn builtin_module_alias_value_expr(
     }
 }
 
-fn materialize_builtin_import_value_for_type(
+fn materialize_builtin_import_value(
     expr: &Expr,
-    expected_type: &ast::Type,
     imported_map: &ImportedMap,
     imported_modules: &ImportedMap,
     scopes: &[HashSet<String>],
 ) -> Option<Expr> {
-    if matches!(expected_type, ast::Type::Function(_, _)) {
-        return None;
-    }
-
     match expr {
         Expr::Ident(name) => {
             if is_shadowed(name, scopes) {
@@ -536,6 +531,19 @@ fn materialize_builtin_import_value_for_type(
         }
         _ => None,
     }
+}
+
+fn materialize_builtin_import_value_for_type(
+    expr: &Expr,
+    expected_type: &ast::Type,
+    imported_map: &ImportedMap,
+    imported_modules: &ImportedMap,
+    scopes: &[HashSet<String>],
+) -> Option<Expr> {
+    if matches!(expected_type, ast::Type::Function(_, _)) {
+        return None;
+    }
+    materialize_builtin_import_value(expr, imported_map, imported_modules, scopes)
 }
 
 fn direct_wildcard_member_name(
@@ -4657,7 +4665,13 @@ fn rewrite_stmt_calls_for_project(
         }
         Stmt::Match { expr, arms } => Stmt::Match {
             expr: ast::Spanned::new(
-                self::rewrite_expr_calls_for_project(&expr.node, ctx, scopes),
+                materialize_builtin_import_value(
+                    &expr.node,
+                    imported_map,
+                    imported_modules,
+                    scopes,
+                )
+                .unwrap_or_else(|| self::rewrite_expr_calls_for_project(&expr.node, ctx, scopes)),
                 expr.span.clone(),
             ),
             arms: arms
@@ -6066,7 +6080,26 @@ fn rewrite_expr_calls_for_project(
                     scope.insert(param.name.clone());
                 }
             }
-            let rewritten_body = self::rewrite_expr_calls_for_project(&body.node, ctx, scopes);
+            let lambda_ctx = match ctx.expected_return_type {
+                Some(ast::Type::Function(_, return_type)) => {
+                    ctx.with_expected_return_type(return_type.as_ref())
+                }
+                _ => ctx,
+            };
+            let rewritten_body =
+                self::rewrite_expr_calls_for_project(&body.node, lambda_ctx, scopes);
+            let rewritten_body = lambda_ctx
+                .expected_return_type
+                .and_then(|ty| {
+                    materialize_builtin_import_value_for_type(
+                        &body.node,
+                        ty,
+                        imported_map,
+                        imported_modules,
+                        scopes,
+                    )
+                })
+                .unwrap_or(rewritten_body);
             pop_scope(scopes);
             Expr::Lambda {
                 params: params
@@ -6122,7 +6155,13 @@ fn rewrite_expr_calls_for_project(
         }
         Expr::Match { expr, arms } => Expr::Match {
             expr: Box::new(ast::Spanned::new(
-                self::rewrite_expr_calls_for_project(&expr.node, ctx, scopes),
+                materialize_builtin_import_value(
+                    &expr.node,
+                    imported_map,
+                    imported_modules,
+                    scopes,
+                )
+                .unwrap_or_else(|| self::rewrite_expr_calls_for_project(&expr.node, ctx, scopes)),
                 expr.span.clone(),
             )),
             arms: arms
