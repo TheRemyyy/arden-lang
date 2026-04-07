@@ -2230,13 +2230,8 @@ impl TypeChecker {
         }
 
         let imported_unit_variant = |this: &Self, name: &str| -> Option<(String, String)> {
-            let (enum_name, variant_name) = this.resolve_import_alias_variant(name)?;
-            let enum_info = this.enums.get(&enum_name)?;
-            enum_info
-                .variants
-                .get(&variant_name)
-                .is_some_and(|fields| fields.is_empty())
-                .then_some((enum_name, variant_name))
+            let (enum_name, variant_name, is_unit) = this.resolve_pattern_variant_alias(name)?;
+            is_unit.then_some((enum_name, variant_name))
         };
 
         match pattern {
@@ -2293,11 +2288,11 @@ impl TypeChecker {
             }
             Pattern::Variant(name, bindings) => {
                 let imported_variant = (!name.contains('.'))
-                    .then(|| self.resolve_import_alias_variant(name))
+                    .then(|| self.resolve_pattern_variant_alias(name))
                     .flatten();
                 let variant_name = imported_variant.as_ref().map_or_else(
                     || pattern_variant_leaf(name).to_string(),
-                    |(_, variant)| variant.clone(),
+                    |(_, variant, _)| variant.clone(),
                 );
                 match expected_type {
                     ResolvedType::Option(inner) => {
@@ -2321,7 +2316,7 @@ impl TypeChecker {
                     ResolvedType::Class(enum_name) => {
                         if imported_variant
                             .as_ref()
-                            .is_some_and(|(owner_enum, _)| owner_enum != enum_name)
+                            .is_some_and(|(owner_enum, _, _)| owner_enum != enum_name)
                         {
                             self.error(
                                 format!("Cannot match variant {} on type {}", name, expected_type),

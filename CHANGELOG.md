@@ -59,6 +59,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed checked-build diagnostics for exact zero-argument builtin alias calls:
   - type-checking now rejects materialized exact-import zero-argument builtin values at the constructor-style call boundary instead of treating them as valid builtin calls and surfacing a later, misleading error
   - this fixes cases such as `CurrentDir()` and `ArgCount()`, which previously either failed late with `Return type mismatch` or escaped to codegen before reporting the correct `Cannot call non-function type ...` diagnostic
+- Fixed nested exact-import enum variant aliases named `Option` or `Result`:
+  - exact-import alias variant resolution now treats `Option` and `Result` as builtin-only names only when they are unqualified, instead of hijacking user-defined namespaced enums like `util.Result`
+  - this fixes single-file builds such as `import util.Result.Ok as Success`, which previously failed with diagnostics like `Unknown type: Success` or `Unknown variant 'Ok' for enum 'Result'`
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`

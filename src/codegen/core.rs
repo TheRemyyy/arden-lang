@@ -7957,9 +7957,6 @@ impl<'ctx> Codegen<'ctx> {
             .map_or((String::new(), enum_path.to_string()), |(ns, name)| {
                 (ns.to_string(), name.to_string())
             });
-        if matches!(enum_name.as_str(), "Option" | "Result") {
-            return Some((enum_name, variant_name.to_string()));
-        }
         if self.enums.contains_key(&enum_name) {
             return Some((enum_name, variant_name.to_string()));
         }
@@ -7980,7 +7977,11 @@ impl<'ctx> Codegen<'ctx> {
             .collect::<Vec<_>>();
         matches.sort_unstable();
         matches.dedup();
-        (matches.len() == 1).then(|| (matches[0].clone(), variant_name.to_string()))
+        if matches.len() == 1 {
+            return Some((matches[0].clone(), variant_name.to_string()));
+        }
+        matches!(enum_name.as_str(), "Option" | "Result")
+            .then(|| (enum_name, variant_name.to_string()))
     }
 
     pub(crate) fn resolve_pattern_variant_alias(

@@ -11071,6 +11071,40 @@ fn compile_source_no_check_runs_inferred_generic_class_constructor_function_valu
 }
 
 #[test]
+fn compile_source_no_check_runs_exact_imported_nested_enum_variant_aliases_runtime() {
+    let temp_root =
+        make_temp_project_root("no-check-exact-imported-nested-enum-variant-aliases-runtime");
+    let source_path =
+        temp_root.join("no_check_exact_imported_nested_enum_variant_aliases_runtime.apex");
+    let output_path =
+        temp_root.join("no_check_exact_imported_nested_enum_variant_aliases_runtime");
+    let source = r#"
+            module util { enum Result { Ok(Integer), Error(String) } }
+            import util.Result.Ok as Success;
+            import util.Result.Error as Failure;
+
+            function main(): Integer {
+                value: util.Result = Success(2);
+                return match (value) {
+                    Success(v) => if (v == 2) { 0 } else { 1 },
+                    Failure(err) => 2,
+                };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect("unchecked exact imported nested enum variant aliases should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled unchecked exact imported nested enum variant alias binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_runs_imported_option_alias_match_runtime() {
     let temp_root = make_temp_project_root("no-check-imported-option-alias-match-runtime");
     let source_path = temp_root.join("no_check_imported_option_alias_match_runtime.apex");
@@ -15250,6 +15284,37 @@ fn compile_source_runs_imported_result_ok_alias_runtime() {
     let status = std::process::Command::new(&output_path)
         .status()
         .expect("run compiled imported Result.Ok alias binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_runs_exact_imported_nested_enum_variant_aliases_runtime() {
+    let temp_root = make_temp_project_root("exact-imported-nested-enum-variant-aliases-runtime");
+    let source_path = temp_root.join("exact_imported_nested_enum_variant_aliases_runtime.apex");
+    let output_path = temp_root.join("exact_imported_nested_enum_variant_aliases_runtime");
+    let source = r#"
+            module util { enum Result { Ok(Integer), Error(String) } }
+            import util.Result.Ok as Success;
+            import util.Result.Error as Failure;
+
+            function main(): Integer {
+                value: util.Result = Success(2);
+                return match (value) {
+                    Success(v) => if (v == 2) { 0 } else { 1 },
+                    Failure(err) => 2,
+                };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("exact imported nested enum variant aliases should codegen");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run compiled exact imported nested enum variant alias binary");
     assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
