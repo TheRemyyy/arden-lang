@@ -38,6 +38,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed async tail-expression coercion for exact zero-argument aliases:
   - async block tail expression validation now materializes exact zero-argument builtin aliases through the same builtin-aware path used by explicit async returns instead of inferring nested function values from raw alias symbols
   - this fixes valid project builds such as `await(async { ArgCount })`, which previously failed with `Cannot compare () -> Integer and Integer`
+- Fixed direct borrow-dereference coercion for exact zero-argument aliases:
+  - codegen-side borrow and dereference inference now materializes exact zero-argument builtin aliases through the same builtin-aware path used by typed borrow boundaries instead of collapsing direct dereferences to the fallback `Integer` type
+  - this fixes valid project builds such as `(*(&CurrentDir)).length()`, which previously failed in codegen with `Cannot call method on type Integer`
 - Fixed builtin return-type inference for exact zero-argument aliases:
   - codegen-side builtin return-type inference for `range(...)`, `Option.some(...)`, and `Result.{ok,error}(...)` now derives payload types through the same contextual builtin-aware zero-argument alias path used by direct argument compilation instead of embedding raw unresolved builtin symbols in the inferred container type
   - this fixes valid project builds such as `Result.ok(Pi).unwrap()`, which previously failed in codegen with `Undefined variable: Math__pi`

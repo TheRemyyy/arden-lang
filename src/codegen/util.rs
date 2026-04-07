@@ -3653,11 +3653,13 @@ impl<'ctx> Codegen<'ctx> {
                 Type::Result(ok, _) => *ok,
                 _ => Type::Integer,
             },
-            Expr::Borrow(inner) => Type::Ref(Box::new(self.infer_expr_type(&inner.node, params))),
-            Expr::MutBorrow(inner) => {
-                Type::MutRef(Box::new(self.infer_expr_type(&inner.node, params)))
+            Expr::Borrow(inner) => {
+                Type::Ref(Box::new(self.infer_builtin_argument_type(&inner.node)))
             }
-            Expr::Deref(inner) => match self.infer_expr_type(&inner.node, params) {
+            Expr::MutBorrow(inner) => {
+                Type::MutRef(Box::new(self.infer_builtin_argument_type(&inner.node)))
+            }
+            Expr::Deref(inner) => match self.infer_builtin_argument_type(&inner.node) {
                 Type::Ref(inner) | Type::MutRef(inner) | Type::Ptr(inner) => *inner,
                 _ => Type::Integer,
             },
