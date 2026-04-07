@@ -11387,7 +11387,7 @@ fn load_link_manifest_cache_reports_io_errors_instead_of_silent_cache_miss() {
 }
 
 #[test]
-fn read_cache_blob_reports_decode_errors_instead_of_silent_cache_miss() {
+fn read_cache_blob_treats_invalid_payload_as_cache_miss() {
     let temp_root = make_temp_project_root("cache-decode-error");
     let cache_path = temp_root
         .join(".ardencache")
@@ -11401,9 +11401,12 @@ fn read_cache_blob_reports_decode_errors_instead_of_silent_cache_miss() {
     .expect("create cache dir");
     fs::write(&cache_path, b"not valid bincode").expect("write invalid cache payload");
 
-    let err = read_cache_blob::<ParsedFileCacheEntry>(&cache_path, "parse cache")
-        .expect_err("invalid cache payload should surface a decode error");
-    assert!(err.contains("Failed to decode parse cache"), "{err}");
+    let cache = read_cache_blob::<ParsedFileCacheEntry>(&cache_path, "parse cache")
+        .expect("invalid cache payload should be treated as a cache miss");
+    assert!(
+        cache.is_none(),
+        "invalid cache payload should be ignored as a cache miss"
+    );
 
     let _ = fs::remove_dir_all(temp_root);
 }

@@ -55,15 +55,19 @@ pub(crate) fn read_cache_blob<T: DeserializeOwned>(
     let Some(raw) = read_cache_blob_raw(path, label)? else {
         return Ok(None);
     };
-    let value = bincode::deserialize(&raw).map_err(|e| {
-        format!(
-            "{}: Failed to decode {} '{}': {}",
-            "error".red().bold(),
-            label,
-            path.display(),
-            e
-        )
-    })?;
+    let value = match bincode::deserialize(&raw) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!(
+                "{}: Ignoring invalid {} '{}': {}",
+                "warning".yellow().bold(),
+                label,
+                path.display(),
+                error
+            );
+            return Ok(None);
+        }
+    };
     Ok(Some(value))
 }
 
@@ -80,15 +84,24 @@ pub(crate) fn read_cache_blob_with_timing<T: DeserializeOwned>(
         return Ok(None);
     };
     let byte_len = raw.len() as u64;
-    let value = bincode::deserialize(&raw).map_err(|e| {
-        format!(
-            "{}: Failed to decode {} '{}': {}",
-            "error".red().bold(),
-            label,
-            path.display(),
-            e
-        )
-    })?;
+    let value = match bincode::deserialize(&raw) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!(
+                "{}: Ignoring invalid {} '{}': {}",
+                "warning".yellow().bold(),
+                label,
+                path.display(),
+                error
+            );
+            totals
+                .load_ns
+                .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
+            totals.bytes_read.fetch_add(byte_len, Ordering::Relaxed);
+            totals.load_count.fetch_add(1, Ordering::Relaxed);
+            return Ok(None);
+        }
+    };
     totals
         .load_ns
         .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);

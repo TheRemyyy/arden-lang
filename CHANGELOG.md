@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### 🐛 Fixed
 
+- Fixed corrupted compiler cache recovery:
+  - cache blob decoding now treats invalid on-disk cache entries as cache misses with a warning instead of aborting the build on the first malformed bincode payload
+  - this fixes interrupted or externally-corrupted project caches such as broken `.ardencache/parsed/*.json` entries, which previously failed valid rebuilds with `Failed to decode parse cache ...` instead of reparsing and continuing
 - Fixed project-mode root namespace aliases for builtin `Option`/`Result` members:
   - project rewrite now canonicalizes `import app as root; root.Option.{Some,None}` and `root.Result.{Ok,Error}` through the same builtin-aware constructor, pattern, and function-value paths as exact builtin imports instead of leaving them as unresolved namespace fields in multi-file builds
   - import checking now also accepts method/member access on builtin values reached through root namespace aliases, so chains like `root.Option.None.is_none()` validate through the same exact-import alias rule used by `import Option.None as Empty; Empty.is_none()`

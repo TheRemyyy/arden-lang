@@ -36,6 +36,41 @@ fn cli_check_command_succeeds_for_temp_project() {
 }
 
 #[test]
+fn cli_build_recovers_from_corrupted_parse_cache_blob() {
+    let temp_root = make_temp_project_root("cli-corrupt-parse-cache");
+    let src_dir = temp_root.join("src");
+    write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
+    fs::write(
+        src_dir.join("main.arden"),
+        "package app;\nfunction main(): None { return None; }\n",
+    )
+    .expect("write main");
+
+    with_current_dir(&temp_root, || {
+        build_project(false, false, true, false, false).expect("initial build should pass");
+
+        let parsed_cache_dir = temp_root.join(".ardencache").join("parsed");
+        let parsed_cache_file = fs::read_dir(&parsed_cache_dir)
+            .expect("read parse cache dir")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.is_file())
+            .expect("parse cache file should exist");
+        fs::write(&parsed_cache_file, b"not valid cache").expect("corrupt parse cache");
+
+        let build_fingerprint = temp_root.join(".ardencache").join("build_fingerprint");
+        if build_fingerprint.exists() {
+            fs::remove_file(&build_fingerprint).expect("remove build fingerprint");
+        }
+
+        build_project(false, false, true, false, false)
+            .expect("build should ignore corrupted parse cache and recover");
+    });
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn cli_format_targets_checks_and_formats_project_files() {
     let temp_root = make_temp_project_root("cli-fmt");
     let src_dir = temp_root.join("src");
