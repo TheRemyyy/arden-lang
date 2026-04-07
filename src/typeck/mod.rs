@@ -2091,7 +2091,8 @@ impl TypeChecker {
                 iterable,
                 body,
             } => {
-                let iter_type = self.check_expr(&iterable.node, iterable.span.clone());
+                let iter_type =
+                    self.check_builtin_argument_expr(&iterable.node, iterable.span.clone());
                 let iter_item_type = Self::peel_reference_type(&iter_type);
 
                 // Determine element type

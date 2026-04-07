@@ -10929,7 +10929,7 @@ impl<'ctx> Codegen<'ctx> {
         let func = self
             .current_function
             .ok_or_else(|| CodegenError::new("for loop used outside function"))?;
-        let iterable_ty = self.infer_expr_type(&iterable.node, &[]);
+        let iterable_ty = self.infer_builtin_argument_type(&iterable.node);
         let deref_iterable_ty = self.deref_codegen_type(&iterable_ty).clone();
 
         if let Type::List(inner) = deref_iterable_ty.clone() {
@@ -10947,7 +10947,7 @@ impl<'ctx> Codegen<'ctx> {
                 },
             );
 
-            let list_value = self.compile_expr(&iterable.node)?;
+            let list_value = self.compile_expr_with_expected_type(&iterable.node, &iterable_ty)?;
             let list_ptr = self.materialize_value_pointer_for_type(
                 list_value,
                 &deref_iterable_ty,
@@ -11118,7 +11118,7 @@ impl<'ctx> Codegen<'ctx> {
             let range_value = if matches!(iterable_ty, Type::Ref(_) | Type::MutRef(_)) {
                 self.compile_deref(&iterable.node)?
             } else {
-                self.compile_expr(&iterable.node)?
+                self.compile_expr_with_expected_type(&iterable.node, &iterable_ty)?
             };
             self.builder.build_store(range_alloca, range_value).unwrap();
 
@@ -11197,7 +11197,8 @@ impl<'ctx> Codegen<'ctx> {
             let string_value = if matches!(iterable_ty, Type::Ref(_) | Type::MutRef(_)) {
                 self.compile_deref(&iterable.node)?.into_pointer_value()
             } else {
-                self.compile_expr(&iterable.node)?.into_pointer_value()
+                self.compile_expr_with_expected_type(&iterable.node, &iterable_ty)?
+                    .into_pointer_value()
             };
             let len_alloca = self
                 .builder
