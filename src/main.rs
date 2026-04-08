@@ -5269,11 +5269,7 @@ fn run_test_executable(exe_path: &Path, filtered_out: usize) -> Result<(), Strin
 
     println!();
     println!("{}", cli_accent("test result:"));
-    println!(
-        " {} {}",
-        cli_soft(if report.failed > 0 { "failed." } else { "ok." }),
-        cli_soft(format!("{} passed;", report.passed))
-    );
+    println!(" {}", cli_soft(format!("{} passed;", report.passed)));
     println!(" {}", cli_soft(format!("{} failed;", report.failed)));
     println!(" {}", cli_soft(format!("{} ignored;", report.ignored)));
     println!(" {}", cli_soft("0 measured;"));
