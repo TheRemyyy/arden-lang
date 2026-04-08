@@ -14295,7 +14295,7 @@ impl<'ctx> Codegen<'ctx> {
         value: BasicValueEnum<'ctx>,
     ) -> Result<()> {
         self.reject_unrelated_concrete_class_assignment(expected_ty, actual_ty)?;
-        self.reject_invariant_specialization_mismatch(expected_ty, actual_ty)?;
+        self.reject_builtin_heap_wrapper_specialization_mismatch(expected_ty, actual_ty)?;
 
         if !self.type_contains_active_generic_placeholder(expected_ty)
             && !self.type_contains_active_generic_placeholder(actual_ty)
@@ -14307,7 +14307,7 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
-    fn reject_invariant_specialization_mismatch(
+    fn reject_builtin_heap_wrapper_specialization_mismatch(
         &self,
         expected: &Type,
         actual: &Type,
@@ -14321,57 +14321,37 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(());
         }
 
-        if self.invariant_specializations_compatible(&expected, &actual) {
-            return Ok(());
+        let expected_key = Self::builtin_heap_wrapper_specialization_key(&expected);
+        let actual_key = Self::builtin_heap_wrapper_specialization_key(&actual);
+        if (expected_key.is_some() || actual_key.is_some()) && expected_key != actual_key {
+            return Err(Self::type_mismatch_error(&expected, &actual));
         }
 
-        Err(Self::type_mismatch_error(&expected, &actual))
+        Ok(())
     }
 
-    fn invariant_specializations_compatible(&self, expected: &Type, actual: &Type) -> bool {
-        if expected == actual {
-            return true;
-        }
-
-        match (expected, actual) {
-            (Type::Ref(expected), Type::Ref(actual))
-            | (Type::MutRef(expected), Type::MutRef(actual))
-            | (Type::Ptr(expected), Type::Ptr(actual))
-            | (Type::Box(expected), Type::Box(actual))
-            | (Type::Rc(expected), Type::Rc(actual))
-            | (Type::Arc(expected), Type::Arc(actual))
-            | (Type::List(expected), Type::List(actual))
-            | (Type::Set(expected), Type::Set(actual))
-            | (Type::Option(expected), Type::Option(actual))
-            | (Type::Task(expected), Type::Task(actual))
-            | (Type::Range(expected), Type::Range(actual)) => {
-                self.invariant_specializations_compatible(expected, actual)
+    fn builtin_heap_wrapper_specialization_key(ty: &Type) -> Option<String> {
+        match ty {
+            Type::Named(name) if name.contains("__spec__") => {
+                let (base_name, _) = name.split_once("__spec__")?;
+                matches!(base_name, "Box" | "Rc" | "Arc").then(|| name.clone())
             }
-            (Type::Ref(expected), Type::MutRef(actual)) => {
-                self.invariant_specializations_compatible(expected, actual)
+            Type::Generic(name, args) if matches!(name.as_str(), "Box" | "Rc" | "Arc") => {
+                Some(Self::generic_class_spec_name(name, args))
             }
-            (Type::Result(expected_ok, expected_err), Type::Result(actual_ok, actual_err)) => {
-                self.invariant_specializations_compatible(expected_ok, actual_ok)
-                    && self.invariant_specializations_compatible(expected_err, actual_err)
-            }
-            (Type::Map(expected_key, expected_value), Type::Map(actual_key, actual_value)) => {
-                self.invariant_specializations_compatible(expected_key, actual_key)
-                    && self.invariant_specializations_compatible(expected_value, actual_value)
-            }
-            (Type::Generic(_, _), Type::Generic(_, _))
-            | (Type::Generic(_, _), Type::Named(_))
-            | (Type::Named(_), Type::Generic(_, _))
-            | (Type::Named(_), Type::Named(_)) => {
-                let expected_name = Self::function_adapter_nominal_base_name(expected);
-                let actual_name = Self::function_adapter_nominal_base_name(actual);
-                matches!(
-                    (expected_name, actual_name),
-                    (Some(expected_name), Some(actual_name))
-                        if expected_name != actual_name
-                            || self.function_adapter_same_nominal_arguments(expected, actual)
-                )
-            }
-            _ => true,
+            Type::Box(inner) => Some(Self::generic_class_spec_name(
+                "Box",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Rc(inner) => Some(Self::generic_class_spec_name(
+                "Rc",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Arc(inner) => Some(Self::generic_class_spec_name(
+                "Arc",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            _ => None,
         }
     }
 
