@@ -91,3 +91,15 @@ export function getDocBreadcrumbs(pathname: string): DocLink[] {
     breadcrumbs.push(section);
     return breadcrumbs;
 }
+
+export function searchDocs(query: string): DocLink[] {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+        return [];
+    }
+
+    return FLATTENED_DOCS.filter((doc) => {
+        const haystack = `${doc.title} ${doc.path}`.toLowerCase();
+        return haystack.includes(normalizedQuery);
+    }).slice(0, 8);
+}

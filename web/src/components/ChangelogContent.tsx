@@ -274,7 +274,7 @@ function ReleaseCard({ release, index }: { release: ChangelogRelease; index: num
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }}
             transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.16) }}
-            className="scroll-mt-24 rounded-[2rem] border border-white/10 bg-[#15120f] p-7 shadow-[0_22px_70px_rgba(0,0,0,0.24)] md:p-9"
+            className="scroll-mt-24 border-t border-white/10 py-10 first:border-t-0 first:pt-0"
         >
             <div className="flex flex-col gap-5 border-b border-white/10 pb-6 md:flex-row md:items-end md:justify-between">
                 <div>
@@ -385,9 +385,9 @@ export function ChangelogContent({ releases }: { releases: ChangelogRelease[] })
                     </div>
                 </div>
 
-                <div ref={boundaryRef} className="relative mt-14 grid gap-8 lg:grid-cols-[220px_minmax(0,980px)] lg:justify-between xl:grid-cols-[230px_minmax(0,1040px)]">
+                <div ref={boundaryRef} className="relative mt-14 grid gap-6 lg:grid-cols-[220px_minmax(0,980px)] lg:justify-start xl:grid-cols-[230px_minmax(0,1040px)]">
                     <ReleaseSidebar releases={releases} activeReleaseId={activeReleaseId} boundaryRef={boundaryRef} />
-                    <div className="space-y-8">
+                    <div className="mx-auto w-full max-w-[1040px]">
                         {releases.map((release, index) => (
                             <ReleaseCard key={release.id} release={release} index={index} />
                         ))}

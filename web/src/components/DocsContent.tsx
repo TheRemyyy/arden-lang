@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NAV_ITEMS, getCurrentSectionTitle } from '../lib/docs';
+import { NAV_ITEMS, getCurrentSectionTitle, searchDocs } from '../lib/docs';
 import type { DocsPageData, PageHeading } from '../lib/content.server';
 
 function TableOfContents({ headings }: { headings: PageHeading[] }) {
@@ -34,29 +34,69 @@ export function DocsContent({
     nextDoc,
 }: DocsPageData) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
     const currentSectionTitle = getCurrentSectionTitle(normalizedPath);
+    const searchResults = searchDocs(searchQuery);
 
     return (
-        <div className="flex min-h-screen flex-col bg-[#0f0d0b] pt-14 font-sans text-[#f3ece3] selection:bg-[rgba(184,92,56,0.28)] selection:text-white lg:flex-row lg:pt-16">
-            <div className="fixed left-0 right-0 top-14 z-20 flex h-10 items-center border-b border-white/10 bg-[#11100d] px-4 lg:hidden">
-                <button
-                    onClick={() => setIsSidebarOpen((open) => !open)}
-                    className="flex items-center gap-2 text-sm font-medium text-white"
-                >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
-                    Menu
-                </button>
-                <span className="ml-auto font-mono text-xs text-white/45">{currentSectionTitle}</span>
+        <div className="flex min-h-screen min-w-0 flex-col overflow-x-hidden bg-[#0f0d0b] pt-16 font-sans text-[#f3ece3] selection:bg-[rgba(184,92,56,0.28)] selection:text-white lg:flex-row lg:pt-16">
+            <div className="fixed left-0 right-0 top-16 z-40 border-b border-white/10 bg-[#11100d] lg:hidden">
+                <div className="relative flex h-16 items-center gap-3 px-4">
+                    <div className="relative min-w-0 flex-1">
+                        <input
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                            type="search"
+                            placeholder={`Search docs in ${currentSectionTitle}`}
+                            className="h-11 w-full rounded-full border border-white/10 bg-white/[0.04] px-4 pr-10 text-sm text-white outline-none placeholder:text-white/35"
+                        />
+                        <svg className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
+                        </svg>
+                        {searchQuery.trim().length > 0 && (
+                            <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#161311] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+                                {searchResults.length > 0 ? (
+                                    <div className="custom-scrollbar max-h-80 overflow-y-auto py-2">
+                                        {searchResults.map((result) => (
+                                            <a
+                                                key={result.path}
+                                                href={result.path}
+                                                onClick={() => setSearchQuery('')}
+                                                className={`block px-4 py-3 text-sm transition-colors ${
+                                                    result.path === normalizedPath
+                                                        ? 'bg-white/[0.06] text-white'
+                                                        : 'text-white/72 hover:bg-white/[0.04] hover:text-white'
+                                                }`}
+                                            >
+                                                <span className="block font-medium">{result.title}</span>
+                                                <span className="mt-1 block text-[11px] uppercase tracking-[0.16em] text-white/35">{result.path}</span>
+                                            </a>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="px-4 py-4 text-sm text-white/52">No matching docs found.</div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    <button
+                        onClick={() => setIsSidebarOpen((open) => !open)}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white"
+                        aria-label={isSidebarOpen ? 'Close documentation menu' : 'Open documentation menu'}
+                    >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isSidebarOpen ? 'M6 18 18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'} />
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             <nav
-                className={`fixed left-0 top-16 z-30 flex h-[calc(100vh-4rem)] w-72 flex-col border-r border-white/10 bg-[#11100d] transition-transform duration-300 ${
+                className={`fixed bottom-0 left-0 top-32 z-30 flex w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-white/10 bg-[#11100d] transition-transform duration-300 lg:top-16 lg:h-[calc(100vh-4rem)] ${
                     isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
                 }`}
             >
-                <div className="custom-scrollbar flex-1 space-y-8 overflow-y-auto p-6 pb-20">
+                <div className="custom-scrollbar flex-1 space-y-3 overflow-y-auto px-5 py-4">
                     {NAV_ITEMS.map((section) => (
                         <section key={section.title}>
                             {'items' in section ? (
@@ -105,26 +145,27 @@ export function DocsContent({
 
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 top-14 z-20 bg-black/45 backdrop-blur-sm lg:hidden"
+                    className="fixed inset-0 top-16 z-20 bg-black/45 backdrop-blur-sm lg:hidden"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
 
-            <div className="w-full flex-1 pt-10 lg:ml-72 lg:pt-0 xl:mr-64">
-                <main className="mx-auto min-h-[80vh] w-full max-w-4xl px-6 py-10 md:px-12 lg:py-16">
+            <div className="w-full min-w-0 flex-1 pt-20 lg:ml-72 lg:pt-0 xl:mr-64">
+                <main className="mx-auto min-h-[80vh] w-full max-w-4xl min-w-0 px-4 py-8 sm:px-6 md:px-12 lg:py-16">
                     <article
-                        className="prose prose-invert prose-zinc max-w-none rounded-[2rem] border border-white/10 bg-[#161311] px-6 py-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:px-10 md:py-10
+                        className="prose prose-invert prose-zinc max-w-none overflow-x-hidden px-0 py-0
                             prose-headings:scroll-mt-24
                             prose-h1:mb-8 prose-h1:font-display prose-h1:text-4xl prose-h1:font-bold prose-h1:tracking-[-0.04em] prose-h1:text-white
                             prose-h2:mt-12 prose-h2:mb-6 prose-h2:border-b prose-h2:border-white/10 prose-h2:pb-3 prose-h2:font-display prose-h2:text-3xl prose-h2:font-bold prose-h2:tracking-[-0.03em] prose-h2:text-white
                             prose-h3:mt-8 prose-h3:mb-4 prose-h3:font-display prose-h3:text-2xl prose-h3:font-semibold prose-h3:tracking-[-0.03em] prose-h3:text-[#f3ece3]
                             prose-p:mb-6 prose-p:text-[16px] prose-p:leading-8 prose-p:text-white/72
                             prose-ul:my-6 prose-ul:list-disc prose-ul:pl-6 prose-li:mb-2 prose-li:text-white/72
-                            prose-table:my-8 prose-table:w-full prose-table:border-collapse prose-table:text-left prose-thead:border-b prose-thead:border-white/12 prose-th:px-3 prose-th:pb-3 prose-th:text-xs prose-th:uppercase prose-th:tracking-[0.18em] prose-th:text-white/50 prose-td:border-b prose-td:border-white/8 prose-td:px-3 prose-td:py-3 prose-td:text-white/78
+                            prose-img:max-w-full
+                            prose-table:my-8 prose-table:block prose-table:max-w-full prose-table:overflow-x-auto prose-table:border-collapse prose-table:text-left prose-thead:border-b prose-thead:border-white/12 prose-th:px-3 prose-th:pb-3 prose-th:text-xs prose-th:uppercase prose-th:tracking-[0.18em] prose-th:text-white/50 prose-td:border-b prose-td:border-white/8 prose-td:px-3 prose-td:py-3 prose-td:text-white/78
                             prose-strong:font-semibold prose-strong:text-white
                             prose-a:text-[var(--accent-soft)] prose-a:no-underline hover:prose-a:text-white
                             prose-code:border-0 prose-code:bg-transparent prose-code:px-0 prose-code:py-0 prose-code:text-[13px] prose-code:text-[#f2d6c8] prose-code:before:content-none prose-code:after:content-none
-                            prose-pre:rounded-[1.5rem] prose-pre:border prose-pre:border-white/10 prose-pre:bg-[#211e1a] prose-pre:text-[#f7efe5] prose-pre:shadow-sm"
+                            prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:rounded-[1.5rem] prose-pre:border prose-pre:border-white/10 prose-pre:bg-[#211e1a] prose-pre:text-[#f7efe5] prose-pre:shadow-sm"
                         dangerouslySetInnerHTML={{ __html: content }}
                     />
 
