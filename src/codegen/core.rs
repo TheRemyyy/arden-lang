@@ -14295,7 +14295,7 @@ impl<'ctx> Codegen<'ctx> {
         value: BasicValueEnum<'ctx>,
     ) -> Result<()> {
         self.reject_unrelated_concrete_class_assignment(expected_ty, actual_ty)?;
-        self.reject_builtin_heap_wrapper_specialization_mismatch(expected_ty, actual_ty)?;
+        self.reject_builtin_invariant_specialization_mismatch(expected_ty, actual_ty)?;
 
         if !self.type_contains_active_generic_placeholder(expected_ty)
             && !self.type_contains_active_generic_placeholder(actual_ty)
@@ -14307,7 +14307,7 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
-    fn reject_builtin_heap_wrapper_specialization_mismatch(
+    fn reject_builtin_invariant_specialization_mismatch(
         &self,
         expected: &Type,
         actual: &Type,
@@ -14321,8 +14321,8 @@ impl<'ctx> Codegen<'ctx> {
             return Ok(());
         }
 
-        let expected_key = Self::builtin_heap_wrapper_specialization_key(&expected);
-        let actual_key = Self::builtin_heap_wrapper_specialization_key(&actual);
+        let expected_key = Self::builtin_invariant_specialization_key(&expected);
+        let actual_key = Self::builtin_invariant_specialization_key(&actual);
         if (expected_key.is_some() || actual_key.is_some()) && expected_key != actual_key {
             return Err(Self::type_mismatch_error(&expected, &actual));
         }
@@ -14330,15 +14330,30 @@ impl<'ctx> Codegen<'ctx> {
         Ok(())
     }
 
-    fn builtin_heap_wrapper_specialization_key(ty: &Type) -> Option<String> {
+    fn builtin_invariant_specialization_key(ty: &Type) -> Option<String> {
         match ty {
             Type::Named(name) if name.contains("__spec__") => {
                 let (base_name, _) = name.split_once("__spec__")?;
-                matches!(base_name, "Box" | "Rc" | "Arc").then(|| name.clone())
+                matches!(base_name, "List" | "Map" | "Set" | "Box" | "Rc" | "Arc")
+                    .then(|| name.clone())
             }
-            Type::Generic(name, args) if matches!(name.as_str(), "Box" | "Rc" | "Arc") => {
+            Type::Generic(name, args)
+                if matches!(name.as_str(), "List" | "Map" | "Set" | "Box" | "Rc" | "Arc") =>
+            {
                 Some(Self::generic_class_spec_name(name, args))
             }
+            Type::List(inner) => Some(Self::generic_class_spec_name(
+                "List",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Map(key, value) => Some(Self::generic_class_spec_name(
+                "Map",
+                &[key.as_ref().clone(), value.as_ref().clone()],
+            )),
+            Type::Set(inner) => Some(Self::generic_class_spec_name(
+                "Set",
+                std::slice::from_ref(inner.as_ref()),
+            )),
             Type::Box(inner) => Some(Self::generic_class_spec_name(
                 "Box",
                 std::slice::from_ref(inner.as_ref()),

@@ -17607,6 +17607,52 @@ fn compile_source_no_check_rejects_builtin_box_argument_with_incompatible_payloa
 }
 
 #[test]
+fn compile_source_no_check_rejects_builtin_list_with_incompatible_specialization() {
+    let temp_root = make_temp_project_root("no-check-builtin-list-incompatible-specialization");
+    let source_path = temp_root.join("no_check_builtin_list_incompatible_specialization.arden");
+    let output_path = temp_root.join("no_check_builtin_list_incompatible_specialization");
+    let source = r#"
+            function main(): Integer {
+                value: List<Option<Integer>> = List<Option<String>>();
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible List specialization should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected List<Option<Integer>>, got List<Option<String>>"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_builtin_map_with_incompatible_specialization() {
+    let temp_root = make_temp_project_root("no-check-builtin-map-incompatible-specialization");
+    let source_path = temp_root.join("no_check_builtin_map_incompatible_specialization.arden");
+    let output_path = temp_root.join("no_check_builtin_map_incompatible_specialization");
+    let source = r#"
+            function main(): Integer {
+                value: Map<String, Integer> = Map<String, String>();
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible Map specialization should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Map<String, Integer>, got Map<String, String>"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_if_block_binding_outside_scope() {
     let temp_root = make_temp_project_root("no-check-if-scope-binding");
     let source_path = temp_root.join("no_check_if_scope_binding.arden");
