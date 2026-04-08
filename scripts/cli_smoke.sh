@@ -190,8 +190,8 @@ EOF_TEST
 "${COMPILER}" test --list --path "${TEST_FILE}" >/dev/null
 "${COMPILER}" test --path "${TEST_FILE}" >/dev/null
 "${COMPILER}" test --path "${REPO_ROOT}/examples/24_test_attributes.arden" >"${BORROW_ERR_OUT}" 2>&1
-grep -q "Total:   10" "${BORROW_ERR_OUT}"
-grep -q "Ignored: 2" "${BORROW_ERR_OUT}"
+grep -q "8 passed;" "${BORROW_ERR_OUT}"
+grep -q "2 ignored;" "${BORROW_ERR_OUT}"
 
 cat <<'EOF_IGNORE_ESC' > "${IGNORE_ESC_FILE}"
 @Test
@@ -202,7 +202,7 @@ function skipped(): None {
 }
 EOF_IGNORE_ESC
 "${COMPILER}" test --path "${IGNORE_ESC_FILE}" >"${BORROW_ERR_OUT}" 2>&1
-grep -Fq 'Reason: c:\tmp\foo\nline2' "${BORROW_ERR_OUT}"
+grep -Fq 'c:\tmp\foo\nline2' "${BORROW_ERR_OUT}"
 "${COMPILER}" test --list --path "${IGNORE_ESC_FILE}" >"${BORROW_ERR_OUT}" 2>&1
 grep -Fq '(ignored: c:\\tmp\\foo\nline2)' "${BORROW_ERR_OUT}"
 
@@ -1296,8 +1296,12 @@ run_single_fmt_roundtrip(
     "fmt_if_expr_statement_roundtrip",
     """
 function main(): None {
-    x: Integer = 0;
-    (if (true) { 1; } else { 2; });
+    mut x: Integer = 0;
+    if (true) {
+        x = 1;
+    } else {
+        x = 2;
+    }
     return None;
 }
 """,

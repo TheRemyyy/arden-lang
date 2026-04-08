@@ -1,9 +1,9 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [Parameter(Mandatory = $true)]
     [string]$ArchivePath
 )
+
+$ErrorActionPreference = "Stop"
 
 $TempRoot = Join-Path $env:RUNNER_TEMP "arden-portable-smoke"
 if (Test-Path $TempRoot) {

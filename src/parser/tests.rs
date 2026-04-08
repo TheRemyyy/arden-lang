@@ -2566,3 +2566,27 @@ fn stress_deterministic_generated_noise_never_panics() {
         }
     }
 }
+
+#[test]
+fn missing_semicolon_reports_human_readable_token_names() {
+    let source = r#"
+        function main(): None {
+            println("a")
+            println("b");
+        }
+    "#;
+
+    let tokens = tokenize(source).expect("tokenization succeeds");
+    let mut parser = Parser::new(tokens);
+    let error = parser.parse_program().expect_err("parse should fail");
+
+    assert!(error.message.contains("Expected `;`"), "{}", error.message);
+    assert!(
+        error.message.contains("identifier `println`"),
+        "{}",
+        error.message
+    );
+    let insertion_offset = source.find("println(\"a\")").unwrap() + "println(\"a\")".len();
+    assert_eq!(error.span.start, insertion_offset, "{:?}", error.span);
+    assert_eq!(error.span.end, insertion_offset, "{:?}", error.span);
+}

@@ -87,6 +87,7 @@ function ReleaseSidebar({
     const [isDockedToBottom, setIsDockedToBottom] = useState(false);
     const [railWidth, setRailWidth] = useState(260);
     const [railHeight, setRailHeight] = useState(0);
+    const [railLeft, setRailLeft] = useState<number | null>(null);
 
     useEffect(() => {
         const syncPosition = () => {
@@ -107,6 +108,8 @@ function ReleaseSidebar({
             setRailWidth((current) => (current === nextWidth ? current : nextWidth));
             const nextHeight = Math.max(Math.round(boundary.offsetHeight), 0);
             setRailHeight((current) => (current === nextHeight ? current : nextHeight));
+            const nextLeft = Math.round(railRect.left);
+            setRailLeft((current) => (current === nextLeft ? current : nextLeft));
         };
 
         syncPosition();
@@ -150,7 +153,7 @@ function ReleaseSidebar({
     return (
         <aside
             ref={railRef}
-            className="relative hidden lg:block lg:self-start"
+            className="relative hidden lg:block lg:w-[260px] lg:self-start"
             style={railHeight > 0 ? { minHeight: `${railHeight}px` } : undefined}
         >
             <div className="h-full min-h-[1px]">
@@ -159,7 +162,13 @@ function ReleaseSidebar({
                     className={`custom-scrollbar max-h-[calc(100vh-7rem)] overflow-y-auto rounded-[2rem] border border-white/10 bg-[#15120f] p-5 ${
                         isDockedToBottom ? 'absolute bottom-0 left-0' : 'fixed top-24'
                     }`}
-                    style={{ width: `${railWidth}px` }}
+                    style={
+                        isDockedToBottom
+                            ? { width: `${railWidth}px` }
+                            : railLeft === null
+                              ? { visibility: 'hidden', width: `${railWidth}px` }
+                              : { left: `${railLeft}px`, width: `${railWidth}px` }
+                    }
                 >
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/45">Versions</p>
                     <div className="mt-5 space-y-2">
@@ -304,7 +313,7 @@ function ReleaseCard({ release, index }: { release: ChangelogRelease; index: num
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }}
             transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.16) }}
-            className="min-w-0 scroll-mt-24 overflow-x-hidden border-t border-white/10 py-8 first:border-t-0 first:pt-0 sm:py-10"
+            className="min-w-0 scroll-mt-24 border-t border-white/10 py-8 first:border-t-0 first:pt-0 sm:py-10"
         >
             <div className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-end md:justify-between md:gap-5 md:pb-6">
                 <div>
@@ -404,30 +413,38 @@ export function ChangelogContent({ releases }: { releases: ChangelogRelease[] })
         <div className="min-h-screen overflow-x-hidden bg-[#0f0d0b] pt-16 text-[#f3ece3]">
             <MobileReleaseRail releases={releases} activeReleaseId={activeReleaseId} />
 
-            <div className="mx-auto w-full max-w-[1480px] px-4 pb-16 pt-24 sm:px-5 sm:pb-20 lg:pt-24 xl:px-6">
-                <div className="mx-auto max-w-3xl text-center">
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--accent-soft)]">
-                        Release history
-                    </p>
-                    <h1 className="mt-5 font-display text-4xl font-bold tracking-[-0.04em] text-white sm:text-5xl md:text-6xl">
-                        Changelog
-                    </h1>
-                    <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/68 sm:text-lg sm:leading-8">
-                        Browse Arden releases by version and jump straight to added features, fixes, behavioral changes, and technical work.
-                    </p>
-                    <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-                        <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/72">
-                            {releases.length} tracked releases
-                        </div>
-                        <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/72">
-                            {releases[0]?.label ?? 'Latest'} on top
+            <div className="w-full px-3 pb-16 pt-24 sm:px-4 sm:pb-20 lg:px-4 xl:px-5">
+                <div className="lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-6">
+                    <div className="hidden lg:block" />
+                    <div className="min-w-0">
+                        <div className="mx-auto max-w-3xl text-center">
+                            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--accent-soft)]">
+                                Release history
+                            </p>
+                            <h1 className="mt-5 font-display text-4xl font-bold tracking-[-0.04em] text-white sm:text-5xl md:text-6xl">
+                                Changelog
+                            </h1>
+                            <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/68 sm:text-lg sm:leading-8">
+                                Browse Arden releases by version and jump straight to added features, fixes, behavioral changes, and technical work.
+                            </p>
+                            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                                <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/72">
+                                    {releases.length} tracked releases
+                                </div>
+                                <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/72">
+                                    {releases[0]?.label ?? 'Latest'} on top
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div ref={boundaryRef} className="relative mt-8 grid min-w-0 gap-6 lg:mt-14 lg:grid-cols-[220px_minmax(0,980px)] lg:justify-start xl:grid-cols-[230px_minmax(0,1040px)]">
+                <div
+                    ref={boundaryRef}
+                    className="relative mt-8 min-w-0 gap-6 lg:mt-14 lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start lg:gap-6"
+                >
                     <ReleaseSidebar releases={releases} activeReleaseId={activeReleaseId} boundaryRef={boundaryRef} />
-                    <div className="mx-auto w-full min-w-0 max-w-[1040px] overflow-x-hidden">
+                    <div className="min-w-0 space-y-8">
                         {releases.map((release, index) => (
                             <ReleaseCard key={release.id} release={release} index={index} />
                         ))}

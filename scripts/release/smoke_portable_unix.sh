@@ -7,19 +7,22 @@ if [[ $# -ne 1 ]]; then
 fi
 
 ARCHIVE_PATH="$1"
-TEMP_ROOT="$(mktemp -d)"
+TEMP_ROOT_RAW="$(mktemp -d)"
+TEMP_ROOT="$(cd "${TEMP_ROOT_RAW}" && pwd -P)"
 HOME_DIR="${TEMP_ROOT}/home"
 WORK_DIR="${TEMP_ROOT}/work"
 BASE_PATH="/usr/bin:/bin"
 
 mkdir -p "${HOME_DIR}" "${WORK_DIR}"
 tar -xzf "${ARCHIVE_PATH}" -C "${TEMP_ROOT}"
+trap 'rm -rf "${TEMP_ROOT_RAW}"' EXIT
 
 BUNDLE_DIR="$(find "${TEMP_ROOT}" -mindepth 1 -maxdepth 1 -type d -name 'arden-*-portable' | head -n 1)"
 if [[ -z "${BUNDLE_DIR}" ]]; then
   echo "portable bundle directory not found after extraction" >&2
   exit 1
 fi
+BUNDLE_DIR="$(cd "${BUNDLE_DIR}" && pwd -P)"
 
 chmod +x "${BUNDLE_DIR}/arden"
 if [[ -f "${BUNDLE_DIR}/install.sh" ]]; then

@@ -1,4 +1,5 @@
 use super::*;
+use crate::diagnostics::{render_source_diagnostic, SourceDiagnostic};
 
 impl TypeChecker {
     pub(crate) fn format_resolved_type_for_diagnostic(ty: &ResolvedType) -> String {
@@ -128,64 +129,19 @@ impl TypeChecker {
 pub(crate) fn format_errors(errors: &[TypeError], source: &str, filename: &str) -> String {
     use colored::Colorize;
 
-    let lines: Vec<&str> = source.lines().collect();
     let mut output = String::new();
 
     for error in errors {
-        // Find line number
-        let mut line_num: usize = 1;
-        let mut col: usize = 1;
-        for (i, ch) in source.char_indices() {
-            if i >= error.span.start {
-                break;
-            }
-            if ch == '\n' {
-                line_num += 1;
-                col = 1;
-            } else {
-                col += 1;
-            }
-        }
-
-        output.push_str(&format!("{}: {}\n", "error".red().bold(), error.message));
-        output.push_str(&format!(
-            "  {} {}:{}:{}\n",
-            "-->".blue().bold(),
-            filename,
-            line_num,
-            col
+        output.push_str(&render_source_diagnostic(
+            source,
+            &SourceDiagnostic {
+                header: format!("{}: {}", "error".red().bold(), error.message),
+                filename,
+                span: error.span.clone(),
+                help: error.hint.clone(),
+                note: None,
+            },
         ));
-        output.push_str(&format!("   {}\n", "|".blue().bold()));
-
-        if line_num <= lines.len() {
-            output.push_str(&format!(
-                "{} {}\n",
-                format!("{:3} |", line_num).blue().bold(),
-                lines[line_num - 1]
-            ));
-
-            // Underline
-            let underline_start = col.saturating_sub(1);
-            let underline_len = error.span.end.saturating_sub(error.span.start).max(1);
-            let available = lines[line_num - 1].len().saturating_sub(underline_start);
-            let carets = "^".repeat(underline_len.min(available).max(1));
-            output.push_str(&format!(
-                "   {} {}{}\n",
-                "|".blue().bold(),
-                " ".repeat(underline_start),
-                carets.red().bold()
-            ));
-        }
-
-        if let Some(hint) = &error.hint {
-            output.push_str(&format!(
-                "   {} {}: {}\n",
-                "=".blue().bold(),
-                "help".blue().bold(),
-                hint
-            ));
-        }
-
         output.push('\n');
     }
 

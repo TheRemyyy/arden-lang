@@ -39,6 +39,37 @@ fn formatting_handles_inverted_spans_without_panicking() {
 }
 
 #[test]
+fn formatting_keeps_pipe_column_aligned_for_two_digit_line_numbers() {
+    let source = (1..=12)
+        .map(|line| format!("line {line};"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let errors = vec![BorrowError {
+        message: "Cannot assign to immutable variable 'x'".to_string(),
+        span: 86..95,
+        note: None,
+    }];
+
+    let rendered = format_borrow_errors(&errors, &source, "sample.arden");
+    let pipe_lines = rendered
+        .lines()
+        .filter(|line| line.contains('|'))
+        .collect::<Vec<_>>();
+
+    assert!(pipe_lines.len() >= 3, "{rendered}");
+
+    let positions = pipe_lines
+        .iter()
+        .map(|line| line.find('|').unwrap_or_default())
+        .collect::<Vec<_>>();
+
+    assert!(
+        positions.windows(2).all(|pair| pair[0] == pair[1]),
+        "{rendered}"
+    );
+}
+
+#[test]
 fn detects_use_after_move() {
     let source = r#"
         import std.io.*;

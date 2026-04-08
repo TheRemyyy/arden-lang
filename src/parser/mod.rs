@@ -326,6 +326,13 @@ impl<'src> Parser<'src> {
             .unwrap_or(0..0)
     }
 
+    fn previous_span(&self) -> Option<std::ops::Range<usize>> {
+        self.pos
+            .checked_sub(1)
+            .and_then(|index| self.tokens.get(index))
+            .map(|(_, s)| s.clone())
+    }
+
     fn advance(&mut self) -> Option<Token<'src>> {
         if self.pos < self.tokens.len() {
             let token = self.tokens[self.pos].0.clone();
@@ -347,10 +354,58 @@ impl<'src> Parser<'src> {
             self.advance();
             Ok(())
         } else {
-            Err(ParseError::new(
-                format!("Expected {:?}, found {:?}", expected, self.current()),
-                self.current_span(),
-            ))
+            let current_description = self
+                .current()
+                .map(Self::describe_token)
+                .unwrap_or_else(|| "end of file".to_string());
+            let (message, span) = if matches!(expected, Token::Semi) {
+                let insertion_span = self
+                    .previous_span()
+                    .map(|span| span.end..span.end)
+                    .unwrap_or_else(|| self.current_span());
+                (
+                    format!(
+                        "Expected {} before {}",
+                        Self::describe_token(expected),
+                        current_description
+                    ),
+                    insertion_span,
+                )
+            } else {
+                (
+                    format!(
+                        "Expected {}, found {}",
+                        Self::describe_token(expected),
+                        current_description
+                    ),
+                    self.current_span(),
+                )
+            };
+            Err(ParseError::new(message, span))
+        }
+    }
+
+    fn describe_token(token: &Token<'_>) -> String {
+        match token {
+            Token::Semi => "`;`".to_string(),
+            Token::Comma => "`,`".to_string(),
+            Token::Colon => "`:`".to_string(),
+            Token::Dot => "`.`".to_string(),
+            Token::LParen => "`(`".to_string(),
+            Token::RParen => "`)`".to_string(),
+            Token::LBrace => "`{`".to_string(),
+            Token::RBrace => "`}`".to_string(),
+            Token::LBracket => "`[`".to_string(),
+            Token::RBracket => "`]`".to_string(),
+            Token::Arrow => "`->`".to_string(),
+            Token::FatArrow => "`=>`".to_string(),
+            Token::Eq => "`=`".to_string(),
+            Token::Ident(name) => format!("identifier `{name}`"),
+            Token::Integer(value) => format!("integer literal `{value}`"),
+            Token::Float(value) => format!("float literal `{value}`"),
+            Token::String(value) => format!("string literal \"{value}\""),
+            Token::Char(value) => format!("character literal '{value}'"),
+            _ => format!("`{token}`"),
         }
     }
 

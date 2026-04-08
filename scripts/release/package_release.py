@@ -31,7 +31,7 @@ def ensure_clean_dir(path: Path) -> None:
 def copy_tree(source: Path, destination: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
-    shutil.copytree(source, destination, symlinks=True)
+    shutil.copytree(source, destination, symlinks=False)
 
 
 def copy_file(source: Path, destination: Path) -> None:

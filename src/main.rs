@@ -456,14 +456,9 @@ fn parse_source_text(
         )
     })?;
     let mut parser = Parser::new(tokens);
-    let program = parser.parse_program().map_err(|e| {
-        format!(
-            "{}: Parse error in {}: {}",
-            "error".red().bold(),
-            filename,
-            e.message
-        )
-    })?;
+    let program = parser
+        .parse_program()
+        .map_err(|e| format_parse_error(&e, source, filename))?;
     let namespace = program
         .package
         .clone()
@@ -4843,56 +4838,6 @@ fn parse_file(file: &Path) -> Result<(), String> {
     println!("{:#?}", program);
 
     Ok(())
-}
-
-/// Format parse error with source context
-fn format_parse_error(error: &parser::ParseError, source: &str, filename: &str) -> String {
-    let lines: Vec<&str> = source.lines().collect();
-
-    let mut line_num: usize = 1;
-    let mut col: usize = 1;
-    for (i, ch) in source.char_indices() {
-        if i >= error.span.start {
-            break;
-        }
-        if ch == '\n' {
-            line_num += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-
-    let mut output = String::new();
-    output.push_str(&format!("{}: {}\n", "error".red().bold(), error.message));
-    output.push_str(&format!(
-        "  {} {}:{}:{}\n",
-        "-->".blue().bold(),
-        filename,
-        line_num,
-        col
-    ));
-    output.push_str(&format!("   {}\n", "|".blue().bold()));
-
-    if line_num <= lines.len() {
-        output.push_str(&format!(
-            "{} {}\n",
-            format!("{:3} |", line_num).blue().bold(),
-            lines[line_num - 1]
-        ));
-
-        let underline_start = col.saturating_sub(1);
-        let underline_len = (error.span.end - error.span.start).max(1);
-        let carets = "^".repeat(underline_len.min(50));
-        output.push_str(&format!(
-            "   {} {}{}\n",
-            "|".blue().bold(),
-            " ".repeat(underline_start),
-            carets.red().bold()
-        ));
-    }
-
-    output
 }
 
 /// Run tests for a file or project
