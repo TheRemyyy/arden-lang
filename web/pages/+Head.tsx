@@ -11,6 +11,7 @@ import {
     SITE_ORGANIZATION_NAME,
     SITE_TWITTER_HANDLE,
     SITE_URL,
+    UI_LOGO_SRC,
 } from '../src/lib/site';
 
 function normalizeCanonicalUrl(urlPathname: string): string {
@@ -165,6 +166,7 @@ export default function Head() {
     return (
         <>
             <link rel="canonical" href={canonicalUrl} />
+            <link rel="preload" href={UI_LOGO_SRC} as="image" type="image/png" />
             <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
             <meta property="og:type" content="website" />
             <meta property="og:site_name" content={SITE_NAME} />
