@@ -17367,6 +17367,34 @@ fn compile_source_no_check_rejects_if_branch_between_unrelated_concrete_classes(
 }
 
 #[test]
+fn compile_source_no_check_rejects_if_branch_with_incompatible_non_class_type() {
+    let temp_root = make_temp_project_root("no-check-if-branch-incompatible-non-class-type");
+    let source_path = temp_root.join("no_check_if_branch_incompatible_non_class_type.arden");
+    let output_path = temp_root.join("no_check_if_branch_incompatible_non_class_type");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                flag: Boolean = true;
+                value: Integer = if (flag) { 1 } else { A() };
+                return value;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible if branch should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Integer, got A"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_if_block_binding_outside_scope() {
     let temp_root = make_temp_project_root("no-check-if-scope-binding");
     let source_path = temp_root.join("no_check_if_scope_binding.arden");
@@ -17407,6 +17435,36 @@ fn compile_source_no_check_rejects_match_arm_binding_outside_scope() {
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
         .expect_err("match-arm locals should not leak outside their scope");
     assert!(err.contains("Undefined variable: leaked"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_match_arm_with_incompatible_non_class_type() {
+    let temp_root = make_temp_project_root("no-check-match-arm-incompatible-non-class-type");
+    let source_path = temp_root.join("no_check_match_arm_incompatible_non_class_type.arden");
+    let output_path = temp_root.join("no_check_match_arm_incompatible_non_class_type");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                value: Integer = match (true) {
+                    true => 1,
+                    false => A(),
+                };
+                return value;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible match arm should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Integer, got A"),
+        "{err}"
+    );
 
     let _ = fs::remove_dir_all(temp_root);
 }

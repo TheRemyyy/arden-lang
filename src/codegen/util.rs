@@ -1909,6 +1909,16 @@ impl<'ctx> Codegen<'ctx> {
                                     expected_ty,
                                     &inferred_expr_ty,
                                 )?;
+                                if !this.type_contains_active_generic_placeholder(expected_ty)
+                                    && !this
+                                        .type_contains_active_generic_placeholder(&inferred_expr_ty)
+                                    && value.get_type() != this.llvm_type(expected_ty)
+                                {
+                                    return Err(Self::type_mismatch_error(
+                                        expected_ty,
+                                        &inferred_expr_ty,
+                                    ));
+                                }
                                 value
                             } else {
                                 this.compile_expr(&e.node)?

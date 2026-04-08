@@ -53,6 +53,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked `Map` key boundaries from accepting unrelated concrete classes:
   - codegen now validates the inferred key type against the declared map key type before lowering `Map.set`, `Map.get`, and `Map.contains`
   - this fixes invalid unchecked code such as `values: Map<K1, Integer> = Map<K1, Integer>(); values.set(K2(), 7);` and `values.get(K2())`, which previously compiled even though `K1` and `K2` were unrelated classes
+- Fixed unchecked typed branch expressions from reaching LLVM with incompatible non-class values:
+  - codegen now rejects typed `if` and `match` branch results whose lowered LLVM type still does not match the expected branch result type, even when the mismatch is not a concrete-class nominal case
+  - this fixes invalid unchecked code such as `value: Integer = if (flag) { 1 } else { A() };` and `value: Integer = match (true) { true => 1, false => A(), };`, which previously compiled too far and could fail later in Clang instead of reporting a direct `Type mismatch`
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values

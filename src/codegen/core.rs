@@ -923,7 +923,7 @@ impl<'ctx> Codegen<'ctx> {
         ))
     }
 
-    fn type_mismatch_error(expected_ty: &Type, actual_ty: &Type) -> CodegenError {
+    pub(crate) fn type_mismatch_error(expected_ty: &Type, actual_ty: &Type) -> CodegenError {
         CodegenError::new(format!(
             "Type mismatch: expected {}, got {}",
             Self::format_diagnostic_type(expected_ty),
@@ -1168,7 +1168,7 @@ impl<'ctx> Codegen<'ctx> {
         }
     }
 
-    fn type_contains_active_generic_placeholder(&self, ty: &Type) -> bool {
+    pub(crate) fn type_contains_active_generic_placeholder(&self, ty: &Type) -> bool {
         match self.normalize_codegen_type(ty) {
             Type::Named(name) => {
                 self.current_generic_bounds.contains_key(&name)
@@ -15186,6 +15186,12 @@ impl<'ctx> Codegen<'ctx> {
                             expected_ty,
                             &inferred_expr_ty,
                         )?;
+                        if !this.type_contains_active_generic_placeholder(expected_ty)
+                            && !this.type_contains_active_generic_placeholder(&inferred_expr_ty)
+                            && value.get_type() != this.llvm_type(expected_ty)
+                        {
+                            return Err(Self::type_mismatch_error(expected_ty, &inferred_expr_ty));
+                        }
                         value
                     } else {
                         this.compile_expr(&expr.node)?
@@ -15219,6 +15225,15 @@ impl<'ctx> Codegen<'ctx> {
                                 expected_ty,
                                 &inferred_expr_ty,
                             )?;
+                            if !this.type_contains_active_generic_placeholder(expected_ty)
+                                && !this.type_contains_active_generic_placeholder(&inferred_expr_ty)
+                                && value.get_type() != this.llvm_type(expected_ty)
+                            {
+                                return Err(Self::type_mismatch_error(
+                                    expected_ty,
+                                    &inferred_expr_ty,
+                                ));
+                            }
                             value
                         } else {
                             this.compile_expr(&expr.node)?
