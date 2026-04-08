@@ -10,7 +10,6 @@ The goal is to keep normal test workflows inside the same compiler CLI instead o
 @Test
 function testAddition(): None {
     assert_eq(2 + 2, 4);
-    return None;
 }
 ```
 
@@ -35,7 +34,6 @@ Skips a test.
 @Ignore("waiting for feature")
 function skipped(): None {
     fail("should not run");
-    return None;
 }
 ```
 
@@ -64,6 +62,36 @@ Common built-ins:
 - `fail("message")`
 
 Assertion helpers can also be stored as typed function values.
+
+How to read them:
+
+- `assert(condition)` passes when `condition` is `true`
+- `assert_true(condition)` is the explicit version of `assert(condition)`
+- `assert_false(condition)` passes when `condition` is `false`
+- `assert_eq(a, b)` passes when `a == b`
+- `assert_ne(a, b)` passes when `a != b`
+- `fail("message")` always aborts the current test immediately
+
+Typical usage:
+
+```arden
+@Test
+function testFlags(): None {
+    ready: Boolean = true;
+    assert(ready);
+    assert_true(ready);
+    assert_false(!ready);
+}
+
+@Test
+function testValues(): None {
+    result: Integer = 3 * 7;
+    assert_eq(result, 21);
+    assert_ne(result, 20);
+}
+```
+
+Tests do not need an explicit `return None;` if the body already ends naturally.
 
 ## CLI
 
@@ -122,20 +150,17 @@ arden test --path tests/math_test.arden
 @BeforeAll
 function initSuite(): None {
     println("starting tests");
-    return None;
 }
 
 @Test
 function testNumbers(): None {
     assert_eq(3 * 7, 21);
-    return None;
 }
 
 @Test
 @Ignore("example")
 function skipped(): None {
     fail("should not run");
-    return None;
 }
 ```
 

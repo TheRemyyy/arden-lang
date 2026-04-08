@@ -6,12 +6,15 @@
 //! - Go to definition
 //! - Diagnostics
 
+use colored::Colorize;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::time::Instant;
 use tokio::sync::RwLock;
 
 use crate::ast::{Block, Decl, Expr, FunctionDecl, Pattern, Program, Stmt};
@@ -20,8 +23,21 @@ use crate::lexer;
 use crate::parser::{ParseError, Parser};
 use crate::typeck::{TypeChecker, TypeError};
 
+static LSP_LOG_START: OnceLock<Instant> = OnceLock::new();
+
 fn stderr_log(message: impl AsRef<str>) {
-    eprintln!("[arden-lsp] {}", message.as_ref());
+    let start = LSP_LOG_START.get_or_init(Instant::now);
+    let elapsed = start.elapsed().as_secs();
+    let hours = elapsed / 3600;
+    let minutes = (elapsed % 3600) / 60;
+    let seconds = elapsed % 60;
+    let timestamp = format!("[{hours:02}:{minutes:02}:{seconds:02}]")
+        .truecolor(217, 178, 158)
+        .bold();
+    let app = "Arden-lsp".truecolor(255, 255, 255).bold();
+    let arrow = ">".truecolor(239, 232, 220);
+    let body = message.as_ref().truecolor(239, 232, 220);
+    eprintln!("{timestamp} {app} {arrow} {body}");
 }
 
 /// Document state tracked by the LSP server
@@ -1548,6 +1564,7 @@ impl LanguageServer for Backend {
 /// Run the LSP server
 pub async fn run_lsp_server() {
     stderr_log("booting stdio transport");
+    stderr_log("waiting for client handshake");
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 

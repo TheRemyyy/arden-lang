@@ -23,14 +23,28 @@ function add(a: Integer, b: Integer): Integer {
 
 ## Return Values
 
-If a function does not return a meaningful value, it should return `None` and the return type should be `None`.
+Functions can finish in either of these forms:
+
+- an explicit `return ...;`
+- a final tail expression whose type matches the declared return type
+
+If a function does not return a meaningful value, use return type `None`. An explicit `return None;` is valid, but not required when the body already finishes naturally.
 
 ```arden
 function greet(): None {
     println("Hello");
-    return None;
 }
 ```
+
+The same applies to value-returning functions:
+
+```arden
+function add(a: Integer, b: Integer): Integer {
+    a + b
+}
+```
+
+Use explicit `return` when you want an early exit or when it makes a longer function body easier to read.
 
 ## Lambdas (Anonymous Functions)
 

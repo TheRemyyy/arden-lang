@@ -308,9 +308,10 @@ pub fn generate_test_runner(discovery: &TestDiscovery) -> String {
     code.push_str("    mut tests_failed: Integer = 0;\n");
     code.push_str("    mut tests_ignored: Integer = 0;\n\n");
 
-    code.push_str("    println(\"========================================\");\n");
-    code.push_str("    println(\"         Arden Test Runner\");\n");
-    code.push_str("    println(\"========================================\");\n");
+    code.push_str("    println(\"+======================================+\");\n");
+    code.push_str("    println(\"| Arden Test Runner                    |\");\n");
+    code.push_str("    println(\"| mode    suite-driven execution       |\");\n");
+    code.push_str("    println(\"+======================================+\");\n");
     code.push_str("    println(\"\");\n\n");
 
     for suite in &discovery.suites {
@@ -319,19 +320,19 @@ pub fn generate_test_runner(discovery: &TestDiscovery) -> String {
 
     // Summary
     code.push_str("    println(\"\");\n");
-    code.push_str("    println(\"========================================\");\n");
-    code.push_str("    println(\"         Test Summary\");\n");
-    code.push_str("    println(\"========================================\");\n");
-    code.push_str("    println(\"Total:   \" + to_string(tests_total));\n");
-    code.push_str("    println(\"Passed:  \" + to_string(tests_passed));\n");
-    code.push_str("    println(\"Failed:  \" + to_string(tests_failed));\n");
-    code.push_str("    println(\"Ignored: \" + to_string(tests_ignored));\n");
+    code.push_str("    println(\"+======================================+\");\n");
+    code.push_str("    println(\"| Test Summary                         |\");\n");
+    code.push_str("    println(\"+======================================+\");\n");
+    code.push_str("    println(\"total    \" + to_string(tests_total));\n");
+    code.push_str("    println(\"passed   \" + to_string(tests_passed));\n");
+    code.push_str("    println(\"failed   \" + to_string(tests_failed));\n");
+    code.push_str("    println(\"ignored  \" + to_string(tests_ignored));\n");
     code.push_str("    println(\"\");\n");
     code.push_str("    if (tests_failed > 0) {\n");
-    code.push_str("        println(\"SOME TESTS FAILED\");\n");
+    code.push_str("        println(\"status   SOME TESTS FAILED\");\n");
     code.push_str("        exit(1);\n"); // Use exit directly
     code.push_str("    } else {\n");
-    code.push_str("        println(\"ALL TESTS PASSED\");\n");
+    code.push_str("        println(\"status   ALL TESTS PASSED\");\n");
     code.push_str("    }\n");
     code.push_str("    return None;\n");
     code.push_str("}\n");
@@ -365,9 +366,10 @@ pub fn generate_test_runner_with_source(
     code.push_str("    mut tests_failed: Integer = 0;\n");
     code.push_str("    mut tests_ignored: Integer = 0;\n\n");
 
-    code.push_str("    println(\"========================================\");\n");
-    code.push_str("    println(\"         Arden Test Runner\");\n");
-    code.push_str("    println(\"========================================\");\n");
+    code.push_str("    println(\"+======================================+\");\n");
+    code.push_str("    println(\"| Arden Test Runner                    |\");\n");
+    code.push_str("    println(\"| mode    suite-driven execution       |\");\n");
+    code.push_str("    println(\"+======================================+\");\n");
     code.push_str("    println(\"\");\n\n");
 
     for suite in &discovery.suites {
@@ -376,19 +378,19 @@ pub fn generate_test_runner_with_source(
 
     // Summary
     code.push_str("    println(\"\");\n");
-    code.push_str("    println(\"========================================\");\n");
-    code.push_str("    println(\"         Test Summary\");\n");
-    code.push_str("    println(\"========================================\");\n");
-    code.push_str("    println(\"Total:   \" + to_string(tests_total));\n");
-    code.push_str("    println(\"Passed:  \" + to_string(tests_passed));\n");
-    code.push_str("    println(\"Failed:  \" + to_string(tests_failed));\n");
-    code.push_str("    println(\"Ignored: \" + to_string(tests_ignored));\n");
+    code.push_str("    println(\"+======================================+\");\n");
+    code.push_str("    println(\"| Test Summary                         |\");\n");
+    code.push_str("    println(\"+======================================+\");\n");
+    code.push_str("    println(\"total    \" + to_string(tests_total));\n");
+    code.push_str("    println(\"passed   \" + to_string(tests_passed));\n");
+    code.push_str("    println(\"failed   \" + to_string(tests_failed));\n");
+    code.push_str("    println(\"ignored  \" + to_string(tests_ignored));\n");
     code.push_str("    println(\"\");\n");
     code.push_str("    if (tests_failed > 0) {\n");
-    code.push_str("        println(\"SOME TESTS FAILED\");\n");
+    code.push_str("        println(\"status   SOME TESTS FAILED\");\n");
     code.push_str("        exit(1);\n");
     code.push_str("    } else {\n");
-    code.push_str("        println(\"ALL TESTS PASSED\");\n");
+    code.push_str("        println(\"status   ALL TESTS PASSED\");\n");
     code.push_str("    }\n");
     code.push_str("    return None;\n");
     code.push_str("}\n");
@@ -601,8 +603,12 @@ mod tests;
 /// Generate runner code with mutable counters
 fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
     code.push_str(&format!("    // Test Suite: {}\n", suite.name));
-    code.push_str("    println(\"\\n--- Running Tests ---\");\n");
-    code.push_str("    println(\"\");\n\n");
+    code.push_str("    println(\"\");\n");
+    code.push_str(&format!(
+        "    println(\"suite    {}\");\n",
+        escape_arden_string_literal(&suite.name)
+    ));
+    code.push_str("    println(\"----------------------------------------\");\n\n");
 
     // BeforeAll
     if let Some(ref before_all_fn) = suite.before_all {
@@ -619,14 +625,17 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
             // Report ignore inline
             code.push_str(&format!("    // @Test: {}\n", test.name));
             code.push_str("    tests_ignored = tests_ignored + 1;\n");
-            code.push_str(&format!("    println(\"[IGNORE] {}\");\n", test.name));
+            code.push_str(&format!(
+                "    println(\"  [SKIP] {}  [ignored]\");\n",
+                escape_arden_string_literal(&test.name)
+            ));
             if let Some(reason) = test
                 .ignore_reason
                 .as_ref()
                 .filter(|reason| !reason.is_empty())
             {
                 code.push_str(&format!(
-                    "    println(\"      Reason: {}\");\n",
+                    "    println(\"           reason: {}\");\n",
                     escape_arden_string_literal(reason)
                 ));
             }
@@ -640,11 +649,13 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
             // Test itself
             code.push_str(&format!("    // @Test: {}\n", test.name));
             // Run the test
-            code.push_str(&format!("    print(\"Running: {}... \");\n", test.name));
+            code.push_str(&format!(
+                "    print(\"  [TEST] {} ... \");\n",
+                escape_arden_string_literal(&test.name)
+            ));
             code.push_str(&format!("    {}();\n", test.name));
             code.push_str("    tests_passed = tests_passed + 1;\n");
             code.push_str("    println(\"[PASS]\");\n");
-            code.push_str("    println(\"\");\n\n");
 
             // AfterEach
             if let Some(ref after_each_fn) = suite.after_each {
@@ -653,7 +664,7 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
                 code.push_str("    println(\"\");\n\n");
             }
         }
-        code.push_str("    println(\"\");\n\n");
+        code.push_str("    println(\"\");\n");
     }
 
     // AfterAll
@@ -668,8 +679,12 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
 #[allow(dead_code)]
 fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
     code.push_str(&format!("    // Test Suite: {}\n", suite.name));
-    code.push_str("    println(\"\\n--- Running Tests ---\");\n");
-    code.push_str("    println(\"\");\n\n");
+    code.push_str("    println(\"\");\n");
+    code.push_str(&format!(
+        "    println(\"suite    {}\");\n",
+        escape_arden_string_literal(&suite.name)
+    ));
+    code.push_str("    println(\"----------------------------------------\");\n\n");
 
     // BeforeAll
     if let Some(ref before_all_fn) = suite.before_all {
@@ -686,14 +701,17 @@ fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
             // Report ignore inline
             code.push_str(&format!("    // @Test: {}\n", test.name));
             code.push_str("    tests_ignored = tests_ignored + 1;\n");
-            code.push_str(&format!("    println(\"[IGNORE] {}\");\n", test.name));
+            code.push_str(&format!(
+                "    println(\"  [SKIP] {}  [ignored]\");\n",
+                escape_arden_string_literal(&test.name)
+            ));
             if let Some(reason) = test
                 .ignore_reason
                 .as_ref()
                 .filter(|reason| !reason.is_empty())
             {
                 code.push_str(&format!(
-                    "    println(\"      Reason: {}\");\n",
+                    "    println(\"           reason: {}\");\n",
                     escape_arden_string_literal(reason)
                 ));
             }
@@ -707,11 +725,13 @@ fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
             // Test itself
             code.push_str(&format!("    // @Test: {}\n", test.name));
             // Run the test
-            code.push_str(&format!("    print(\"Running: {}... \");\n", test.name));
+            code.push_str(&format!(
+                "    print(\"  [TEST] {} ... \");\n",
+                escape_arden_string_literal(&test.name)
+            ));
             code.push_str(&format!("    {}();\n", test.name));
             code.push_str("    tests_passed = tests_passed + 1;\n");
             code.push_str("    println(\"[PASS]\");\n");
-            code.push_str("    println(\"\");\n\n");
 
             // AfterEach
             if let Some(ref after_each_fn) = suite.after_each {
@@ -720,7 +740,7 @@ fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
                 code.push_str("    println(\"\");\n\n");
             }
         }
-        code.push_str("    println(\"\");\n\n");
+        code.push_str("    println(\"\");\n");
     }
 
     // AfterAll
@@ -795,9 +815,24 @@ pub fn print_discovery(discovery: &TestDiscovery) {
 #[allow(dead_code)]
 pub fn print_summary(summary: &TestSummary) {
     println!();
-    println!("{}", "========================================".cyan());
-    println!("{}", "         Test Summary".cyan().bold());
-    println!("{}", "========================================".cyan());
+    println!(
+        "{}",
+        "+======================================+"
+            .truecolor(217, 178, 158)
+            .bold()
+    );
+    println!(
+        "{}",
+        "| Test Summary                         |"
+            .truecolor(255, 255, 255)
+            .bold()
+    );
+    println!(
+        "{}",
+        "+======================================+"
+            .truecolor(217, 178, 158)
+            .bold()
+    );
 
     println!("Total:   {}", summary.total.to_string().cyan().bold());
     println!("Passed:  {}", summary.passed.to_string().green().bold());

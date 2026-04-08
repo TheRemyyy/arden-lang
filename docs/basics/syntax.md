@@ -46,7 +46,7 @@ Semicolons `;` are required at the end of statements.
 
 ```arden
 x: Integer = 5; // Required
-return None;    // Required
+return None;    // Required if you write an explicit return statement
 ```
 
 Some constructs like `if`, `while`, `function` definitions do not require a semicolon after their closing brace.

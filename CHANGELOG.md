@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Tightened unchecked codegen to fail at semantic boundaries earlier instead of letting invalid programs degrade into LLVM or Clang backend failures.
 - Refined CLI output for `build`, `run`, `fmt`, `fix`, and `check` with consistent project-style status lines, build durations, and web-aligned terminal colors instead of the previous mix of ad-hoc cyan/green messages.
 - Switched CLI build and timing summaries to seconds with enough precision for hot-cache runs, so near-instant builds no longer look absurdly tiny or rounded inconsistently in raw milliseconds.
+- Polished developer-facing terminal UX again by aligning `arden lsp` lifecycle logs and the generated `arden test` runner output with the newer neutral CLI presentation instead of the older plain-text banners.
+- Shortened and clarified docs around function/test returns and assertion helpers so examples match actual language behavior without over-explaining every small variant.
 
 ### 🐛 Fixed
 
@@ -23,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked builtin specialization mismatches for invariant containers and heap wrappers such as `List`, `Map`, `Box`, `Rc`, and `Arc`, so empty or pointer-shaped values with the wrong specialization no longer compile just because their lowered layout matches.
 - Fixed unchecked explicit builtin constructor specialization mismatches for nested invariant containers such as `Option<List<T>>`, while keeping imported builtin variant aliases like `Present` and `Success` working normally.
 - Fixed the silent-feeling `arden lsp` startup path by emitting basic stderr lifecycle logs, so local terminal launches now show boot and document-open status instead of appearing dead.
+- Fixed the first-run `arden lsp` experience to make the server's waiting state obvious immediately, reducing the feeling that the process is hanging before the client handshake arrives.
 - Fixed scope restoration across blocks, `if`, `match`, and `for`, eliminating branch-local binding leaks and several invalid-IR paths.
 - Fixed contextual typing and adaptation for lambdas, enum-variant function values, exact-import constructor values, and interface-backed/bound method values.
 - Fixed project rewrite and import-resolution edge cases across exact imports, wildcard imports, namespace aliases, nested modules, root aliases, builtin `Option`/`Result` constructors and patterns, and zero-argument stdlib aliases.
@@ -30,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked and checked diagnostics for module-local nominal types and nested receiver failures so errors now report the real root cause with user-facing type names.
 - Fixed remaining parser and import-check gaps around builtin `Option.None`, builtin aliases, and package/root-qualified constructor and pattern syntax.
 - Fixed assorted project-mode regressions around generic inheritance, generic bounds, nested-module rewrites, current-package alias constructors, and extern/link-name preservation.
+- Fixed test-runner output consistency so ignored tests, suite headings, and final summaries now read as one coherent UI instead of a mix of legacy banner styles.
 
 
 ## [1.3.5] - Tooling, Performance, and Build Reliability - 2026-03-08
