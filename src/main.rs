@@ -294,7 +294,7 @@ fn current_dir_checked() -> Result<PathBuf, String> {
 
 const CLI_WHITE_RGB: (u8, u8, u8) = (255, 255, 255);
 const CLI_SOFT_RGB: (u8, u8, u8) = (239, 232, 220);
-const CLI_DARK_RGB: (u8, u8, u8) = (31, 29, 26);
+const CLI_TERTIARY_RGB: (u8, u8, u8) = (217, 178, 158);
 
 fn cli_accent(text: impl AsRef<str>) -> ColoredString {
     text.as_ref()
@@ -307,9 +307,9 @@ fn cli_soft(text: impl AsRef<str>) -> ColoredString {
         .truecolor(CLI_SOFT_RGB.0, CLI_SOFT_RGB.1, CLI_SOFT_RGB.2)
 }
 
-fn cli_dark(text: impl AsRef<str>) -> ColoredString {
+fn cli_tertiary(text: impl AsRef<str>) -> ColoredString {
     text.as_ref()
-        .truecolor(CLI_DARK_RGB.0, CLI_DARK_RGB.1, CLI_DARK_RGB.2)
+        .truecolor(CLI_TERTIARY_RGB.0, CLI_TERTIARY_RGB.1, CLI_TERTIARY_RGB.2)
 }
 
 fn cli_success(text: impl AsRef<str>) -> ColoredString {
@@ -345,9 +345,9 @@ fn print_cli_artifact_result(action: &str, subject: &str, path: &Path, elapsed: 
         "{} {} {} {} {}",
         cli_success(action),
         cli_accent(subject),
-        cli_dark("->"),
+        cli_tertiary("->"),
         cli_path(path),
-        cli_soft(format!("({})", cli_elapsed(elapsed)))
+        cli_tertiary(format!("({})", cli_elapsed(elapsed)))
     );
 }
 
@@ -1228,18 +1228,19 @@ output_kind = "bin"
         )
     })?;
 
-    println!("{} {}", "Created project".green().bold(), name.cyan());
+    println!("{} {}", cli_success("Created project"), cli_accent(name));
     println!(
         "  {} {}",
-        "Root".dimmed(),
-        project_path
-            .canonicalize()
-            .unwrap_or(project_path)
-            .display()
+        cli_tertiary("Root"),
+        cli_path(&project_path.canonicalize().unwrap_or(project_path))
     );
-    println!("\n{}", "Next".dimmed());
-    println!("  cd {}", path.unwrap_or(Path::new(name)).display());
-    println!("  arden run");
+    println!("\n{}", cli_tertiary("Next"));
+    println!(
+        "  {} {}",
+        cli_tertiary("cd"),
+        cli_soft(path.unwrap_or(Path::new(name)).display().to_string())
+    );
+    println!("  {} {}", cli_tertiary("run"), cli_soft("arden run"));
 
     Ok(())
 }
@@ -4305,43 +4306,55 @@ fn show_project_info() -> Result<(), String> {
         validate_source_file_path(&file)?;
     }
 
-    println!("{}", "Project".cyan().bold());
-    println!("  {}: {}", "name".dimmed(), config.name);
-    println!("  {}: {}", "version".dimmed(), config.version);
-    println!("  {}: {}", "entry".dimmed(), config.entry);
-    println!("  {}: {}", "output".dimmed(), config.output);
-    println!("  {}: {:?}", "output kind".dimmed(), config.output_kind);
-    println!("  {}: {}", "opt level".dimmed(), config.opt_level);
+    println!("{}", cli_accent("Project"));
+    println!("  {}: {}", cli_tertiary("name"), cli_soft(&config.name));
     println!(
         "  {}: {}",
-        "target".dimmed(),
-        config.target.as_deref().unwrap_or("native/default")
+        cli_tertiary("version"),
+        cli_soft(&config.version)
     );
-    println!("  {}: {}", "root".dimmed(), project_root.display());
+    println!("  {}: {}", cli_tertiary("entry"), cli_soft(&config.entry));
+    println!("  {}: {}", cli_tertiary("output"), cli_soft(&config.output));
+    println!(
+        "  {}: {}",
+        cli_tertiary("output kind"),
+        cli_soft(format!("{:?}", config.output_kind))
+    );
+    println!(
+        "  {}: {}",
+        cli_tertiary("opt level"),
+        cli_soft(&config.opt_level)
+    );
+    println!(
+        "  {}: {}",
+        cli_tertiary("target"),
+        cli_soft(config.target.as_deref().unwrap_or("native/default"))
+    );
+    println!("  {}: {}", cli_tertiary("root"), cli_path(&project_root));
 
-    println!("\n{}", "source files".dimmed());
+    println!("\n{}", cli_tertiary("source files"));
     for file in &config.files {
-        println!("  - {}", file);
+        println!("  - {}", cli_soft(file));
     }
 
     if !config.dependencies.is_empty() {
-        println!("\n{}", "dependencies".dimmed());
+        println!("\n{}", cli_tertiary("dependencies"));
         for (name, version) in &config.dependencies {
-            println!("  - {} = {}", name, version);
+            println!("  - {} = {}", cli_soft(name), cli_soft(version));
         }
     }
 
     if !config.link_search.is_empty() {
-        println!("\n{}", "link search".dimmed());
+        println!("\n{}", cli_tertiary("link search"));
         for path in &config.link_search {
-            println!("  - {}", path);
+            println!("  - {}", cli_soft(path));
         }
     }
 
     if !config.link_libs.is_empty() {
-        println!("\n{}", "link libraries".dimmed());
+        println!("\n{}", cli_tertiary("link libraries"));
         for lib in &config.link_libs {
-            println!("  - {}", lib);
+            println!("  - {}", cli_soft(lib));
         }
     }
 
@@ -4677,11 +4690,27 @@ fn bench_target(file: Option<&Path>, iterations: usize) -> Result<(), String> {
         .fold(f64::NEG_INFINITY, |acc, value| acc.max(value));
     let mean = samples_ms.iter().sum::<f64>() / samples_ms.len() as f64;
 
-    println!("{}", "Benchmark".cyan().bold());
-    println!("  runs: {}", samples_ms.len());
-    println!("  min:  {:.3} ms", min);
-    println!("  mean: {:.3} ms", mean);
-    println!("  max:  {:.3} ms", max);
+    println!("{}", cli_accent("Benchmark"));
+    println!(
+        "  {} {}",
+        cli_tertiary("runs"),
+        cli_soft(samples_ms.len().to_string())
+    );
+    println!(
+        "  {} {}",
+        cli_tertiary("min"),
+        cli_soft(format!("{:.6} s", min / 1000.0))
+    );
+    println!(
+        "  {} {}",
+        cli_tertiary("mean"),
+        cli_soft(format!("{:.6} s", mean / 1000.0))
+    );
+    println!(
+        "  {} {}",
+        cli_tertiary("max"),
+        cli_soft(format!("{:.6} s", max / 1000.0))
+    );
     Ok(())
 }
 
@@ -4696,12 +4725,21 @@ fn profile_target(file: Option<&Path>) -> Result<(), String> {
         let _ = fs::remove_file(cleanup_path);
     }
 
-    println!("{}", "Timing profile".cyan().bold());
-    println!("  build: {:.3} ms", build_elapsed.as_secs_f64() * 1000.0);
-    println!("  run:   {:.3} ms", run_elapsed.as_secs_f64() * 1000.0);
+    println!("{}", cli_accent("Timing profile"));
     println!(
-        "  total: {:.3} ms",
-        (build_elapsed + run_elapsed).as_secs_f64() * 1000.0
+        "  {} {}",
+        cli_tertiary("build"),
+        cli_soft(cli_elapsed(build_elapsed))
+    );
+    println!(
+        "  {} {}",
+        cli_tertiary("run"),
+        cli_soft(cli_elapsed(run_elapsed))
+    );
+    println!(
+        "  {} {}",
+        cli_tertiary("total"),
+        cli_soft(cli_elapsed(build_elapsed + run_elapsed))
     );
     Ok(())
 }
@@ -4716,7 +4754,7 @@ fn lex_file(file: &Path) -> Result<(), String> {
     let tokens = lexer::tokenize(&source)
         .map_err(|e| format!("{}: Lexer error: {}", "error".red().bold(), e))?;
 
-    println!("{}", "Tokens".cyan().bold());
+    println!("{}", cli_accent("Tokens"));
     for (token, span) in tokens {
         println!("  {:?} @ {}..{}", token, span.start, span.end);
     }
@@ -4743,7 +4781,7 @@ fn parse_file(file: &Path) -> Result<(), String> {
         .parse_program()
         .map_err(|e| format_parse_error(&e, &source, filename))?;
 
-    println!("{}", "AST".cyan().bold());
+    println!("{}", cli_accent("AST"));
     println!("{:#?}", program);
 
     Ok(())
@@ -4821,8 +4859,11 @@ fn run_tests(
     };
 
     if test_files.is_empty() {
-        println!("{}", "No test files found".yellow());
-        println!("Create files with functions marked `@Test`.");
+        println!("{}", cli_warning("No test files found"));
+        println!(
+            "{}",
+            cli_soft("Create files with functions marked `@Test`.")
+        );
         return Ok(());
     }
 
@@ -4891,7 +4932,7 @@ fn run_tests(
 
         // List or run tests
         if list_only {
-            println!("\n{}", test_file.display().to_string().cyan().bold());
+            println!("\n{}", cli_accent(test_file.display().to_string()));
             print_discovery(&filtered_discovery);
         } else {
             // Generate and run test runner - include original source + test runner main
@@ -4934,9 +4975,12 @@ fn run_tests(
     }
 
     if !all_tests_found {
-        println!("{}", "No tests discovered".yellow());
-        println!("Mark functions with `@Test`:");
-        println!("  {} function myTest(): None {{ ... }}", "@Test".cyan());
+        println!("{}", cli_warning("No tests discovered"));
+        println!("{}", cli_soft("Mark functions with `@Test`:"));
+        println!(
+            "  {} function myTest(): None {{ ... }}",
+            cli_tertiary("@Test")
+        );
     }
 
     Ok(())
@@ -5143,7 +5187,7 @@ fn compile_and_run_test(source_path: &Path, exe_path: &Path) -> Result<(), Strin
 fn run_test_executable(exe_path: &Path) -> Result<(), String> {
     use std::process::Command;
 
-    println!("\n{}", "Running tests".cyan().bold());
+    println!("\n{}", cli_accent("Running tests"));
     println!();
 
     let output = Command::new(exe_path)
@@ -5165,12 +5209,16 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
     if let Some(out) = output {
         println!(
             "{} {} binding(s) -> {}",
-            "Generated".green().bold(),
+            cli_success("Generated"),
             count,
-            out.display()
+            cli_path(out)
         );
     } else {
-        eprintln!("{} {} binding(s)", "Generated".green().bold(), count);
+        eprintln!(
+            "{} {}",
+            cli_success("Generated"),
+            cli_soft(format!("{count} binding(s)"))
+        );
     }
     Ok(())
 }
