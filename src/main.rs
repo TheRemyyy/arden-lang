@@ -332,18 +332,62 @@ fn cli_elapsed(duration: Duration) -> String {
     format!("{:.6} s", duration.as_secs_f64())
 }
 
-fn print_test_runner_output(stdout: &str) {
+struct TestRunReport {
+    passed: usize,
+    failed: usize,
+    ignored: usize,
+}
+
+fn print_test_runner_output(stdout: &str, success: bool) -> TestRunReport {
+    let mut report = TestRunReport {
+        passed: 0,
+        failed: 0,
+        ignored: 0,
+    };
+    let mut active_test: Option<String> = None;
+
     for line in stdout.lines() {
-        if let Some(name) = line.strip_prefix("ok    ") {
-            println!("{} {}", cli_accent("ok"), cli_soft(name));
-        } else if let Some(name) = line.strip_prefix("skip  ") {
-            println!("{} {}", cli_tertiary("skip"), cli_soft(name));
-        } else if let Some(reason) = line.strip_prefix("      ") {
-            println!("      {}", cli_tertiary(reason));
+        if let Some(name) = line.strip_prefix("__ARDEN_TEST_START__ ") {
+            active_test = Some(name.to_string());
+        } else if let Some(name) = line.strip_prefix("__ARDEN_TEST_PASS__ ") {
+            report.passed += 1;
+            active_test = None;
+            println!(
+                "{} {} {}",
+                cli_accent("PASS"),
+                cli_tertiary(">"),
+                cli_soft(name)
+            );
+        } else if let Some(name) = line.strip_prefix("__ARDEN_TEST_SKIP__ ") {
+            report.ignored += 1;
+            println!(
+                "{} {} {}",
+                cli_tertiary("SKIP"),
+                cli_tertiary(">"),
+                cli_soft(name)
+            );
+        } else if let Some(reason) = line.strip_prefix("__ARDEN_TEST_SKIP_REASON__ ") {
+            println!(" {}", cli_tertiary(reason));
         } else {
             println!("{line}");
         }
     }
+
+    if !success {
+        if let Some(name) = active_test {
+            report.failed = 1;
+            println!(
+                "{} {} {}",
+                cli_accent("FAILED"),
+                cli_tertiary(">"),
+                cli_soft(name)
+            );
+        } else {
+            report.failed = 1;
+        }
+    }
+
+    report
 }
 
 fn print_cli_step(message: impl AsRef<str>) {
@@ -4943,6 +4987,9 @@ fn run_tests(
             total_tests: filtered_total_tests,
             ignored_tests: filtered_ignored_tests,
         };
+        let filtered_out_tests = discovery
+            .total_tests
+            .saturating_sub(filtered_discovery.total_tests);
 
         // List or run tests
         if list_only {
@@ -4968,7 +5015,8 @@ fn run_tests(
                     previous: previous_dir,
                 };
                 let build_result = build_project(false, false, true, false, false);
-                let result = build_result.and_then(|_| run_test_executable(&exe_path));
+                let result =
+                    build_result.and_then(|_| run_test_executable(&exe_path, filtered_out_tests));
                 let _ = fs::remove_dir_all(&temp_dir);
                 result?;
             } else {
@@ -4978,7 +5026,7 @@ fn run_tests(
                     .map_err(|e| format!("Failed to write test runner: {}", e))?;
 
                 // Compile and run the test runner
-                let result = compile_and_run_test(&runner_path, &exe_path);
+                let result = compile_and_run_test(&runner_path, &exe_path, filtered_out_tests);
 
                 // Clean up temporary files
                 let _ = fs::remove_dir_all(&temp_dir);
@@ -5188,27 +5236,52 @@ fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Resul
 }
 
 /// Compile and run a test file
-fn compile_and_run_test(source_path: &Path, exe_path: &Path) -> Result<(), String> {
+fn compile_and_run_test(
+    source_path: &Path,
+    exe_path: &Path,
+    filtered_out: usize,
+) -> Result<(), String> {
     // Compile the test runner
     let source = fs::read_to_string(source_path)
         .map_err(|e| format!("Failed to read test runner: {}", e))?;
 
     compile_source(&source, source_path, exe_path, false, true, None, None)?;
 
-    run_test_executable(exe_path)
+    run_test_executable(exe_path, filtered_out)
 }
 
-fn run_test_executable(exe_path: &Path) -> Result<(), String> {
+fn run_test_executable(exe_path: &Path, filtered_out: usize) -> Result<(), String> {
     use std::process::Command;
 
+    let started_at = Instant::now();
     println!();
 
     let output = Command::new(exe_path)
         .output()
         .map_err(|e| format!("Failed to run test runner: {}", e))?;
 
-    print_test_runner_output(&String::from_utf8_lossy(&output.stdout));
+    let report = print_test_runner_output(
+        &String::from_utf8_lossy(&output.stdout),
+        output.status.success(),
+    );
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    let elapsed = started_at.elapsed();
+
+    println!();
+    println!("{}", cli_accent("test result:"));
+    println!(
+        " {} {}",
+        cli_soft(if report.failed > 0 { "failed." } else { "ok." }),
+        cli_soft(format!("{} passed;", report.passed))
+    );
+    println!(" {}", cli_soft(format!("{} failed;", report.failed)));
+    println!(" {}", cli_soft(format!("{} ignored;", report.ignored)));
+    println!(" {}", cli_soft("0 measured;"));
+    println!(" {}", cli_soft(format!("{} filtered out;", filtered_out)));
+    println!(
+        " {}",
+        cli_soft(format!("finished in {}", cli_elapsed(elapsed)))
+    );
 
     if !output.status.success() {
         return Err("test run failed".to_string());

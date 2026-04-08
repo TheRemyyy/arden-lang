@@ -308,8 +308,6 @@ pub fn generate_test_runner(discovery: &TestDiscovery) -> String {
     code.push_str("    mut tests_failed: Integer = 0;\n");
     code.push_str("    mut tests_ignored: Integer = 0;\n\n");
 
-    code.push_str("    println(\"\");\n");
-
     for suite in &discovery.suites {
         generate_suite_runner(&mut code, suite);
     }
@@ -348,8 +346,6 @@ pub fn generate_test_runner_with_source(
     code.push_str("    mut tests_passed: Integer = 0;\n");
     code.push_str("    mut tests_failed: Integer = 0;\n");
     code.push_str("    mut tests_ignored: Integer = 0;\n\n");
-
-    code.push_str("    println(\"\");\n");
 
     for suite in &discovery.suites {
         generate_suite_runner_with_mut(&mut code, suite);
@@ -585,7 +581,7 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
             code.push_str(&format!("    // @Test: {}\n", test.name));
             code.push_str("    tests_ignored = tests_ignored + 1;\n");
             code.push_str(&format!(
-                "    println(\"skip  {}\");\n",
+                "    println(\"__ARDEN_TEST_SKIP__ {}\");\n",
                 escape_arden_string_literal(&test.name)
             ));
             if let Some(reason) = test
@@ -594,7 +590,7 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
                 .filter(|reason| !reason.is_empty())
             {
                 code.push_str(&format!(
-                    "    println(\"      {}\");\n",
+                    "    println(\"__ARDEN_TEST_SKIP_REASON__ {}\");\n",
                     escape_arden_string_literal(reason)
                 ));
             }
@@ -607,10 +603,14 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
 
             // Test itself
             code.push_str(&format!("    // @Test: {}\n", test.name));
+            code.push_str(&format!(
+                "    println(\"__ARDEN_TEST_START__ {}\");\n",
+                escape_arden_string_literal(&test.name)
+            ));
             code.push_str(&format!("    {}();\n", test.name));
             code.push_str("    tests_passed = tests_passed + 1;\n");
             code.push_str(&format!(
-                "    println(\"ok    {}\");\n",
+                "    println(\"__ARDEN_TEST_PASS__ {}\");\n",
                 escape_arden_string_literal(&test.name)
             ));
 
@@ -649,7 +649,7 @@ fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
             code.push_str(&format!("    // @Test: {}\n", test.name));
             code.push_str("    tests_ignored = tests_ignored + 1;\n");
             code.push_str(&format!(
-                "    println(\"skip  {}\");\n",
+                "    println(\"__ARDEN_TEST_SKIP__ {}\");\n",
                 escape_arden_string_literal(&test.name)
             ));
             if let Some(reason) = test
@@ -658,7 +658,7 @@ fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
                 .filter(|reason| !reason.is_empty())
             {
                 code.push_str(&format!(
-                    "    println(\"      {}\");\n",
+                    "    println(\"__ARDEN_TEST_SKIP_REASON__ {}\");\n",
                     escape_arden_string_literal(reason)
                 ));
             }
@@ -671,10 +671,14 @@ fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
 
             // Test itself
             code.push_str(&format!("    // @Test: {}\n", test.name));
+            code.push_str(&format!(
+                "    println(\"__ARDEN_TEST_START__ {}\");\n",
+                escape_arden_string_literal(&test.name)
+            ));
             code.push_str(&format!("    {}();\n", test.name));
             code.push_str("    tests_passed = tests_passed + 1;\n");
             code.push_str(&format!(
-                "    println(\"ok    {}\");\n",
+                "    println(\"__ARDEN_TEST_PASS__ {}\");\n",
                 escape_arden_string_literal(&test.name)
             ));
 

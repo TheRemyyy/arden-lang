@@ -165,9 +165,9 @@ return None;
     let discovery = discover_tests(&program);
 
     let generated = generate_test_runner_with_source(&discovery, source);
-    assert!(generated.contains("println(\"skip  skipped\");"));
-    assert!(!generated.contains("ok    skipped"));
-    assert!(!generated.contains("println(\"      "));
+    assert!(generated.contains("println(\"__ARDEN_TEST_SKIP__ skipped\");"));
+    assert!(!generated.contains("__ARDEN_TEST_PASS__ skipped"));
+    assert!(!generated.contains("__ARDEN_TEST_SKIP_REASON__"));
 }
 
 #[test]
@@ -206,7 +206,7 @@ fn generated_runner_escapes_ignore_reason_control_chars() {
     let discovery = discover_tests(&program);
 
     let generated = generate_test_runner_with_source(&discovery, source);
-    assert!(generated.contains("      c:\\\\tmp\\\\foo\\\\nline2"));
+    assert!(generated.contains("__ARDEN_TEST_SKIP_REASON__ c:\\\\tmp\\\\foo\\\\nline2"));
 }
 
 #[test]
@@ -442,7 +442,10 @@ fn generated_runner_escapes_ignore_reason_braces() {
     let discovery = discover_tests(&program);
 
     let generated = generate_test_runner_with_source(&discovery, source);
-    assert!(generated.contains("      \\{danger\\}"), "{generated}");
+    assert!(
+        generated.contains("__ARDEN_TEST_SKIP_REASON__ \\{danger\\}"),
+        "{generated}"
+    );
 }
 
 #[test]
@@ -469,8 +472,9 @@ function skipped(): None { return None; }
         "{generated}"
     );
     assert!(
-        !generated
-            .contains("println(\"skip  skipped\");\n    // @After: teardown\n    teardown();"),
+        !generated.contains(
+            "println(\"__ARDEN_TEST_SKIP__ skipped\");\n    // @After: teardown\n    teardown();"
+        ),
         "{generated}"
     );
 }
