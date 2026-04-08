@@ -1,6 +1,3 @@
 # Keep repository-wide Cargo config machine-neutral.
 # Configure LLVM/linker paths in your local shell profile or an untracked
 # `.cargo/config.local.toml` include if your environment needs overrides.
-
-[build]
-rustflags = ["-C", "target-cpu=native"]

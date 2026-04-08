@@ -80,19 +80,19 @@ set "PATH=%ROOT%toolchain\\llvm\\bin;%PATH%"
 def build_unix_install_script(platform_name: str) -> str:
     library_var = "DYLD_LIBRARY_PATH" if platform_name == "macos" else "LD_LIBRARY_PATH"
     extra_path = (
-        '${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/extra/bin:\\${PATH}'
+        '${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/extra/bin:${PATH}'
         if platform_name == "linux"
-        else '${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/lld/bin:\\${PATH}'
+        else '${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/lld/bin:${PATH}'
     )
     extra_lib = (
-        f'${{ROOT}}/toolchain/llvm/lib:${{ROOT}}/toolchain/lld/lib:\\${{{library_var}:-}}'
+        f'${{ROOT}}/toolchain/llvm/lib:${{ROOT}}/toolchain/lld/lib:${{{library_var}:-}}'
         if platform_name == "macos"
-        else f'${{ROOT}}/toolchain/llvm/lib:\\${{{library_var}:-}}'
+        else f'${{ROOT}}/toolchain/llvm/lib:${{{library_var}:-}}'
     )
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
 BIN_DIR="${HOME}/.local/bin"
 TARGET="${BIN_DIR}/arden"
 
