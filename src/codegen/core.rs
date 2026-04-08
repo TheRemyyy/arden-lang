@@ -12874,6 +12874,9 @@ impl<'ctx> Codegen<'ctx> {
         expr: &Expr,
         expected_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
+        if let Some(actual_ty) = self.explicit_constructor_expr_type(expr) {
+            self.reject_builtin_constructor_specialization_mismatch(expected_ty, &actual_ty)?;
+        }
         if let Expr::GenericFunctionValue { callee, type_args } = expr {
             if let Some(closure) = self
                 .compile_class_constructor_function_value_with_expected_type(
@@ -14305,6 +14308,108 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         Ok(())
+    }
+
+    fn reject_builtin_constructor_specialization_mismatch(
+        &self,
+        expected: &Type,
+        actual: &Type,
+    ) -> Result<()> {
+        let expected = self.normalize_codegen_type(expected);
+        let actual = self.normalize_codegen_type(actual);
+
+        if self.type_contains_active_generic_placeholder(&expected)
+            || self.type_contains_active_generic_placeholder(&actual)
+        {
+            return Ok(());
+        }
+
+        let expected_key = Self::builtin_constructor_specialization_key(&expected);
+        let actual_key = Self::builtin_constructor_specialization_key(&actual);
+        if let (Some(expected_key), Some(actual_key)) = (expected_key, actual_key) {
+            if expected_key != actual_key {
+                return Err(Self::type_mismatch_error(&expected, &actual));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn explicit_constructor_expr_type(&self, expr: &Expr) -> Option<Type> {
+        let Expr::Construct { ty, .. } = expr else {
+            return None;
+        };
+        let (base_name, explicit_type_args) = Self::parse_construct_nominal_type_source(ty)?;
+
+        if let Some(resolved_name) = self.resolve_alias_qualified_codegen_type_name(&base_name) {
+            if explicit_type_args.is_empty() {
+                return Some(Type::Named(resolved_name));
+            }
+            if resolved_name.contains("__spec__") {
+                return Some(Type::Named(resolved_name));
+            }
+            if let Some(normalized) =
+                self.normalize_user_defined_generic_type(&resolved_name, &explicit_type_args)
+            {
+                return Some(normalized);
+            }
+        }
+
+        Some(self.normalize_codegen_type(&Type::Generic(base_name, explicit_type_args)))
+    }
+
+    fn builtin_constructor_specialization_key(ty: &Type) -> Option<String> {
+        match ty {
+            Type::Named(name) if name.contains("__spec__") => {
+                let (base_name, _) = name.split_once("__spec__")?;
+                matches!(
+                    base_name,
+                    "Option" | "Result" | "List" | "Map" | "Set" | "Box" | "Rc" | "Arc"
+                )
+                .then(|| name.clone())
+            }
+            Type::Generic(name, args)
+                if matches!(
+                    name.as_str(),
+                    "Option" | "Result" | "List" | "Map" | "Set" | "Box" | "Rc" | "Arc"
+                ) =>
+            {
+                Some(Self::generic_class_spec_name(name, args))
+            }
+            Type::Option(inner) => Some(Self::generic_class_spec_name(
+                "Option",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Result(ok, err) => Some(Self::generic_class_spec_name(
+                "Result",
+                &[ok.as_ref().clone(), err.as_ref().clone()],
+            )),
+            Type::List(inner) => Some(Self::generic_class_spec_name(
+                "List",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Map(key, value) => Some(Self::generic_class_spec_name(
+                "Map",
+                &[key.as_ref().clone(), value.as_ref().clone()],
+            )),
+            Type::Set(inner) => Some(Self::generic_class_spec_name(
+                "Set",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Box(inner) => Some(Self::generic_class_spec_name(
+                "Box",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Rc(inner) => Some(Self::generic_class_spec_name(
+                "Rc",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            Type::Arc(inner) => Some(Self::generic_class_spec_name(
+                "Arc",
+                std::slice::from_ref(inner.as_ref()),
+            )),
+            _ => None,
+        }
     }
 
     fn reject_builtin_invariant_specialization_mismatch(

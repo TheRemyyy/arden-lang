@@ -17653,6 +17653,29 @@ fn compile_source_no_check_rejects_builtin_map_with_incompatible_specialization(
 }
 
 #[test]
+fn compile_source_no_check_rejects_builtin_option_with_incompatible_specialization() {
+    let temp_root = make_temp_project_root("no-check-builtin-option-incompatible-specialization");
+    let source_path = temp_root.join("no_check_builtin_option_incompatible_specialization.arden");
+    let output_path = temp_root.join("no_check_builtin_option_incompatible_specialization");
+    let source = r#"
+            function main(): Integer {
+                value: Option<List<Integer>> = Option<List<String>>();
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible Option specialization should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Option<List<Integer>>, got Option<List<String>>"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_if_block_binding_outside_scope() {
     let temp_root = make_temp_project_root("no-check-if-scope-binding");
     let source_path = temp_root.join("no_check_if_scope_binding.arden");
