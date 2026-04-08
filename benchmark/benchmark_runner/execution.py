@@ -77,12 +77,13 @@ def run_runtime_benchmark(spec, root: Path, bin_dir: Path, build_env: dict[str, 
         "rust": exe_path(bin_dir / f"{spec.name}_rust"),
         "go": exe_path(bin_dir / f"{spec.name}_go"),
     }
+    print(f"Preparing runtime binaries for {spec.name}...", flush=True)
     compile_arden(root, spec.name, binaries["arden"], build_env, opt_level, target)
     compile_rust(root, spec.name, binaries["rust"])
     compile_go(root, spec.name, binaries["go"])
 
     for lang in LANGUAGES:
-        print(f"Running {lang}...")
+        print(f"Running {lang} runtime for {spec.name}...", flush=True)
         for _ in range(warmup):
             timed_run(binaries[lang], root)
         samples: list[float] = []
@@ -122,7 +123,7 @@ def run_compile_benchmark(spec, root: Path, build_env: dict[str, str], arden_tim
     lang_data: dict[str, dict] = {}
     reference_checksum = None
     for lang in LANGUAGES:
-        print(f"Compiling {lang}...")
+        print(f"Compiling {lang} for {spec.name} ({effective_mode})...", flush=True)
         job = compile_jobs[lang]
         arden_timing_samples: list[dict[str, dict]] = []
         for _ in range(warmup):
@@ -156,7 +157,10 @@ def _run_two_phase_incremental(spec, root: Path, build_env: dict[str, str], arde
     reference_checksum = None
 
     for lang in LANGUAGES:
-        print(f"{phase_two_label.split(' mean')[0].capitalize()} {lang}...")
+        print(
+            f"{phase_two_label.split(' mean')[0].capitalize()} {lang} for {spec.name}...",
+            flush=True,
+        )
         first_samples: list[float] = []
         second_samples: list[float] = []
         checksums: list[int] = []
@@ -273,8 +277,9 @@ def run_incremental_mixed_benchmark(spec, root: Path, build_env: dict[str, str],
 
 def run_selected_benchmarks(selected: list, root: Path, bin_dir: Path, build_env: dict[str, str], opt_level: str, target: str | None, compile_mode: str, warmup: int, repeats: int, arden_timings: bool) -> list[dict]:
     results: list[dict] = []
-    for spec in selected:
-        print(f"\n=== {spec.name} ===")
+    total = len(selected)
+    for index, spec in enumerate(selected, start=1):
+        print(f"\n=== [{index}/{total}] {spec.name} ===", flush=True)
         if spec.kind == "runtime":
             results.append(run_runtime_benchmark(spec, root, bin_dir, build_env, opt_level, target, warmup, repeats))
             continue

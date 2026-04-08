@@ -32,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed stale-cache and rebuild correctness issues in project mode, including corrupted cache recovery, namespace-alias invalidation, and import-check/cache reuse across declaration signatures.
 - Fixed unchecked and checked diagnostics for module-local nominal types and nested receiver failures so errors now report the real root cause with user-facing type names.
 - Fixed remaining parser and import-check gaps around builtin `Option.None`, builtin aliases, and package/root-qualified constructor and pattern syntax.
+- Fixed parser diagnostics so missing semicolons and other expectation errors now use human-readable token names, aligned source gutters, and insertion-point carets instead of internal token dumps or next-token-only blame, including identifier-led statements that previously lost their true start column.
+- Fixed single-file import diagnostics so unresolved imports and alias issues now render with source context, identifier-accurate carets, and compact fix hints instead of a detached summary block.
 - Fixed assorted project-mode regressions around generic inheritance, generic bounds, nested-module rewrites, current-package alias constructors, and extern/link-name preservation.
 - Fixed test-runner output consistency so ignored tests, suite headings, and final summaries now read as one coherent UI instead of a mix of legacy banner styles.
 

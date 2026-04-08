@@ -58,12 +58,23 @@ def build_unix_wrapper(platform_name: str) -> str:
         if platform_name == "macos"
         else '"${ROOT}/toolchain/llvm/lib:${%s:-}"' % library_var
     )
+    sdk_setup = ""
+    if platform_name == "macos":
+        sdk_setup = """
+if [[ -z "${SDKROOT:-}" ]] && command -v xcrun >/dev/null 2>&1; then
+  SDKROOT="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
+  if [[ -n "${SDKROOT}" ]]; then
+    export SDKROOT
+  fi
+fi
+"""
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
 export PATH={extra_path}
 export {library_var}={extra_lib}
+{sdk_setup}\
 exec "${{ROOT}}/bin/arden-real" "$@"
 """
 
@@ -89,6 +100,16 @@ def build_unix_install_script(platform_name: str) -> str:
         if platform_name == "macos"
         else f'${{ROOT}}/toolchain/llvm/lib:${{{library_var}:-}}'
     )
+    sdk_setup = ""
+    if platform_name == "macos":
+        sdk_setup = """
+if [[ -z "${SDKROOT:-}" ]] && command -v xcrun >/dev/null 2>&1; then
+  SDKROOT="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
+  if [[ -n "${SDKROOT}" ]]; then
+    export SDKROOT
+  fi
+fi
+"""
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 
@@ -103,6 +124,7 @@ set -euo pipefail
 ROOT="${{ROOT}}"
 export PATH="{extra_path}"
 export {library_var}="{extra_lib}"
+{sdk_setup}\
 exec "${{ROOT}}/bin/arden-real" "$@"
 EOF
 chmod +x "${{TARGET}}"
@@ -150,6 +172,17 @@ def build_readme(platform_name: str, asset_name: str) -> str:
         if platform_name == "windows"
         else "- Optional: run `./install.sh` to install an Arden launcher into ~/.local/bin"
     )
+    platform_notes = {
+        "windows": "- Windows bundles are intended to run directly after extraction without extra LLVM setup.",
+        "linux": (
+            "- Linux bundles still depend on the host kernel and compatible glibc baseline.\n"
+            "- Linux bundles are designed so Arden can run directly from the extracted folder."
+        ),
+        "macos": (
+            "- macOS bundles include Arden, LLVM, and lld, but still rely on Apple Command Line Tools/Xcode-provided SDK files.\n"
+            "- The launcher auto-detects `SDKROOT` with `xcrun`, so normal machines with Apple developer tools installed should work after extraction."
+        ),
+    }[platform_name]
     return f"""Arden portable bundle
 =====================
 
@@ -167,8 +200,7 @@ How to run:
 
 Notes:
 - This bundle is intended to avoid manual LLVM/linker setup for normal compiler use.
-- Linux bundles still depend on the host kernel and compatible glibc baseline.
-- Portable bundles are designed so Arden can run directly from the extracted folder.
+{platform_notes}
 """
 
 

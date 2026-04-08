@@ -409,6 +409,19 @@ impl<'src> Parser<'src> {
         }
     }
 
+    fn expected_construct_message(expected: &str, found: Option<&Token<'_>>) -> String {
+        format!(
+            "Expected {expected}, found {}",
+            found
+                .map(Self::describe_token)
+                .unwrap_or_else(|| "end of file".to_string())
+        )
+    }
+
+    fn is_missing_semicolon_error(message: &str) -> bool {
+        message.starts_with("Expected `;`")
+    }
+
     fn is_at_end(&self) -> bool {
         self.pos >= self.tokens.len()
     }
@@ -551,8 +564,10 @@ impl<'src> Parser<'src> {
                     _ => {
                         return Err(ParseError::new(
                             format!(
-                                "Visibility modifier must be followed by a declaration, found {:?}",
+                                "Visibility modifier must be followed by a declaration, found {}",
                                 self.peek_token(1)
+                                    .map(Self::describe_token)
+                                    .unwrap_or_else(|| "end of file".to_string())
                             ),
                             self.current_span(),
                         ));
@@ -573,7 +588,10 @@ impl<'src> Parser<'src> {
             }
             _ => {
                 return Err(ParseError::new(
-                    format!("Expected declaration, found {:?}", self.current()),
+                    Self::expected_construct_message(
+                        "a declaration (`function`, `class`, `enum`, `interface`, `module`, `import`, or `package`)",
+                        self.current(),
+                    ),
                     self.current_span(),
                 ));
             }
@@ -657,7 +675,7 @@ impl<'src> Parser<'src> {
                 Ok(s)
             }
             _ => Err(ParseError::new(
-                format!("Expected string literal, found {:?}", self.current()),
+                Self::expected_construct_message("a string literal", self.current()),
                 self.current_span(),
             )),
         }
@@ -1431,7 +1449,7 @@ impl<'src> Parser<'src> {
                 Ok("None".to_string())
             }
             _ => Err(ParseError::new(
-                format!("Expected import path segment, found {:?}", self.current()),
+                Self::expected_construct_message("an import path segment", self.current()),
                 self.current_span(),
             )),
         }
@@ -1556,7 +1574,7 @@ impl<'src> Parser<'src> {
             }
             _ => {
                 return Err(ParseError::new(
-                    format!("Expected type, found {:?}", self.current()),
+                    Self::expected_construct_message("a type", self.current()),
                     self.current_span(),
                 ));
             }
@@ -1593,7 +1611,7 @@ impl<'src> Parser<'src> {
             let saved = self.pos;
             match self.parse_stmt() {
                 Ok(stmt) => stmts.push(stmt),
-                Err(stmt_err) if stmt_err.message.starts_with("Expected Semi") => {
+                Err(stmt_err) if Self::is_missing_semicolon_error(&stmt_err.message) => {
                     self.pos = saved;
                     let expr = self.parse_expr()?;
                     if matches!(self.current(), Some(Token::RBrace)) {
@@ -1680,8 +1698,8 @@ impl<'src> Parser<'src> {
 
     fn parse_ident_stmt(&mut self) -> ParseResult<Stmt> {
         // Look ahead to determine if this is a declaration or expression
-        let name = self.parse_ident()?;
         let start = self.current_span().start;
+        let name = self.parse_ident()?;
 
         if self.check(&Token::Colon) {
             // Variable declaration: name: Type = value;
@@ -2012,7 +2030,7 @@ impl<'src> Parser<'src> {
                     Ok(Pattern::Variant(name, vec![]))
                 } else if self.check(&Token::Lt) {
                     Err(ParseError::new(
-                        format!("Expected pattern, found {:?}", self.current()),
+                        Self::expected_construct_message("a pattern", self.current()),
                         self.current_span(),
                     ))
                 } else {
@@ -2032,7 +2050,10 @@ impl<'src> Parser<'src> {
                     Ok(Pattern::Literal(Literal::Integer(n)))
                 } else {
                     Err(ParseError::new(
-                        format!("Expected integer after '-', found {:?}", self.current()),
+                        Self::expected_construct_message(
+                            "an integer literal after `-`",
+                            self.current(),
+                        ),
                         self.current_span(),
                     ))
                 }
@@ -2073,7 +2094,7 @@ impl<'src> Parser<'src> {
                 Ok(Pattern::Variant("None".to_string(), vec![]))
             }
             _ => Err(ParseError::new(
-                format!("Expected pattern, found {:?}", self.current()),
+                Self::expected_construct_message("a pattern", self.current()),
                 self.current_span(),
             )),
         }
@@ -2336,6 +2357,7 @@ impl<'src> Parser<'src> {
                     };
 
                     if self.check(&Token::LParen) {
+                        let method_span_end = self.current_span().start;
                         // Method call
                         self.advance();
                         let args = self.parse_args()?;
@@ -2346,7 +2368,7 @@ impl<'src> Parser<'src> {
                                 object: Box::new(expr),
                                 field,
                             },
-                            start..self.current_span().start,
+                            start..method_span_end,
                         );
                         expr = Spanned::new(
                             Expr::Call {
@@ -2584,6 +2606,7 @@ impl<'src> Parser<'src> {
                         .join(", ");
                     full_name = format!("{}<{}>", name, formatted);
                 }
+                let callee_span_end = self.current_span().start;
 
                 // Check if this is a constructor call
                 if self.check(&Token::LParen) {
@@ -2630,8 +2653,7 @@ impl<'src> Parser<'src> {
                             args,
                         }
                     } else {
-                        let callee =
-                            Spanned::new(Expr::Ident(name), start..self.current_span().start);
+                        let callee = Spanned::new(Expr::Ident(name), start..callee_span_end);
                         let call = Expr::Call {
                             callee: Box::new(callee),
                             args,
@@ -2673,10 +2695,7 @@ impl<'src> Parser<'src> {
                     }
                 } else if has_explicit_type_args {
                     Expr::GenericFunctionValue {
-                        callee: Box::new(Spanned::new(
-                            Expr::Ident(name),
-                            start..self.current_span().start,
-                        )),
+                        callee: Box::new(Spanned::new(Expr::Ident(name), start..callee_span_end)),
                         type_args: explicit_type_args,
                     }
                 } else {
@@ -2862,7 +2881,7 @@ impl<'src> Parser<'src> {
             }
             _ => {
                 return Err(ParseError::new(
-                    format!("Expected expression, found {:?}", self.current()),
+                    Self::expected_construct_message("an expression", self.current()),
                     self.current_span(),
                 ));
             }
@@ -3052,7 +3071,7 @@ impl<'src> Parser<'src> {
                 Ok(name)
             }
             _ => Err(ParseError::new(
-                format!("Expected identifier, found {:?}", self.current()),
+                Self::expected_construct_message("an identifier", self.current()),
                 self.current_span(),
             )),
         }
@@ -3070,7 +3089,7 @@ impl<'src> Parser<'src> {
                 Ok("None".to_string())
             }
             _ => Err(ParseError::new(
-                format!("Expected identifier, found {:?}", self.current()),
+                Self::expected_construct_message("an identifier", self.current()),
                 self.current_span(),
             )),
         }

@@ -2246,15 +2246,22 @@ fn build_project(
                                     .file_name()
                                     .and_then(|s| s.to_str())
                                     .unwrap_or("unknown");
-                                let mut rendered = format!(
-                                    "{} Import errors in {}:\n",
-                                    "error".red().bold(),
-                                    filename
-                                );
+                                let source = fs::read_to_string(&unit.file).unwrap_or_default();
+                                let mut rendered = String::new();
                                 for err in errors {
-                                    rendered.push_str(&format!("  → {}\n", err.format()));
+                                    if source.is_empty() {
+                                        rendered.push_str(&format!(
+                                            "{}: {}\n",
+                                            "error".red().bold(),
+                                            err.format()
+                                        ));
+                                    } else {
+                                        rendered
+                                            .push_str(&err.format_with_source(&source, filename));
+                                        rendered.push('\n');
+                                    }
                                 }
-                                return Err(rendered);
+                                return Err(rendered.trim_end().to_string());
                             }
                             import_check_timing_totals.checker_run_ns.fetch_add(
                                 elapsed_nanos_u64(checker_run_started_at),
@@ -4059,11 +4066,12 @@ fn run_single_file_semantic_checks(
         stdlib_registry(),
     );
     if let Err(errors) = import_checker.check_program(program) {
-        let mut rendered = format!("{} Import errors:\n", "error".red().bold());
+        let mut rendered = String::new();
         for err in errors {
-            rendered.push_str(&format!("  → {}\n", err.format()));
+            rendered.push_str(&err.format_with_source(source, filename));
+            rendered.push('\n');
         }
-        return Err(format!("Import check failed\n{rendered}"));
+        return Err(rendered.trim_end().to_string());
     }
 
     let mut type_checker = TypeChecker::new();

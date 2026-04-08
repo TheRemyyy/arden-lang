@@ -21,6 +21,7 @@ def compile_arden(
         )
 
     src = root / "benchmark" / "arden" / f"{bench}.arden"
+    print(f"  [build] arden {bench}", flush=True)
     cmd = [
         str(compiler),
         "compile",
@@ -40,6 +41,7 @@ def compile_arden(
 
 def compile_rust(root: Path, bench: str, out: Path) -> None:
     src = root / "benchmark" / "rust" / f"{bench}.rs"
+    print(f"  [build] rust {bench}", flush=True)
     proc = run_cmd(
         ["rustc", "-C", "opt-level=3", "-C", "target-cpu=native", str(src), "-o", str(out)],
         root,
@@ -50,6 +52,7 @@ def compile_rust(root: Path, bench: str, out: Path) -> None:
 
 def compile_go(root: Path, bench: str, out: Path) -> None:
     src = root / "benchmark" / "go" / f"{bench}.go"
+    print(f"  [build] go {bench}", flush=True)
     proc = run_cmd(
         ["go", "build", "-trimpath", "-ldflags", "-s -w", "-o", str(out), str(src)],
         root,

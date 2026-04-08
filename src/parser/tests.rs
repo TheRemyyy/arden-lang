@@ -212,7 +212,8 @@ fn test_reject_import_alias_without_identifier() {
     "#;
     let err = parse_source(source).expect_err("import alias without identifier should fail");
     assert!(
-        err.message.contains("Expected identifier"),
+        err.message.contains("Expected identifier")
+            || err.message.contains("Expected an identifier"),
         "{}",
         err.message
     );
@@ -245,7 +246,8 @@ fn parser_reports_first_error_for_keyword_alias_plus_generic_tail() {
     let err =
         parse_source(source).expect_err("parser should stop at malformed keyword alias import");
     assert!(
-        err.message.contains("Expected identifier"),
+        err.message.contains("Expected identifier")
+            || err.message.contains("Expected an identifier"),
         "{}",
         err.message
     );
@@ -438,7 +440,8 @@ fn parser_reports_nested_match_error_before_outer_value_flow_noise() {
     assert!(
         err.message.contains("Expected RBrace")
             || err.message.contains("Expected pattern")
-            || err.message.contains("Expected FatArrow"),
+            || err.message.contains("Expected FatArrow")
+            || err.message.contains("Expected `=>`"),
         "{}",
         err.message
     );
@@ -483,7 +486,9 @@ fn test_reject_pipe_lambda_syntax() {
     "#;
     let err = parse_source(source).expect_err("pipe lambda syntax should fail");
     assert!(
-        err.message.contains("Expected expression") || err.message.contains("Unexpected token"),
+        err.message.contains("Expected expression")
+            || err.message.contains("Expected an expression")
+            || err.message.contains("Unexpected token"),
         "{}",
         err.message
     );
@@ -499,7 +504,9 @@ fn test_reject_zero_arg_pipe_lambda_syntax() {
     "#;
     let err = parse_source(source).expect_err("zero-arg pipe lambda syntax should fail");
     assert!(
-        err.message.contains("Expected expression") || err.message.contains("Unexpected token"),
+        err.message.contains("Expected expression")
+            || err.message.contains("Expected an expression")
+            || err.message.contains("Unexpected token"),
         "{}",
         err.message
     );
@@ -2179,6 +2186,31 @@ fn test_parse_forward_public_async_uppercase_function_call_as_call() {
         panic!("Expected async function call, not constructor");
     };
     assert!(matches!(&callee.node, Expr::Ident(name) if name == "LoadValue"));
+}
+
+#[test]
+fn test_direct_call_callee_span_starts_at_identifier() {
+    let source = r#"
+        function main(): None {
+            abs(-1.0);
+            return None;
+        }
+    "#;
+    let program = parse_source(source).expect("Should parse direct function call");
+    let Decl::Function(func) = &program.declarations[0].node else {
+        panic!("Expected function declaration");
+    };
+    let Stmt::Expr(expr) = &func.body[0].node else {
+        panic!("Expected expression statement");
+    };
+    let Expr::Call { callee, .. } = &expr.node else {
+        panic!("Expected direct call");
+    };
+    let Expr::Ident(name) = &callee.node else {
+        panic!("Expected identifier callee");
+    };
+    assert_eq!(name, "abs");
+    assert_eq!(&source[callee.span.clone()], "abs", "{:?}", callee.span);
 }
 
 #[test]

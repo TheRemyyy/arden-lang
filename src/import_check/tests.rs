@@ -1,4 +1,5 @@
 use super::*;
+use crate::diagnostics::span_to_location;
 use crate::lexer::tokenize;
 use crate::parser::Parser;
 use crate::stdlib::stdlib_registry;
@@ -224,6 +225,48 @@ return None;
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0].function_name, "alias.Box");
     assert_eq!(errors[0].defined_in, "<unknown namespace alias>");
+}
+
+#[test]
+fn rendered_import_error_includes_source_context() {
+    let source = r#"
+import std.math as math;
+function main(): None {
+    abs(-1.0);
+    return None;
+}
+"#;
+    let errors = check_import_errors(source);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+
+    let rendered = errors[0].format_with_source(source, "main.arden");
+    assert!(rendered.contains("--> main.arden:"), "{rendered}");
+    assert!(
+        rendered.contains("Function 'abs' is defined in 'std.math'"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("Add 'import std.math.abs;' to the top of your file"),
+        "{rendered}"
+    );
+    assert!(rendered.contains("did you mean 'main'?"), "{rendered}");
+    assert!(rendered.contains("current namespace: global"), "{rendered}");
+}
+
+#[test]
+fn direct_call_import_error_points_at_function_identifier() {
+    let source = r#"
+import std.math as math;
+function main(): None {
+    abs(-1.0);
+    return None;
+}
+"#;
+    let errors = check_import_errors(source);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+
+    let (line, col) = span_to_location(&errors[0].span, source);
+    assert_eq!((line, col), (4, 5), "{:?}", errors[0].span);
 }
 
 #[test]

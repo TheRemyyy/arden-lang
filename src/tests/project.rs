@@ -8451,10 +8451,16 @@ fn project_commands_recover_cleanly_after_malformed_helper_fix() {
     with_current_dir(&temp_root, || {
         let check_err =
             check_command(None, false).expect_err("project check should fail on malformed helper");
-        assert!(check_err.contains("Parse error"), "{check_err}");
+        assert!(
+            check_err.contains("Parse error") || check_err.contains("Expected an identifier"),
+            "{check_err}"
+        );
         let build_err = build_project(false, false, true, false, false)
             .expect_err("build should fail on malformed helper");
-        assert!(build_err.contains("Parse error"), "{build_err}");
+        assert!(
+            build_err.contains("Parse error") || build_err.contains("Expected an identifier"),
+            "{build_err}"
+        );
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -8543,10 +8549,16 @@ fn project_build_recovers_after_malformed_helper_fix_with_cache_history() {
     with_current_dir(&temp_root, || {
         let check_err =
             check_command(None, false).expect_err("project check should fail on malformed helper");
-        assert!(check_err.contains("Parse error"), "{check_err}");
+        assert!(
+            check_err.contains("Parse error") || check_err.contains("Expected an identifier"),
+            "{check_err}"
+        );
         let build_err = build_project(false, false, true, false, false)
             .expect_err("build should fail on malformed helper");
-        assert!(build_err.contains("Parse error"), "{build_err}");
+        assert!(
+            build_err.contains("Parse error") || build_err.contains("Expected an identifier"),
+            "{build_err}"
+        );
     });
 
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -12061,7 +12073,8 @@ fn project_parse_cache_recovers_cleanly_after_invalid_sibling_fix() {
     let first_helper_err = parse_project_unit(&temp_root, &helper_file)
         .expect_err("invalid helper should fail parsing");
     assert!(
-        first_helper_err.contains("Parse error"),
+        first_helper_err.contains("Parse error")
+            || first_helper_err.contains("Expected an identifier"),
         "{first_helper_err}"
     );
     assert!(!first_main.from_parse_cache);

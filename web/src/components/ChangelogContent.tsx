@@ -210,13 +210,45 @@ function MobileReleaseRail({
     releases: ChangelogRelease[];
     activeReleaseId: string;
 }) {
+    const containerRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container || !activeReleaseId) return;
+
+        const activeLink = container.querySelector<HTMLElement>(`[data-release-id="${activeReleaseId}"]`);
+        if (!activeLink) return;
+
+        const containerLeft = container.scrollLeft;
+        const containerRight = containerLeft + container.clientWidth;
+        const itemLeft = activeLink.offsetLeft;
+        const itemRight = itemLeft + activeLink.offsetWidth;
+        const padding = 20;
+
+        if (itemLeft < containerLeft + padding) {
+            container.scrollTo({
+                left: Math.max(itemLeft - padding, 0),
+                behavior: 'smooth',
+            });
+            return;
+        }
+
+        if (itemRight > containerRight - padding) {
+            container.scrollTo({
+                left: itemRight - container.clientWidth + padding,
+                behavior: 'smooth',
+            });
+        }
+    }, [activeReleaseId]);
+
     return (
         <div className="fixed left-0 right-0 top-16 z-30 border-b border-white/10 bg-[#11100d] lg:hidden">
-            <div className="custom-scrollbar overflow-x-auto px-4 py-3">
+            <div ref={containerRef} className="custom-scrollbar overflow-x-auto px-4 py-3">
                 <div className="flex min-w-max gap-2">
                     {releases.map((release) => (
                         <a
                             key={release.id}
+                            data-release-id={release.id}
                             href={`#${release.id}`}
                             className={`rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors ${
                                 activeReleaseId === release.id

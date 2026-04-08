@@ -75,14 +75,27 @@ def main() -> int:
         ensure_tool(tool)
 
     build_env = {"LLVM_SYS_211_PREFIX": detect_llvm_prefix()}
+    print(f"Benchmark root: {bench_dir}", flush=True)
+    print(f"Results dir: {out_dir}", flush=True)
+    print(
+        f"Config: repeats={args.repeats}, warmup={args.warmup}, compile_mode={args.compile_mode}, "
+        f"arden_opt_level={args.arden_opt_level}, no_build={args.no_build}",
+        flush=True,
+    )
     if not args.no_build:
+        print("Building target/release/arden...", flush=True)
         proc = run_cmd(["cargo", "build", "--release"], root, env=build_env)
         if proc.returncode != 0:
             raise RuntimeError(f"Failed to build Arden:\n{proc.stderr}")
+        print("Built target/release/arden", flush=True)
 
     selected = select_benchmarks(args.bench, args.include_extreme)
     if args.bench is None:
         selected = expand_default_suite(selected)
+    print(
+        "Selected benchmarks: " + ", ".join(spec.name for spec in selected),
+        flush=True,
+    )
 
     report = {
         "generated_at": current_timestamp(),
