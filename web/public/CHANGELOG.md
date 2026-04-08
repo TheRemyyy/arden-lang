@@ -29,6 +29,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed remaining unchecked field-call and nested enum-constructor argument holes for unrelated concrete classes:
   - codegen now applies the same concrete-class argument guard when calling function-valued fields and when constructing enum variants through longer qualified chains such as `Outer.Inner.Wrap.One(...)`
   - this fixes invalid unchecked code such as `h.callback(A())` when `callback` expects `B`, and `Outer.Inner.Wrap.One(A())` when the payload type is `B`, which previously compiled even though `A` and `B` were unrelated classes
+- Fixed unchecked return boundaries from accepting unrelated concrete classes:
+  - codegen now validates the inferred result type before emitting `return` instructions for ordinary function returns and async block tail returns
+  - this fixes invalid unchecked code such as `function make(): B { return A(); }` and `task: Task<B> = async { A() };`, which previously compiled even though `A` and `B` were unrelated classes
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values

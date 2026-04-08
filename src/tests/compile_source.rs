@@ -17124,6 +17124,67 @@ fn compile_source_no_check_rejects_nested_enum_variant_payload_between_unrelated
 }
 
 #[test]
+fn compile_source_no_check_rejects_return_value_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-return-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_return_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_return_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function make(): B {
+                return A();
+            }
+
+            function main(): Integer {
+                value: B = make();
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class return value should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_async_tail_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-async-tail-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_async_tail_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_async_tail_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                task: Task<B> = async { A() };
+                value: B = await(task);
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class async tail should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");

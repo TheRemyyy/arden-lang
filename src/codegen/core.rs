@@ -10793,6 +10793,10 @@ impl<'ctx> Codegen<'ctx> {
                                 let inferred_expr_ty = self.infer_expr_type(&expr.node, &[]);
                                 let compiled =
                                     self.compile_expr_with_expected_type(&expr.node, &ret_ty)?;
+                                self.reject_unrelated_concrete_class_assignment(
+                                    &ret_ty,
+                                    &inferred_expr_ty,
+                                )?;
                                 if !self.type_contains_active_generic_placeholder(&ret_ty)
                                     && !self
                                         .type_contains_active_generic_placeholder(&inferred_expr_ty)
@@ -12310,8 +12314,13 @@ impl<'ctx> Codegen<'ctx> {
             if is_last && self.needs_terminator() {
                 if let Stmt::Expr(expr) = &stmt.node {
                     if !matches!(inner_return_type, Type::None) {
+                        let inferred_expr_ty = self.infer_expr_type(&expr.node, &[]);
                         let value =
                             self.compile_expr_with_expected_type(&expr.node, &inner_return_type)?;
+                        self.reject_unrelated_concrete_class_assignment(
+                            &inner_return_type,
+                            &inferred_expr_ty,
+                        )?;
                         self.builder.build_return(Some(&value)).unwrap();
                         continue;
                     }
