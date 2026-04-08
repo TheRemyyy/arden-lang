@@ -17221,6 +17221,51 @@ fn compile_source_no_check_rejects_match_arm_between_unrelated_concrete_classes(
 }
 
 #[test]
+fn compile_source_no_check_rejects_if_block_binding_outside_scope() {
+    let temp_root = make_temp_project_root("no-check-if-scope-binding");
+    let source_path = temp_root.join("no_check_if_scope_binding.arden");
+    let output_path = temp_root.join("no_check_if_scope_binding");
+    let source = r#"
+            function main(): Integer {
+                if (true) {
+                    leaked: Integer = 7;
+                }
+                return leaked;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("if-block locals should not leak outside their scope");
+    assert!(err.contains("Undefined variable: leaked"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_match_arm_binding_outside_scope() {
+    let temp_root = make_temp_project_root("no-check-match-scope-binding");
+    let source_path = temp_root.join("no_check_match_scope_binding.arden");
+    let output_path = temp_root.join("no_check_match_scope_binding");
+    let source = r#"
+            function main(): Integer {
+                match (true) {
+                    true => { leaked: Integer = 7; }
+                    false => { }
+                }
+                return leaked;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("match-arm locals should not leak outside their scope");
+    assert!(err.contains("Undefined variable: leaked"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");

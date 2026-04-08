@@ -1756,163 +1756,172 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             self.builder.position_at_end(arm_bb);
-            match &arm.pattern {
-                Pattern::Ident(binding) => {
-                    if imported_unit_variant(self, binding).is_none() {
-                        let alloca = self.builder.build_alloca(val.get_type(), binding).unwrap();
-                        self.builder.build_store(alloca, val).unwrap();
-                        self.variables.insert(
-                            binding.clone(),
-                            Variable {
-                                ptr: alloca,
-                                ty: match_ty.clone(),
-                                mutable: false,
-                            },
-                        );
+            let arm_result = self.with_variable_scope(|this| {
+                match &arm.pattern {
+                    Pattern::Ident(binding) => {
+                        if imported_unit_variant(this, binding).is_none() {
+                            let alloca =
+                                this.builder.build_alloca(val.get_type(), binding).unwrap();
+                            this.builder.build_store(alloca, val).unwrap();
+                            this.variables.insert(
+                                binding.clone(),
+                                Variable {
+                                    ptr: alloca,
+                                    ty: match_ty.clone(),
+                                    mutable: false,
+                                },
+                            );
+                        }
                     }
-                }
-                Pattern::Variant(variant_name, bindings) => {
-                    let resolved_variant = if !variant_name.contains('.') {
-                        imported_variant(self, variant_name)
-                    } else {
-                        None
-                    };
-                    let variant_leaf = resolved_variant
-                        .as_ref()
-                        .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
-                        .unwrap_or_else(|| pattern_variant_leaf(variant_name));
-                    let resolved_enum_name =
-                        resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
-                    if option_inner_ty.is_some() && variant_leaf == "Some" && !bindings.is_empty() {
-                        let inner = self
-                            .builder
-                            .build_extract_value(val.into_struct_value(), 1, "some_inner")
-                            .unwrap();
-                        let alloca = self
-                            .builder
-                            .build_alloca(inner.get_type(), &bindings[0])
-                            .unwrap();
-                        self.builder.build_store(alloca, inner).unwrap();
-                        self.variables.insert(
-                            bindings[0].clone(),
-                            Variable {
-                                ptr: alloca,
-                                ty: option_inner_ty.clone().unwrap_or(Type::Integer),
-                                mutable: false,
-                            },
-                        );
-                    } else if result_inner_tys.is_some()
-                        && variant_leaf == "Ok"
-                        && !bindings.is_empty()
-                    {
-                        let inner = self
-                            .builder
-                            .build_extract_value(val.into_struct_value(), 1, "ok_inner")
-                            .unwrap();
-                        let alloca = self
-                            .builder
-                            .build_alloca(inner.get_type(), &bindings[0])
-                            .unwrap();
-                        self.builder.build_store(alloca, inner).unwrap();
-                        self.variables.insert(
-                            bindings[0].clone(),
-                            Variable {
-                                ptr: alloca,
-                                ty: result_inner_tys
-                                    .as_ref()
-                                    .map(|(ok, _)| ok.clone())
-                                    .unwrap_or(Type::Integer),
-                                mutable: false,
-                            },
-                        );
-                    } else if result_inner_tys.is_some()
-                        && variant_leaf == "Error"
-                        && !bindings.is_empty()
-                    {
-                        let inner = self
-                            .builder
-                            .build_extract_value(val.into_struct_value(), 2, "err_inner")
-                            .unwrap();
-                        let alloca = self
-                            .builder
-                            .build_alloca(inner.get_type(), &bindings[0])
-                            .unwrap();
-                        self.builder.build_store(alloca, inner).unwrap();
-                        self.variables.insert(
-                            bindings[0].clone(),
-                            Variable {
-                                ptr: alloca,
-                                ty: result_inner_tys
-                                    .as_ref()
-                                    .map(|(_, err)| err.clone())
-                                    .unwrap_or(Type::String),
-                                mutable: false,
-                            },
-                        );
-                    } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
-                    {
-                        if let Some(enum_info) = self.enums.get(enum_name) {
-                            if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
-                                for (idx, binding) in bindings.iter().enumerate() {
-                                    if let Some(field_ty) = variant_info.fields.get(idx) {
-                                        let raw = self
-                                            .builder
-                                            .build_extract_value(
-                                                val.into_struct_value(),
-                                                (idx + 1) as u32,
-                                                "enum_payload_raw",
-                                            )
-                                            .unwrap()
-                                            .into_int_value();
-                                        let decoded = self.decode_enum_payload(raw, field_ty)?;
-                                        let alloca = self
-                                            .builder
-                                            .build_alloca(decoded.get_type(), binding)
-                                            .unwrap();
-                                        self.builder.build_store(alloca, decoded).unwrap();
-                                        self.variables.insert(
-                                            binding.clone(),
-                                            Variable {
-                                                ptr: alloca,
-                                                ty: field_ty.clone(),
-                                                mutable: false,
-                                            },
-                                        );
+                    Pattern::Variant(variant_name, bindings) => {
+                        let resolved_variant = if !variant_name.contains('.') {
+                            imported_variant(this, variant_name)
+                        } else {
+                            None
+                        };
+                        let variant_leaf = resolved_variant
+                            .as_ref()
+                            .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
+                            .unwrap_or_else(|| pattern_variant_leaf(variant_name));
+                        let resolved_enum_name =
+                            resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
+                        if option_inner_ty.is_some()
+                            && variant_leaf == "Some"
+                            && !bindings.is_empty()
+                        {
+                            let inner = this
+                                .builder
+                                .build_extract_value(val.into_struct_value(), 1, "some_inner")
+                                .unwrap();
+                            let alloca = this
+                                .builder
+                                .build_alloca(inner.get_type(), &bindings[0])
+                                .unwrap();
+                            this.builder.build_store(alloca, inner).unwrap();
+                            this.variables.insert(
+                                bindings[0].clone(),
+                                Variable {
+                                    ptr: alloca,
+                                    ty: option_inner_ty.clone().unwrap_or(Type::Integer),
+                                    mutable: false,
+                                },
+                            );
+                        } else if result_inner_tys.is_some()
+                            && variant_leaf == "Ok"
+                            && !bindings.is_empty()
+                        {
+                            let inner = this
+                                .builder
+                                .build_extract_value(val.into_struct_value(), 1, "ok_inner")
+                                .unwrap();
+                            let alloca = this
+                                .builder
+                                .build_alloca(inner.get_type(), &bindings[0])
+                                .unwrap();
+                            this.builder.build_store(alloca, inner).unwrap();
+                            this.variables.insert(
+                                bindings[0].clone(),
+                                Variable {
+                                    ptr: alloca,
+                                    ty: result_inner_tys
+                                        .as_ref()
+                                        .map(|(ok, _)| ok.clone())
+                                        .unwrap_or(Type::Integer),
+                                    mutable: false,
+                                },
+                            );
+                        } else if result_inner_tys.is_some()
+                            && variant_leaf == "Error"
+                            && !bindings.is_empty()
+                        {
+                            let inner = this
+                                .builder
+                                .build_extract_value(val.into_struct_value(), 2, "err_inner")
+                                .unwrap();
+                            let alloca = this
+                                .builder
+                                .build_alloca(inner.get_type(), &bindings[0])
+                                .unwrap();
+                            this.builder.build_store(alloca, inner).unwrap();
+                            this.variables.insert(
+                                bindings[0].clone(),
+                                Variable {
+                                    ptr: alloca,
+                                    ty: result_inner_tys
+                                        .as_ref()
+                                        .map(|(_, err)| err.clone())
+                                        .unwrap_or(Type::String),
+                                    mutable: false,
+                                },
+                            );
+                        } else if let Some(enum_name) =
+                            resolved_enum_name.or(enum_match_name.as_ref())
+                        {
+                            if let Some(enum_info) = this.enums.get(enum_name) {
+                                if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
+                                    for (idx, binding) in bindings.iter().enumerate() {
+                                        if let Some(field_ty) = variant_info.fields.get(idx) {
+                                            let raw = this
+                                                .builder
+                                                .build_extract_value(
+                                                    val.into_struct_value(),
+                                                    (idx + 1) as u32,
+                                                    "enum_payload_raw",
+                                                )
+                                                .unwrap()
+                                                .into_int_value();
+                                            let decoded =
+                                                this.decode_enum_payload(raw, field_ty)?;
+                                            let alloca = this
+                                                .builder
+                                                .build_alloca(decoded.get_type(), binding)
+                                                .unwrap();
+                                            this.builder.build_store(alloca, decoded).unwrap();
+                                            this.variables.insert(
+                                                binding.clone(),
+                                                Variable {
+                                                    ptr: alloca,
+                                                    ty: field_ty.clone(),
+                                                    mutable: false,
+                                                },
+                                            );
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    _ => {}
                 }
-                _ => {}
-            }
 
-            let mut arm_result = self.context.i8_type().const_int(0, false).into();
-            for (idx, stmt) in arm.body.iter().enumerate() {
-                if idx + 1 == arm.body.len() {
-                    if let Stmt::Expr(e) = &stmt.node {
-                        let arm_expected_ty = expected_match_result_ty
-                            .cloned()
-                            .or_else(|| self.builtin_argument_type_hint(&e.node));
-                        arm_result = if let Some(expected_ty) = arm_expected_ty.as_ref() {
-                            let inferred_expr_ty = self.infer_expr_type(&e.node, &[]);
-                            let value =
-                                self.compile_expr_with_expected_type(&e.node, expected_ty)?;
-                            self.reject_unrelated_concrete_class_assignment(
-                                expected_ty,
-                                &inferred_expr_ty,
-                            )?;
-                            value
+                let mut arm_result = this.context.i8_type().const_int(0, false).into();
+                for (idx, stmt) in arm.body.iter().enumerate() {
+                    if idx + 1 == arm.body.len() {
+                        if let Stmt::Expr(e) = &stmt.node {
+                            let arm_expected_ty = expected_match_result_ty
+                                .cloned()
+                                .or_else(|| this.builtin_argument_type_hint(&e.node));
+                            arm_result = if let Some(expected_ty) = arm_expected_ty.as_ref() {
+                                let inferred_expr_ty = this.infer_expr_type(&e.node, &[]);
+                                let value =
+                                    this.compile_expr_with_expected_type(&e.node, expected_ty)?;
+                                this.reject_unrelated_concrete_class_assignment(
+                                    expected_ty,
+                                    &inferred_expr_ty,
+                                )?;
+                                value
+                            } else {
+                                this.compile_expr(&e.node)?
+                            };
                         } else {
-                            self.compile_expr(&e.node)?
-                        };
+                            this.compile_stmt(&stmt.node)?;
+                        }
                     } else {
-                        self.compile_stmt(&stmt.node)?;
+                        this.compile_stmt(&stmt.node)?;
                     }
-                } else {
-                    self.compile_stmt(&stmt.node)?;
                 }
-            }
+                Ok(arm_result)
+            })?;
 
             if result_ty.is_none() {
                 result_ty = Some(arm_result.get_type());

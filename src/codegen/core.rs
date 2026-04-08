@@ -10909,9 +10909,12 @@ impl<'ctx> Codegen<'ctx> {
 
         // Then
         self.builder.position_at_end(then_bb);
-        for stmt in then_block {
-            self.compile_stmt(&stmt.node)?;
-        }
+        self.with_variable_scope(|this| {
+            for stmt in then_block {
+                this.compile_stmt(&stmt.node)?;
+            }
+            Ok(())
+        })?;
         if self.needs_terminator() {
             self.builder.build_unconditional_branch(merge_bb).unwrap();
         }
@@ -10919,9 +10922,12 @@ impl<'ctx> Codegen<'ctx> {
         // Else
         self.builder.position_at_end(else_bb);
         if let Some(else_stmts) = else_block {
-            for stmt in else_stmts {
-                self.compile_stmt(&stmt.node)?;
-            }
+            self.with_variable_scope(|this| {
+                for stmt in else_stmts {
+                    this.compile_stmt(&stmt.node)?;
+                }
+                Ok(())
+            })?;
         }
         if self.needs_terminator() {
             self.builder.build_unconditional_branch(merge_bb).unwrap();
@@ -10960,9 +10966,12 @@ impl<'ctx> Codegen<'ctx> {
             loop_block: cond_bb,
             after_block: after_bb,
         });
-        for stmt in body {
-            self.compile_stmt(&stmt.node)?;
-        }
+        self.with_variable_scope(|this| {
+            for stmt in body {
+                this.compile_stmt(&stmt.node)?;
+            }
+            Ok(())
+        })?;
         self.loop_stack.pop();
         if self.needs_terminator() {
             self.builder.build_unconditional_branch(cond_bb).unwrap();
@@ -11131,9 +11140,12 @@ impl<'ctx> Codegen<'ctx> {
                 loop_block: inc_bb,
                 after_block: after_bb,
             });
-            for stmt in body {
-                self.compile_stmt(&stmt.node)?;
-            }
+            self.with_variable_scope(|this| {
+                for stmt in body {
+                    this.compile_stmt(&stmt.node)?;
+                }
+                Ok(())
+            })?;
             self.loop_stack.pop();
             if self.needs_terminator() {
                 self.builder.build_unconditional_branch(inc_bb).unwrap();
@@ -11226,9 +11238,12 @@ impl<'ctx> Codegen<'ctx> {
                 loop_block: inc_bb,
                 after_block: after_bb,
             });
-            for stmt in body {
-                self.compile_stmt(&stmt.node)?;
-            }
+            self.with_variable_scope(|this| {
+                for stmt in body {
+                    this.compile_stmt(&stmt.node)?;
+                }
+                Ok(())
+            })?;
             self.loop_stack.pop();
             if self.needs_terminator() {
                 self.builder.build_unconditional_branch(inc_bb).unwrap();
@@ -11311,9 +11326,12 @@ impl<'ctx> Codegen<'ctx> {
                 loop_block: inc_bb,
                 after_block: after_bb,
             });
-            for stmt in body {
-                self.compile_stmt(&stmt.node)?;
-            }
+            self.with_variable_scope(|this| {
+                for stmt in body {
+                    this.compile_stmt(&stmt.node)?;
+                }
+                Ok(())
+            })?;
             self.loop_stack.pop();
             if self.needs_terminator() {
                 self.builder.build_unconditional_branch(inc_bb).unwrap();
@@ -11423,9 +11441,12 @@ impl<'ctx> Codegen<'ctx> {
             loop_block: inc_bb,
             after_block: after_bb,
         });
-        for stmt in body {
-            self.compile_stmt(&stmt.node)?;
-        }
+        self.with_variable_scope(|this| {
+            for stmt in body {
+                this.compile_stmt(&stmt.node)?;
+            }
+            Ok(())
+        })?;
         self.loop_stack.pop();
         if self.needs_terminator() {
             self.builder.build_unconditional_branch(inc_bb).unwrap();
@@ -11920,134 +11941,141 @@ impl<'ctx> Codegen<'ctx> {
             }
 
             self.builder.position_at_end(arm_bb);
-            match &arm.pattern {
-                Pattern::Ident(binding) => {
-                    if imported_unit_variant(self, binding).is_none() {
-                        let alloca = self.builder.build_alloca(val.get_type(), binding).unwrap();
-                        self.builder.build_store(alloca, val).unwrap();
-                        self.variables.insert(
-                            binding.clone(),
-                            Variable {
-                                ptr: alloca,
-                                ty: match_ty.clone(),
-                                mutable: false,
-                            },
-                        );
+            self.with_variable_scope(|this| {
+                match &arm.pattern {
+                    Pattern::Ident(binding) => {
+                        if imported_unit_variant(this, binding).is_none() {
+                            let alloca =
+                                this.builder.build_alloca(val.get_type(), binding).unwrap();
+                            this.builder.build_store(alloca, val).unwrap();
+                            this.variables.insert(
+                                binding.clone(),
+                                Variable {
+                                    ptr: alloca,
+                                    ty: match_ty.clone(),
+                                    mutable: false,
+                                },
+                            );
+                        }
                     }
-                }
-                Pattern::Variant(variant_name, bindings) => {
-                    let resolved_variant = if !variant_name.contains('.') {
-                        imported_variant(self, variant_name)
-                    } else {
-                        None
-                    };
-                    let variant_leaf = resolved_variant
-                        .as_ref()
-                        .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
-                        .unwrap_or_else(|| pattern_variant_leaf(variant_name));
-                    let resolved_enum_name =
-                        resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
-                    if is_option_match && variant_leaf == "Some" && !bindings.is_empty() {
-                        let inner = self
-                            .builder
-                            .build_extract_value(val.into_struct_value(), 1, "some_inner")
-                            .unwrap();
-                        let alloca = self
-                            .builder
-                            .build_alloca(inner.get_type(), &bindings[0])
-                            .unwrap();
-                        self.builder.build_store(alloca, inner).unwrap();
-                        self.variables.insert(
-                            bindings[0].clone(),
-                            Variable {
-                                ptr: alloca,
-                                ty: option_inner_ty.clone().unwrap_or(Type::Integer),
-                                mutable: false,
-                            },
-                        );
-                    } else if is_result_match && variant_leaf == "Ok" && !bindings.is_empty() {
-                        let inner = self
-                            .builder
-                            .build_extract_value(val.into_struct_value(), 1, "ok_inner")
-                            .unwrap();
-                        let alloca = self
-                            .builder
-                            .build_alloca(inner.get_type(), &bindings[0])
-                            .unwrap();
-                        self.builder.build_store(alloca, inner).unwrap();
-                        self.variables.insert(
-                            bindings[0].clone(),
-                            Variable {
-                                ptr: alloca,
-                                ty: result_inner_tys
-                                    .as_ref()
-                                    .map(|(ok, _)| ok.clone())
-                                    .unwrap_or(Type::Integer),
-                                mutable: false,
-                            },
-                        );
-                    } else if is_result_match && variant_leaf == "Error" && !bindings.is_empty() {
-                        let inner = self
-                            .builder
-                            .build_extract_value(val.into_struct_value(), 2, "err_inner")
-                            .unwrap();
-                        let alloca = self
-                            .builder
-                            .build_alloca(inner.get_type(), &bindings[0])
-                            .unwrap();
-                        self.builder.build_store(alloca, inner).unwrap();
-                        self.variables.insert(
-                            bindings[0].clone(),
-                            Variable {
-                                ptr: alloca,
-                                ty: result_inner_tys
-                                    .as_ref()
-                                    .map(|(_, err)| err.clone())
-                                    .unwrap_or(Type::String),
-                                mutable: false,
-                            },
-                        );
-                    } else if let Some(enum_name) = resolved_enum_name.or(enum_match_name.as_ref())
-                    {
-                        if let Some(enum_info) = self.enums.get(enum_name) {
-                            if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
-                                for (idx, binding) in bindings.iter().enumerate() {
-                                    if let Some(field_ty) = variant_info.fields.get(idx) {
-                                        let raw = self
-                                            .builder
-                                            .build_extract_value(
-                                                val.into_struct_value(),
-                                                (idx + 1) as u32,
-                                                "enum_payload_raw",
-                                            )
-                                            .unwrap()
-                                            .into_int_value();
-                                        let decoded = self.decode_enum_payload(raw, field_ty)?;
-                                        let alloca = self
-                                            .builder
-                                            .build_alloca(decoded.get_type(), binding)
-                                            .unwrap();
-                                        self.builder.build_store(alloca, decoded).unwrap();
-                                        self.variables.insert(
-                                            binding.clone(),
-                                            Variable {
-                                                ptr: alloca,
-                                                ty: field_ty.clone(),
-                                                mutable: false,
-                                            },
-                                        );
+                    Pattern::Variant(variant_name, bindings) => {
+                        let resolved_variant = if !variant_name.contains('.') {
+                            imported_variant(this, variant_name)
+                        } else {
+                            None
+                        };
+                        let variant_leaf = resolved_variant
+                            .as_ref()
+                            .map(|(_, resolved_variant_name, _)| resolved_variant_name.as_str())
+                            .unwrap_or_else(|| pattern_variant_leaf(variant_name));
+                        let resolved_enum_name =
+                            resolved_variant.as_ref().map(|(enum_name, _, _)| enum_name);
+                        if is_option_match && variant_leaf == "Some" && !bindings.is_empty() {
+                            let inner = this
+                                .builder
+                                .build_extract_value(val.into_struct_value(), 1, "some_inner")
+                                .unwrap();
+                            let alloca = this
+                                .builder
+                                .build_alloca(inner.get_type(), &bindings[0])
+                                .unwrap();
+                            this.builder.build_store(alloca, inner).unwrap();
+                            this.variables.insert(
+                                bindings[0].clone(),
+                                Variable {
+                                    ptr: alloca,
+                                    ty: option_inner_ty.clone().unwrap_or(Type::Integer),
+                                    mutable: false,
+                                },
+                            );
+                        } else if is_result_match && variant_leaf == "Ok" && !bindings.is_empty() {
+                            let inner = this
+                                .builder
+                                .build_extract_value(val.into_struct_value(), 1, "ok_inner")
+                                .unwrap();
+                            let alloca = this
+                                .builder
+                                .build_alloca(inner.get_type(), &bindings[0])
+                                .unwrap();
+                            this.builder.build_store(alloca, inner).unwrap();
+                            this.variables.insert(
+                                bindings[0].clone(),
+                                Variable {
+                                    ptr: alloca,
+                                    ty: result_inner_tys
+                                        .as_ref()
+                                        .map(|(ok, _)| ok.clone())
+                                        .unwrap_or(Type::Integer),
+                                    mutable: false,
+                                },
+                            );
+                        } else if is_result_match && variant_leaf == "Error" && !bindings.is_empty()
+                        {
+                            let inner = this
+                                .builder
+                                .build_extract_value(val.into_struct_value(), 2, "err_inner")
+                                .unwrap();
+                            let alloca = this
+                                .builder
+                                .build_alloca(inner.get_type(), &bindings[0])
+                                .unwrap();
+                            this.builder.build_store(alloca, inner).unwrap();
+                            this.variables.insert(
+                                bindings[0].clone(),
+                                Variable {
+                                    ptr: alloca,
+                                    ty: result_inner_tys
+                                        .as_ref()
+                                        .map(|(_, err)| err.clone())
+                                        .unwrap_or(Type::String),
+                                    mutable: false,
+                                },
+                            );
+                        } else if let Some(enum_name) =
+                            resolved_enum_name.or(enum_match_name.as_ref())
+                        {
+                            if let Some(enum_info) = this.enums.get(enum_name) {
+                                if let Some(variant_info) = enum_info.variants.get(variant_leaf) {
+                                    for (idx, binding) in bindings.iter().enumerate() {
+                                        if let Some(field_ty) = variant_info.fields.get(idx) {
+                                            let raw = this
+                                                .builder
+                                                .build_extract_value(
+                                                    val.into_struct_value(),
+                                                    (idx + 1) as u32,
+                                                    "enum_payload_raw",
+                                                )
+                                                .unwrap()
+                                                .into_int_value();
+                                            let decoded =
+                                                this.decode_enum_payload(raw, field_ty)?;
+                                            let alloca = this
+                                                .builder
+                                                .build_alloca(decoded.get_type(), binding)
+                                                .unwrap();
+                                            this.builder.build_store(alloca, decoded).unwrap();
+                                            this.variables.insert(
+                                                binding.clone(),
+                                                Variable {
+                                                    ptr: alloca,
+                                                    ty: field_ty.clone(),
+                                                    mutable: false,
+                                                },
+                                            );
+                                        }
                                     }
                                 }
                             }
                         }
                     }
+                    _ => {}
                 }
-                _ => {}
-            }
 
-            for stmt in &arm.body {
-                self.compile_stmt(&stmt.node)?;
-            }
+                for stmt in &arm.body {
+                    this.compile_stmt(&stmt.node)?;
+                }
+                Ok(())
+            })?;
             if self.needs_terminator() {
                 self.builder.build_unconditional_branch(merge_bb).unwrap();
             }
@@ -12830,17 +12858,17 @@ impl<'ctx> Codegen<'ctx> {
                 else_branch,
             } => self.compile_if_expr(&condition.node, then_branch, else_branch.as_ref(), None),
 
-            Expr::Block(body) => {
-                let mut result = self.context.i8_type().const_int(0, false).into();
+            Expr::Block(body) => self.with_variable_scope(|this| {
+                let mut result = this.context.i8_type().const_int(0, false).into();
                 for stmt in body {
                     if let Stmt::Expr(expr) = &stmt.node {
-                        result = self.compile_expr(&expr.node)?;
+                        result = this.compile_expr(&expr.node)?;
                     } else {
-                        self.compile_stmt(&stmt.node)?;
+                        this.compile_stmt(&stmt.node)?;
                     }
                 }
                 Ok(result)
-            }
+            }),
         }
     }
 
@@ -13036,19 +13064,21 @@ impl<'ctx> Codegen<'ctx> {
             );
         }
         if let Expr::Block(body) = expr {
-            let mut result = self.context.i8_type().const_int(0, false).into();
-            for (idx, stmt) in body.iter().enumerate() {
-                if let Stmt::Expr(inner_expr) = &stmt.node {
-                    result = if idx + 1 == body.len() {
-                        self.compile_expr_with_expected_type(&inner_expr.node, expected_ty)?
+            return self.with_variable_scope(|this| {
+                let mut result = this.context.i8_type().const_int(0, false).into();
+                for (idx, stmt) in body.iter().enumerate() {
+                    if let Stmt::Expr(inner_expr) = &stmt.node {
+                        result = if idx + 1 == body.len() {
+                            this.compile_expr_with_expected_type(&inner_expr.node, expected_ty)?
+                        } else {
+                            this.compile_expr(&inner_expr.node)?
+                        };
                     } else {
-                        self.compile_expr(&inner_expr.node)?
-                    };
-                } else {
-                    self.compile_stmt(&stmt.node)?;
+                        this.compile_stmt(&stmt.node)?;
+                    }
                 }
-            }
-            return Ok(result);
+                Ok(result)
+            });
         }
         if let Expr::Lambda { params, body } = expr {
             if matches!(expected_ty, Type::Function(_, _)) {
@@ -14261,6 +14291,16 @@ impl<'ctx> Codegen<'ctx> {
         )))
     }
 
+    pub(crate) fn with_variable_scope<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<T>,
+    ) -> Result<T> {
+        let saved_variables = self.variables.clone();
+        let result = f(self);
+        self.variables = saved_variables;
+        result
+    }
+
     fn adapt_function_adapter_param(
         &self,
         value: BasicValueEnum<'ctx>,
@@ -15129,18 +15169,21 @@ impl<'ctx> Codegen<'ctx> {
 
         // Then branch
         self.builder.position_at_end(then_block);
-        let mut then_result = self.context.i8_type().const_int(0, false).into();
-        for stmt in then_branch {
-            if let Stmt::Expr(expr) = &stmt.node {
-                then_result = if let Some(expected_ty) = expected_result_ty {
-                    self.compile_expr_with_expected_type(&expr.node, expected_ty)?
+        let then_result = self.with_variable_scope(|this| {
+            let mut then_result = this.context.i8_type().const_int(0, false).into();
+            for stmt in then_branch {
+                if let Stmt::Expr(expr) = &stmt.node {
+                    then_result = if let Some(expected_ty) = expected_result_ty {
+                        this.compile_expr_with_expected_type(&expr.node, expected_ty)?
+                    } else {
+                        this.compile_expr(&expr.node)?
+                    };
                 } else {
-                    self.compile_expr(&expr.node)?
-                };
-            } else {
-                self.compile_stmt(&stmt.node)?;
+                    this.compile_stmt(&stmt.node)?;
+                }
             }
-        }
+            Ok(then_result)
+        })?;
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -15151,20 +15194,23 @@ impl<'ctx> Codegen<'ctx> {
 
         // Else branch
         self.builder.position_at_end(else_block);
-        let mut else_result = self.context.i8_type().const_int(0, false).into();
-        if let Some(else_stmts) = else_branch {
-            for stmt in else_stmts {
-                if let Stmt::Expr(expr) = &stmt.node {
-                    else_result = if let Some(expected_ty) = expected_result_ty {
-                        self.compile_expr_with_expected_type(&expr.node, expected_ty)?
+        let else_result = self.with_variable_scope(|this| {
+            let mut else_result = this.context.i8_type().const_int(0, false).into();
+            if let Some(else_stmts) = else_branch {
+                for stmt in else_stmts {
+                    if let Stmt::Expr(expr) = &stmt.node {
+                        else_result = if let Some(expected_ty) = expected_result_ty {
+                            this.compile_expr_with_expected_type(&expr.node, expected_ty)?
+                        } else {
+                            this.compile_expr(&expr.node)?
+                        };
                     } else {
-                        self.compile_expr(&expr.node)?
-                    };
-                } else {
-                    self.compile_stmt(&stmt.node)?;
+                        this.compile_stmt(&stmt.node)?;
+                    }
                 }
             }
-        }
+            Ok(else_result)
+        })?;
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
