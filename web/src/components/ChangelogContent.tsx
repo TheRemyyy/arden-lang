@@ -194,6 +194,36 @@ function ReleaseSidebar({
     );
 }
 
+function MobileReleaseRail({
+    releases,
+    activeReleaseId,
+}: {
+    releases: ChangelogRelease[];
+    activeReleaseId: string;
+}) {
+    return (
+        <div className="fixed left-0 right-0 top-16 z-30 border-b border-white/10 bg-[#11100d] lg:hidden">
+            <div className="custom-scrollbar overflow-x-auto px-4 py-3">
+                <div className="flex min-w-max gap-2">
+                    {releases.map((release) => (
+                        <a
+                            key={release.id}
+                            href={`#${release.id}`}
+                            className={`rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition-colors ${
+                                activeReleaseId === release.id
+                                    ? 'border-[var(--accent-soft)] bg-white/[0.08] text-white'
+                                    : 'border-white/10 bg-white/[0.03] text-white/58'
+                            }`}
+                        >
+                            {release.label}
+                        </a>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function CategoryCard({
     category,
 }: {
@@ -203,10 +233,10 @@ function CategoryCard({
     const [isExpanded, setIsExpanded] = useState(!shouldCollapseByDefault);
 
     return (
-        <section className="mb-5 break-inside-avoid self-start rounded-[1.6rem] border border-white/10 bg-[#1b1714] p-5">
-            <div className="flex items-start justify-between gap-4">
+        <section className="mb-4 min-w-0 break-inside-avoid self-start overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#1b1714] p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div>
-                    <h3 className="font-display text-2xl font-semibold tracking-[-0.03em] text-white">
+                    <h3 className="font-display text-xl font-semibold tracking-[-0.03em] text-white sm:text-2xl">
                         {category.plainTitle}
                     </h3>
                     {shouldCollapseByDefault && (
@@ -215,7 +245,7 @@ function CategoryCard({
                         </p>
                     )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     {category.itemCount > 0 && (
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-white/52">
                             {category.itemCount} items
@@ -235,7 +265,7 @@ function CategoryCard({
             <div className={`relative mt-5 ${isExpanded ? '' : 'max-h-80 overflow-hidden'}`}>
                 <article
                     className="prose prose-invert prose-zinc max-w-none break-words
-                        prose-p:text-[15px] prose-p:leading-7 prose-p:text-white/72
+                        prose-p:text-[14px] prose-p:leading-7 prose-p:text-white/72 sm:prose-p:text-[15px]
                         prose-ul:my-4 prose-ul:list-disc prose-ul:pl-5
                         prose-li:mb-2 prose-li:text-white/72
                         prose-strong:text-white
@@ -274,14 +304,14 @@ function ReleaseCard({ release, index }: { release: ChangelogRelease; index: num
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }}
             transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.16) }}
-            className="scroll-mt-24 border-t border-white/10 py-10 first:border-t-0 first:pt-0"
+            className="min-w-0 scroll-mt-24 overflow-x-hidden border-t border-white/10 py-8 first:border-t-0 first:pt-0 sm:py-10"
         >
-            <div className="flex flex-col gap-5 border-b border-white/10 pb-6 md:flex-row md:items-end md:justify-between">
+            <div className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-end md:justify-between md:gap-5 md:pb-6">
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--accent-soft)]">
                         {release.label}
                     </p>
-                    <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white md:text-4xl">
+                    <h2 className="mt-3 font-display text-2xl font-bold tracking-[-0.04em] text-white sm:text-3xl md:text-4xl">
                         {release.displayTitle}
                     </h2>
                     {release.date && (
@@ -304,12 +334,12 @@ function ReleaseCard({ release, index }: { release: ChangelogRelease; index: num
 
             {release.summaryHtml && (
                 <article
-                    className="prose prose-invert prose-zinc mt-6 max-w-none prose-p:text-[15px] prose-p:leading-7 prose-p:text-white/70 prose-a:text-[var(--accent-soft)] prose-a:no-underline hover:prose-a:text-white"
+                    className="prose prose-invert prose-zinc mt-5 max-w-none prose-p:text-[14px] prose-p:leading-7 prose-p:text-white/70 sm:prose-p:text-[15px] prose-a:text-[var(--accent-soft)] prose-a:no-underline hover:prose-a:text-white"
                     dangerouslySetInnerHTML={{ __html: release.summaryHtml }}
                 />
             )}
 
-            <div className="mt-8 xl:grid xl:grid-cols-2 xl:gap-5">
+            <div className="mt-6 xl:grid xl:grid-cols-2 xl:gap-5">
                 <div>
                     {leftColumn.map((category) => (
                     <CategoryCard
@@ -337,42 +367,52 @@ export function ChangelogContent({ releases }: { releases: ChangelogRelease[] })
 
     useEffect(() => {
         if (releases.length === 0) return;
+        const topOffset = 152;
 
-        const observer = new IntersectionObserver(
-            (entries) => {
-                const visibleEntries = entries
-                    .filter((entry) => entry.isIntersecting)
-                    .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
+        const updateActiveRelease = () => {
+            const elements = releases
+                .map((release) => document.getElementById(release.id))
+                .filter((element): element is HTMLElement => element !== null);
 
-                if (visibleEntries[0]?.target.id) {
-                    setActiveReleaseId(visibleEntries[0].target.id);
+            if (elements.length === 0) {
+                return;
+            }
+
+            let currentActiveId = elements[0].id;
+
+            for (const element of elements) {
+                if (element.getBoundingClientRect().top <= topOffset) {
+                    currentActiveId = element.id;
+                } else {
+                    break;
                 }
-            },
-            {
-                rootMargin: '-15% 0px -55% 0px',
-                threshold: [0.1, 0.25, 0.5],
-            },
-        );
+            }
 
-        const elements = releases
-            .map((release) => document.getElementById(release.id))
-            .filter((element): element is HTMLElement => element !== null);
+            setActiveReleaseId((current) => (current === currentActiveId ? current : currentActiveId));
+        };
 
-        elements.forEach((element) => observer.observe(element));
-        return () => observer.disconnect();
+        updateActiveRelease();
+        window.addEventListener('scroll', updateActiveRelease, { passive: true });
+        window.addEventListener('resize', updateActiveRelease);
+        return () => {
+            window.removeEventListener('scroll', updateActiveRelease);
+            window.removeEventListener('resize', updateActiveRelease);
+        };
     }, [releases]);
 
     return (
-        <div className="min-h-screen bg-[#0f0d0b] text-[#f3ece3]">
-            <div className="mx-auto w-full max-w-[1480px] px-4 pb-20 pt-24 sm:px-5 xl:px-6">
+        <div className="min-h-screen overflow-x-hidden bg-[#0f0d0b] pt-16 text-[#f3ece3]">
+            <MobileReleaseRail releases={releases} activeReleaseId={activeReleaseId} />
+
+            <div className="mx-auto w-full max-w-[1480px] px-4 pb-16 pt-24 sm:px-5 sm:pb-20 lg:pt-24 xl:px-6">
                 <div className="mx-auto max-w-3xl text-center">
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--accent-soft)]">
                         Release history
                     </p>
-                    <h1 className="mt-5 font-display text-5xl font-bold tracking-[-0.04em] text-white md:text-6xl">
+                    <h1 className="mt-5 font-display text-4xl font-bold tracking-[-0.04em] text-white sm:text-5xl md:text-6xl">
                         Changelog
                     </h1>
-                    <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-white/68">
+                    <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/68 sm:text-lg sm:leading-8">
                         Browse Arden releases by version and jump straight to added features, fixes, behavioral changes, and technical work.
                     </p>
                     <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -385,9 +425,9 @@ export function ChangelogContent({ releases }: { releases: ChangelogRelease[] })
                     </div>
                 </div>
 
-                <div ref={boundaryRef} className="relative mt-14 grid gap-6 lg:grid-cols-[220px_minmax(0,980px)] lg:justify-start xl:grid-cols-[230px_minmax(0,1040px)]">
+                <div ref={boundaryRef} className="relative mt-8 grid min-w-0 gap-6 lg:mt-14 lg:grid-cols-[220px_minmax(0,980px)] lg:justify-start xl:grid-cols-[230px_minmax(0,1040px)]">
                     <ReleaseSidebar releases={releases} activeReleaseId={activeReleaseId} boundaryRef={boundaryRef} />
-                    <div className="mx-auto w-full max-w-[1040px]">
+                    <div className="mx-auto w-full min-w-0 max-w-[1040px] overflow-x-hidden">
                         {releases.map((release, index) => (
                             <ReleaseCard key={release.id} release={release} index={index} />
                         ))}
