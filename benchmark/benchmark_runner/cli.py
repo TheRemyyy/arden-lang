@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from .execution import run_selected_benchmarks
-from .reporting import build_markdown
+from .reporting import build_csv, build_markdown
 from .specs import BENCHMARKS, expand_default_suite, select_benchmarks
 from .system import current_timestamp, detect_llvm_prefix, ensure_tool, run_cmd
 
@@ -54,6 +54,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Pass --timings to Arden project builds and record per-phase timing breakdowns in reports.",
     )
+    parser.add_argument(
+        "--capture-profile",
+        action="store_true",
+        help=(
+            "Run `arden profile` on each runtime benchmark source file once before "
+            "measurements and include the timing summary in the report."
+        ),
+    )
+    parser.add_argument(
+        "--output-csv",
+        action="store_true",
+        help="Write benchmark/results/latest.csv in addition to the JSON and markdown reports.",
+    )
     return parser
 
 
@@ -79,7 +92,8 @@ def main() -> int:
     print(f"Results dir: {out_dir}", flush=True)
     print(
         f"Config: repeats={args.repeats}, warmup={args.warmup}, compile_mode={args.compile_mode}, "
-        f"arden_opt_level={args.arden_opt_level}, no_build={args.no_build}",
+        f"arden_opt_level={args.arden_opt_level}, no_build={args.no_build}, "
+        f"capture_profile={args.capture_profile}, output_csv={args.output_csv}",
         flush=True,
     )
     if not args.no_build:
@@ -104,6 +118,7 @@ def main() -> int:
         "arden_opt_level": args.arden_opt_level,
         "arden_target": args.arden_target,
         "arden_timings": args.arden_timings,
+        "capture_profile": args.capture_profile,
         "compile_mode": "mixed" if args.bench is None else args.compile_mode,
         "benchmarks": run_selected_benchmarks(
             selected,
@@ -116,6 +131,7 @@ def main() -> int:
             args.warmup,
             args.repeats,
             args.arden_timings,
+            args.capture_profile,
         ),
     }
 
@@ -126,4 +142,10 @@ def main() -> int:
 
     print(f"\nWrote: {json_out}")
     print(f"Wrote: {md_out}")
+
+    if args.output_csv:
+        csv_out = out_dir / "latest.csv"
+        csv_out.write_text(build_csv(report), encoding="utf-8")
+        print(f"Wrote: {csv_out}")
+
     return 0

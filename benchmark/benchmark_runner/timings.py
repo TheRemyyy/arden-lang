@@ -1,4 +1,5 @@
 import statistics
+from pathlib import Path
 
 
 def parse_build_timings(output: str) -> dict[str, dict]:
@@ -70,3 +71,28 @@ def summarize_arden_phase_timings(samples: list[dict[str, dict]]) -> list[dict]:
             }
         )
     return summary
+
+
+def run_arden_profile(
+    root: Path,
+    bench_name: str,
+    build_env: dict[str, str],
+) -> str:
+    """Run `arden profile <bench>.arden` and return the raw output.
+
+    Returns an empty string when the compiler is unavailable or the command
+    fails so that the benchmark run is not aborted by an optional feature.
+    """
+    from .system import run_cmd
+
+    compiler = root / "target" / "release" / "arden"
+    if not compiler.exists():
+        return ""
+    src = root / "benchmark" / "arden" / f"{bench_name}.arden"
+    if not src.exists():
+        return ""
+    proc = run_cmd([str(compiler), "profile", str(src)], root, env=build_env)
+    if proc.returncode != 0:
+        return ""
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    return combined.strip()

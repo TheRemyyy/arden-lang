@@ -54,3 +54,4 @@ examples/.ardencache/
 fuzz/artifacts/
 fuzz/coverage/
 fuzz/corpus/
+root/
