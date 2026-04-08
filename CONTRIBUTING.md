@@ -16,7 +16,7 @@ If your change touches user-facing behavior, also read the matching page under `
 ## Local Setup
 
 ```bash
-git clone https://github.com/TheRemyyy/apex-compiler.git arden
+git clone https://github.com/TheRemyyy/arden-lang.git arden
 cd arden
 cargo build
 ```
