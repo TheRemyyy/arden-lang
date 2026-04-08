@@ -26,6 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked function and method call arguments from accepting unrelated concrete classes:
   - codegen now validates concrete class arguments at ordinary function, closure, module-function, and method call boundaries before lowering the call
   - this fixes invalid unchecked calls such as `take(A())` when `take` expects `B`, and `h.take(A())` when the method parameter type is `B`, which previously compiled even though `A` and `B` were unrelated classes
+- Fixed remaining unchecked field-call and nested enum-constructor argument holes for unrelated concrete classes:
+  - codegen now applies the same concrete-class argument guard when calling function-valued fields and when constructing enum variants through longer qualified chains such as `Outer.Inner.Wrap.One(...)`
+  - this fixes invalid unchecked code such as `h.callback(A())` when `callback` expects `B`, and `Outer.Inner.Wrap.One(A())` when the payload type is `B`, which previously compiled even though `A` and `B` were unrelated classes
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values
