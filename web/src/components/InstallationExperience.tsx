@@ -77,6 +77,7 @@ function DownloadActions({
     const sharedClassName = compact
         ? 'inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-semibold'
         : 'inline-flex h-12 items-center justify-center rounded-full px-6 text-sm font-semibold';
+    const showChecksumsButton = !compact;
 
     return (
         <div className={`flex flex-wrap gap-3 ${compact ? '' : 'mt-6'}`}>
@@ -94,14 +95,16 @@ function DownloadActions({
             >
                 View release
             </a>
-            <a
-                href={release?.checksumsUrl ?? getLatestChecksumsDownloadUrl()}
-                target="_blank"
-                rel="noreferrer"
-                className={`${sharedClassName} border border-[rgba(57,52,46,0.16)] bg-transparent text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]`}
-            >
-                Checksums
-            </a>
+            {showChecksumsButton && (
+                <a
+                    href={release?.checksumsUrl ?? getLatestChecksumsDownloadUrl()}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`${sharedClassName} border border-[rgba(57,52,46,0.16)] bg-transparent text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]`}
+                >
+                    Checksums
+                </a>
+            )}
         </div>
     );
 }
@@ -199,7 +202,6 @@ export function InstallationExperience({ compact = false }: InstallationExperien
     }, []);
 
     const recommendedOption = getRecommendedInstallOption(preferredTargetId);
-    const compactSummary = releaseSummary?.versionLabel ?? 'latest stable';
     const publishedDate = formatPublishedDate(releaseSummary?.publishedAt ?? null);
 
     if (compact) {
@@ -215,15 +217,6 @@ export function InstallationExperience({ compact = false }: InstallationExperien
                         </h2>
                         <p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-muted)]">
                             Grab the matching portable bundle, unpack it, run the included launcher, and move straight into compiling. The repo docs stay there if you want the deeper source-build path.
-                        </p>
-                    </div>
-                    <div className="rounded-[1.5rem] border border-[rgba(57,52,46,0.14)] bg-[rgba(255,255,255,0.5)] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Detected platform</p>
-                        <p className="mt-2 text-lg font-semibold tracking-[-0.03em] text-[var(--text)]">
-                            {recommendedOption.label}
-                        </p>
-                        <p className="mt-1 text-sm text-[var(--text-muted)]">
-                            {releaseState === 'ready' ? compactSummary : 'latest stable release'}
                         </p>
                     </div>
                 </div>

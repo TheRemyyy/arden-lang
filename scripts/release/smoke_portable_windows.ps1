@@ -17,6 +17,14 @@ if (-not $BundleDir) {
     throw "Portable bundle directory not found after extraction"
 }
 
+$OriginalPath = $env:Path
+$env:Path = "C:\Windows\System32;C:\Windows"
+$env:LLVM_SYS_211_PREFIX = ""
+$env:LLVM_CONFIG_PATH = ""
+$env:LIB = ""
+$env:LIBPATH = ""
+$env:INCLUDE = ""
+
 & (Join-Path $BundleDir.FullName "arden.cmd") --version
 
 $WorkDir = Join-Path $TempRoot "work"
@@ -41,3 +49,5 @@ $env:USERPROFILE = Join-Path $TempRoot "profile"
 New-Item -ItemType Directory -Path $env:USERPROFILE -Force | Out-Null
 & (Join-Path $BundleDir.FullName "install.ps1")
 & (Join-Path $env:USERPROFILE "AppData\Local\Arden\bin\arden.cmd") --version
+
+$env:Path = $OriginalPath

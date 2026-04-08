@@ -101,6 +101,41 @@ jobs:
             ${ARDEN_EXTRA_PREFIX:+--extra-prefix "${ARDEN_EXTRA_PREFIX}"} \
             ${ARDEN_EXTRA_BIN:+--extra-bin "${ARDEN_EXTRA_BIN}"}
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/${{ matrix.asset_name }}${{ matrix.platform == 'windows' && '.zip' || '.tar.gz' }}
+
+  smoke:
+    name: Smoke ${{ matrix.asset_name }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            asset_name: arden-windows-x64-portable
+          - os: ubuntu-22.04
+            platform: linux
+            asset_name: arden-linux-x64-portable
+          - os: macos-latest
+            platform: macos
+            asset_name: arden-macos-arm64-portable
+          - os: macos-13
+            platform: macos
+            asset_name: arden-macos-x64-portable
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download packaged artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist
+
       - name: Smoke test portable bundle (Linux/macOS)
         if: matrix.platform != 'windows'
         shell: bash
@@ -115,15 +150,9 @@ jobs:
           .\scripts\release\smoke_portable_windows.ps1 `
             -ArchivePath "dist/${{ matrix.asset_name }}.zip"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset_name }}
-          path: dist/${{ matrix.asset_name }}${{ matrix.platform == 'windows' && '.zip' || '.tar.gz' }}
-
   release:
     name: Create Release
-    needs: build
+    needs: smoke
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     

@@ -37,6 +37,12 @@ web/package-lock.json
 # IDE
 .idea/
 
+# Plugins
+plugins/**/.gradle/
+plugins/**/.intellijPlatform/
+plugins/**/build/
+plugins/**/out/
+
 # Tests
 examples/minimal_project/minimal_project
 examples/nested_package_project/nested_package_project

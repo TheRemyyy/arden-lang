@@ -10,6 +10,7 @@ ARCHIVE_PATH="$1"
 TEMP_ROOT="$(mktemp -d)"
 HOME_DIR="${TEMP_ROOT}/home"
 WORK_DIR="${TEMP_ROOT}/work"
+BASE_PATH="/usr/bin:/bin"
 
 mkdir -p "${HOME_DIR}" "${WORK_DIR}"
 tar -xzf "${ARCHIVE_PATH}" -C "${TEMP_ROOT}"
@@ -25,7 +26,14 @@ if [[ -f "${BUNDLE_DIR}/install.sh" ]]; then
   chmod +x "${BUNDLE_DIR}/install.sh"
 fi
 
-"${BUNDLE_DIR}/arden" --version
+env -i \
+  HOME="${HOME_DIR}" \
+  PATH="${BASE_PATH}" \
+  LLVM_SYS_211_PREFIX= \
+  LLVM_CONFIG_PATH= \
+  LD_LIBRARY_PATH= \
+  DYLD_LIBRARY_PATH= \
+  "${BUNDLE_DIR}/arden" --version
 
 cat > "${WORK_DIR}/hello.arden" <<'EOF'
 import std.io.*;
@@ -36,9 +44,31 @@ function main(): None {
 }
 EOF
 
-RUN_OUTPUT="$("${BUNDLE_DIR}/arden" run "${WORK_DIR}/hello.arden")"
+RUN_OUTPUT="$(env -i \
+  HOME="${HOME_DIR}" \
+  PATH="${BASE_PATH}" \
+  LLVM_SYS_211_PREFIX= \
+  LLVM_CONFIG_PATH= \
+  LD_LIBRARY_PATH= \
+  DYLD_LIBRARY_PATH= \
+  "${BUNDLE_DIR}/arden" run "${WORK_DIR}/hello.arden")"
 printf '%s\n' "${RUN_OUTPUT}"
 grep -F "Hello from portable Arden!" <<< "${RUN_OUTPUT}" >/dev/null
 
-HOME="${HOME_DIR}" "${BUNDLE_DIR}/install.sh"
-PATH="${HOME_DIR}/.local/bin:${PATH}" arden --version
+env -i \
+  HOME="${HOME_DIR}" \
+  PATH="${BASE_PATH}" \
+  LLVM_SYS_211_PREFIX= \
+  LLVM_CONFIG_PATH= \
+  LD_LIBRARY_PATH= \
+  DYLD_LIBRARY_PATH= \
+  "${BUNDLE_DIR}/install.sh"
+
+env -i \
+  HOME="${HOME_DIR}" \
+  PATH="${HOME_DIR}/.local/bin:${BASE_PATH}" \
+  LLVM_SYS_211_PREFIX= \
+  LLVM_CONFIG_PATH= \
+  LD_LIBRARY_PATH= \
+  DYLD_LIBRARY_PATH= \
+  arden --version
