@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked `for` loop bindings from treating unrelated nominal element types as interchangeable:
   - codegen now validates loop binding coercions with the same semantic type-compatibility rules used by safe function-value adapters instead of accepting arbitrary equal-layout pointer types
   - this fixes invalid unchecked builds such as `for (item: B in xs)` when `xs` is `List<A>`, which previously compiled even though `A` and `B` were unrelated classes
+- Fixed unchecked concrete-class assignments from accepting unrelated constructed values in `let` and plain assignment statements:
+  - codegen now rejects storing a value whose concrete class is neither the declared class nor one of its subclasses before writing the value into the destination slot
+  - this fixes invalid unchecked statements such as `value: B = A();` and `value = A();`, which previously compiled even though `A` and `B` were unrelated classes
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values

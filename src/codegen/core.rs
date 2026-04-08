@@ -10663,6 +10663,8 @@ impl<'ctx> Codegen<'ctx> {
             } => {
                 let normalized_ty = self.normalize_codegen_type(ty);
                 let val = self.compile_expr_with_expected_type(&value.node, &normalized_ty)?;
+                let actual_ty = self.infer_expr_type(&value.node, &[]);
+                self.reject_unrelated_concrete_class_assignment(&normalized_ty, &actual_ty)?;
                 let alloca = self
                     .builder
                     .build_alloca(self.llvm_type(&normalized_ty), name)
@@ -10759,6 +10761,8 @@ impl<'ctx> Codegen<'ctx> {
 
                 let target_ty = self.infer_expr_type(&target.node, &[]);
                 let val = self.compile_expr_with_expected_type(&value.node, &target_ty)?;
+                let actual_ty = self.infer_expr_type(&value.node, &[]);
+                self.reject_unrelated_concrete_class_assignment(&target_ty, &actual_ty)?;
                 let ptr = self.compile_lvalue(&target.node)?;
                 self.builder.build_store(ptr, val).unwrap();
             }
@@ -14196,6 +14200,39 @@ impl<'ctx> Codegen<'ctx> {
             depth += 1;
         }
         false
+    }
+
+    fn reject_unrelated_concrete_class_assignment(
+        &self,
+        expected: &Type,
+        actual: &Type,
+    ) -> Result<()> {
+        let expected = self.normalize_codegen_type(expected);
+        let actual = self.normalize_codegen_type(actual);
+        let Some(expected_name) = Self::function_adapter_nominal_base_name(&expected) else {
+            return Ok(());
+        };
+        let Some(actual_name) = Self::function_adapter_nominal_base_name(&actual) else {
+            return Ok(());
+        };
+
+        if !self.classes.contains_key(expected_name) || !self.classes.contains_key(actual_name) {
+            return Ok(());
+        }
+
+        if expected_name == actual_name {
+            if self.function_adapter_same_nominal_arguments(&expected, &actual) {
+                return Ok(());
+            }
+        } else if self.is_same_or_subclass_for_function_adapter(actual_name, expected_name) {
+            return Ok(());
+        }
+
+        Err(CodegenError::new(format!(
+            "Type mismatch: expected {}, got {}",
+            Self::format_diagnostic_type(&expected),
+            Self::format_diagnostic_type(&actual)
+        )))
     }
 
     fn adapt_function_adapter_param(
