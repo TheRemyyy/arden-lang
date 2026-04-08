@@ -46,7 +46,7 @@ def copy_tree(source: Path, destination: Path) -> None:
                 for child in resolved.iterdir():
                     copy_entry(child, current_destination / child.name)
                 return
-            copy_file(resolved, current_destination)
+            copy_symlinked_file(resolved, current_destination)
             return
 
         if current_source.is_dir():
@@ -62,6 +62,12 @@ def copy_tree(source: Path, destination: Path) -> None:
         copy_file(current_source, current_destination)
 
     copy_entry(source, destination)
+
+
+def copy_symlinked_file(resolved_source: Path, destination: Path) -> None:
+    copy_file(resolved_source, destination)
+    if destination.name != resolved_source.name:
+        copy_file(resolved_source, destination.with_name(resolved_source.name))
 
 
 def copy_file(source: Path, destination: Path) -> None:
