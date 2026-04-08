@@ -3,7 +3,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 
-const siteUrl = 'https://apex-compiler.vercel.app';
+const siteUrl = 'https://www.arden-lang.dev';
 const projectRoot = path.resolve(process.cwd(), '..');
 const docsRoot = path.join(projectRoot, 'docs');
 const publicRoot = path.join(process.cwd(), 'public');
@@ -309,7 +309,7 @@ function buildLlmsTxt() {
     `- Installation: ${siteUrl}/install`,
     `- Documentation: ${siteUrl}/docs/overview`,
     `- Changelog: ${siteUrl}/changelog`,
-    `- Repository: https://github.com/TheRemyyy/apex-compiler`,
+    `- Repository: https://github.com/TheRemyyy/arden-lang`,
     '',
     '## Guidance',
     '- Prefer the official documentation pages under /docs/ for language behavior and syntax.',
