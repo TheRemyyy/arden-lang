@@ -42,6 +42,16 @@ function estimateCategoryWeight(category: ChangelogRelease['categories'][number]
     return itemWeight + htmlLengthWeight;
 }
 
+function shouldCollapseCategory(
+    category: ChangelogRelease['categories'][number],
+): boolean {
+    if (category.itemCount >= 3) {
+        return true;
+    }
+
+    return category.html.length > 3200;
+}
+
 function splitCategoriesIntoColumns(categories: ChangelogRelease['categories']) {
     const leftColumn: ChangelogRelease['categories'] = [];
     const rightColumn: ChangelogRelease['categories'] = [];
@@ -186,12 +196,10 @@ function ReleaseSidebar({
 
 function CategoryCard({
     category,
-    releaseVersion,
 }: {
     category: ChangelogRelease['categories'][number];
-    releaseVersion: string;
 }) {
-    const shouldCollapseByDefault = releaseVersion === 'Unreleased' || category.itemCount > 12;
+    const shouldCollapseByDefault = shouldCollapseCategory(category);
     const [isExpanded, setIsExpanded] = useState(!shouldCollapseByDefault);
 
     return (
@@ -304,20 +312,18 @@ function ReleaseCard({ release, index }: { release: ChangelogRelease; index: num
             <div className="mt-8 xl:grid xl:grid-cols-2 xl:gap-5">
                 <div>
                     {leftColumn.map((category) => (
-                        <CategoryCard
-                            key={category.id}
-                            category={category}
-                            releaseVersion={release.version}
-                        />
+                    <CategoryCard
+                        key={category.id}
+                        category={category}
+                    />
                     ))}
                 </div>
                 <div>
                     {rightColumn.map((category) => (
-                        <CategoryCard
-                            key={category.id}
-                            category={category}
-                            releaseVersion={release.version}
-                        />
+                    <CategoryCard
+                        key={category.id}
+                        category={category}
+                    />
                     ))}
                 </div>
             </div>
@@ -358,7 +364,7 @@ export function ChangelogContent({ releases }: { releases: ChangelogRelease[] })
 
     return (
         <div className="min-h-screen bg-[#0f0d0b] text-[#f3ece3]">
-            <div className="mx-auto w-full max-w-7xl px-6 pb-20 pt-24">
+            <div className="mx-auto w-full max-w-[1480px] px-4 pb-20 pt-24 sm:px-5 xl:px-6">
                 <div className="mx-auto max-w-3xl text-center">
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--accent-soft)]">
                         Release history
@@ -379,7 +385,7 @@ export function ChangelogContent({ releases }: { releases: ChangelogRelease[] })
                     </div>
                 </div>
 
-                <div ref={boundaryRef} className="relative mt-14 grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
+                <div ref={boundaryRef} className="relative mt-14 grid gap-8 lg:grid-cols-[220px_minmax(0,980px)] lg:justify-between xl:grid-cols-[230px_minmax(0,1040px)]">
                     <ReleaseSidebar releases={releases} activeReleaseId={activeReleaseId} boundaryRef={boundaryRef} />
                     <div className="space-y-8">
                         {releases.map((release, index) => (
