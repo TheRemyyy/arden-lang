@@ -72,6 +72,9 @@ def copy_symlinked_file(resolved_source: Path, destination: Path) -> None:
 
 def copy_file(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists() or destination.is_symlink():
+        destination.chmod(stat.S_IWUSR | stat.S_IRUSR | stat.S_IXUSR)
+        destination.unlink()
     shutil.copy2(source, destination)
 
 
@@ -89,11 +92,7 @@ def build_unix_wrapper(platform_name: str) -> str:
         if platform_name == "linux"
         else '"${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/lld/bin:${PATH}"'
     )
-    extra_lib = (
-        '"${ROOT}/toolchain/llvm/lib:${ROOT}/toolchain/lld/lib:${%s:-}"' % library_var
-        if platform_name == "macos"
-        else '"${ROOT}/toolchain/llvm/lib:${%s:-}"' % library_var
-    )
+    library_setup = build_unix_library_setup(platform_name, library_var)
     sdk_setup = ""
     if platform_name == "macos":
         sdk_setup = """
@@ -109,7 +108,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
 export PATH={extra_path}
-export {library_var}={extra_lib}
+{library_setup}
 {sdk_setup}\
 exec "${{ROOT}}/bin/arden-real" "$@"
 """
@@ -131,11 +130,7 @@ def build_unix_install_script(platform_name: str) -> str:
         if platform_name == "linux"
         else '${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/lld/bin:\\${PATH}'
     )
-    extra_lib = (
-        f'${{ROOT}}/toolchain/llvm/lib:${{ROOT}}/toolchain/lld/lib:\\${{{library_var}:-}}'
-        if platform_name == "macos"
-        else f'${{ROOT}}/toolchain/llvm/lib:\\${{{library_var}:-}}'
-    )
+    library_setup = build_unix_library_setup(platform_name, library_var, escaped=True)
     sdk_setup = ""
     if platform_name == "macos":
         sdk_setup = """
@@ -159,7 +154,7 @@ cat > "${{TARGET}}" <<EOF
 set -euo pipefail
 ROOT="${{ROOT}}"
 export PATH="{extra_path}"
-export {library_var}="{extra_lib}"
+{library_setup}
 {sdk_setup}\
 exec "${{ROOT}}/bin/arden-real" "\\$@"
 EOF
@@ -199,6 +194,31 @@ if ($NeedsPath) {
 Write-Host "Installed Arden launcher to $Target"
 Write-Host "Open a new terminal and run: arden --version"
 """
+
+
+def build_unix_library_setup(platform_name: str, library_var: str, escaped: bool = False) -> str:
+    candidate_dirs = [
+        "${ROOT}/toolchain/llvm/lib",
+        "${ROOT}/toolchain/llvm/lib64",
+    ]
+    if platform_name == "macos":
+        candidate_dirs.append("${ROOT}/toolchain/lld/lib")
+
+    candidate_literals = " ".join(f'"{directory}"' for directory in candidate_dirs)
+    block = f"""RUNTIME_LIB_DIRS=""
+for candidate in {candidate_literals}; do
+  if [[ -d "$candidate" ]]; then
+    RUNTIME_LIB_DIRS="${{RUNTIME_LIB_DIRS:+${{RUNTIME_LIB_DIRS}}:}}$candidate"
+    while IFS= read -r nested_dir; do
+      RUNTIME_LIB_DIRS="${{RUNTIME_LIB_DIRS}}:$nested_dir"
+    done < <(find "$candidate" -mindepth 1 -maxdepth 2 -type d \\( -name 'lib' -o -name 'lib64' -o -name '*linux-gnu' \\) | sort)
+  fi
+done
+export {library_var}="${{RUNTIME_LIB_DIRS:+${{RUNTIME_LIB_DIRS}}:}}${{{library_var}:-}}"
+"""
+    if escaped:
+        return block.replace("$", "\\$")
+    return block
 
 
 def build_readme(platform_name: str, asset_name: str) -> str:
