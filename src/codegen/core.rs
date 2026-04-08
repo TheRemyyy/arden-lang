@@ -17312,7 +17312,6 @@ impl<'ctx> Codegen<'ctx> {
 
                 #[cfg(windows)]
                 {
-                    let terminate_fn = self.get_or_declare_terminate_thread_win();
                     let close_fn = self.get_or_declare_close_handle_win();
                     let handle = self
                         .builder
@@ -17322,16 +17321,11 @@ impl<'ctx> Codegen<'ctx> {
                             "task_cancel_handle",
                         )
                         .unwrap();
-                    self.builder
-                        .build_call(
-                            terminate_fn,
-                            &[
-                                handle.into(),
-                                self.context.i32_type().const_int(1, false).into(),
-                            ],
-                            "task_cancel",
-                        )
-                        .unwrap();
+                    // Do not forcefully kill Windows threads with TerminateThread():
+                    // it can leave the process in an inconsistent state and has been
+                    // observed to hang follow-up runtime tests. Treat cancel as a
+                    // detached cancellation signal instead: publish a safe default
+                    // result, mark the task done, and close our handle reference.
                     self.builder
                         .build_call(close_fn, &[handle.into()], "")
                         .unwrap();
