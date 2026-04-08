@@ -10,4 +10,4 @@ Allow: /
 User-agent: Googlebot
 Allow: /
 
-Sitemap: https://www.arden-lang.dev
+Sitemap: https://www.arden-lang.dev/sitemap.xml
