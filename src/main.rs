@@ -34,6 +34,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 use std::time::Instant;
 use std::time::UNIX_EPOCH;
 
@@ -289,6 +290,86 @@ fn current_dir_checked() -> Result<PathBuf, String> {
             e
         )
     })
+}
+
+const CLI_ACCENT_RGB: (u8, u8, u8) = (184, 92, 56);
+const CLI_ACCENT_SOFT_RGB: (u8, u8, u8) = (217, 178, 158);
+const CLI_SUCCESS_RGB: (u8, u8, u8) = (88, 100, 81);
+const CLI_WARNING_RGB: (u8, u8, u8) = (209, 178, 131);
+const CLI_ERROR_RGB: (u8, u8, u8) = (209, 93, 93);
+
+fn cli_accent(text: impl AsRef<str>) -> ColoredString {
+    text.as_ref()
+        .truecolor(CLI_ACCENT_RGB.0, CLI_ACCENT_RGB.1, CLI_ACCENT_RGB.2)
+        .bold()
+}
+
+fn cli_soft(text: impl AsRef<str>) -> ColoredString {
+    text.as_ref().truecolor(
+        CLI_ACCENT_SOFT_RGB.0,
+        CLI_ACCENT_SOFT_RGB.1,
+        CLI_ACCENT_SOFT_RGB.2,
+    )
+}
+
+fn cli_success(text: impl AsRef<str>) -> ColoredString {
+    text.as_ref()
+        .truecolor(CLI_SUCCESS_RGB.0, CLI_SUCCESS_RGB.1, CLI_SUCCESS_RGB.2)
+        .bold()
+}
+
+fn cli_warning(text: impl AsRef<str>) -> ColoredString {
+    text.as_ref()
+        .truecolor(CLI_WARNING_RGB.0, CLI_WARNING_RGB.1, CLI_WARNING_RGB.2)
+        .bold()
+}
+
+fn cli_error(text: impl AsRef<str>) -> ColoredString {
+    text.as_ref()
+        .truecolor(CLI_ERROR_RGB.0, CLI_ERROR_RGB.1, CLI_ERROR_RGB.2)
+        .bold()
+}
+
+fn cli_path(path: &Path) -> ColoredString {
+    cli_soft(path.display().to_string())
+}
+
+fn cli_elapsed(duration: Duration) -> String {
+    let ms = duration.as_secs_f64() * 1000.0;
+    if ms < 1000.0 {
+        format!("{ms:.1} ms")
+    } else {
+        format!("{:.2} s", duration.as_secs_f64())
+    }
+}
+
+fn print_cli_step(message: impl AsRef<str>) {
+    println!("{} {}", cli_accent("›"), cli_accent(message.as_ref()));
+}
+
+fn print_cli_cache(message: impl AsRef<str>) {
+    println!("{} {}", cli_success("↺"), cli_success(message.as_ref()));
+}
+
+fn print_cli_artifact_result(action: &str, subject: &str, path: &Path, elapsed: Duration) {
+    println!(
+        "{} {} {} {} {}",
+        cli_success(action),
+        cli_accent(subject),
+        cli_soft("->"),
+        cli_path(path),
+        cli_soft(format!("({})", cli_elapsed(elapsed)))
+    );
+}
+
+fn format_target_label(path: Option<&Path>, current_dir: &Path) -> String {
+    if let Some(path) = path {
+        return path.display().to_string();
+    }
+    if let Some(project_root) = find_project_root(current_dir) {
+        return project_root.display().to_string();
+    }
+    current_dir.display().to_string()
 }
 
 struct CwdRestore {
@@ -1242,10 +1323,15 @@ fn build_project(
             load_cached_fingerprint(&project_root)
         })? {
             if cached == fingerprint && project_build_artifact_exists(&output_path, emit_llvm) {
-                println!(
-                    "{} {}",
-                    "Build cache hit".green().bold(),
-                    config.name.cyan(),
+                print_cli_cache(format!(
+                    "Reused whole-project build cache for {}",
+                    config.name
+                ));
+                print_cli_artifact_result(
+                    "Built",
+                    &config.name,
+                    &output_path,
+                    build_timings.started_at.elapsed(),
                 );
                 build_timings.print();
                 return Ok(());
@@ -1254,11 +1340,12 @@ fn build_project(
     }
 
     println!(
-        "{} {} v{}",
-        "Building".green().bold(),
-        config.name.cyan(),
-        config.version.dimmed()
+        "{} {} {}",
+        cli_accent("Building"),
+        cli_accent(&config.name),
+        cli_soft(format!("v{}", config.version))
     );
+    print_cli_step(format!("Parsing {} source file(s)", files.len()));
 
     // Phase 1: Parse all files (parallel) and extract namespace information
     let mut parsed_files: Vec<ParsedProjectUnit> = Vec::new();
@@ -1483,12 +1570,11 @@ fn build_project(
     });
 
     if parse_cache_hits > 0 {
-        println!(
-            "{} Reused parse cache for {}/{} files",
-            "→".cyan(),
+        print_cli_cache(format!(
+            "Reused parse cache for {}/{} files",
             parse_cache_hits,
             files.len()
-        );
+        ));
     }
     build_timings.record_counts(
         "parse + symbol scan",
@@ -1656,12 +1742,11 @@ fn build_project(
         &file_dependency_graph,
     );
     if dependency_graph_cache_hits > 0 {
-        println!(
-            "{} Reused dependency graph entries for {}/{} files",
-            "→".cyan(),
+        print_cli_cache(format!(
+            "Reused dependency graph entries for {}/{} files",
             dependency_graph_cache_hits,
             parsed_files.len()
-        );
+        ));
     }
     build_timings.record_counts(
         "dependency graph",
@@ -1826,13 +1911,12 @@ fn build_project(
         };
 
         if !body_only_changed.is_empty() || !api_changed.is_empty() {
-            println!(
-                "{} Impact graph: {} body-only, {} API, {} downstream dependents",
-                "→".cyan(),
+            print_cli_cache(format!(
+                "Impact graph: {} body-only, {} API, {} downstream dependents",
                 body_only_changed.len(),
                 api_changed.len(),
                 dependent_api_impact.len()
-            );
+            ));
         }
     }
 
@@ -1861,12 +1945,14 @@ fn build_project(
         ],
     );
     if semantic_cache_hit {
-        println!(
-            "{} {}",
-            "Semantic cache hit".green().bold(),
-            config.name.cyan(),
-        );
+        print_cli_cache(format!("Reused semantic build cache for {}", config.name));
         save_cached_fingerprint(&project_root, &fingerprint)?;
+        print_cli_artifact_result(
+            "Built",
+            &config.name,
+            &output_path,
+            build_timings.started_at.elapsed(),
+        );
         build_timings.print();
         return Ok(());
     }
@@ -1980,6 +2066,7 @@ fn build_project(
         validate_entry_main_signature(entry_program, &entry_source, entry_filename)?;
     }
 
+    print_cli_step("Rewriting project graph");
     let (namespace_functions, entry_namespace, namespace_api_fingerprints, file_api_fingerprints) =
         build_timings.measure_step("rewrite prep", || {
             let mut namespace_functions: HashMap<String, HashSet<String>> = HashMap::new();
@@ -2045,7 +2132,7 @@ fn build_project(
 
     // Phase 2: Check imports for each file
     if do_check {
-        println!("{} Checking imports...", "→".cyan());
+        print_cli_step("Checking imports");
         let shared_function_map = Arc::new(global_function_map.clone());
         let shared_known_namespace_paths =
             Arc::new(collect_known_namespace_paths_for_units(&parsed_files));
@@ -2155,12 +2242,11 @@ fn build_project(
         let import_check_cache_hits =
             import_check_cache_hits.load(std::sync::atomic::Ordering::Relaxed);
         if import_check_cache_hits > 0 {
-            println!(
-                "{} Reused import-check cache for {}/{} files",
-                "→".cyan(),
+            print_cli_cache(format!(
+                "Reused import-check cache for {}/{} files",
                 import_check_cache_hits,
                 parsed_files.len()
-            );
+            ));
         }
         build_timings.record_counts(
             "import check",
@@ -2388,12 +2474,11 @@ fn build_project(
         .filter(|unit| unit.from_rewrite_cache)
         .count();
     if rewrite_cache_hits > 0 {
-        println!(
-            "{} Reused rewrite cache for {}/{} files",
-            "→".cyan(),
+        print_cli_cache(format!(
+            "Reused rewrite cache for {}/{} files",
             rewrite_cache_hits,
             rewritten_files.len()
-        );
+        ));
     }
     build_timings.record_counts(
         "rewrite",
@@ -2616,6 +2701,7 @@ fn build_project(
     );
 
     if do_check {
+        print_cli_step("Running semantic checks");
         let mut semantic_full_files: HashSet<PathBuf> =
             parsed_files.iter().map(|u| u.file.clone()).collect();
         if previous_dependency_graph.is_some() && previous_semantic_summary.is_some() {
@@ -2653,12 +2739,11 @@ fn build_project(
             );
 
         if reusable_typecheck_cache {
-            println!(
-                "{} Reused typecheck/borrowck cache for {}/{} files",
-                "→".cyan(),
+            print_cli_cache(format!(
+                "Reused typecheck/borrowck cache for {}/{} files",
                 current_semantic_fingerprints.len(),
                 parsed_files.len()
-            );
+            ));
             build_timings.record_counts(
                 "semantic",
                 &[
@@ -2709,27 +2794,24 @@ fn build_project(
                 .unwrap_or_else(|| (HashMap::new(), HashMap::new(), HashMap::new()));
 
             if semantic_full_files.len() < parsed_files.len() {
-                println!(
-                    "{} Semantic delta: checking {}/{} files with full bodies",
-                    "→".cyan(),
+                print_cli_cache(format!(
+                    "Semantic delta: checking {}/{} files with full bodies",
                     semantic_full_files.len(),
                     parsed_files.len()
-                );
+                ));
             }
             if semantic_components.len() > 1 {
-                println!(
-                    "{} Parallel semantic check across {} independent components",
-                    "→".cyan(),
+                print_cli_cache(format!(
+                    "Parallel semantic check across {} independent components",
                     semantic_components.len()
-                );
+                ));
             }
             if !reusable_component_files.is_empty() {
-                println!(
-                    "{} Reused semantic component cache for {}/{} files",
-                    "→".cyan(),
+                print_cli_cache(format!(
+                    "Reused semantic component cache for {}/{} files",
                     reusable_component_files.len(),
                     parsed_files.len()
-                );
+                ));
             }
 
             struct ComponentSemanticCheckResult {
@@ -2858,7 +2940,15 @@ fn build_project(
     }
 
     if check_only {
-        println!("{} {}", "Check passed".green().bold(), config.name.cyan());
+        println!(
+            "{} {} {}",
+            cli_success("Check passed"),
+            cli_accent(&config.name),
+            cli_soft(format!(
+                "({})",
+                cli_elapsed(build_timings.started_at.elapsed())
+            ))
+        );
         build_timings.print();
         return Ok(());
     }
@@ -2873,6 +2963,7 @@ fn build_project(
         link_args: &config.link_args,
     };
     if emit_llvm {
+        print_cli_step("Compiling program");
         let combined_program = combined_program_for_files(&rewritten_files);
         build_timings.measure("full codegen", || {
             compile_program_ast(
@@ -2889,17 +2980,24 @@ fn build_project(
             .iter()
             .any(|unit| unit.has_specialization_demand)
         {
+            print_cli_step("Compiling program");
             let combined_program = combined_program_for_files(&rewritten_files);
             build_timings.measure("full codegen", || {
                 compile_program_ast(&combined_program, &entry_path, &output_path, false, &link)
             })?;
             build_timings.record_counts("full codegen", &[("files", rewritten_files.len())]);
             save_cached_fingerprint(&project_root, &fingerprint)?;
-            println!("Built {} -> {}", config.name.cyan(), output_path.display());
+            print_cli_artifact_result(
+                "Built",
+                &config.name,
+                &output_path,
+                build_timings.started_at.elapsed(),
+            );
             build_timings.print();
             return Ok(());
         }
 
+        print_cli_step("Compiling objects");
         let object_build_fingerprint = compute_object_build_fingerprint(&link);
         let previous_link_manifest = build_timings.measure("link manifest load", || {
             load_link_manifest_cache(&project_root)
@@ -3638,12 +3736,10 @@ fn build_project(
         }
 
         if object_cache_hits > 0 {
-            println!(
-                "{} Reused object cache for {}/{} files",
-                "→".cyan(),
-                object_cache_hits,
-                object_candidate_count
-            );
+            print_cli_cache(format!(
+                "Reused object cache for {}/{} files",
+                object_cache_hits, object_candidate_count
+            ));
         }
 
         let link_inputs = build_timings.measure_step("link input assembly", || {
@@ -3663,15 +3759,13 @@ fn build_project(
             &output_path,
             cache_misses.len(),
         ) {
-            println!(
-                "{} Reused final link output from manifest cache",
-                "→".cyan()
-            );
+            print_cli_cache("Reused final link output from manifest cache");
             build_timings.record_counts(
                 "final link",
                 &[("objects", link_inputs.len()), ("linked", 0), ("reused", 1)],
             );
         } else {
+            print_cli_step("Linking final artifact");
             build_timings.measure("final link", || {
                 link_objects(&link_inputs, &output_path, &link)
             })?;
@@ -3685,13 +3779,6 @@ fn build_project(
         }
     }
 
-    println!(
-        "{} {} -> {}",
-        "Built".green().bold(),
-        config.name.cyan(),
-        output_path.display()
-    );
-
     if !check_only {
         build_timings.measure("build cache save", || {
             save_cached_fingerprint(&project_root, &fingerprint)?;
@@ -3699,6 +3786,13 @@ fn build_project(
             save_dependency_graph_cache(&project_root, &current_dependency_graph_cache)
         })?;
     }
+
+    print_cli_artifact_result(
+        "Built",
+        &config.name,
+        &output_path,
+        build_timings.started_at.elapsed(),
+    );
 
     build_timings.print();
 
@@ -3728,7 +3822,7 @@ fn compile_program_ast(
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
         codegen.write_ir(&ll_path)?;
-        println!("{} {}", "LLVM IR".green().bold(), ll_path.display());
+        println!("{} {}", cli_success("Wrote LLVM IR"), cli_path(&ll_path));
     } else {
         let ir_path = output_path.with_extension("ll");
         codegen.write_ir(&ir_path)?;
@@ -3842,7 +3936,7 @@ fn run_project(
 
     let output_path = project_root.join(&config.output);
 
-    println!("{} {}", "Running".cyan().bold(), output_path.display());
+    println!("{} {}", cli_accent("Running"), cli_path(&output_path));
     println!();
 
     run_binary(&output_path, args)
@@ -3881,7 +3975,7 @@ fn run_single_file(
         None,
     )?;
 
-    println!("{} {}", "Running".cyan().bold(), output.display());
+    println!("{} {}", cli_accent("Running"), cli_path(&output));
     println!();
 
     let result = run_binary(&output, args);
@@ -3951,6 +4045,7 @@ fn compile_file(
     opt_level: Option<&str>,
     target: Option<&str>,
 ) -> Result<(), String> {
+    let compile_started = Instant::now();
     validate_source_file_path(file)?;
 
     // Check if we're in a project
@@ -3998,7 +4093,12 @@ fn compile_file(
         target,
     )?;
 
-    println!("{} {}", "Wrote".green().bold(), output_path.display());
+    println!(
+        "{} {} {}",
+        cli_success("Wrote"),
+        cli_path(&output_path),
+        cli_soft(format!("({})", cli_elapsed(compile_started.elapsed())))
+    );
     Ok(())
 }
 
@@ -4042,7 +4142,7 @@ fn compile_source(
     if emit_llvm {
         let ll_path = output_path.with_extension("ll");
         codegen.write_ir(&ll_path)?;
-        println!("{} {}", "LLVM IR".green().bold(), ll_path.display());
+        println!("{} {}", cli_success("Wrote LLVM IR"), cli_path(&ll_path));
     } else {
         let ir_path = output_path.with_extension("ll");
         codegen.write_ir(&ir_path)?;
@@ -4084,7 +4184,7 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
         config.get_entry_path(&project_root)
     };
 
-    println!("{} {}", "Checking".cyan().bold(), file_path.display());
+    println!("{} {}", cli_accent("Checking"), cli_path(&file_path));
 
     let source = fs::read_to_string(&file_path)
         .map_err(|e| format!("{}: Failed to read file: {}", "error".red().bold(), e))?;
@@ -4097,7 +4197,7 @@ fn check_file(file: Option<&Path>) -> Result<(), String> {
     let program = parse_program_from_source(&source, filename)?;
     run_single_file_semantic_checks(&source, filename, &program)?;
 
-    println!("{} {}", "Check passed".green().bold(), file_path.display());
+    println!("{} {}", cli_success("Check passed"), cli_path(&file_path));
     Ok(())
 }
 
@@ -4261,6 +4361,7 @@ fn show_project_info() -> Result<(), String> {
 
 fn format_targets(path: Option<&Path>, check_only: bool) -> Result<(), String> {
     let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+    let target_label = format_target_label(path, &current_dir);
     let targets = if let Some(path) = path {
         collect_arden_files(path)?
     } else if let Some(project_root) = find_project_root(&current_dir) {
@@ -4301,23 +4402,27 @@ fn format_targets(path: Option<&Path>, check_only: bool) -> Result<(), String> {
 
     if check_only {
         if changed.is_empty() {
-            println!("{}", "Format check passed".green());
+            println!(
+                "{} {}",
+                cli_success("Fmt check passed"),
+                cli_soft(&target_label)
+            );
             return Ok(());
         }
 
-        eprintln!("{} format check failed for:", "error".red().bold());
+        eprintln!("{} format check failed for:", cli_error("error"));
         for file in changed {
-            eprintln!("  - {}", file.display());
+            eprintln!("  - {}", cli_path(&file));
         }
         return Err("format check failed".to_string());
     }
 
     if changed.is_empty() {
-        println!("{}", "No formatting changes".green());
+        println!("{} {}", cli_success("Fmt clean"), cli_soft(&target_label));
     } else {
-        println!("{} {} file(s)", "Formatted".green().bold(), changed.len());
+        println!("{} {} file(s)", cli_success("Formatted"), changed.len());
         for file in changed {
-            println!("  - {}", file.display());
+            println!("  - {}", cli_path(&file));
         }
     }
 
@@ -4422,14 +4527,14 @@ fn lint_target(path: Option<&Path>) -> Result<(), String> {
         .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
 
     if result.findings.is_empty() {
-        println!("{} {}", "Lint clean".green().bold(), file.display());
+        println!("{} {}", cli_success("Lint clean"), cli_path(&file));
         return Ok(());
     }
 
     eprintln!(
         "{} lint findings in {}:",
-        "warning".yellow().bold(),
-        file.display()
+        cli_warning("warning"),
+        cli_path(&file)
     );
     for finding in result.findings {
         eprintln!("  {}", finding.format());
@@ -4449,13 +4554,13 @@ fn fix_target(path: Option<&Path>) -> Result<(), String> {
         .map_err(|e| format!("{} in '{}': {}", "error".red().bold(), file.display(), e))?;
 
     if source == formatted_source {
-        println!("{} {}", "No safe fixes".green().bold(), file.display());
+        println!("{} {}", cli_success("Fix clean"), cli_path(&file));
         return Ok(());
     }
 
     fs::write(&file, formatted_source)
         .map_err(|e| format!("{}: Failed to write file: {}", "error".red().bold(), e))?;
-    println!("{} {}", "Updated".green().bold(), file.display());
+    println!("{} {}", cli_success("Updated"), cli_path(&file));
     Ok(())
 }
 

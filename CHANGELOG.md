@@ -14,12 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Consolidated exact-import, namespace-alias, and zero-argument stdlib alias handling so the same forms behave consistently across checked builds, unchecked builds, and multi-file project builds.
 - Tightened unchecked codegen to fail at semantic boundaries earlier instead of letting invalid programs degrade into LLVM or Clang backend failures.
+- Refined CLI output for `build`, `run`, `fmt`, `fix`, and `check` with consistent project-style status lines, build durations, and web-aligned terminal colors instead of the previous mix of ad-hoc cyan/green messages.
 
 ### 🐛 Fixed
 
 - Fixed a broad set of unchecked codegen holes around type boundaries, including assignments, returns, branch joins, loop bindings, constructor/call arguments, function-value adapters, and container payload/key writes.
 - Fixed unchecked builtin specialization mismatches for invariant containers and heap wrappers such as `List`, `Map`, `Box`, `Rc`, and `Arc`, so empty or pointer-shaped values with the wrong specialization no longer compile just because their lowered layout matches.
 - Fixed unchecked explicit builtin constructor specialization mismatches for nested invariant containers such as `Option<List<T>>`, while keeping imported builtin variant aliases like `Present` and `Success` working normally.
+- Fixed the silent-feeling `arden lsp` startup path by emitting basic stderr lifecycle logs, so local terminal launches now show boot and document-open status instead of appearing dead.
 - Fixed scope restoration across blocks, `if`, `match`, and `for`, eliminating branch-local binding leaks and several invalid-IR paths.
 - Fixed contextual typing and adaptation for lambdas, enum-variant function values, exact-import constructor values, and interface-backed/bound method values.
 - Fixed project rewrite and import-resolution edge cases across exact imports, wildcard imports, namespace aliases, nested modules, root aliases, builtin `Option`/`Result` constructors and patterns, and zero-argument stdlib aliases.

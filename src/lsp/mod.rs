@@ -20,6 +20,10 @@ use crate::lexer;
 use crate::parser::{ParseError, Parser};
 use crate::typeck::{TypeChecker, TypeError};
 
+fn stderr_log(message: impl AsRef<str>) {
+    eprintln!("[arden-lsp] {}", message.as_ref());
+}
+
 /// Document state tracked by the LSP server
 #[derive(Debug, Clone)]
 struct Document {
@@ -1377,6 +1381,7 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
+        stderr_log("initialized");
         self.client
             .log_message(MessageType::INFO, "Arden LSP server initialized")
             .await;
@@ -1404,6 +1409,7 @@ impl LanguageServer for Backend {
 
         self.parse_document(&uri).await;
 
+        stderr_log(format!("opened {}", uri));
         self.client
             .log_message(MessageType::INFO, format!("Opened document: {}", uri))
             .await;
@@ -1541,11 +1547,13 @@ impl LanguageServer for Backend {
 
 /// Run the LSP server
 pub async fn run_lsp_server() {
+    stderr_log("booting stdio transport");
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
     let (service, socket) = LspService::new(Backend::new);
     Server::new(stdin, stdout, socket).serve(service).await;
+    stderr_log("server stopped");
 }
 
 #[cfg(test)]
