@@ -14,12 +14,12 @@ function main(): None {
     mut i: Integer = 1;
     while (i < n) {
         key: Integer = a.get(i);
-        mut j: Integer = i - 1;
-        while (j >= 0 && a.get(j) > key) {
-            a.set(j + 1, a.get(j));
+        mut j: Integer = i;
+        while (j > 0 && a.get(j - 1) > key) {
+            a.set(j, a.get(j - 1));
             j = j - 1;
         }
-        a.set(j + 1, key);
+        a.set(j, key);
         i = i + 1;
     }
 
