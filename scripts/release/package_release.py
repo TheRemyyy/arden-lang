@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import stat
+import subprocess
 import tarfile
 import zipfile
 from pathlib import Path
@@ -76,6 +77,61 @@ def copy_file(source: Path, destination: Path) -> None:
         destination.chmod(stat.S_IWUSR | stat.S_IRUSR | stat.S_IXUSR)
         destination.unlink()
     shutil.copy2(source, destination)
+
+
+def collect_linux_runtime_libraries(bundle_dir: Path) -> None:
+    runtime_prefixes = ("libclang", "libLLVM", "libLTO", "libRemarks", "libPolly")
+    bundle_root = bundle_dir.resolve()
+    inspect_queue: list[Path] = []
+    bundled_clang = bundle_dir / "toolchain" / "llvm" / "bin" / "clang"
+    if bundled_clang.exists():
+        inspect_queue.append(bundled_clang)
+    extra_bin_dir = bundle_dir / "toolchain" / "extra" / "bin"
+    if extra_bin_dir.exists():
+        inspect_queue.extend(path for path in extra_bin_dir.iterdir() if path.is_file())
+
+    inspected_paths: set[Path] = set()
+    while inspect_queue:
+        inspect_path = inspect_queue.pop()
+        resolved_inspect_path = inspect_path.resolve()
+        if resolved_inspect_path in inspected_paths:
+            continue
+        inspected_paths.add(resolved_inspect_path)
+
+        for dependency_path in parse_linux_dependencies(resolved_inspect_path):
+            dependency_name = dependency_path.name
+            if not dependency_name.startswith(runtime_prefixes):
+                continue
+            if bundle_root in dependency_path.resolve().parents:
+                continue
+            bundled_dependency = bundle_dir / "toolchain" / "llvm" / "lib" / dependency_name
+            copy_file(dependency_path, bundled_dependency)
+            inspect_queue.append(dependency_path)
+
+
+def parse_linux_dependencies(binary_path: Path) -> list[Path]:
+    try:
+        result = subprocess.run(
+            ["ldd", str(binary_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+
+    dependencies: list[Path] = []
+    for line in result.stdout.splitlines():
+        stripped_line = line.strip()
+        if "=>" in stripped_line:
+            candidate = stripped_line.split("=>", 1)[1].strip().split(" ", 1)[0]
+        elif stripped_line.startswith("/"):
+            candidate = stripped_line.split(" ", 1)[0]
+        else:
+            continue
+        if candidate.startswith("/") and Path(candidate).exists():
+            dependencies.append(Path(candidate))
+    return dependencies
 
 
 def write_text_file(path: Path, contents: str, executable: bool = False) -> None:
@@ -301,6 +357,9 @@ def package_release() -> None:
                 copy_file(extra_bin, bundle_dir / "toolchain" / "extra" / "bin" / "ld.mold")
             elif extra_bin.name == "ld.mold":
                 copy_file(extra_bin, bundle_dir / "toolchain" / "extra" / "bin" / "mold")
+
+    if args.platform == "linux":
+        collect_linux_runtime_libraries(bundle_dir)
 
     if args.platform == "windows":
         write_text_file(bundle_dir / "arden.cmd", build_windows_wrapper())
