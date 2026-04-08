@@ -2226,14 +2226,14 @@ fn project_build_supports_zero_arg_exact_import_values_in_string_index_expressio
 fn project_build_supports_zero_arg_exact_import_values_as_indexed_objects() {
     let temp_root = make_temp_project_root("zero-arg-exact-import-index-object-project");
     let src_dir = temp_root.join("src");
-    let expected_prefix = if cfg!(windows) { 'C' } else { '/' };
     write_test_project_config(&temp_root, &["src/main.arden"], "src/main.arden", "smoke");
     fs::write(
         src_dir.join("main.arden"),
-        format!(
-            "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer {{ letter: Char = CurrentDir[0]; return if (letter == '{}') {{ 0 }} else {{ 1 }}; }}\n",
-            expected_prefix
-        ),
+        if cfg!(windows) {
+            "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { letter: Char = CurrentDir[0]; return if ((letter == '\\\\') || (letter == 'C')) { 0 } else { 1 }; }\n".to_string()
+        } else {
+            "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { letter: Char = CurrentDir[0]; return if (letter == '/') { 0 } else { 1 }; }\n".to_string()
+        },
     )
     .expect("write main");
 

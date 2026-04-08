@@ -268,7 +268,13 @@ def package_release() -> None:
         extra_bin = Path(extra_bin_raw)
         if not extra_bin.exists():
             continue
-        copy_file(extra_bin, bundle_dir / "toolchain" / "extra" / "bin" / extra_bin.name)
+        extra_bin_destination = bundle_dir / "toolchain" / "extra" / "bin" / extra_bin.name
+        copy_file(extra_bin, extra_bin_destination)
+        if args.platform == "linux":
+            if extra_bin.name == "mold":
+                copy_file(extra_bin, bundle_dir / "toolchain" / "extra" / "bin" / "ld.mold")
+            elif extra_bin.name == "ld.mold":
+                copy_file(extra_bin, bundle_dir / "toolchain" / "extra" / "bin" / "mold")
 
     if args.platform == "windows":
         write_text_file(bundle_dir / "arden.cmd", build_windows_wrapper())
