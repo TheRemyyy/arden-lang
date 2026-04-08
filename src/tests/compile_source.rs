@@ -16940,6 +16940,64 @@ fn compile_source_no_check_rejects_map_set_between_unrelated_concrete_classes() 
 }
 
 #[test]
+fn compile_source_no_check_rejects_map_key_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-map-key-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_map_key_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_map_key_unrelated_concrete_classes");
+    let source = r#"
+            class K1 {
+                constructor() {}
+            }
+
+            class K2 {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                values: Map<K1, Integer> = Map<K1, Integer>();
+                values.set(K2(), 7);
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class map key should fail in codegen");
+    assert!(err.contains("Type mismatch: expected K1, got K2"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_map_get_key_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-map-get-key-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_map_get_key_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_map_get_key_unrelated_concrete_classes");
+    let source = r#"
+            class K1 {
+                constructor() {}
+            }
+
+            class K2 {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                values: Map<K1, Integer> = Map<K1, Integer>();
+                values.set(K1(), 7);
+                return values.get(K2());
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class map get key should fail in codegen");
+    assert!(err.contains("Type mismatch: expected K1, got K2"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_list_set_between_unrelated_concrete_classes() {
     let temp_root = make_temp_project_root("no-check-list-set-unrelated-concrete-classes");
     let source_path = temp_root.join("no_check_list_set_unrelated_concrete_classes.arden");
