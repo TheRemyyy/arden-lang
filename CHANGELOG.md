@@ -25,8 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed a broad set of unchecked codegen holes around type boundaries, including assignments, returns, branch joins, loop bindings, constructor/call arguments, function-value adapters, and container payload/key writes.
 - Fixed unchecked builtin specialization mismatches for invariant containers and heap wrappers such as `List`, `Map`, `Box`, `Rc`, and `Arc`, so empty or pointer-shaped values with the wrong specialization no longer compile just because their lowered layout matches.
 - Fixed unchecked explicit builtin constructor specialization mismatches for nested invariant containers such as `Option<List<T>>`, while keeping imported builtin variant aliases like `Present` and `Success` working normally.
-- Fixed the silent-feeling `arden lsp` startup path by emitting basic stderr lifecycle logs, so local terminal launches now show boot and document-open status instead of appearing dead.
-- Fixed the first-run `arden lsp` experience to make the server's waiting state obvious immediately, reducing the feeling that the process is hanging before the client handshake arrives.
+- Fixed the silent-feeling `arden lsp` startup path by emitting basic lifecycle logs immediately, including an explicit waiting-for-handshake state, so local launches no longer appear dead.
 - Fixed scope restoration across blocks, `if`, `match`, and `for`, eliminating branch-local binding leaks and several invalid-IR paths.
 - Fixed contextual typing and adaptation for lambdas, enum-variant function values, exact-import constructor values, and interface-backed/bound method values.
 - Fixed project rewrite and import-resolution edge cases across exact imports, wildcard imports, namespace aliases, nested modules, root aliases, builtin `Option`/`Result` constructors and patterns, and zero-argument stdlib aliases.
