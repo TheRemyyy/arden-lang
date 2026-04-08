@@ -41,6 +41,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked `for` loops from leaking iterator bindings outside loop scope:
   - codegen now restores the enclosing variable map after finishing each list/range/string/integer `for` lowering path, so the loop binding only exists inside the loop body
   - this fixes invalid unchecked code such as `for (i in 4) { } return i;` and `for (item in values) { } return item;`, which previously compiled even though the loop binding should have been out of scope
+- Fixed unchecked `Map.set` payloads from accepting unrelated concrete classes:
+  - codegen now validates the inferred value type against the map value type before lowering `Map.set` writes
+  - this fixes invalid unchecked code such as `values: Map<String, B> = Map<String, B>(); values.set("x", A());`, which previously compiled even though `A` and `B` were unrelated classes
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values

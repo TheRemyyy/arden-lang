@@ -4046,7 +4046,9 @@ impl<'ctx> Codegen<'ctx> {
             "insert" => self.compile_map_method_on_value(map_value, map_expr_ty, "set", args),
             "set" => {
                 let key = self.compile_expr_with_expected_type(&args[0].node, &key_ty)?;
+                let actual_value_ty = self.infer_expr_type(&args[1].node, &[]);
                 let value = self.compile_expr_with_expected_type(&args[1].node, &val_ty)?;
+                self.reject_unrelated_concrete_class_assignment(&val_ty, &actual_value_ty)?;
                 self.compile_map_set_on_value_with_compiled_key_value(
                     map_value,
                     map_expr_ty,
