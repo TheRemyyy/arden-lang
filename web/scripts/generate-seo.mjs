@@ -99,14 +99,28 @@ async function generateLogoDerivative(sourcePath, targetPath, size) {
   ]);
 }
 
+async function copyLogoFallback(targetPath) {
+  await fs.copyFile(logoPath, targetPath);
+}
+
 async function generateLogoAssets() {
   await fs.copyFile(logoPath, path.join(publicRoot, 'logo.png'));
-  await Promise.all([
-    generateLogoDerivative(logoPath, path.join(publicRoot, 'logo-mark-64.png'), 64),
-    generateLogoDerivative(logoPath, path.join(publicRoot, 'favicon-32.png'), 32),
-    generateLogoDerivative(logoPath, path.join(publicRoot, 'favicon.png'), 512),
-    generateLogoDerivative(logoPath, path.join(publicRoot, 'apple-touch-icon.png'), 180),
-  ]);
+  const derivativeTargets = [
+    { path: path.join(publicRoot, 'logo-mark-64.png'), size: 64 },
+    { path: path.join(publicRoot, 'favicon-32.png'), size: 32 },
+    { path: path.join(publicRoot, 'favicon.png'), size: 512 },
+    { path: path.join(publicRoot, 'apple-touch-icon.png'), size: 180 },
+  ];
+
+  try {
+    await Promise.all(
+      derivativeTargets.map((target) => generateLogoDerivative(logoPath, target.path, target.size)),
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn(`[seo] Logo derivative generation failed, using source logo as fallback: ${errorMessage}`);
+    await Promise.all(derivativeTargets.map((target) => copyLogoFallback(target.path)));
+  }
 }
 
 function getDocRoute(relativePath) {
