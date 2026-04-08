@@ -159,7 +159,7 @@ function ReleaseSidebar({
             <div className="h-full min-h-[1px]">
                 <div
                     ref={containerRef}
-                    className={`custom-scrollbar max-h-[calc(100vh-7rem)] overflow-y-auto rounded-[2rem] border border-white/10 bg-[#15120f] p-5 ${
+                    className={`custom-scrollbar max-h-[calc(100vh-7rem)] overflow-y-auto rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 ${
                         isDockedToBottom ? 'absolute bottom-0 left-0' : 'fixed top-24'
                     }`}
                     style={
@@ -242,7 +242,7 @@ function MobileReleaseRail({
     }, [activeReleaseId]);
 
     return (
-        <div className="fixed left-0 right-0 top-16 z-30 border-b border-white/10 bg-[#11100d] lg:hidden">
+        <div className="fixed left-0 right-0 top-16 z-30 border-b border-white/10 bg-white/[0.04] lg:hidden">
             <div ref={containerRef} className="custom-scrollbar overflow-x-auto px-4 py-3">
                 <div className="flex min-w-max gap-2">
                     {releases.map((release) => (
@@ -274,7 +274,7 @@ function CategoryCard({
     const [isExpanded, setIsExpanded] = useState(!shouldCollapseByDefault);
 
     return (
-        <section className="mb-4 min-w-0 break-inside-avoid self-start overflow-hidden rounded-[1.35rem] border border-white/10 bg-[#1b1714] p-4 sm:p-5">
+        <section className="mb-4 min-w-0 break-inside-avoid self-start overflow-hidden rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div>
                     <h3 className="font-display text-xl font-semibold tracking-[-0.03em] text-white sm:text-2xl">
@@ -317,7 +317,7 @@ function CategoryCard({
                     dangerouslySetInnerHTML={{ __html: category.html }}
                 />
                 {!isExpanded && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#1b1714] via-[#1b1714]/92 to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[rgba(255,255,255,0.04)] via-[rgba(255,255,255,0.035)] to-transparent" />
                 )}
             </div>
             {shouldCollapseByDefault && (
