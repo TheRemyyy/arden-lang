@@ -292,42 +292,36 @@ fn current_dir_checked() -> Result<PathBuf, String> {
     })
 }
 
-const CLI_ACCENT_RGB: (u8, u8, u8) = (184, 92, 56);
-const CLI_ACCENT_SOFT_RGB: (u8, u8, u8) = (217, 178, 158);
-const CLI_SUCCESS_RGB: (u8, u8, u8) = (88, 100, 81);
-const CLI_WARNING_RGB: (u8, u8, u8) = (209, 178, 131);
-const CLI_ERROR_RGB: (u8, u8, u8) = (209, 93, 93);
+const CLI_WHITE_RGB: (u8, u8, u8) = (255, 255, 255);
+const CLI_SOFT_RGB: (u8, u8, u8) = (239, 232, 220);
+const CLI_DARK_RGB: (u8, u8, u8) = (31, 29, 26);
 
 fn cli_accent(text: impl AsRef<str>) -> ColoredString {
     text.as_ref()
-        .truecolor(CLI_ACCENT_RGB.0, CLI_ACCENT_RGB.1, CLI_ACCENT_RGB.2)
+        .truecolor(CLI_WHITE_RGB.0, CLI_WHITE_RGB.1, CLI_WHITE_RGB.2)
         .bold()
 }
 
 fn cli_soft(text: impl AsRef<str>) -> ColoredString {
-    text.as_ref().truecolor(
-        CLI_ACCENT_SOFT_RGB.0,
-        CLI_ACCENT_SOFT_RGB.1,
-        CLI_ACCENT_SOFT_RGB.2,
-    )
+    text.as_ref()
+        .truecolor(CLI_SOFT_RGB.0, CLI_SOFT_RGB.1, CLI_SOFT_RGB.2)
+}
+
+fn cli_dark(text: impl AsRef<str>) -> ColoredString {
+    text.as_ref()
+        .truecolor(CLI_DARK_RGB.0, CLI_DARK_RGB.1, CLI_DARK_RGB.2)
 }
 
 fn cli_success(text: impl AsRef<str>) -> ColoredString {
-    text.as_ref()
-        .truecolor(CLI_SUCCESS_RGB.0, CLI_SUCCESS_RGB.1, CLI_SUCCESS_RGB.2)
-        .bold()
+    cli_accent(text)
 }
 
 fn cli_warning(text: impl AsRef<str>) -> ColoredString {
-    text.as_ref()
-        .truecolor(CLI_WARNING_RGB.0, CLI_WARNING_RGB.1, CLI_WARNING_RGB.2)
-        .bold()
+    cli_soft(text)
 }
 
 fn cli_error(text: impl AsRef<str>) -> ColoredString {
-    text.as_ref()
-        .truecolor(CLI_ERROR_RGB.0, CLI_ERROR_RGB.1, CLI_ERROR_RGB.2)
-        .bold()
+    cli_accent(text)
 }
 
 fn cli_path(path: &Path) -> ColoredString {
@@ -351,7 +345,7 @@ fn print_cli_artifact_result(action: &str, subject: &str, path: &Path, elapsed: 
         "{} {} {} {} {}",
         cli_success(action),
         cli_accent(subject),
-        cli_soft("->"),
+        cli_dark("->"),
         cli_path(path),
         cli_soft(format!("({})", cli_elapsed(elapsed)))
     );
