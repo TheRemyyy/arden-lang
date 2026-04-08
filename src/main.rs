@@ -335,12 +335,7 @@ fn cli_path(path: &Path) -> ColoredString {
 }
 
 fn cli_elapsed(duration: Duration) -> String {
-    let ms = duration.as_secs_f64() * 1000.0;
-    if ms < 1000.0 {
-        format!("{ms:.1} ms")
-    } else {
-        format!("{:.2} s", duration.as_secs_f64())
-    }
+    format!("{:.6} s", duration.as_secs_f64())
 }
 
 fn print_cli_step(message: impl AsRef<str>) {

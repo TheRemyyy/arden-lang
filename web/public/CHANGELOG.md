@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Consolidated exact-import, namespace-alias, and zero-argument stdlib alias handling so the same forms behave consistently across checked builds, unchecked builds, and multi-file project builds.
 - Tightened unchecked codegen to fail at semantic boundaries earlier instead of letting invalid programs degrade into LLVM or Clang backend failures.
 - Refined CLI output for `build`, `run`, `fmt`, `fix`, and `check` with consistent project-style status lines, build durations, and web-aligned terminal colors instead of the previous mix of ad-hoc cyan/green messages.
+- Switched CLI build and timing summaries to seconds with enough precision for hot-cache runs, so near-instant builds no longer look absurdly tiny or rounded inconsistently in raw milliseconds.
 
 ### 🐛 Fixed
 

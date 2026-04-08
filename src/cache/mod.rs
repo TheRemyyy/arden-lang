@@ -484,6 +484,10 @@ pub(crate) struct BuildTimings {
 }
 
 impl BuildTimings {
+    fn format_seconds(ms: f64) -> String {
+        format!("{:.6} s", ms / 1000.0)
+    }
+
     pub(crate) fn new(enabled: bool) -> Self {
         Self {
             enabled,
@@ -600,12 +604,17 @@ impl BuildTimings {
                         .join(", ")
                 )
             };
-            println!("  {:<28} {:>10.3} ms{}", phase.label, phase.ms, counters);
+            println!(
+                "  {:<28} {:>10}{}",
+                phase.label,
+                Self::format_seconds(phase.ms),
+                counters
+            );
         }
         println!(
-            "  {:<28} {:>10.3} ms",
+            "  {:<28} {:>10}",
             "total",
-            self.started_at.elapsed().as_secs_f64() * 1000.0
+            Self::format_seconds(self.started_at.elapsed().as_secs_f64() * 1000.0)
         );
     }
 }
