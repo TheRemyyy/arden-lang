@@ -47,6 +47,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked `List.set` payloads from accepting unrelated concrete classes:
   - codegen now validates the inferred value type against the list element type before lowering `List.set` writes
   - this fixes invalid unchecked code such as `mut values: List<B> = List<B>(); values.push(B()); values.set(0, A());`, which previously compiled even though `A` and `B` were unrelated classes
+- Fixed unchecked typed `if` expressions from accepting unrelated concrete classes across branches:
+  - codegen now validates the inferred tail expression of each typed `if` branch before merging the branch result into the final expression value
+  - this fixes invalid unchecked code such as `got: B = if (value.is_some()) { value.unwrap() } else { A() };`, which previously compiled even though `A` and `B` were unrelated classes
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values

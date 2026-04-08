@@ -15179,7 +15179,14 @@ impl<'ctx> Codegen<'ctx> {
             for stmt in then_branch {
                 if let Stmt::Expr(expr) = &stmt.node {
                     then_result = if let Some(expected_ty) = expected_result_ty {
-                        this.compile_expr_with_expected_type(&expr.node, expected_ty)?
+                        let inferred_expr_ty = this.infer_expr_type(&expr.node, &[]);
+                        let value =
+                            this.compile_expr_with_expected_type(&expr.node, expected_ty)?;
+                        this.reject_unrelated_concrete_class_assignment(
+                            expected_ty,
+                            &inferred_expr_ty,
+                        )?;
+                        value
                     } else {
                         this.compile_expr(&expr.node)?
                     };
@@ -15205,7 +15212,14 @@ impl<'ctx> Codegen<'ctx> {
                 for stmt in else_stmts {
                     if let Stmt::Expr(expr) = &stmt.node {
                         else_result = if let Some(expected_ty) = expected_result_ty {
-                            this.compile_expr_with_expected_type(&expr.node, expected_ty)?
+                            let inferred_expr_ty = this.infer_expr_type(&expr.node, &[]);
+                            let value =
+                                this.compile_expr_with_expected_type(&expr.node, expected_ty)?;
+                            this.reject_unrelated_concrete_class_assignment(
+                                expected_ty,
+                                &inferred_expr_ty,
+                            )?;
+                            value
                         } else {
                             this.compile_expr(&expr.node)?
                         };

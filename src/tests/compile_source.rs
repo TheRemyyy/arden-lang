@@ -17280,6 +17280,35 @@ fn compile_source_no_check_rejects_match_arm_between_unrelated_concrete_classes(
 }
 
 #[test]
+fn compile_source_no_check_rejects_if_branch_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-if-branch-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_if_branch_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_if_branch_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                value: Option<B> = Option<B>();
+                got: B = if (value.is_some()) { value.unwrap() } else { A() };
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class if branch should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_if_block_binding_outside_scope() {
     let temp_root = make_temp_project_root("no-check-if-scope-binding");
     let source_path = temp_root.join("no_check_if_scope_binding.arden");
