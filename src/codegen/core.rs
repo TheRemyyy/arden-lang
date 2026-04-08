@@ -10997,6 +10997,7 @@ impl<'ctx> Codegen<'ctx> {
         iterable: &Spanned<Expr>,
         body: &Block,
     ) -> Result<()> {
+        let saved_variables = self.variables.clone();
         let func = self
             .current_function
             .ok_or_else(|| CodegenError::new("for loop used outside function"))?;
@@ -11160,6 +11161,7 @@ impl<'ctx> Codegen<'ctx> {
             self.builder.build_unconditional_branch(cond_bb).unwrap();
 
             self.builder.position_at_end(after_bb);
+            self.variables = saved_variables;
             return Ok(());
         }
 
@@ -11253,6 +11255,7 @@ impl<'ctx> Codegen<'ctx> {
             self.builder.build_unconditional_branch(cond_bb).unwrap();
 
             self.builder.position_at_end(after_bb);
+            self.variables = saved_variables;
             return Ok(());
         }
 
@@ -11350,6 +11353,7 @@ impl<'ctx> Codegen<'ctx> {
             self.builder.build_unconditional_branch(cond_bb).unwrap();
 
             self.builder.position_at_end(after_bb);
+            self.variables = saved_variables;
             return Ok(());
         }
 
@@ -11469,6 +11473,7 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.build_unconditional_branch(cond_bb).unwrap();
 
         self.builder.position_at_end(after_bb);
+        self.variables = saved_variables;
         Ok(())
     }
 

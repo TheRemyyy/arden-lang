@@ -17266,6 +17266,50 @@ fn compile_source_no_check_rejects_match_arm_binding_outside_scope() {
 }
 
 #[test]
+fn compile_source_no_check_rejects_integer_for_binding_outside_scope() {
+    let temp_root = make_temp_project_root("no-check-integer-for-scope-binding");
+    let source_path = temp_root.join("no_check_integer_for_scope_binding.arden");
+    let output_path = temp_root.join("no_check_integer_for_scope_binding");
+    let source = r#"
+            function main(): Integer {
+                for (i in 4) {
+                }
+                return i;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("integer for-loop binding should not leak outside its scope");
+    assert!(err.contains("Undefined variable: i"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_list_for_binding_outside_scope() {
+    let temp_root = make_temp_project_root("no-check-list-for-scope-binding");
+    let source_path = temp_root.join("no_check_list_for_scope_binding.arden");
+    let output_path = temp_root.join("no_check_list_for_scope_binding");
+    let source = r#"
+            function main(): Integer {
+                values: List<Integer> = List<Integer>();
+                values.push(1);
+                for (item in values) {
+                }
+                return item;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("list for-loop binding should not leak outside its scope");
+    assert!(err.contains("Undefined variable: item"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");
