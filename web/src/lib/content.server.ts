@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { FLATTENED_DOCS, getDocNeighbors, normalizeDocsPath } from './docs';
+import { parseChangelogMarkdown, type ChangelogRelease } from './changelog';
 import { renderMarkdown, rewriteInternalDocLinks } from './markdown';
 
 export type PageHeading = {
@@ -23,6 +24,7 @@ export type ChangelogPageData = {
     title: string;
     description: string;
     content: string;
+    releases: ChangelogRelease[];
 };
 
 const REPO_ROOT = path.resolve(process.cwd(), '..');
@@ -101,5 +103,6 @@ export async function loadChangelogPage(): Promise<ChangelogPageData> {
         title: 'Changelog',
         description: 'Tracking the latest improvements to Arden.',
         content: await renderMarkdown(markdown),
+        releases: await parseChangelogMarkdown(markdown),
     };
 }

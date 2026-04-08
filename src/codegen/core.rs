@@ -14295,6 +14295,7 @@ impl<'ctx> Codegen<'ctx> {
         value: BasicValueEnum<'ctx>,
     ) -> Result<()> {
         self.reject_unrelated_concrete_class_assignment(expected_ty, actual_ty)?;
+        self.reject_invariant_specialization_mismatch(expected_ty, actual_ty)?;
 
         if !self.type_contains_active_generic_placeholder(expected_ty)
             && !self.type_contains_active_generic_placeholder(actual_ty)
@@ -14304,6 +14305,74 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         Ok(())
+    }
+
+    fn reject_invariant_specialization_mismatch(
+        &self,
+        expected: &Type,
+        actual: &Type,
+    ) -> Result<()> {
+        let expected = self.normalize_codegen_type(expected);
+        let actual = self.normalize_codegen_type(actual);
+
+        if self.type_contains_active_generic_placeholder(&expected)
+            || self.type_contains_active_generic_placeholder(&actual)
+        {
+            return Ok(());
+        }
+
+        if self.invariant_specializations_compatible(&expected, &actual) {
+            return Ok(());
+        }
+
+        Err(Self::type_mismatch_error(&expected, &actual))
+    }
+
+    fn invariant_specializations_compatible(&self, expected: &Type, actual: &Type) -> bool {
+        if expected == actual {
+            return true;
+        }
+
+        match (expected, actual) {
+            (Type::Ref(expected), Type::Ref(actual))
+            | (Type::MutRef(expected), Type::MutRef(actual))
+            | (Type::Ptr(expected), Type::Ptr(actual))
+            | (Type::Box(expected), Type::Box(actual))
+            | (Type::Rc(expected), Type::Rc(actual))
+            | (Type::Arc(expected), Type::Arc(actual))
+            | (Type::List(expected), Type::List(actual))
+            | (Type::Set(expected), Type::Set(actual))
+            | (Type::Option(expected), Type::Option(actual))
+            | (Type::Task(expected), Type::Task(actual))
+            | (Type::Range(expected), Type::Range(actual)) => {
+                self.invariant_specializations_compatible(expected, actual)
+            }
+            (Type::Ref(expected), Type::MutRef(actual)) => {
+                self.invariant_specializations_compatible(expected, actual)
+            }
+            (Type::Result(expected_ok, expected_err), Type::Result(actual_ok, actual_err)) => {
+                self.invariant_specializations_compatible(expected_ok, actual_ok)
+                    && self.invariant_specializations_compatible(expected_err, actual_err)
+            }
+            (Type::Map(expected_key, expected_value), Type::Map(actual_key, actual_value)) => {
+                self.invariant_specializations_compatible(expected_key, actual_key)
+                    && self.invariant_specializations_compatible(expected_value, actual_value)
+            }
+            (Type::Generic(_, _), Type::Generic(_, _))
+            | (Type::Generic(_, _), Type::Named(_))
+            | (Type::Named(_), Type::Generic(_, _))
+            | (Type::Named(_), Type::Named(_)) => {
+                let expected_name = Self::function_adapter_nominal_base_name(expected);
+                let actual_name = Self::function_adapter_nominal_base_name(actual);
+                matches!(
+                    (expected_name, actual_name),
+                    (Some(expected_name), Some(actual_name))
+                        if expected_name != actual_name
+                            || self.function_adapter_same_nominal_arguments(expected, actual)
+                )
+            }
+            _ => true,
+        }
     }
 
     pub(crate) fn with_variable_scope<T>(

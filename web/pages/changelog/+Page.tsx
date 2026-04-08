@@ -4,5 +4,5 @@ import type { ChangelogPageData } from '../../src/lib/content.server';
 
 export default function Page() {
     const data = useData<ChangelogPageData>();
-    return <ChangelogContent html={data.content} />;
+    return <ChangelogContent releases={data.releases} />;
 }

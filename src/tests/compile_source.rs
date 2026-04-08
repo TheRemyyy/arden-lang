@@ -17512,6 +17512,101 @@ fn compile_source_no_check_rejects_result_ok_with_incompatible_non_class_type() 
 }
 
 #[test]
+fn compile_source_no_check_rejects_builtin_box_with_incompatible_payload_type() {
+    let temp_root = make_temp_project_root("no-check-builtin-box-incompatible-payload-type");
+    let source_path = temp_root.join("no_check_builtin_box_incompatible_payload_type.arden");
+    let output_path = temp_root.join("no_check_builtin_box_incompatible_payload_type");
+    let source = r#"
+            function main(): Integer {
+                value: Box<Integer> = Box<String>("oops");
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible Box payload specialization should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Box<Integer>, got Box<String>"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_builtin_rc_with_incompatible_payload_type() {
+    let temp_root = make_temp_project_root("no-check-builtin-rc-incompatible-payload-type");
+    let source_path = temp_root.join("no_check_builtin_rc_incompatible_payload_type.arden");
+    let output_path = temp_root.join("no_check_builtin_rc_incompatible_payload_type");
+    let source = r#"
+            function main(): Integer {
+                value: Rc<Integer> = Rc<String>("oops");
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible Rc payload specialization should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Rc<Integer>, got Rc<String>"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_builtin_arc_with_incompatible_payload_type() {
+    let temp_root = make_temp_project_root("no-check-builtin-arc-incompatible-payload-type");
+    let source_path = temp_root.join("no_check_builtin_arc_incompatible_payload_type.arden");
+    let output_path = temp_root.join("no_check_builtin_arc_incompatible_payload_type");
+    let source = r#"
+            function main(): Integer {
+                value: Arc<Integer> = Arc<String>("oops");
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible Arc payload specialization should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Arc<Integer>, got Arc<String>"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_builtin_box_argument_with_incompatible_payload_type() {
+    let temp_root = make_temp_project_root("no-check-builtin-box-arg-incompatible-payload-type");
+    let source_path = temp_root.join("no_check_builtin_box_arg_incompatible_payload_type.arden");
+    let output_path = temp_root.join("no_check_builtin_box_arg_incompatible_payload_type");
+    let source = r#"
+            function take(value: Box<Integer>): Integer {
+                return 0;
+            }
+
+            function main(): Integer {
+                return take(Box<String>("oops"));
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible Box argument specialization should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Box<Integer>, got Box<String>"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_if_block_binding_outside_scope() {
     let temp_root = make_temp_project_root("no-check-if-scope-binding");
     let source_path = temp_root.join("no_check_if_scope_binding.arden");
