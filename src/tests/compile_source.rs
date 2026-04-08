@@ -16911,6 +16911,74 @@ fn compile_source_no_check_rejects_result_ok_between_unrelated_concrete_classes(
 }
 
 #[test]
+fn compile_source_no_check_rejects_constructor_argument_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-ctor-arg-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_ctor_arg_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_ctor_arg_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            class Holder {
+                value: B;
+
+                constructor(value: B) {
+                    this.value = value;
+                }
+            }
+
+            function main(): Integer {
+                box: Holder = Holder(A());
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class constructor argument should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_enum_variant_payload_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-enum-payload-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_enum_payload_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_enum_payload_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            enum Wrap {
+                One(B)
+            }
+
+            function main(): Integer {
+                value: Wrap = Wrap.One(A());
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class enum payload should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");

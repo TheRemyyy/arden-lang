@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked payload boundaries for built-in containers and sum types from accepting unrelated concrete classes:
   - codegen now validates concrete class payloads before storing them into `List<T>`, `Set<T>`, `Option<T>`, `Result<T, E>`, and exact-import enum variant constructors instead of relying on raw pointer-layout compatibility
   - this fixes invalid unchecked code such as `xs.push(A())` for `List<B>`, `Option.Some(A())` for `Option<B>`, and `Result.Ok(A())` for `Result<B, String>`, which previously compiled even though `A` and `B` were unrelated classes
+- Fixed unchecked typed constructor arguments from accepting unrelated concrete classes:
+  - codegen now validates concrete class arguments passed into class constructors, direct enum variant constructors, and typed `Box/Rc/Arc` payload constructors before lowering the call
+  - this fixes invalid unchecked code such as `Holder(A())` when `Holder` expects `B`, and `Wrap.One(A())` when the variant payload type is `B`, which previously compiled even though `A` and `B` were unrelated classes
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values

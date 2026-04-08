@@ -15992,7 +15992,10 @@ impl<'ctx> Codegen<'ctx> {
                         let mut values = Vec::with_capacity(args.len());
                         for (arg, expected_ty) in args.iter().zip(variant_info.fields.iter()) {
                             values.push(
-                                self.compile_expr_with_expected_type(&arg.node, expected_ty)?,
+                                self.compile_expr_for_concrete_class_payload(
+                                    &arg.node,
+                                    expected_ty,
+                                )?,
                             );
                         }
                         return self.build_enum_value(&resolved_owner, &variant_info, &values);
@@ -19403,7 +19406,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 if let Some(arg) = args.first() {
                     let payload =
-                        self.compile_expr_with_expected_type(&arg.node, inner.as_ref())?;
+                        self.compile_expr_for_concrete_class_payload(&arg.node, inner.as_ref())?;
                     return self.create_box_typed(payload, &normalized_ty);
                 }
                 return self.create_empty_box_typed(&normalized_ty);
@@ -19418,7 +19421,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 if let Some(arg) = args.first() {
                     let payload =
-                        self.compile_expr_with_expected_type(&arg.node, inner.as_ref())?;
+                        self.compile_expr_for_concrete_class_payload(&arg.node, inner.as_ref())?;
                     return self.create_rc_typed(payload, &normalized_ty);
                 }
                 return self.create_empty_rc_typed(&normalized_ty);
@@ -19433,7 +19436,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 if let Some(arg) = args.first() {
                     let payload =
-                        self.compile_expr_with_expected_type(&arg.node, inner.as_ref())?;
+                        self.compile_expr_for_concrete_class_payload(&arg.node, inner.as_ref())?;
                     return self.create_arc_typed(payload, &normalized_ty);
                 }
                 return self.create_empty_arc_typed(&normalized_ty);
@@ -19487,7 +19490,8 @@ impl<'ctx> Codegen<'ctx> {
             ));
         }
         for (arg, expected_ty) in args.iter().zip(ctor_params.iter()) {
-            compiled_args.push(self.compile_expr_with_expected_type(&arg.node, expected_ty)?);
+            compiled_args
+                .push(self.compile_expr_for_concrete_class_payload(&arg.node, expected_ty)?);
         }
 
         let args_meta: Vec<BasicMetadataValueEnum> =
