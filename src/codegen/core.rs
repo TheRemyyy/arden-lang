@@ -10664,7 +10664,7 @@ impl<'ctx> Codegen<'ctx> {
                 let normalized_ty = self.normalize_codegen_type(ty);
                 let val = self.compile_expr_with_expected_type(&value.node, &normalized_ty)?;
                 let actual_ty = self.infer_expr_type(&value.node, &[]);
-                self.reject_unrelated_concrete_class_assignment(&normalized_ty, &actual_ty)?;
+                self.reject_incompatible_expected_type_value(&normalized_ty, &actual_ty, val)?;
                 let alloca = self
                     .builder
                     .build_alloca(self.llvm_type(&normalized_ty), name)
@@ -10760,10 +10760,10 @@ impl<'ctx> Codegen<'ctx> {
                 }
 
                 let target_ty = self.infer_expr_type(&target.node, &[]);
+                let ptr = self.compile_lvalue(&target.node)?;
                 let val = self.compile_expr_with_expected_type(&value.node, &target_ty)?;
                 let actual_ty = self.infer_expr_type(&value.node, &[]);
-                self.reject_unrelated_concrete_class_assignment(&target_ty, &actual_ty)?;
-                let ptr = self.compile_lvalue(&target.node)?;
+                self.reject_incompatible_expected_type_value(&target_ty, &actual_ty, val)?;
                 self.builder.build_store(ptr, val).unwrap();
             }
 
@@ -10793,20 +10793,11 @@ impl<'ctx> Codegen<'ctx> {
                                 let inferred_expr_ty = self.infer_expr_type(&expr.node, &[]);
                                 let compiled =
                                     self.compile_expr_with_expected_type(&expr.node, &ret_ty)?;
-                                self.reject_unrelated_concrete_class_assignment(
+                                self.reject_incompatible_expected_type_value(
                                     &ret_ty,
                                     &inferred_expr_ty,
+                                    compiled,
                                 )?;
-                                if !self.type_contains_active_generic_placeholder(&ret_ty)
-                                    && !self
-                                        .type_contains_active_generic_placeholder(&inferred_expr_ty)
-                                    && compiled.get_type() != self.llvm_type(&ret_ty)
-                                {
-                                    return Err(Self::type_mismatch_error(
-                                        &ret_ty,
-                                        &inferred_expr_ty,
-                                    ));
-                                }
                                 compiled
                             } else {
                                 self.compile_expr(&expr.node)?
@@ -12350,9 +12341,10 @@ impl<'ctx> Codegen<'ctx> {
                         let inferred_expr_ty = self.infer_expr_type(&expr.node, &[]);
                         let value =
                             self.compile_expr_with_expected_type(&expr.node, &inner_return_type)?;
-                        self.reject_unrelated_concrete_class_assignment(
+                        self.reject_incompatible_expected_type_value(
                             &inner_return_type,
                             &inferred_expr_ty,
+                            value,
                         )?;
                         self.builder.build_return(Some(&value)).unwrap();
                         continue;
@@ -13172,7 +13164,7 @@ impl<'ctx> Codegen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>> {
         let value = self.compile_expr_with_expected_type(expr, expected_ty)?;
         let actual_ty = self.infer_expr_type(expr, &[]);
-        self.reject_unrelated_concrete_class_assignment(expected_ty, &actual_ty)?;
+        self.reject_incompatible_expected_type_value(expected_ty, &actual_ty, value)?;
         Ok(value)
     }
 
@@ -14296,6 +14288,24 @@ impl<'ctx> Codegen<'ctx> {
         )))
     }
 
+    pub(crate) fn reject_incompatible_expected_type_value(
+        &self,
+        expected_ty: &Type,
+        actual_ty: &Type,
+        value: BasicValueEnum<'ctx>,
+    ) -> Result<()> {
+        self.reject_unrelated_concrete_class_assignment(expected_ty, actual_ty)?;
+
+        if !self.type_contains_active_generic_placeholder(expected_ty)
+            && !self.type_contains_active_generic_placeholder(actual_ty)
+            && value.get_type() != self.llvm_type(expected_ty)
+        {
+            return Err(Self::type_mismatch_error(expected_ty, actual_ty));
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn with_variable_scope<T>(
         &mut self,
         f: impl FnOnce(&mut Self) -> Result<T>,
@@ -15182,16 +15192,11 @@ impl<'ctx> Codegen<'ctx> {
                         let inferred_expr_ty = this.infer_expr_type(&expr.node, &[]);
                         let value =
                             this.compile_expr_with_expected_type(&expr.node, expected_ty)?;
-                        this.reject_unrelated_concrete_class_assignment(
+                        this.reject_incompatible_expected_type_value(
                             expected_ty,
                             &inferred_expr_ty,
+                            value,
                         )?;
-                        if !this.type_contains_active_generic_placeholder(expected_ty)
-                            && !this.type_contains_active_generic_placeholder(&inferred_expr_ty)
-                            && value.get_type() != this.llvm_type(expected_ty)
-                        {
-                            return Err(Self::type_mismatch_error(expected_ty, &inferred_expr_ty));
-                        }
                         value
                     } else {
                         this.compile_expr(&expr.node)?
@@ -15221,19 +15226,11 @@ impl<'ctx> Codegen<'ctx> {
                             let inferred_expr_ty = this.infer_expr_type(&expr.node, &[]);
                             let value =
                                 this.compile_expr_with_expected_type(&expr.node, expected_ty)?;
-                            this.reject_unrelated_concrete_class_assignment(
+                            this.reject_incompatible_expected_type_value(
                                 expected_ty,
                                 &inferred_expr_ty,
+                                value,
                             )?;
-                            if !this.type_contains_active_generic_placeholder(expected_ty)
-                                && !this.type_contains_active_generic_placeholder(&inferred_expr_ty)
-                                && value.get_type() != this.llvm_type(expected_ty)
-                            {
-                                return Err(Self::type_mismatch_error(
-                                    expected_ty,
-                                    &inferred_expr_ty,
-                                ));
-                            }
                             value
                         } else {
                             this.compile_expr(&expr.node)?

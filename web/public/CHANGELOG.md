@@ -56,6 +56,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked typed branch expressions from reaching LLVM with incompatible non-class values:
   - codegen now rejects typed `if` and `match` branch results whose lowered LLVM type still does not match the expected branch result type, even when the mismatch is not a concrete-class nominal case
   - this fixes invalid unchecked code such as `value: Integer = if (flag) { 1 } else { A() };` and `value: Integer = match (true) { true => 1, false => A(), };`, which previously compiled too far and could fail later in Clang instead of reporting a direct `Type mismatch`
+- Fixed unchecked assignment-style boundaries from accepting incompatible non-class values:
+  - codegen now applies the same lowered-type compatibility check to `let`, mutable assignment, async tail returns, constructor and call payload boundaries, and builtin container payload writes such as `List.push`, `List.set`, `Map.set`, `Option.Some`, and `Result.Ok`
+  - this fixes invalid unchecked code such as `value: Integer = "oops";`, `mut value: Integer = 1; value = "oops";`, `values: List<Integer> = List<Integer>(); values.push("oops");`, and `Option.Some("oops")`, which previously compiled despite the declared payload or storage type being incompatible
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values
@@ -2257,7 +2260,9 @@ This release introduces a complete multi-file project system with Java-style nam
 - Same-namespace functions work without imports (local scope)
 - Functions without package declaration are in `global` namespace
 
-## [1.2.0] - 2026-02-21
+## [1.2.0] - Performance Push & Codegen Refactor - 2026-02-21
+
+Focused on making native output materially faster while breaking the original codegen monolith into modules that were easier to maintain and extend.
 
 ### 🚀 Performance & Optimization
 
@@ -2289,7 +2294,9 @@ This release introduces a complete multi-file project system with Java-style nam
 - **LLVM Attribute Errors**: Removed problematic attributes (`uwtable`, `call_convention`) causing Clang failures.
 - **Code Formatting**: Applied `cargo fmt` across entire codebase.
 
-## [1.1.4] - 2025-12-29
+## [1.1.4] - Stdlib Expansion & Runtime Utilities - 2025-12-29
+
+This release substantially widened the built-in runtime surface with arguments, time, string helpers, and system integration primitives.
 
 ### ✨ Added
 
@@ -2332,7 +2339,9 @@ This release introduces a complete multi-file project system with Java-style nam
 
 - **Boolean String Conversion**: `to_string(bool)` now correctly returns "true" or "false" instead of garbage values.
 
-## [1.1.3] - 2025-12-29
+## [1.1.3] - File I/O & Example Coverage - 2025-12-29
+
+The focus here was practical scripting support: file operations, better examples, and the first dedicated example verification flow.
 
 ### ✨ Added
 
@@ -2353,7 +2362,9 @@ This release introduces a complete multi-file project system with Java-style nam
 
 - **Borrow Checker**: Fixed a bug where standard library calls would incorrectly mark string variables as moved.
 
-## [1.1.2] - 2025-12-28
+## [1.1.2] - Runtime Stability Fixes - 2025-12-28
+
+This patch concentrated on correctness issues in generated LLVM and container behavior, especially around `List` handling and `match` lowering.
 
 ### 🐛 Fixed
 
@@ -2362,7 +2373,9 @@ This release introduces a complete multi-file project system with Java-style nam
 - **Match Statements**: Fixed invalid LLVM IR generation (orphan blocks) for `match` statements.
 - **Clippy Warnings**: Resolved `collapsible_match` and other lints in `codegen.rs`.
 
-## [1.1.1] - 2025-12-27
+## [1.1.1] - Documentation Rebuild - 2025-12-27
+
+This release reorganized the project’s docs into a real documentation tree and turned the repository root into a cleaner entry point.
 
 ### 🚀 Major Changes
 

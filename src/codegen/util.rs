@@ -1905,20 +1905,11 @@ impl<'ctx> Codegen<'ctx> {
                                 let inferred_expr_ty = this.infer_expr_type(&e.node, &[]);
                                 let value =
                                     this.compile_expr_with_expected_type(&e.node, expected_ty)?;
-                                this.reject_unrelated_concrete_class_assignment(
+                                this.reject_incompatible_expected_type_value(
                                     expected_ty,
                                     &inferred_expr_ty,
+                                    value,
                                 )?;
-                                if !this.type_contains_active_generic_placeholder(expected_ty)
-                                    && !this
-                                        .type_contains_active_generic_placeholder(&inferred_expr_ty)
-                                    && value.get_type() != this.llvm_type(expected_ty)
-                                {
-                                    return Err(Self::type_mismatch_error(
-                                        expected_ty,
-                                        &inferred_expr_ty,
-                                    ));
-                                }
                                 value
                             } else {
                                 this.compile_expr(&e.node)?

@@ -17395,6 +17395,123 @@ fn compile_source_no_check_rejects_if_branch_with_incompatible_non_class_type() 
 }
 
 #[test]
+fn compile_source_no_check_rejects_let_with_incompatible_non_class_type() {
+    let temp_root = make_temp_project_root("no-check-let-incompatible-non-class-type");
+    let source_path = temp_root.join("no_check_let_incompatible_non_class_type.arden");
+    let output_path = temp_root.join("no_check_let_incompatible_non_class_type");
+    let source = r#"
+            function main(): Integer {
+                value: Integer = "oops";
+                return value;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible let binding should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Integer, got String"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_assign_with_incompatible_non_class_type() {
+    let temp_root = make_temp_project_root("no-check-assign-incompatible-non-class-type");
+    let source_path = temp_root.join("no_check_assign_incompatible_non_class_type.arden");
+    let output_path = temp_root.join("no_check_assign_incompatible_non_class_type");
+    let source = r#"
+            function main(): Integer {
+                mut value: Integer = 1;
+                value = "oops";
+                return value;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible assignment should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Integer, got String"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_list_push_with_incompatible_non_class_type() {
+    let temp_root = make_temp_project_root("no-check-list-push-incompatible-non-class-type");
+    let source_path = temp_root.join("no_check_list_push_incompatible_non_class_type.arden");
+    let output_path = temp_root.join("no_check_list_push_incompatible_non_class_type");
+    let source = r#"
+            function main(): Integer {
+                values: List<Integer> = List<Integer>();
+                values.push("oops");
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible list push should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Integer, got String"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_option_some_with_incompatible_non_class_type() {
+    let temp_root = make_temp_project_root("no-check-option-some-incompatible-non-class-type");
+    let source_path = temp_root.join("no_check_option_some_incompatible_non_class_type.arden");
+    let output_path = temp_root.join("no_check_option_some_incompatible_non_class_type");
+    let source = r#"
+            function main(): Integer {
+                value: Option<Integer> = Option.Some("oops");
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible Option.Some payload should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Integer, got String"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_result_ok_with_incompatible_non_class_type() {
+    let temp_root = make_temp_project_root("no-check-result-ok-incompatible-non-class-type");
+    let source_path = temp_root.join("no_check_result_ok_incompatible_non_class_type.arden");
+    let output_path = temp_root.join("no_check_result_ok_incompatible_non_class_type");
+    let source = r#"
+            function main(): Integer {
+                value: Result<Integer, String> = Result.Ok("oops");
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("incompatible Result.Ok payload should fail in codegen");
+    assert!(
+        err.contains("Type mismatch: expected Integer, got String"),
+        "{err}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_if_block_binding_outside_scope() {
     let temp_root = make_temp_project_root("no-check-if-scope-binding");
     let source_path = temp_root.join("no_check_if_scope_binding.arden");

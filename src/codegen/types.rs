@@ -3465,7 +3465,7 @@ impl<'ctx> Codegen<'ctx> {
                 };
                 let actual_value_ty = self.infer_expr_type(&args[1].node, &[]);
                 let value = self.compile_expr_with_expected_type(&args[1].node, inner_ty)?;
-                self.reject_unrelated_concrete_class_assignment(inner_ty, &actual_value_ty)?;
+                self.reject_incompatible_expected_type_value(inner_ty, &actual_value_ty, value)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 Ok(self.context.i8_type().const_int(0, false).into())
@@ -3842,7 +3842,7 @@ impl<'ctx> Codegen<'ctx> {
                 };
                 let actual_value_ty = self.infer_expr_type(&args[1].node, &[]);
                 let value = self.compile_expr_with_expected_type(&args[1].node, inner_ty)?;
-                self.reject_unrelated_concrete_class_assignment(inner_ty, &actual_value_ty)?;
+                self.reject_incompatible_expected_type_value(inner_ty, &actual_value_ty, value)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 Ok(self.context.i8_type().const_int(0, false).into())
@@ -4051,10 +4051,10 @@ impl<'ctx> Codegen<'ctx> {
             "set" => {
                 let actual_key_ty = self.infer_expr_type(&args[0].node, &[]);
                 let key = self.compile_expr_with_expected_type(&args[0].node, &key_ty)?;
-                self.reject_unrelated_concrete_class_assignment(&key_ty, &actual_key_ty)?;
+                self.reject_incompatible_expected_type_value(&key_ty, &actual_key_ty, key)?;
                 let actual_value_ty = self.infer_expr_type(&args[1].node, &[]);
                 let value = self.compile_expr_with_expected_type(&args[1].node, &val_ty)?;
-                self.reject_unrelated_concrete_class_assignment(&val_ty, &actual_value_ty)?;
+                self.reject_incompatible_expected_type_value(&val_ty, &actual_value_ty, value)?;
                 self.compile_map_set_on_value_with_compiled_key_value(
                     map_value,
                     map_expr_ty,
@@ -4065,7 +4065,7 @@ impl<'ctx> Codegen<'ctx> {
             "get" => {
                 let actual_key_ty = self.infer_expr_type(&args[0].node, &[]);
                 let key = self.compile_expr_with_expected_type(&args[0].node, &key_ty)?;
-                self.reject_unrelated_concrete_class_assignment(&key_ty, &actual_key_ty)?;
+                self.reject_incompatible_expected_type_value(&key_ty, &actual_key_ty, key)?;
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "len")
@@ -4222,7 +4222,7 @@ impl<'ctx> Codegen<'ctx> {
             "contains" => {
                 let actual_key_ty = self.infer_expr_type(&args[0].node, &[]);
                 let key = self.compile_expr_with_expected_type(&args[0].node, &key_ty)?;
-                self.reject_unrelated_concrete_class_assignment(&key_ty, &actual_key_ty)?;
+                self.reject_incompatible_expected_type_value(&key_ty, &actual_key_ty, key)?;
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "len")
