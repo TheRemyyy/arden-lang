@@ -26,11 +26,18 @@ function createRenderer() {
 }
 
 export async function renderMarkdown(markdown: string): Promise<string> {
-    return marked.parse(markdown, { renderer: createRenderer() });
+    const renderedHtml = await marked.parse(markdown, { renderer: createRenderer() });
+    return sanitizeMarkdownHtml(renderedHtml);
 }
 
 export function sanitizeMarkdownHtml(html: string): string {
-    return html;
+    return html
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+        .replace(/\son[a-z]+="[^"]*"/gi, '')
+        .replace(/\son[a-z]+='[^']*'/gi, '')
+        .replace(/href="javascript:[^"]*"/gi, 'href="#"')
+        .replace(/href='javascript:[^']*'/gi, "href='#'");
 }
 
 export function rewriteInternalDocLinks(html: string, currentPath: string): string {

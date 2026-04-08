@@ -6,6 +6,7 @@ import { renderMarkdown, rewriteInternalDocLinks } from './markdown';
 export type PageHeading = {
     id: string;
     text: string;
+    level: 2 | 3;
 };
 
 export type DocsPageData = {
@@ -63,9 +64,10 @@ function extractTitle(markdown: string, fallback: string): string {
 }
 
 function extractHeadingsFromHtml(html: string): PageHeading[] {
-    return Array.from(html.matchAll(/<h2 id="([^"]+)">([\s\S]*?)<\/h2>/g)).map((match) => ({
-        id: match[1],
-        text: match[2].replace(/<[^>]+>/g, '').trim(),
+    return Array.from(html.matchAll(/<(h[23]) id="([^"]+)">([\s\S]*?)<\/h[23]>/g)).map((match) => ({
+        level: match[1] === 'h2' ? 2 : 3,
+        id: match[2],
+        text: match[3].replace(/<[^>]+>/g, '').trim(),
     }));
 }
 

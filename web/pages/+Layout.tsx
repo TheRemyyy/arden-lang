@@ -11,7 +11,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     const isDocsPage = pageContext.urlPathname.startsWith('/docs');
 
     return (
-        <div className="flex min-h-screen flex-col bg-[#0a0a0a]">
+        <div className="flex min-h-screen flex-col bg-[var(--bg)] text-[var(--text)]">
             <Header />
             <main className="flex-grow">{children}</main>
             {!isDocsPage && <Footer />}

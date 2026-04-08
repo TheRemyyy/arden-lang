@@ -1,0 +1,164 @@
+[
+  {
+    "title": "Arden Overview",
+    "path": "/docs/overview"
+  },
+  {
+    "title": "Projects",
+    "path": "/docs/projects"
+  },
+  {
+    "title": "Getting Started",
+    "items": [
+      {
+        "title": "Installation",
+        "path": "/docs/getting_started/installation"
+      },
+      {
+        "title": "Quick Start",
+        "path": "/docs/getting_started/quick_start"
+      },
+      {
+        "title": "Editor Setup",
+        "path": "/docs/getting_started/editor_setup"
+      }
+    ]
+  },
+  {
+    "title": "Basics",
+    "items": [
+      {
+        "title": "Syntax",
+        "path": "/docs/basics/syntax"
+      },
+      {
+        "title": "Variables",
+        "path": "/docs/basics/variables"
+      },
+      {
+        "title": "Types",
+        "path": "/docs/basics/types"
+      },
+      {
+        "title": "Control Flow",
+        "path": "/docs/basics/control_flow"
+      }
+    ]
+  },
+  {
+    "title": "Features",
+    "items": [
+      {
+        "title": "Functions",
+        "path": "/docs/features/functions"
+      },
+      {
+        "title": "Classes",
+        "path": "/docs/features/classes"
+      },
+      {
+        "title": "Interfaces",
+        "path": "/docs/features/interfaces"
+      },
+      {
+        "title": "Enums",
+        "path": "/docs/features/enums"
+      },
+      {
+        "title": "Range Types",
+        "path": "/docs/features/ranges"
+      },
+      {
+        "title": "Modules",
+        "path": "/docs/features/modules"
+      },
+      {
+        "title": "Multi-File Projects",
+        "path": "/docs/features/projects"
+      },
+      {
+        "title": "Multi-File Projects Guide",
+        "path": "/docs/features/projects/README"
+      },
+      {
+        "title": "Testing",
+        "path": "/docs/features/testing"
+      }
+    ]
+  },
+  {
+    "title": "Standard Library",
+    "items": [
+      {
+        "title": "Standard Library",
+        "path": "/docs/stdlib/overview"
+      },
+      {
+        "title": "Math Module",
+        "path": "/docs/stdlib/math"
+      },
+      {
+        "title": "Str Module (Strings)",
+        "path": "/docs/stdlib/string"
+      },
+      {
+        "title": "Time Module",
+        "path": "/docs/stdlib/time"
+      },
+      {
+        "title": "Args Module",
+        "path": "/docs/stdlib/args"
+      },
+      {
+        "title": "Collections",
+        "path": "/docs/stdlib/collections"
+      },
+      {
+        "title": "Input / Output (I/O)",
+        "path": "/docs/stdlib/io"
+      },
+      {
+        "title": "System Module",
+        "path": "/docs/stdlib/system"
+      }
+    ]
+  },
+  {
+    "title": "Advanced",
+    "items": [
+      {
+        "title": "Ownership and Borrowing",
+        "path": "/docs/advanced/ownership"
+      },
+      {
+        "title": "Generics",
+        "path": "/docs/advanced/generics"
+      },
+      {
+        "title": "Async / Await",
+        "path": "/docs/advanced/async"
+      },
+      {
+        "title": "Error Handling",
+        "path": "/docs/advanced/error_handling"
+      },
+      {
+        "title": "Memory Management",
+        "path": "/docs/advanced/memory_management"
+      }
+    ]
+  },
+  {
+    "title": "Compiler",
+    "items": [
+      {
+        "title": "CLI Reference",
+        "path": "/docs/compiler/cli"
+      },
+      {
+        "title": "Compiler Architecture",
+        "path": "/docs/compiler/architecture"
+      }
+    ]
+  }
+]

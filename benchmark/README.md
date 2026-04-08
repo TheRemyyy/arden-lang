@@ -21,10 +21,10 @@ The benchmark runner compares Arden against Rust and Go on equivalent workloads 
 
 ### Runtime
 
-- `sum_loop`
+- `matrix_mul_heavy`
 - `prime_count`
 - `matrix_mul`
-- `matrix_mul_heavy`
+- `sum_loop`
 
 ### Compile
 
@@ -75,13 +75,19 @@ python3 benchmark/run.py --help
 Run a small runtime benchmark:
 
 ```bash
-python3 benchmark/run.py --bench sum_loop --repeats 3 --warmup 1
+python3 benchmark/run.py --bench matrix_mul_heavy --repeats 3 --warmup 1
 ```
 
 Run a compile benchmark:
 
 ```bash
 python3 benchmark/run.py --bench compile_project_starter_graph --compile-mode hot --repeats 3 --warmup 1
+```
+
+Run a larger incremental benchmark:
+
+```bash
+python3 benchmark/run.py --bench incremental_rebuild_large_project_batch --repeats 3 --warmup 1
 ```
 
 Run with per-phase Arden timing breakdowns:

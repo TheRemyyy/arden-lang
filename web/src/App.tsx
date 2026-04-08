@@ -13,10 +13,10 @@ export default function App() {
     const isDocsPage = location.pathname.startsWith('/docs');
 
     return (
-        <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
+        <div className="min-h-screen flex flex-col text-[var(--text)]">
             <Header />
             <main className="flex-grow">
-                <Suspense fallback={<div className="flex-1 bg-[#0a0a0a]" />}>
+                <Suspense fallback={<div className="flex-1 bg-[var(--bg)]" />}>
                   <Routes>
                       <Route path="/" element={<Home />} />
                       <Route path="/docs/*" element={<Docs />} />

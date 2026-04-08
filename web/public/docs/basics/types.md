@@ -25,19 +25,16 @@ x: Integer = 100_000; // Underscores can be used for readability
 
 ```arden
 f: Float = 1.0;
-// Note: implicit conversion from Integer to Float is not performed automatically in assignments
-sum: Float = 1 + 2.5; // Mixed numeric expressions promote Integer operands to Float
-same: Boolean = 1 == 1.0; // Mixed numeric comparisons and equality use the same promotion rule
-choice: Float = if (flag) { 1 } else { 2.5 }; // Branches also promote to the common numeric type
-lifted: () -> Float = () => 1; // Contextual Float returns also promote Integer values
-task: Task<Float> = async { 1 }; // Async block tails follow the same rule
-named: () -> Float = one; // Named function values and retyped function variables follow it too
-scale: (Integer) -> Float = widen; // Function values can also widen Integer parameters to Float safely
-nestedTask: Task<Float> = async { if (flag) { return 1; } return 2.5; }; // Nested explicit returns merge to Float too
-for (x: Float in range(1, 4)) { println(x); } // Typed loop bindings widen Integer iterables too
+sum: Float = 1 + 2.5;
+same: Boolean = 1 == 1.0;
+choice: Float = if (flag) { 1 } else { 2.5 };
 ```
 
-This promotion is scalar-only. Wrapped/container types stay invariant, so `Option<Integer>` does not implicitly become `Option<Float>`, and `Range<Integer>` does not implicitly become `Range<Float>`.
+Rules worth remembering:
+
+- Arden promotes `Integer` to `Float` inside mixed scalar numeric expressions.
+- Assignments still require a `Float` result on the right-hand side; there is no blanket implicit conversion step.
+- Wrapped/container types stay invariant, so `Option<Integer>` does not implicitly become `Option<Float>`, and `Range<Integer>` does not implicitly become `Range<Float>`.
 
 ### Booleans
 

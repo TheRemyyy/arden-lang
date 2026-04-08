@@ -2,8 +2,8 @@ import { GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
 
 export function Footer() {
     return (
-        <footer className="border-t border-zinc-800 bg-[#0a0a0a] py-14 text-zinc-400">
-            <div className="mx-auto grid max-w-6xl gap-10 px-6 md:grid-cols-4">
+        <footer className="border-t border-[rgba(57,52,46,0.14)] bg-[#1f1d1a] py-16 text-[#d8cdc1]">
+            <div className="mx-auto grid max-w-7xl gap-10 px-6 md:grid-cols-4">
                 <div className="col-span-2">
                     <a href="/" className="mb-4 inline-flex items-center gap-3 text-lg font-semibold text-white">
                         <img
@@ -12,40 +12,41 @@ export function Footer() {
                             width="36"
                             height="36"
                             decoding="async"
-                            className="h-9 w-9 rounded-xl"
+                            className="h-9 w-9 rounded-xl border border-white/10"
                         />
                         <span>Arden</span>
                     </a>
-                    <p className="max-w-sm text-sm leading-relaxed">
-                        A modern systems programming language designed for reliability, performance, and developer ergonomics.
+                    <p className="max-w-md text-sm leading-relaxed text-[#d8cdc1]">
+                        Native systems programming with an opinionated toolchain, practical documentation, and a workflow that already includes projects, tests, formatting, linting, and benchmarks.
                     </p>
                 </div>
 
                 <div>
-                    <h3 className="mb-4 text-sm font-semibold text-white">Resources</h3>
+                    <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-white/70">Resources</h3>
                     <ul className="space-y-3 text-sm">
-                        <li><a href="/docs/overview" className="hover:text-white transition-colors">Documentation</a></li>
-                        <li><a href="/docs/stdlib/overview" className="hover:text-white transition-colors">Standard Library</a></li>
-                        <li><a href="/changelog" className="hover:text-white transition-colors">Changelog</a></li>
-                        <li><a href={GITHUB_REPO_URL} className="hover:text-white transition-colors">GitHub</a></li>
+                        <li><a href="/docs/overview" className="transition-colors hover:text-white">Documentation</a></li>
+                        <li><a href="/docs/stdlib/overview" className="transition-colors hover:text-white">Standard Library</a></li>
+                        <li><a href="/docs/getting_started/quick_start" className="transition-colors hover:text-white">Quick Start</a></li>
+                        <li><a href="/changelog" className="transition-colors hover:text-white">Changelog</a></li>
                     </ul>
                 </div>
 
                 <div>
-                    <h3 className="mb-4 text-sm font-semibold text-white">Community</h3>
+                    <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-white/70">Project</h3>
                     <ul className="space-y-3 text-sm">
-                        <li><a href="#" className="hover:text-white transition-colors">Discord (Coming Soon)</a></li>
-                        <li><a href="#" className="hover:text-white transition-colors">Twitter (Coming Soon)</a></li>
+                        <li><a href={GITHUB_REPO_URL} className="transition-colors hover:text-white">GitHub Repository</a></li>
+                        <li><a href="/docs/compiler/architecture" className="transition-colors hover:text-white">Compiler Architecture</a></li>
+                        <li><a href="/docs/features/testing" className="transition-colors hover:text-white">Testing Workflow</a></li>
                     </ul>
                 </div>
             </div>
-            <div className="mx-auto mt-12 flex max-w-6xl flex-col items-center justify-between gap-3 border-t border-zinc-800 px-6 pt-8 text-center text-xs md:flex-row md:text-left">
-                <p>&copy; {new Date().getFullYear()} Arden. Open Source - Apache 2.0</p>
+            <div className="mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-white/10 px-6 pt-8 text-center text-xs md:flex-row md:text-left">
+                <p>&copy; {new Date().getFullYear()} Arden. Open source under Apache 2.0.</p>
                 <a
                     href="https://theremyyy.dev"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-zinc-400 transition-colors hover:text-zinc-200"
+                    className="transition-colors hover:text-white"
                 >
                     TheRemyyy
                 </a>

@@ -3,13 +3,19 @@
 @tailwind utilities;
 
 :root {
-  --bg: #0a0a0a;
-  --surface: #111111;
-  --surface-soft: #151515;
-  --border: #2a2a2a;
-  --text: #f5f5f5;
-  --text-muted: #a1a1aa;
-  font-family: 'Manrope', system-ui, sans-serif;
+  --bg: #f2ede3;
+  --bg-strong: #171717;
+  --surface: #fbf7f1;
+  --surface-soft: #efe8dc;
+  --surface-dark: #1f1d1a;
+  --border: #d1c6b4;
+  --border-strong: #39342e;
+  --text: #171411;
+  --text-muted: #60574d;
+  --accent: #b85c38;
+  --accent-soft: #d9b29e;
+  --olive: #586451;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: var(--text);
@@ -23,14 +29,48 @@
 
 html {
   scroll-behavior: smooth;
+  scrollbar-width: none;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top, rgba(184, 92, 56, 0.08), transparent 28%),
+    linear-gradient(180deg, #f6f1e8 0%, #f2ede3 48%, #ece5d8 100%);
   color: var(--text);
   overflow-x: hidden;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  border: 0;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+#root {
+  min-height: 100vh;
 }
 
 /* Remove default focus outline for all buttons */
@@ -46,25 +86,25 @@ a {
   text-decoration: none;
 }
 
+::selection {
+  background: rgba(184, 92, 56, 0.18);
+  color: #1a1713;
+}
+
+.site-grid {
+  background-image:
+    linear-gradient(rgba(96, 87, 77, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(96, 87, 77, 0.08) 1px, transparent 1px);
+  background-size: 36px 36px;
+  background-position: center;
+}
+
+.paper-panel {
+  background: rgba(251, 247, 241, 0.88);
+  border: 1px solid rgba(57, 52, 46, 0.14);
+  box-shadow: 0 18px 60px rgba(31, 29, 26, 0.08);
+}
+
 .custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: #3f3f46 #18181b;
-}
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 10px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: #18181b;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border-radius: 999px;
-  border: 2px solid #18181b;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  scrollbar-width: none;
 }

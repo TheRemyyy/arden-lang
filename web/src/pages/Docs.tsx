@@ -1,204 +1,174 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Menu, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import {
+    FLATTENED_DOCS,
+    NAV_ITEMS,
+    getCurrentSectionTitle,
+    getDocNeighbors,
+    normalizeDocsPath,
+} from '../lib/docs';
 import { renderMarkdown, rewriteInternalDocLinks } from '../lib/markdown';
 
-// Navigation structure - URL paths (without .md)
-const NAV_ITEMS = [
-    { title: 'Overview', path: '/docs/overview' },
-    {
-        title: 'Getting Started', items: [
-            { title: 'Installation', path: '/docs/getting_started/installation' },
-            { title: 'Quick Start', path: '/docs/getting_started/quick_start' },
-            { title: 'Editor Setup', path: '/docs/getting_started/editor_setup' },
-        ]
-    },
-    {
-        title: 'Basics', items: [
-            { title: 'Syntax', path: '/docs/basics/syntax' },
-            { title: 'Variables', path: '/docs/basics/variables' },
-            { title: 'Types', path: '/docs/basics/types' },
-            { title: 'Control Flow', path: '/docs/basics/control_flow' },
-        ]
-    },
-    {
-        title: 'Features', items: [
-            { title: 'Functions', path: '/docs/features/functions' },
-            { title: 'Classes', path: '/docs/features/classes' },
-            { title: 'Interfaces', path: '/docs/features/interfaces' },
-            { title: 'Enums', path: '/docs/features/enums' },
-            { title: 'Ranges', path: '/docs/features/ranges' },
-            { title: 'Modules', path: '/docs/features/modules' },
-            { title: 'Projects', path: '/docs/features/projects' },
-        ]
-    },
-    {
-        title: 'Standard Library', items: [
-            { title: 'Overview', path: '/docs/stdlib/overview' },
-            { title: 'Math', path: '/docs/stdlib/math' },
-            { title: 'Str', path: '/docs/stdlib/string' },
-            { title: 'Time', path: '/docs/stdlib/time' },
-            { title: 'Args', path: '/docs/stdlib/args' },
-            { title: 'Collections', path: '/docs/stdlib/collections' },
-            { title: 'I/O', path: '/docs/stdlib/io' },
-            { title: 'System', path: '/docs/stdlib/system' },
-        ]
-    },
-    {
-        title: 'Advanced', items: [
-            { title: 'Ownership', path: '/docs/advanced/ownership' },
-            { title: 'Generics', path: '/docs/advanced/generics' },
-            { title: 'Async/Await', path: '/docs/advanced/async' },
-            { title: 'Error Handling', path: '/docs/advanced/error_handling' },
-            { title: 'Memory Management', path: '/docs/advanced/memory_management' },        
-        ]
-    },
-    {
-        title: 'Compiler', items: [
-            { title: 'CLI', path: '/docs/compiler/cli' },
-            { title: 'Architecture', path: '/docs/compiler/architecture' },
-        ]
-    }
-];
+type PageHeading = {
+    id: string;
+    text: string;
+    level: 2 | 3;
+};
 
-// Dynamic Table Of Contents Component
-function TableOfContents({ html }: { html: string }) {
-    const [headings, setHeadings] = useState<{ id: string, text: string }[]>([]);
+function extractHeadings(html: string): PageHeading[] {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
 
-    useEffect(() => {
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
-        const headers = Array.from(tempDiv.querySelectorAll('h2[id]'));
-
-        const extracted = headers.map(h => {
-            const text = h.textContent || '';
-            const id = h.getAttribute('id') || '';
-            return { id, text };
-        });
-        setHeadings(extracted);
-    }, [html]);
-
-    if (!html) return null;
-
-    return (
-        <div className="fixed w-64 right-0 top-0 h-full p-8 pt-24 border-l border-[#1f1f23] hidden xl:block overflow-y-auto">
-            <h5 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">On This Page</h5>
-            <ul className="space-y-3">
-                {headings.map((h, i) => (
-                    <li key={i}>
-                        <a href={`#${h.id}`} className="text-[13px] text-gray-400 hover:text-[#a5b4fc] transition-colors block leading-snug outline-none focus:text-white">
-                            {h.text}
-                        </a>
-                    </li>
-                ))}
-            </ul>
-        </div>
-    );
+    return Array.from(tempDiv.querySelectorAll('h2[id], h3[id]')).map((heading) => ({
+        id: heading.getAttribute('id') ?? '',
+        text: heading.textContent ?? '',
+        level: heading.tagName === 'H2' ? 2 : 3,
+    }));
 }
 
-// Helper to flatten ALL clickable items for next/prev logic
-const FLATTENED_DOCS = NAV_ITEMS.reduce((acc: {title: string, path: string}[], section) => {
-    if (section.path) acc.push({ title: section.title, path: section.path });
-    if (section.items) section.items.forEach(item => acc.push(item));
-    return acc;
-}, []);
+function TableOfContents({ headings }: { headings: PageHeading[] }) {
+    if (headings.length === 0) {
+        return null;
+    }
+
+    return (
+        <aside className="custom-scrollbar sticky top-24 hidden max-h-[calc(100vh-7rem)] overflow-y-auto xl:block">
+            <div className="rounded-[1.6rem] border border-[rgba(57,52,46,0.12)] bg-[rgba(251,247,241,0.88)] p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">On this page</p>
+                <ul className="mt-4 space-y-3">
+                    {headings.map((heading) => (
+                        <li key={heading.id}>
+                            <a
+                                href={`#${heading.id}`}
+                                className={`block leading-6 transition-colors hover:text-[var(--accent)] ${
+                                    heading.level === 3 ? 'pl-3 text-[13px] text-white/42' : 'text-sm text-[var(--text-muted)]'
+                                }`}
+                            >
+                                {heading.text}
+                            </a>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+        </aside>
+    );
+}
 
 export function Docs() {
     const location = useLocation();
     const navigate = useNavigate();
     const [content, setContent] = useState('');
+    const [headings, setHeadings] = useState<PageHeading[]>([]);
     const [loading, setLoading] = useState(true);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-    // Normalize path (without .md)
     const normalizedPath = normalizeDocsPath(location.pathname);
-    
-    // Fetch path (with .md extension)
-    const fetchPath = normalizedPath + '.md';
-
-    // Calculate Next/Prev
-    const currentIndex = FLATTENED_DOCS.findIndex(item => item.path === normalizedPath);        
-    const prevDoc = currentIndex > 0 ? FLATTENED_DOCS[currentIndex - 1] : null;
-    const nextDoc = currentIndex !== -1 && currentIndex < FLATTENED_DOCS.length - 1 ? FLATTENED_DOCS[currentIndex + 1] : null;
+    const fetchPath = `${normalizedPath}.md`;
+    const { prevDoc, nextDoc } = getDocNeighbors(normalizedPath);
+    const currentDocTitle =
+        FLATTENED_DOCS.find((item) => item.path === normalizedPath)?.title ?? 'Documentation';
 
     useEffect(() => {
         setIsSidebarOpen(false);
         setLoading(true);
         setContent('');
+        setHeadings([]);
         const controller = new AbortController();
 
         fetch(fetchPath, { signal: controller.signal })
-            .then(res => {
-                if (!res.ok) throw new Error('Not found');
-                return res.text();
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error('Not found');
+                }
+
+                return response.text();
             })
-            .then(async text => {
-                const html = await renderMarkdown(text);
+            .then(async (markdown) => {
+                const html = await renderMarkdown(markdown);
                 const rewrittenHtml = rewriteInternalDocLinks(html, normalizedPath);
                 setContent(rewrittenHtml);
+                setHeadings(extractHeadings(rewrittenHtml));
                 setLoading(false);
                 window.scrollTo(0, 0);
             })
-            .catch(err => {
-                if (err instanceof DOMException && err.name === 'AbortError') {
+            .catch((error: unknown) => {
+                if (error instanceof DOMException && error.name === 'AbortError') {
                     return;
                 }
-                console.error(err);
-                setContent('<h1>Document not found</h1><p>The requested page could not be found.</p>');
+
+                console.error(error);
+                const fallbackHtml = '<h1>Document not found</h1><p>The requested page could not be found.</p>';
+                setContent(fallbackHtml);
+                setHeadings([]);
                 setLoading(false);
             });
+
         return () => controller.abort();
     }, [fetchPath, normalizedPath]);
 
     const handleContentClick = (event: React.MouseEvent<HTMLElement>) => {
         const target = event.target as HTMLElement;
         const link = target.closest('a[data-router-link="true"]') as HTMLAnchorElement | null;
-        if (!link) return;
+        if (!link) {
+            return;
+        }
 
         const href = link.getAttribute('href');
-        if (!href) return;
+        if (!href) {
+            return;
+        }
 
         event.preventDefault();
         navigate(href);
     };
 
     return (
-        <div className="flex flex-col lg:flex-row bg-[#09090b] text-gray-100 font-sans selection:bg-gray-700 selection:text-white pt-14 lg:pt-16 min-h-screen">
-
-            {/* Mobile Sidebar Toggle Bar */}
-            <div className="lg:hidden fixed top-14 left-0 right-0 h-10 bg-[#0c0c0e] border-b border-[#1f1f23] flex items-center px-4 z-20">
-                <button
-                    onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                    className="text-sm font-medium text-white flex items-center gap-2"
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-                    Menu
-                </button>
-                <span className="ml-auto text-xs text-gray-500 font-mono">
-                    {NAV_ITEMS.find(s => s.items?.some(i => i.path === normalizedPath) || s.path === normalizedPath)?.title || 'Documentation'}
-                </span>
+        <div className="min-h-screen bg-[var(--bg)] pt-16 text-[var(--text)]">
+            <div className="border-b border-[rgba(57,52,46,0.12)] bg-[rgba(251,247,241,0.84)]">
+                <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-[var(--text-muted)]">
+                            {getCurrentSectionTitle(normalizedPath)}
+                        </p>
+                        <p className="mt-1 text-lg font-semibold tracking-[-0.02em]">{currentDocTitle}</p>
+                    </div>
+                    <button
+                        onClick={() => setIsSidebarOpen((current) => !current)}
+                        className="inline-flex h-11 items-center gap-2 rounded-full border border-[rgba(57,52,46,0.14)] bg-white/70 px-4 text-sm font-medium text-[var(--text)] lg:hidden"
+                    >
+                        {isSidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+                        Browse docs
+                    </button>
+                </div>
             </div>
 
-            {/* Sidebar */}
-            <nav className={`fixed lg:fixed w-72 left-0 top-16 h-[calc(100vh-4rem)] border-r border-[#1f1f23] bg-[#0c0c0e] flex flex-col z-30 transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
-                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-8 pb-20">   
-                    {NAV_ITEMS.map((section, idx) => (
-                        <section key={idx}>
-                            {section.items ? (
-                                <>
-                                    <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-3 pl-2">
+            <div className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_240px]">
+                <nav
+                    className={`custom-scrollbar fixed inset-y-0 left-0 top-16 z-40 w-[290px] overflow-y-auto border-r border-[rgba(57,52,46,0.12)] bg-[var(--surface)] p-6 transition-transform duration-300 lg:sticky lg:top-24 lg:z-auto lg:block lg:h-[calc(100vh-7rem)] lg:rounded-[1.75rem] lg:border lg:translate-x-0 ${
+                        isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                    }`}
+                >
+                    <div className="space-y-8 pb-16">
+                        {NAV_ITEMS.map((section) =>
+                            'items' in section ? (
+                                <section key={section.title}>
+                                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">
                                         {section.title}
-                                    </h3>
-                                    <ul className="space-y-0.5">
-                                        {section.items.map((item, itemIdx) => {
-                                            const isActive = normalizedPath === item.path;      
+                                    </p>
+                                    <ul className="space-y-1.5">
+                                        {section.items.map((item) => {
+                                            const isActive = normalizedPath === item.path;
+
                                             return (
-                                                <li key={itemIdx}>
+                                                <li key={item.path}>
                                                     <button
-                                                        onClick={() => navigate(item.path)}     
-                                                        className={`w-full text-left px-3 py-1.5 rounded-md text-[14px] font-medium transition-colors duration-100 outline-none focus:outline-none focus:ring-0 border ${isActive
-                                                            ? 'bg-[#18181b] text-white border-[#27272a]'
-                                                            : 'text-gray-400 hover:text-gray-200 hover:bg-[#18181b]/50 border-transparent'
-                                                            }`}
+                                                        onClick={() => navigate(item.path)}
+                                                        className={`w-full rounded-2xl px-4 py-3 text-left text-sm transition-colors ${
+                                                            isActive
+                                                                ? 'bg-[var(--bg-strong)] text-white'
+                                                                : 'text-[var(--text-muted)] hover:bg-[var(--surface-soft)] hover:text-[var(--text)]'
+                                                        }`}
                                                     >
                                                         {item.title}
                                                     </button>
@@ -206,102 +176,101 @@ export function Docs() {
                                             );
                                         })}
                                     </ul>
-                                </>
+                                </section>
                             ) : (
-                                <button
-                                    onClick={() => navigate(section.path!)}
-                                    className={`w-full text-left px-3 py-1.5 rounded-md text-[14px] font-bold uppercase tracking-wider mb-2 transition-colors duration-100 outline-none focus:outline-none focus:ring-0 border ${normalizedPath === section.path ? 'bg-[#18181b] text-white border-[#27272a]' : 'text-gray-500 hover:text-gray-300 hover:bg-[#18181b]/50 border-transparent'    
+                                <section key={section.path}>
+                                    <button
+                                        onClick={() => navigate(section.path)}
+                                        className={`w-full rounded-2xl px-4 py-3 text-left text-sm font-semibold transition-colors ${
+                                            normalizedPath === section.path
+                                                ? 'bg-[var(--bg-strong)] text-white'
+                                                : 'bg-white/70 text-[var(--text)] hover:bg-[var(--surface-soft)]'
                                         }`}
-                                >
-                                    {section.title}
-                                </button>
-                            )}
-                        </section>
-                    ))}
-                </div>
-            </nav>
+                                    >
+                                        {section.title}
+                                    </button>
+                                </section>
+                            ),
+                        )}
+                    </div>
+                </nav>
 
-            {/* Overlay for mobile sidebar */}
-            {isSidebarOpen && (
-                <div
-                    className="lg:hidden fixed inset-0 z-20 bg-black/50 backdrop-blur-sm top-14"
-                    onClick={() => setIsSidebarOpen(false)}
-                />
-            )}
+                {isSidebarOpen && (
+                    <button
+                        className="fixed inset-0 top-16 z-30 bg-[rgba(23,20,17,0.22)] lg:hidden"
+                        onClick={() => setIsSidebarOpen(false)}
+                        aria-label="Close documentation navigation"
+                    />
+                )}
 
-            {/* Center Layout */}
-            <div className="flex-1 lg:ml-72 xl:mr-64 w-full pt-10 lg:pt-0">
-                <main className="max-w-4xl mx-auto px-6 md:px-12 py-10 lg:py-16 w-full min-h-[80vh]">
+                <main className="min-w-0">
                     {loading ? (
-                        <div className="animate-pulse space-y-8 pt-4">
-                            <div className="h-10 bg-[#1f1f23] rounded w-1/2 mb-8"></div>        
-                            <div className="space-y-4">
-                                <div className="h-4 bg-[#1f1f23] rounded w-full"></div>
-                                <div className="h-4 bg-[#1f1f23] rounded w-5/6"></div>
-                                <div className="h-4 bg-[#1f1f23] rounded w-4/6"></div>
+                        <div className="paper-panel rounded-[2rem] p-8">
+                            <div className="animate-pulse space-y-6">
+                                <div className="h-12 w-1/2 rounded-full bg-[var(--surface-soft)]" />
+                                <div className="h-4 w-full rounded-full bg-[var(--surface-soft)]" />
+                                <div className="h-4 w-5/6 rounded-full bg-[var(--surface-soft)]" />
+                                <div className="h-4 w-4/6 rounded-full bg-[var(--surface-soft)]" />
                             </div>
                         </div>
                     ) : (
                         <>
                             <article
-                                className="prose prose-invert prose-zinc max-w-none
-                        prose-headings:scroll-mt-24
-                        prose-h1:text-3xl md:prose-h1:text-4xl prose-h1:font-bold prose-h1:tracking-tight prose-h1:mb-8 prose-h1:text-white
-                        prose-h2:text-2xl prose-h2:font-semibold prose-h2:mt-12 prose-h2:mb-6 prose-h2:text-gray-100 prose-h2:border-b prose-h2:border-[#27272a] prose-h2:pb-2
-                        prose-h3:text-xl prose-h3:font-semibold prose-h3:mt-8 prose-h3:mb-4 prose-h3:text-gray-200
-                        prose-p:text-[15px] md:prose-p:text-[16px] prose-p:leading-7 prose-p:text-gray-300 prose-p:mb-6
-                        prose-ul:my-6 prose-ul:list-disc prose-ul:pl-6 prose-li:text-gray-300 prose-li:mb-2
-                        prose-strong:text-white prose-strong:font-semibold
-                        prose-code:text-[13px] prose-code:bg-[#18181b] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:border prose-code:border-[#27272a]/50
-                        prose-pre:bg-[#0c0c0e] prose-pre:border prose-pre:border-[#27272a] prose-pre:rounded-lg prose-pre:shadow-sm"
+                                className="prose prose-invert prose-zinc max-w-none rounded-[2rem] border border-white/10 bg-[#161311] px-6 py-8 shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:px-10 md:py-10
+                                prose-headings:scroll-mt-24
+                                prose-h1:font-display prose-h1:text-4xl prose-h1:font-bold prose-h1:tracking-[-0.04em] prose-h1:text-white
+                                prose-h2:border-b prose-h2:border-white/10 prose-h2:pb-3 prose-h2:font-display prose-h2:text-3xl prose-h2:font-bold prose-h2:tracking-[-0.03em] prose-h2:text-white
+                                prose-h3:font-display prose-h3:text-2xl prose-h3:font-semibold prose-h3:tracking-[-0.03em] prose-h3:text-[#f3ece3]
+                                prose-p:text-[16px] prose-p:leading-8 prose-p:text-white/72
+                                prose-strong:text-white
+                                prose-a:text-[var(--accent-soft)] prose-a:no-underline hover:prose-a:text-white
+                                prose-table:my-8 prose-table:w-full prose-table:border-collapse prose-table:text-left prose-thead:border-b prose-thead:border-white/12 prose-th:px-3 prose-th:pb-3 prose-th:text-xs prose-th:uppercase prose-th:tracking-[0.18em] prose-th:text-white/50 prose-td:border-b prose-td:border-white/8 prose-td:px-3 prose-td:py-3 prose-td:text-white/78
+                                prose-code:border-0 prose-code:bg-transparent prose-code:px-0 prose-code:py-0 prose-code:text-[13px] prose-code:text-[#f2d6c8] prose-code:before:content-none prose-code:after:content-none
+                                prose-pre:rounded-[1.5rem] prose-pre:border prose-pre:border-white/10 prose-pre:bg-[#211e1a] prose-pre:text-[#f7efe5]
+                                prose-li:text-white/72
+                                prose-blockquote:border-l-[var(--accent-soft)] prose-blockquote:text-white"
                                 onClick={handleContentClick}
                                 dangerouslySetInnerHTML={{ __html: content }}
                             />
 
-                            {/* Navigation Footer */}
-                            <div className="mt-16 pt-8 border-t border-[#27272a] flex flex-col sm:flex-row justify-between gap-4">
-                                <div>
-                                    {prevDoc && (
-                                        <button
-                                            onClick={() => navigate(prevDoc.path)}
-                                            className="group flex flex-col items-start gap-1 p-4 rounded-lg border border-[#27272a] hover:border-white/20 hover:bg-[#18181b] transition-all w-full sm:w-auto"
-                                        >
-                                            <span className="text-xs text-gray-500 font-medium uppercase tracking-wider group-hover:text-gray-400 text-left">Previous</span>
-                                            <span className="text-gray-200 font-medium group-hover:text-white text-left">{prevDoc.title}</span>
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="flex justify-end text-right">
-                                    {nextDoc && (
-                                        <button
-                                            onClick={() => navigate(nextDoc.path)}
-                                            className="group flex flex-col items-end gap-1 p-4 rounded-lg border border-[#27272a] hover:border-white/20 hover:bg-[#18181b] transition-all w-full sm:w-auto"
-                                        >
-                                            <span className="text-xs text-gray-500 font-medium uppercase tracking-wider group-hover:text-gray-400 text-right">Next</span>
-                                            <span className="text-gray-200 font-medium group-hover:text-white text-right">{nextDoc.title}</span>
-                                        </button>
-                                    )}
-                                </div>
+                            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+                                <DocPagerCard direction="Previous" doc={prevDoc} align="left" onNavigate={navigate} />
+                                <DocPagerCard direction="Next" doc={nextDoc} align="right" onNavigate={navigate} />
                             </div>
-
-                            <TableOfContents html={content} />
                         </>
                     )}
                 </main>
-            </div>
 
+                <TableOfContents headings={headings} />
+            </div>
         </div>
     );
 }
 
-function normalizeDocsPath(pathname: string): string {
-    if (pathname === '/docs' || pathname === '/docs/') {
-        return '/docs/overview';
+function DocPagerCard({
+    direction,
+    doc,
+    align,
+    onNavigate,
+}: {
+    direction: string;
+    doc: { title: string; path: string } | null;
+    align: 'left' | 'right';
+    onNavigate: (path: string) => void;
+}) {
+    if (!doc) {
+        return <div />;
     }
 
-    if (pathname.endsWith('/')) {
-        return pathname.slice(0, -1);
-    }
-
-    return pathname;
+    return (
+        <button
+            onClick={() => onNavigate(doc.path)}
+            className={`paper-panel rounded-[1.6rem] p-5 transition-transform hover:-translate-y-0.5 ${
+                align === 'right' ? 'text-right' : 'text-left'
+            }`}
+        >
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">{direction}</p>
+            <p className="mt-3 text-lg font-semibold tracking-[-0.02em] text-[var(--text)]">{doc.title}</p>
+        </button>
+    );
 }

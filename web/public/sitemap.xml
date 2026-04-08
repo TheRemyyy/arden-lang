@@ -2,60 +2,42 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://apex-compiler.vercel.app/</loc>
-    <lastmod>2026-04-07T18:20:33.123Z</lastmod>
+    <lastmod>2026-04-07T18:40:50.427Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://apex-compiler.vercel.app/changelog</loc>
-    <lastmod>2026-04-07T18:23:24.360Z</lastmod>
+    <lastmod>2026-04-07T19:46:37.179Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/advanced/async</loc>
-    <lastmod>2026-04-07T11:48:28.888Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/overview</loc>
+    <lastmod>2026-04-07T17:52:35.642Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://apex-compiler.vercel.app/docs/getting_started/installation</loc>
+    <lastmod>2026-04-07T17:24:05.425Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/advanced/error_handling</loc>
-    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/getting_started/quick_start</loc>
+    <lastmod>2026-04-07T17:22:40.028Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/advanced/generics</loc>
-    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://apex-compiler.vercel.app/docs/advanced/memory_management</loc>
-    <lastmod>2026-04-07T16:53:45.777Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://apex-compiler.vercel.app/docs/advanced/ownership</loc>
-    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://apex-compiler.vercel.app/docs/basics/control_flow</loc>
-    <lastmod>2026-04-07T11:41:21.903Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/getting_started/editor_setup</loc>
+    <lastmod>2026-04-07T17:24:05.425Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://apex-compiler.vercel.app/docs/basics/syntax</loc>
-    <lastmod>2026-04-07T11:41:21.903Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://apex-compiler.vercel.app/docs/basics/types</loc>
     <lastmod>2026-04-07T11:41:21.903Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -67,14 +49,20 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/compiler/architecture</loc>
-    <lastmod>2026-04-07T16:53:45.777Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/basics/types</loc>
+    <lastmod>2026-04-07T11:41:21.903Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/compiler/cli</loc>
-    <lastmod>2026-04-07T17:22:40.028Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/basics/control_flow</loc>
+    <lastmod>2026-04-07T11:41:21.903Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://apex-compiler.vercel.app/docs/features/functions</loc>
+    <lastmod>2026-04-07T18:53:42.122Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -85,20 +73,20 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://apex-compiler.vercel.app/docs/features/interfaces</loc>
+    <lastmod>2026-04-07T11:48:28.889Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://apex-compiler.vercel.app/docs/features/enums</loc>
     <lastmod>2026-04-07T11:41:21.901Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/features/functions</loc>
-    <lastmod>2026-04-07T11:48:28.889Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://apex-compiler.vercel.app/docs/features/interfaces</loc>
-    <lastmod>2026-04-07T11:48:28.889Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/features/ranges</loc>
+    <lastmod>2026-04-07T11:41:21.901Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -121,44 +109,32 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/features/ranges</loc>
-    <lastmod>2026-04-07T11:41:21.901Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://apex-compiler.vercel.app/docs/features/testing</loc>
     <lastmod>2026-04-07T17:22:40.028Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/getting_started/editor_setup</loc>
-    <lastmod>2026-04-07T17:24:05.425Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/stdlib/overview</loc>
+    <lastmod>2026-04-07T11:48:28.890Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/getting_started/installation</loc>
-    <lastmod>2026-04-07T17:24:05.425Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/stdlib/math</loc>
+    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/getting_started/quick_start</loc>
-    <lastmod>2026-04-07T17:22:40.028Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/stdlib/string</loc>
+    <lastmod>2026-03-27T15:07:07.375Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/overview</loc>
-    <lastmod>2026-04-07T17:52:35.642Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://apex-compiler.vercel.app/docs/projects</loc>
-    <lastmod>2026-04-07T11:40:15.913Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/stdlib/time</loc>
+    <lastmod>2026-04-07T11:41:21.898Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -181,32 +157,56 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/stdlib/math</loc>
-    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://apex-compiler.vercel.app/docs/stdlib/overview</loc>
-    <lastmod>2026-04-07T11:48:28.890Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://apex-compiler.vercel.app/docs/stdlib/string</loc>
-    <lastmod>2026-03-27T15:07:07.375Z</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://apex-compiler.vercel.app/docs/stdlib/system</loc>
     <lastmod>2026-04-07T11:41:21.898Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://apex-compiler.vercel.app/docs/stdlib/time</loc>
-    <lastmod>2026-04-07T11:41:21.898Z</lastmod>
+    <loc>https://apex-compiler.vercel.app/docs/advanced/ownership</loc>
+    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://apex-compiler.vercel.app/docs/advanced/generics</loc>
+    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://apex-compiler.vercel.app/docs/advanced/async</loc>
+    <lastmod>2026-04-07T19:02:57.269Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://apex-compiler.vercel.app/docs/advanced/error_handling</loc>
+    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://apex-compiler.vercel.app/docs/advanced/memory_management</loc>
+    <lastmod>2026-04-07T16:53:45.777Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://apex-compiler.vercel.app/docs/compiler/cli</loc>
+    <lastmod>2026-04-07T17:22:40.028Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://apex-compiler.vercel.app/docs/compiler/architecture</loc>
+    <lastmod>2026-04-07T16:53:45.777Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://apex-compiler.vercel.app/docs/projects</loc>
+    <lastmod>2026-04-07T11:40:15.913Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

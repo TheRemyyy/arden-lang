@@ -1,141 +1,300 @@
-import { ArrowRight, Blocks, Shield, Terminal } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { ArrowRight, BookOpen, Gauge, MoveRight, ShieldCheck, TerminalSquare } from 'lucide-react';
+import { FLATTENED_DOCS, NAV_ITEMS } from '../lib/docs';
 import { CURRENT_VERSION, GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
 
-const principles = [
-    'Memory safety with less ceremony',
-    'Native performance through LLVM',
-    'Compiler feedback built for humans',
+const operatingPrinciples = [
+    {
+        title: 'Fast feedback loops',
+        description:
+            'Projects, tests, formatting, linting, profiling, and benchmarks are already part of the repo workflow.',
+    },
+    {
+        title: 'Native output',
+        description:
+            'Arden targets LLVM directly and keeps the surface biased toward practical systems work over unnecessary abstraction.',
+    },
+    {
+        title: 'Readable safety',
+        description:
+            'Ownership and static checks are there to prevent damage early, without turning every function into ceremony.',
+    },
 ];
 
-const features = [
+const capabilityRows = [
     {
-        icon: Shield,
-        title: 'Ownership without the grind',
-        desc: 'Ownership inference catches common pitfalls while keeping code readable in everyday workflows.',
+        icon: ShieldCheck,
+        title: 'Static checks that pull mistakes left',
+        description:
+            'Ownership, borrowing, mutability, and semantic validation push failures to compile time before they leak into runtime debugging.',
     },
     {
-        icon: Blocks,
-        title: 'Abstractions that stay fast',
-        desc: 'Generics compile into concrete machine code, so ergonomics do not add runtime cost.',
+        icon: TerminalSquare,
+        title: 'One CLI instead of scattered tooling',
+        description:
+            'Build, run, check, test, fmt, lint, fix, bench, profile, bindgen, parse, lex, and LSP support already sit in one workflow surface.',
     },
     {
-        icon: Terminal,
-        title: 'Debuggable compile errors',
-        desc: 'Error messages are specific and actionable, helping teams move from failure to fix faster.',
+        icon: Gauge,
+        title: 'Project mode that goes beyond toy examples',
+        description:
+            'Multi-file builds, explicit source graphs, and reusable cache state make the repo feel like an actual language toolchain, not a parser demo.',
     },
 ];
+
+const topLevelDocs = NAV_ITEMS.filter(
+    (section): section is { title: string; path: string } => !('items' in section),
+);
+const groupedDocs = NAV_ITEMS.filter(
+    (section): section is { title: string; items: { title: string; path: string }[] } =>
+        'items' in section,
+);
 
 export function Home() {
     return (
-        <div className="min-h-screen overflow-x-hidden bg-[#0a0a0a] text-zinc-100">
-            <section className="mx-auto grid w-full max-w-6xl gap-14 overflow-hidden px-6 pb-24 pt-36 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="min-w-0 space-y-8">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-medium text-zinc-300">
-                        <img
-                            src={UI_LOGO_SRC}
-                            alt=""
-                            width="16"
-                            height="16"
-                            decoding="async"
-                            className="h-4 w-4 rounded-sm"
-                            aria-hidden="true"
-                        />
-                        Arden {CURRENT_VERSION}
+        <div className="overflow-x-hidden pt-16 text-[var(--text)]">
+            <section className="site-grid relative overflow-hidden">
+                <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[rgba(184,92,56,0.12)] to-transparent" />
+                <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-14 lg:grid-cols-[1.12fr_0.88fr] lg:items-end lg:pb-20 lg:pt-20">
+                    <div className="relative z-10">
+                        <div className="mb-5 inline-flex items-center gap-3 rounded-full border border-[rgba(57,52,46,0.12)] bg-white/80 px-4 py-2 text-xs font-medium uppercase tracking-[0.22em] text-[var(--text-muted)]">
+                            <img
+                                src={UI_LOGO_SRC}
+                                alt=""
+                                width="18"
+                                height="18"
+                                decoding="async"
+                                className="h-[18px] w-[18px] rounded-md"
+                                aria-hidden="true"
+                            />
+                            Arden {CURRENT_VERSION}
+                        </div>
+                        <h1 className="max-w-4xl font-display text-5xl font-bold leading-[0.92] tracking-[-0.05em] text-[var(--text)] md:text-7xl">
+                            Build native software with a sharper workflow and cleaner feedback.
+                        </h1>
+                        <p className="mt-5 max-w-2xl text-lg leading-8 text-[var(--text-muted)]">
+                            Arden combines LLVM-backed native output, static safety checks, and an integrated command-line workflow so teams can move from experiments to multi-file projects without swapping mental models.
+                        </p>
+                        <div className="mt-8 flex flex-wrap gap-3">
+                            <a
+                                href="/docs/overview"
+                                className="inline-flex h-12 items-center gap-2 rounded-full bg-[var(--bg-strong)] px-6 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5"
+                            >
+                                Open documentation
+                                <ArrowRight size={16} />
+                            </a>
+                            <a
+                                href="/docs/getting_started/quick_start"
+                                className="inline-flex h-12 items-center rounded-full border border-[rgba(57,52,46,0.16)] bg-white/80 px-6 text-sm font-semibold text-[var(--text)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                            >
+                                Quick start
+                            </a>
+                        </div>
                     </div>
-                    <h1 className="max-w-2xl text-4xl font-semibold leading-tight text-white md:text-6xl break-words">
-                        Build systems software with speed, safety, and less friction.
-                    </h1>
-                    <p className="max-w-2xl text-lg leading-relaxed text-zinc-300 break-words">
-                        Arden is a modern systems language built on LLVM. It gives teams low-level control and practical tooling without turning everyday development into a fight.
-                    </p>
-                    <div className="flex flex-wrap gap-3 pt-2">
-                        <a href="/docs/overview" className="inline-flex h-11 items-center gap-2 rounded-lg bg-white px-5 text-sm font-semibold text-black transition hover:bg-zinc-200">
-                            Get started
-                            <ArrowRight size={16} />
-                        </a>
+
+                    <div className="relative z-10">
+                        <div className="overflow-hidden rounded-[2rem] border border-[rgba(57,52,46,0.14)] bg-[#1f1d1a] text-white shadow-[0_36px_80px_rgba(31,29,26,0.22)]">
+                            <div className="border-b border-white/10 px-6 py-5">
+                                <div className="flex items-center justify-between gap-4">
+                                    <div>
+                                        <p className="text-xs uppercase tracking-[0.24em] text-white/45">Repository-first workflow</p>
+                                        <p className="mt-2 text-lg font-semibold">Fast path from zero to project mode</p>
+                                    </div>
+                                    <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/55">
+                                        v{CURRENT_VERSION.replace(/^v/, '')}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="grid gap-0 lg:grid-cols-[0.92fr_1.08fr]">
+                                <div className="border-b border-white/10 bg-[#292621] px-6 py-6 lg:border-b-0 lg:border-r">
+                                    <p className="text-xs uppercase tracking-[0.22em] text-white/45">Command flow</p>
+                                    <pre className="mt-4 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-[#f5eee5]">
+                                        <code>{`$ arden new radar\n$ cd radar\n$ arden check\n$ arden test\n$ arden run`}</code>
+                                    </pre>
+                                </div>
+                                <div className="space-y-4 px-6 py-6">
+                                    <p className="text-xs uppercase tracking-[0.22em] text-white/45">What this unlocks</p>
+                                    <div className="grid gap-3">
+                                        <div className="flex items-start justify-between gap-4 border-b border-white/8 pb-3">
+                                            <span className="text-sm text-[#efe4d8]">LLVM-backed native code generation</span>
+                                            <span className="text-xs uppercase tracking-[0.18em] text-[#d8b29e]">native</span>
+                                        </div>
+                                        <div className="flex items-start justify-between gap-4 border-b border-white/8 pb-3">
+                                            <span className="text-sm text-[#efe4d8]">`arden.toml` project graphs and cache reuse</span>
+                                            <span className="text-xs uppercase tracking-[0.18em] text-[#d8b29e]">project</span>
+                                        </div>
+                                        <div className="flex items-start justify-between gap-4">
+                                            <span className="text-sm text-[#efe4d8]">Examples, docs, and benchmarks living in the same repo</span>
+                                            <span className="text-xs uppercase tracking-[0.18em] text-[#d8b29e]">workflow</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section className="border-y border-[rgba(57,52,46,0.12)] bg-[#1f1d1a] py-8 text-white">
+                <div className="mx-auto grid max-w-7xl gap-0 px-6 md:grid-cols-3">
+                    {operatingPrinciples.map((principle, index) => (
+                        <article
+                            key={principle.title}
+                            className={`py-6 md:px-8 ${index !== 0 ? 'md:border-l md:border-white/10' : ''}`}
+                        >
+                            <p className="text-xs uppercase tracking-[0.22em] text-white/45">
+                                0{index + 1}
+                            </p>
+                            <h2 className="mt-4 text-2xl font-semibold tracking-[-0.03em] text-white">
+                                {principle.title}
+                            </h2>
+                            <p className="mt-3 max-w-sm text-sm leading-7 text-[#d8cdc1]">
+                                {principle.description}
+                            </p>
+                        </article>
+                    ))}
+                </div>
+            </section>
+
+            <section className="mx-auto max-w-7xl px-6 py-20">
+                <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                            Core capabilities
+                        </p>
+                        <h2 className="mt-4 max-w-md font-display text-4xl font-bold leading-tight tracking-[-0.04em] md:text-5xl">
+                            The compiler, docs, and workflow should feel like one product.
+                        </h2>
+                        <p className="mt-5 max-w-md text-base leading-8 text-[var(--text-muted)]">
+                            The repo is strongest when the language, examples, docs, and tooling reinforce each other instead of looking like separate side projects.
+                        </p>
                         <a
                             href={GITHUB_REPO_URL}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex h-11 items-center rounded-lg border border-zinc-700 bg-zinc-900 px-5 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800"
+                            className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)] transition-colors hover:text-[var(--text)]"
                         >
-                            View on GitHub
+                            Browse the repository
+                            <MoveRight className="h-4 w-4" />
                         </a>
                     </div>
-                </motion.div>
 
-                <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="min-w-0">
-                    <div className="rounded-2xl border border-zinc-700 bg-[#111111] p-6">
-                        <div className="mb-4 flex items-center justify-between">
-                            <p className="text-sm font-medium text-zinc-200">Range Iterator</p>
-                            <span className="rounded-md bg-zinc-800 px-2 py-1 text-xs font-medium text-zinc-300">{CURRENT_VERSION}</span>
-                        </div>
-                        <div className="rounded-xl border border-zinc-700 bg-[#0d0d0d] p-5">
-                            <pre className="overflow-x-auto whitespace-pre-wrap break-words text-sm leading-7 text-zinc-300">
-                                <code>
-                                    <div>import std.io.*;</div>
-                                    <div></div>
-                                    <div>function main(): None {'{'}</div>
-                                    <div className="pl-4">r: Range&lt;Integer&gt; = range(0, 10, 2);</div>
-                                    <div className="pl-4">while (r.has_next()) {'{'}</div>
-                                    <div className="pl-8">println(to_string(r.next()));</div>
-                                    <div className="pl-4">{'}'}</div>
-                                    <div className="pl-4">return None;</div>
-                                    <div>{'}'}</div>
-                                </code>
-                            </pre>
-                        </div>
-                    </div>
-                </motion.div>
-            </section>
+                    <div className="divide-y divide-[rgba(57,52,46,0.12)] border-y border-[rgba(57,52,46,0.12)]">
+                        {capabilityRows.map((row) => {
+                            const Icon = row.icon;
 
-            <section className="border-y border-zinc-800 bg-[#101010] py-20">
-                <div className="mx-auto grid w-full max-w-6xl gap-10 px-6 lg:grid-cols-[1.2fr_0.8fr]">
-                    <div className="max-w-2xl">
-                        <h2 className="text-3xl font-semibold text-white md:text-4xl">Pragmatic by design</h2>
-                        <p className="mt-4 text-base leading-relaxed text-zinc-300">
-                            Arden focuses on the boring hard parts: predictable behavior, native output, and developer velocity. No inflated visual noise, no framework theater.
-                        </p>
+                            return (
+                                <article key={row.title} className="grid gap-4 py-8 md:grid-cols-[56px_1fr] md:items-start">
+                                    <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface-soft)] text-[var(--accent)]">
+                                        <Icon className="h-5 w-5" />
+                                    </div>
+                                    <div className="grid gap-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                                        <h3 className="text-2xl font-semibold tracking-[-0.03em] text-[var(--text)]">
+                                            {row.title}
+                                        </h3>
+                                        <p className="text-sm leading-7 text-[var(--text-muted)]">
+                                            {row.description}
+                                        </p>
+                                    </div>
+                                </article>
+                            );
+                        })}
                     </div>
-                    <ul className="space-y-3">
-                        {principles.map((item) => (
-                            <li key={item} className="rounded-lg border border-zinc-700 bg-[#141414] px-4 py-3 text-sm text-zinc-200">
-                                {item}
-                            </li>
-                        ))}
-                    </ul>
                 </div>
             </section>
 
-            <section className="mx-auto w-full max-w-6xl px-6 py-20">
-                <div className="mb-10 max-w-2xl">
-                    <h2 className="text-3xl font-semibold text-white md:text-4xl">Core capabilities</h2>
-                    <p className="mt-4 text-base leading-relaxed text-zinc-300">
-                        A focused feature set for teams building performance-sensitive software.
-                    </p>
-                </div>
-                <div className="divide-y divide-zinc-800 border-y border-zinc-800">
-                    {features.map((feature) => (
-                        <FeatureRow key={feature.title} icon={feature.icon} title={feature.title} desc={feature.desc} />
-                    ))}
+            <section className="pb-24">
+                <div className="mx-auto max-w-7xl px-6">
+                    <div className="grid gap-10 lg:grid-cols-[0.88fr_1.12fr]">
+                        <div className="paper-panel rounded-[2rem] p-8 md:p-10">
+                            <p className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                                Documentation
+                            </p>
+                            <h2 className="mt-4 font-display text-4xl font-bold leading-tight tracking-[-0.04em] text-[var(--text)] md:text-5xl">
+                                The web docs now follow the repository docs tree.
+                            </h2>
+                            <p className="mt-5 text-base leading-8 text-[var(--text-muted)]">
+                                Every markdown page under `docs/` is copied into the web build and indexed into documentation navigation, so the site stays aligned with the repo instead of drifting behind it.
+                            </p>
+                            <dl className="mt-8 space-y-5 border-t border-[rgba(57,52,46,0.12)] pt-6">
+                                <div className="flex items-end justify-between gap-6">
+                                    <dt className="text-sm uppercase tracking-[0.18em] text-[var(--text-muted)]">Published docs</dt>
+                                    <dd className="text-4xl font-bold tracking-[-0.05em] text-[var(--text)]">
+                                        {FLATTENED_DOCS.length}
+                                    </dd>
+                                </div>
+                                <div className="flex items-end justify-between gap-6">
+                                    <dt className="text-sm uppercase tracking-[0.18em] text-[var(--text-muted)]">Guided sections</dt>
+                                    <dd className="text-4xl font-bold tracking-[-0.05em] text-[var(--text)]">
+                                        {groupedDocs.length}
+                                    </dd>
+                                </div>
+                            </dl>
+                            <div className="mt-8 flex flex-wrap gap-3">
+                                <a
+                                    href="/docs/overview"
+                                    className="inline-flex h-12 items-center gap-2 rounded-full bg-[var(--bg-strong)] px-6 text-sm font-semibold text-white transition-transform hover:-translate-y-0.5"
+                                >
+                                    Explore all docs
+                                    <BookOpen className="h-4 w-4" />
+                                </a>
+                                <a
+                                    href="/docs/getting_started/quick_start"
+                                    className="inline-flex h-12 items-center rounded-full border border-[rgba(57,52,46,0.16)] bg-white/80 px-6 text-sm font-semibold text-[var(--text)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                                >
+                                    Start with quick start
+                                </a>
+                            </div>
+                        </div>
+
+                        <div className="overflow-hidden rounded-[2rem] border border-[rgba(57,52,46,0.14)] bg-[rgba(251,247,241,0.72)]">
+                            {topLevelDocs.map((doc) => (
+                                <a
+                                    key={doc.path}
+                                    href={doc.path}
+                                    className="flex items-center justify-between gap-4 border-b border-[rgba(57,52,46,0.12)] px-6 py-5 transition-colors hover:bg-white/60"
+                                >
+                                    <div>
+                                        <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                                            Entry point
+                                        </p>
+                                        <p className="mt-2 text-xl font-semibold tracking-[-0.03em] text-[var(--text)]">
+                                            {doc.title}
+                                        </p>
+                                    </div>
+                                    <ArrowRight className="h-5 w-5 text-[var(--accent)]" />
+                                </a>
+                            ))}
+
+                            <div className="grid divide-y divide-[rgba(57,52,46,0.12)]">
+                                {groupedDocs.map((section) => (
+                                    <section key={section.title} className="px-6 py-5">
+                                        <div className="mb-4 flex items-center justify-between gap-4">
+                                            <h3 className="text-2xl font-semibold tracking-[-0.03em] text-[var(--text)]">
+                                                {section.title}
+                                            </h3>
+                                            <span className="text-xs uppercase tracking-[0.18em] text-[var(--text-muted)]">
+                                                {section.items.length} pages
+                                            </span>
+                                        </div>
+                                        <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
+                                            {section.items.slice(0, 6).map((item) => (
+                                                <a
+                                                    key={item.path}
+                                                    href={item.path}
+                                                    className="group inline-flex items-center justify-between gap-3 border-b border-[rgba(57,52,46,0.08)] py-2 text-sm font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+                                                >
+                                                    <span>{item.title}</span>
+                                                    <ArrowRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </section>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
         </div>
-    );
-}
-
-function FeatureRow({ icon: Icon, title, desc }: { icon: LucideIcon; title: string; desc: string }) {
-    return (
-        <article className="grid gap-4 py-8 md:grid-cols-[44px_1fr] md:items-start">
-            <div className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-700 bg-[#161616]">
-                <Icon size={18} className="text-zinc-200" />
-            </div>
-            <div>
-                <h3 className="text-xl font-semibold text-white">{title}</h3>
-                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-zinc-300">{desc}</p>
-            </div>
-        </article>
     );
 }
