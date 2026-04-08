@@ -10,7 +10,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.83+-orange.svg?style=flat-square)](https://www.rust-lang.org/)
 [![LLVM](https://img.shields.io/badge/LLVM-21.0+-blue.svg?style=flat-square)](https://llvm.org/)
 
-[Documentation](docs/) • [Examples](examples/) • [Benchmarks](benchmark/) • [Web Docs](https://apex-compiler.vercel.app/)
+[Documentation](docs/) • [Examples](examples/) • [Benchmarks](benchmark/) • [Web Docs](https://www.arden-lang.dev/docs/overview)
 
 </div>
 
