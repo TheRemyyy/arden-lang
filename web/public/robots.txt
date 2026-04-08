@@ -10,4 +10,4 @@ Allow: /
 User-agent: Googlebot
 Allow: /
 
-Sitemap: https://apex-compiler.vercel.app/sitemap.xml
+Sitemap: https://arden-lang.dev
