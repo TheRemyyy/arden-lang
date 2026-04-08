@@ -16940,6 +16940,36 @@ fn compile_source_no_check_rejects_map_set_between_unrelated_concrete_classes() 
 }
 
 #[test]
+fn compile_source_no_check_rejects_list_set_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-list-set-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_list_set_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_list_set_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                mut values: List<B> = List<B>();
+                values.push(B());
+                values.set(0, A());
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class list set payload should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_no_check_rejects_constructor_argument_between_unrelated_concrete_classes() {
     let temp_root = make_temp_project_root("no-check-ctor-arg-unrelated-concrete-classes");
     let source_path = temp_root.join("no_check_ctor_arg_unrelated_concrete_classes.arden");

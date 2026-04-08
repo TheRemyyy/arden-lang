@@ -3463,7 +3463,9 @@ impl<'ctx> Codegen<'ctx> {
                     Type::List(inner) => &**inner,
                     _ => return Err(CodegenError::new("Expected List type")),
                 };
+                let actual_value_ty = self.infer_expr_type(&args[1].node, &[]);
                 let value = self.compile_expr_with_expected_type(&args[1].node, inner_ty)?;
+                self.reject_unrelated_concrete_class_assignment(inner_ty, &actual_value_ty)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 Ok(self.context.i8_type().const_int(0, false).into())
@@ -3838,7 +3840,9 @@ impl<'ctx> Codegen<'ctx> {
                     Type::List(inner) => &**inner,
                     _ => return Err(CodegenError::new("Expected List type")),
                 };
+                let actual_value_ty = self.infer_expr_type(&args[1].node, &[]);
                 let value = self.compile_expr_with_expected_type(&args[1].node, inner_ty)?;
+                self.reject_unrelated_concrete_class_assignment(inner_ty, &actual_value_ty)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 Ok(self.context.i8_type().const_int(0, false).into())
