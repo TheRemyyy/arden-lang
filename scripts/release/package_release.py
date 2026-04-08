@@ -107,7 +107,7 @@ exec "${{ROOT}}/bin/arden-real" "$@"
 EOF
 chmod +x "${{TARGET}}"
 
-printf 'Installed Arden launcher to %s\n' "${TARGET}"
+printf 'Installed Arden launcher to %s\n' "${{TARGET}}"
 printf 'If ~/.local/bin is not on your PATH yet, add this line to your shell config:\n'
 printf '  export PATH="$HOME/.local/bin:$PATH"\n'
 printf 'Then run: arden --version\n'

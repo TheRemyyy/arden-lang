@@ -27,7 +27,7 @@ export function Header() {
                         <span className="flex items-center gap-2">
                             Arden
                             <span className="hidden rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.2em] text-white/55 sm:inline-flex">
-                                LLVM-native
+                                Future
                             </span>
                         </span>
                     </a>
