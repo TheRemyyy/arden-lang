@@ -54,7 +54,7 @@ export function Home() {
         <div className="overflow-x-hidden pt-16 text-[var(--text)]">
             <section className="site-grid relative overflow-hidden">
                 <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[rgba(184,92,56,0.12)] to-transparent" />
-                <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-14 lg:grid-cols-[1.12fr_0.88fr] lg:items-end lg:pb-20 lg:pt-20">
+                <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-8 lg:grid-cols-[1.12fr_0.88fr] lg:items-end lg:pb-20 lg:pt-12">
                     <div className="relative z-10">
                         <div className="mb-5 inline-flex items-center gap-3 rounded-full border border-[rgba(57,52,46,0.12)] bg-white/80 px-4 py-2 text-xs font-medium uppercase tracking-[0.22em] text-[var(--text-muted)]">
                             <img
