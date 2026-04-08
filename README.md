@@ -6,7 +6,7 @@
 
 **A native systems language focused on fast feedback, strong static checks, and practical tooling.**
 
-[![Website](https://img.shields.io/badge/Website-Arden-white?style=flat-square&logo=vercel)](https://apex-compiler.vercel.app/)
+[![Website](https://img.shields.io/badge/Website-Arden-white?style=flat-square&logo=vercel)](https://arden-lang.dev/)
 [![Rust](https://img.shields.io/badge/Rust-1.83+-orange.svg?style=flat-square)](https://www.rust-lang.org/)
 [![LLVM](https://img.shields.io/badge/LLVM-21.0+-blue.svg?style=flat-square)](https://llvm.org/)
 
