@@ -93,10 +93,10 @@ def build_unix_install_script(platform_name: str) -> str:
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${{BASH_SOURCE[0]}}")" && pwd)"
-BIN_DIR="${HOME}/.local/bin"
-TARGET="${BIN_DIR}/arden"
+BIN_DIR="${{HOME}}/.local/bin"
+TARGET="${{BIN_DIR}}/arden"
 
-mkdir -p "${BIN_DIR}"
+mkdir -p "${{BIN_DIR}}"
 cat > "${{TARGET}}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -105,7 +105,7 @@ export PATH="{extra_path}"
 export {library_var}="{extra_lib}"
 exec "${{ROOT}}/bin/arden-real" "$@"
 EOF
-chmod +x "${TARGET}"
+chmod +x "${{TARGET}}"
 
 printf 'Installed Arden launcher to %s\n' "${TARGET}"
 printf 'If ~/.local/bin is not on your PATH yet, add this line to your shell config:\n'
