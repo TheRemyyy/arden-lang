@@ -80,7 +80,7 @@ Detailed platform notes live in [docs/getting_started/installation.md](docs/gett
 ### Build From Source
 
 ```bash
-git clone https://github.com/TheRemyyy/apex-compiler.git arden
+git clone https://github.com/TheRemyyy/arden-lang.git arden
 cd arden
 cargo build --release
 ```
