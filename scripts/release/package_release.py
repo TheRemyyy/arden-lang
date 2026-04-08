@@ -31,7 +31,37 @@ def ensure_clean_dir(path: Path) -> None:
 def copy_tree(source: Path, destination: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
-    shutil.copytree(source, destination, symlinks=False)
+    destination.mkdir(parents=True, exist_ok=True)
+    visited_dirs: set[Path] = set()
+
+    def copy_entry(current_source: Path, current_destination: Path) -> None:
+        if current_source.is_symlink():
+            resolved = current_source.resolve()
+            if resolved.is_dir():
+                real_dir = resolved.resolve()
+                if real_dir in visited_dirs:
+                    return
+                visited_dirs.add(real_dir)
+                current_destination.mkdir(parents=True, exist_ok=True)
+                for child in resolved.iterdir():
+                    copy_entry(child, current_destination / child.name)
+                return
+            copy_file(resolved, current_destination)
+            return
+
+        if current_source.is_dir():
+            real_dir = current_source.resolve()
+            if real_dir in visited_dirs:
+                return
+            visited_dirs.add(real_dir)
+            current_destination.mkdir(parents=True, exist_ok=True)
+            for child in current_source.iterdir():
+                copy_entry(child, current_destination / child.name)
+            return
+
+        copy_file(current_source, current_destination)
+
+    copy_entry(source, destination)
 
 
 def copy_file(source: Path, destination: Path) -> None:
@@ -91,21 +121,21 @@ set "PATH=%ROOT%toolchain\\llvm\\bin;%PATH%"
 def build_unix_install_script(platform_name: str) -> str:
     library_var = "DYLD_LIBRARY_PATH" if platform_name == "macos" else "LD_LIBRARY_PATH"
     extra_path = (
-        '${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/extra/bin:${PATH}'
+        '${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/extra/bin:\\${PATH}'
         if platform_name == "linux"
-        else '${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/lld/bin:${PATH}'
+        else '${ROOT}/toolchain/llvm/bin:${ROOT}/toolchain/lld/bin:\\${PATH}'
     )
     extra_lib = (
-        f'${{ROOT}}/toolchain/llvm/lib:${{ROOT}}/toolchain/lld/lib:${{{library_var}:-}}'
+        f'${{ROOT}}/toolchain/llvm/lib:${{ROOT}}/toolchain/lld/lib:\\${{{library_var}:-}}'
         if platform_name == "macos"
-        else f'${{ROOT}}/toolchain/llvm/lib:${{{library_var}:-}}'
+        else f'${{ROOT}}/toolchain/llvm/lib:\\${{{library_var}:-}}'
     )
     sdk_setup = ""
     if platform_name == "macos":
         sdk_setup = """
-if [[ -z "${SDKROOT:-}" ]] && command -v xcrun >/dev/null 2>&1; then
+if [[ -z "\\${SDKROOT:-}" ]] && command -v xcrun >/dev/null 2>&1; then
   SDKROOT="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
-  if [[ -n "${SDKROOT}" ]]; then
+  if [[ -n "\\${SDKROOT}" ]]; then
     export SDKROOT
   fi
 fi
@@ -125,7 +155,7 @@ ROOT="${{ROOT}}"
 export PATH="{extra_path}"
 export {library_var}="{extra_lib}"
 {sdk_setup}\
-exec "${{ROOT}}/bin/arden-real" "$@"
+exec "${{ROOT}}/bin/arden-real" "\\$@"
 EOF
 chmod +x "${{TARGET}}"
 
