@@ -5,6 +5,7 @@ target/
 *.exe
 *.ll
 *.o
+*./__pycache__
 
 # Benchmarks
 benchmark/bin/matrix_mul_arden
