@@ -10,6 +10,45 @@ It targets LLVM for native code generation and ships with its own formatter, lin
 
 This page is the best starting point if you want to understand what Arden already is, what the repository actually ships today, and where to go next.
 
+## At A Glance
+
+Arden already ships more than "parse a file and hope for the best".
+
+Current repository surface:
+
+| Area | What is already there | Start here |
+| --- | --- | --- |
+| Language core | static types, functions, lambdas, control flow, modules | [Syntax](basics/syntax.md), [Types](basics/types.md), [Functions](features/functions.md) |
+| Structured types | classes, interfaces, enums, visibility, inheritance | [Classes](features/classes.md), [Interfaces](features/interfaces.md), [Enums](features/enums.md) |
+| Reusable typing | generics, generic bounds, generic interfaces, nested generic types | [Generics](advanced/generics.md), [`../examples/09_generics.arden`](../examples/09_generics.arden) |
+| Safety model | ownership, borrowing, checked mutation, static validation | [Ownership](advanced/ownership.md), [Memory Management](advanced/memory_management.md) |
+| Concurrency | `async`, `await`, `Task<T>` | [Async](advanced/async.md), [`../examples/14_async.arden`](../examples/14_async.arden) |
+| Workflow | `new`, `check`, `run`, `fmt`, `lint`, `fix`, `test`, `bench`, `profile`, `bindgen`, `lsp` | [Quick Start](getting_started/quick_start.md), [Compiler CLI](compiler/cli.md) |
+| Project mode | `arden.toml`, multi-file builds, project-aware tooling, cache state | [Projects](features/projects.md), [Projects Summary](projects.md) |
+| Runtime surface | stdlib intrinsics such as `io`, `math`, `time`, `args`, `collections`, `system` | [Stdlib Overview](stdlib/overview.md) |
+
+## What Arden Can Already Do
+
+If you are evaluating the language, these are the capabilities you should assume exist today:
+
+- compile and run both single files and explicit multi-file projects
+- type-check static signatures before code generation
+- model reusable APIs with generic functions, generic classes, and bounded type parameters
+- express interface-based polymorphism with `implements` and `extends`
+- model branching data with enums and use pattern matching over them
+- use async tasks with typed results via `Task<T>`
+- use ownership and borrowing rules to catch invalid moves and mutation hazards earlier
+- call common workflow commands from one CLI instead of stitching together unrelated tools
+- use built-in container/result surfaces such as `Option<T>`, `Result<T, E>`, `List<T>`, `Map<K, V>`, and `Set<T>`
+- use formatter, linter, test discovery, benchmark commands, profile commands, bindgen, and LSP support from the same repo
+
+The fastest proof is usually to read one prose page and one runnable example side by side:
+
+- [Generics](advanced/generics.md) + [`../examples/09_generics.arden`](../examples/09_generics.arden)
+- [Ownership](advanced/ownership.md) + [`../examples/10_ownership.arden`](../examples/10_ownership.arden)
+- [Async](advanced/async.md) + [`../examples/14_async.arden`](../examples/14_async.arden)
+- [Projects](features/projects.md) + [`../examples/starter_project/README.md`](../examples/starter_project/README.md)
+
 ## What Arden Tries To Be
 
 Arden is not aiming to be minimal for its own sake, and it is not trying to hide systems-level constraints behind a giant runtime.
@@ -101,6 +140,41 @@ The current compiler surface includes:
 - async / await with `Task<T>`
 - intrinsic stdlib modules such as `Math`, `Str`, `Time`, `System`, `Args`, and file I/O helpers
 - built-in test attributes such as `@Test`, `@Before`, and `@Ignore`
+
+## Feature Map
+
+Use this as the short index when you want to jump directly to a capability instead of reading the docs in order.
+
+### Core Syntax And Type System
+
+- [Syntax](basics/syntax.md)
+- [Types](basics/types.md)
+- [Control Flow](basics/control_flow.md)
+- [Functions And Lambdas](features/functions.md)
+
+### Reusable Abstractions
+
+- [Generics](advanced/generics.md)
+- [Interfaces](features/interfaces.md)
+- [Classes](features/classes.md)
+- [Enums](features/enums.md)
+- [Modules And Imports](features/modules.md)
+
+### Safety And Runtime Behavior
+
+- [Ownership](advanced/ownership.md)
+- [Memory Management](advanced/memory_management.md)
+- [Error Handling](advanced/error_handling.md)
+- [Async](advanced/async.md)
+
+### Tooling And Workflow
+
+- [Installation](getting_started/installation.md)
+- [Quick Start](getting_started/quick_start.md)
+- [Testing](features/testing.md)
+- [Compiler CLI](compiler/cli.md)
+- [Projects](features/projects.md)
+- [Stdlib Overview](stdlib/overview.md)
 
 For a broad but runnable tour of these features, the examples directory is often faster than prose:
 

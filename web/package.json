@@ -5,10 +5,14 @@
     "type": "module",
     "scripts": {
         "seo": "node ./scripts/generate-seo.mjs",
+        "prepare": "npm run seo",
         "predev": "npm run seo",
+        "precheck": "npm run seo",
+        "pretest": "npm run seo",
         "dev": "vike dev",
         "prebuild": "npm run seo",
         "build": "vike build",
+        "prepreview": "npm run seo",
         "preview": "vike preview",
         "check": "tsc",
         "test": "vitest run"

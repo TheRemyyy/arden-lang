@@ -2,6 +2,31 @@ import { useState } from 'react';
 import { NAV_ITEMS, getCurrentSectionTitle, searchDocs } from '../lib/docs';
 import type { DocsPageData, PageHeading } from '../lib/content.server';
 
+const OVERVIEW_HIGHLIGHTS = [
+    {
+        label: 'Language Surface',
+        title: 'Generics, interfaces, enums, ownership, async, and project mode',
+        description: 'Start from the capabilities Arden already ships instead of guessing from the repo layout.',
+        links: [
+            { href: '/docs/advanced/generics', label: 'Generics' },
+            { href: '/docs/features/interfaces', label: 'Interfaces' },
+            { href: '/docs/advanced/ownership', label: 'Ownership' },
+            { href: '/docs/advanced/async', label: 'Async' },
+        ],
+    },
+    {
+        label: 'Workflow',
+        title: 'Installation, quick start, projects, testing, and CLI reference',
+        description: 'Use the docs as a product map: install it, run it, then move into project mode and tooling.',
+        links: [
+            { href: '/docs/getting_started/installation', label: 'Installation' },
+            { href: '/docs/getting_started/quick_start', label: 'Quick Start' },
+            { href: '/docs/features/projects', label: 'Projects' },
+            { href: '/docs/compiler/cli', label: 'CLI' },
+        ],
+    },
+];
+
 function TableOfContents({ headings }: { headings: PageHeading[] }) {
     if (headings.length === 0) return null;
 
@@ -37,6 +62,7 @@ export function DocsContent({
     const [searchQuery, setSearchQuery] = useState('');
     const currentSectionTitle = getCurrentSectionTitle(normalizedPath);
     const searchResults = searchDocs(searchQuery);
+    const isOverviewPage = normalizedPath === '/docs/overview';
 
     return (
         <div className="flex min-h-screen min-w-0 flex-col overflow-x-hidden bg-[#0f0d0b] pt-16 font-sans text-[#f3ece3] selection:bg-[rgba(184,92,56,0.28)] selection:text-white lg:flex-row lg:pt-16">
@@ -152,6 +178,35 @@ export function DocsContent({
 
             <div className="w-full min-w-0 flex-1 pt-20 lg:ml-72 lg:pt-0 xl:mr-64">
                 <main className="mx-auto min-h-[80vh] w-full max-w-4xl min-w-0 px-4 py-8 sm:px-6 md:px-12 lg:py-16">
+                    {isOverviewPage && (
+                        <section className="mb-12 grid gap-4 md:grid-cols-2">
+                            {OVERVIEW_HIGHLIGHTS.map((group) => (
+                                <article key={group.label} className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-6">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/40">
+                                        {group.label}
+                                    </p>
+                                    <h2 className="mt-4 text-2xl font-semibold tracking-[-0.03em] text-white">
+                                        {group.title}
+                                    </h2>
+                                    <p className="mt-3 text-sm leading-7 text-white/62">
+                                        {group.description}
+                                    </p>
+                                    <div className="mt-5 flex flex-wrap gap-2">
+                                        {group.links.map((link) => (
+                                            <a
+                                                key={link.href}
+                                                href={link.href}
+                                                className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-white/78 transition-colors hover:border-[var(--accent-soft)] hover:text-white"
+                                            >
+                                                {link.label}
+                                            </a>
+                                        ))}
+                                    </div>
+                                </article>
+                            ))}
+                        </section>
+                    )}
+
                     <article
                         className="prose prose-invert prose-zinc max-w-none overflow-x-hidden px-0 py-0
                             prose-headings:scroll-mt-24

@@ -306,6 +306,7 @@ function buildLlmsTxt() {
     '',
     '## Project',
     `- Homepage: ${siteUrl}/`,
+    `- Installation: ${siteUrl}/install`,
     `- Documentation: ${siteUrl}/docs/overview`,
     `- Changelog: ${siteUrl}/changelog`,
     `- Repository: https://github.com/TheRemyyy/apex-compiler`,
@@ -328,6 +329,7 @@ async function main() {
   ]);
   const routes = [
     { path: '/', lastmod: rootStat.mtime.toISOString() },
+    { path: '/install', lastmod: rootStat.mtime.toISOString() },
     { path: '/changelog', lastmod: changelogStat.mtime.toISOString() },
     ...docRoutes,
   ];

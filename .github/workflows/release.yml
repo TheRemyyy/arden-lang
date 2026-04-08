@@ -11,23 +11,31 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.os }}
+    name: Build ${{ matrix.asset_name }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
           - os: windows-latest
+            platform: windows
             target: x86_64-pc-windows-msvc
             artifact_name: arden.exe
-            asset_name: arden-windows-x64.exe
-          - os: ubuntu-latest
+            asset_name: arden-windows-x64-portable
+          - os: ubuntu-22.04
+            platform: linux
             target: x86_64-unknown-linux-gnu
             artifact_name: arden
-            asset_name: arden-linux-x64
+            asset_name: arden-linux-x64-portable
           - os: macos-latest
+            platform: macos
             target: aarch64-apple-darwin
             artifact_name: arden
-            asset_name: arden-macos-arm64
+            asset_name: arden-macos-arm64-portable
+          - os: macos-13
+            platform: macos
+            target: x86_64-apple-darwin
+            artifact_name: arden
+            asset_name: arden-macos-x64-portable
 
     steps:
       - name: Checkout code
@@ -66,17 +74,52 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
-      - name: Prepare Artifact
+      - name: Detect extra packaging inputs (Linux)
+        if: matrix.platform == 'linux'
         shell: bash
         run: |
+          echo "ARDEN_EXTRA_BIN=$(command -v mold)" >> "$GITHUB_ENV"
+
+      - name: Detect extra packaging inputs (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          echo "ARDEN_EXTRA_PREFIX=$(brew --prefix lld@21)" >> "$GITHUB_ENV"
+
+      - name: Package portable bundle
+        shell: bash
+        env:
+          BUNDLE_LLVM_PREFIX: ${{ matrix.os == 'windows-latest' && env.ARDEN_LLVM_REAL_PREFIX || env.LLVM_SYS_211_PREFIX }}
+        run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} dist/${{ matrix.asset_name }}
+          python3 scripts/release/package_release.py \
+            --platform "${{ matrix.platform }}" \
+            --binary "target/${{ matrix.target }}/release/${{ matrix.artifact_name }}" \
+            --asset-name "${{ matrix.asset_name }}" \
+            --bundle-root dist \
+            --llvm-prefix "${BUNDLE_LLVM_PREFIX}" \
+            ${ARDEN_EXTRA_PREFIX:+--extra-prefix "${ARDEN_EXTRA_PREFIX}"} \
+            ${ARDEN_EXTRA_BIN:+--extra-bin "${ARDEN_EXTRA_BIN}"}
+
+      - name: Smoke test portable bundle (Linux/macOS)
+        if: matrix.platform != 'windows'
+        shell: bash
+        run: |
+          bash scripts/release/smoke_portable_unix.sh \
+            "dist/${{ matrix.asset_name }}.tar.gz"
+
+      - name: Smoke test portable bundle (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          .\scripts\release\smoke_portable_windows.ps1 `
+            -ArchivePath "dist/${{ matrix.asset_name }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: dist/${{ matrix.asset_name }}
+          path: dist/${{ matrix.asset_name }}${{ matrix.platform == 'windows' && '.zip' || '.tar.gz' }}
 
   release:
     name: Create Release
@@ -85,11 +128,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: all-artifacts
           merge-multiple: true 
+
+      - name: Generate checksums
+        run: python3 scripts/release/write_checksums.py all-artifacts
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -99,20 +148,36 @@ jobs:
           draft: false 
           prerelease: false 
           files: |
-            all-artifacts/arden-windows-x64.exe
-            all-artifacts/arden-linux-x64
-            all-artifacts/arden-macos-arm64
+            all-artifacts/arden-windows-x64-portable.zip
+            all-artifacts/arden-linux-x64-portable.tar.gz
+            all-artifacts/arden-macos-arm64-portable.tar.gz
+            all-artifacts/arden-macos-x64-portable.tar.gz
+            all-artifacts/SHA256SUMS.txt
           body: |
             ## Arden
             
             ### Available Downloads
-            - **Windows**: `arden-windows-x64.exe` (x64 MSVC)
-            - **Linux**: `arden-linux-x64` (x64 GNU)
-            - **macOS (Apple Silicon)**: `arden-macos-arm64`
+            - **Windows x64**: `arden-windows-x64-portable.zip`
+            - **Linux x64**: `arden-linux-x64-portable.tar.gz`
+            - **macOS Apple Silicon**: `arden-macos-arm64-portable.tar.gz`
+            - **macOS Intel**: `arden-macos-x64-portable.tar.gz`
             
             ### Installation
-            Download the binary for your platform and ensure you have **LLVM 21** installed on your system for linking.
-            Linux Arden builds require `mold`.
-            macOS and Windows Arden builds require LLVM `lld`.
+            Download the portable archive for your platform and extract it.
+
+            The intended flow is:
+            - extract the archive
+            - run the included launcher immediately (`arden.cmd` on Windows, `./arden` on Linux/macOS)
+            - optionally run the bundled install script (`install.ps1` or `install.sh`) to add Arden to your PATH
+
+            Each archive now includes:
+            - the Arden compiler
+            - a bundled LLVM/Clang toolchain layout
+            - the linker helper binaries Arden expects on that platform
+            - a small launcher script (`arden` or `arden.cmd`)
+            - a small install script for adding the launcher to PATH
+
+            ### Checksums
+            SHA-256 hashes are published in `SHA256SUMS.txt`.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -225,6 +225,86 @@ jobs:
           CI_SKIP_COMPILER_BUILD: "1"
           ARDEN_COMPILER_PATH: ${{ github.workspace }}\target\release\arden.exe
 
+  portable-smoke-linux:
+    name: Portable Smoke (linux-x64)
+    runs-on: ubuntu-latest
+    needs: build-linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-llvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: arden-linux-x64
+          path: target/x86_64-unknown-linux-gnu/release
+      - run: chmod +x target/x86_64-unknown-linux-gnu/release/arden
+      - name: Package portable bundle
+        shell: bash
+        run: |
+          mkdir -p dist
+          python3 scripts/release/package_release.py \
+            --platform linux \
+            --binary target/x86_64-unknown-linux-gnu/release/arden \
+            --asset-name arden-linux-x64-portable \
+            --bundle-root dist \
+            --llvm-prefix "${LLVM_SYS_211_PREFIX}" \
+            --extra-bin "$(command -v mold)"
+      - run: bash scripts/release/smoke_portable_unix.sh dist/arden-linux-x64-portable.tar.gz
+
+  portable-smoke-macos:
+    name: Portable Smoke (macos-arm64)
+    runs-on: macos-latest
+    needs: build-macos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/install-llvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: arden-macos-arm64
+          path: target/aarch64-apple-darwin/release
+      - run: chmod +x target/aarch64-apple-darwin/release/arden
+      - name: Package portable bundle
+        shell: bash
+        run: |
+          mkdir -p dist
+          python3 scripts/release/package_release.py \
+            --platform macos \
+            --binary target/aarch64-apple-darwin/release/arden \
+            --asset-name arden-macos-arm64-portable \
+            --bundle-root dist \
+            --llvm-prefix "${LLVM_SYS_211_PREFIX}" \
+            --extra-prefix "$(brew --prefix lld@21)"
+      - run: bash scripts/release/smoke_portable_unix.sh dist/arden-macos-arm64-portable.tar.gz
+
+  portable-smoke-windows:
+    name: Portable Smoke (windows-x64)
+    runs-on: windows-latest
+    needs: build-windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: C:\arden-toolchains\llvm-21.1.8
+          key: ${{ runner.os }}-llvm-21.1.8-x64
+      - uses: ./.github/actions/install-llvm
+      - uses: actions/download-artifact@v4
+        with:
+          name: arden-windows-x64
+          path: target/x86_64-pc-windows-msvc/release
+      - name: Package portable bundle
+        shell: bash
+        env:
+          BUNDLE_LLVM_PREFIX: ${{ env.ARDEN_LLVM_REAL_PREFIX }}
+        run: |
+          mkdir -p dist
+          python3 scripts/release/package_release.py \
+            --platform windows \
+            --binary target/x86_64-pc-windows-msvc/release/arden.exe \
+            --asset-name arden-windows-x64-portable \
+            --bundle-root dist \
+            --llvm-prefix "${BUNDLE_LLVM_PREFIX}"
+      - run: .\scripts\release\smoke_portable_windows.ps1 -ArchivePath dist\arden-windows-x64-portable.zip
+        shell: pwsh
+
   examples-linux:
     name: Examples (linux-x64)
     runs-on: ubuntu-latest

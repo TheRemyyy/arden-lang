@@ -7,20 +7,26 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://apex-compiler.vercel.app/install</loc>
+    <lastmod>2026-04-07T18:40:50.427Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://apex-compiler.vercel.app/changelog</loc>
-    <lastmod>2026-04-08T09:15:42.878Z</lastmod>
+    <lastmod>2026-04-08T11:41:55.780Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://apex-compiler.vercel.app/docs/overview</loc>
-    <lastmod>2026-04-07T17:52:35.642Z</lastmod>
+    <lastmod>2026-04-08T12:32:29.510Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://apex-compiler.vercel.app/docs/getting_started/installation</loc>
-    <lastmod>2026-04-07T17:24:05.425Z</lastmod>
+    <lastmod>2026-04-08T12:02:00.168Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -38,7 +44,7 @@
   </url>
   <url>
     <loc>https://apex-compiler.vercel.app/docs/basics/syntax</loc>
-    <lastmod>2026-04-07T11:41:21.903Z</lastmod>
+    <lastmod>2026-04-08T11:13:15.437Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -62,7 +68,7 @@
   </url>
   <url>
     <loc>https://apex-compiler.vercel.app/docs/features/functions</loc>
-    <lastmod>2026-04-07T18:53:42.122Z</lastmod>
+    <lastmod>2026-04-08T11:13:15.431Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -110,7 +116,7 @@
   </url>
   <url>
     <loc>https://apex-compiler.vercel.app/docs/features/testing</loc>
-    <lastmod>2026-04-07T17:22:40.028Z</lastmod>
+    <lastmod>2026-04-08T11:13:15.437Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -170,7 +176,7 @@
   </url>
   <url>
     <loc>https://apex-compiler.vercel.app/docs/advanced/generics</loc>
-    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
+    <lastmod>2026-04-08T12:32:29.510Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

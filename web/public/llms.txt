@@ -4,6 +4,7 @@
 
 ## Project
 - Homepage: https://apex-compiler.vercel.app/
+- Installation: https://apex-compiler.vercel.app/install
 - Documentation: https://apex-compiler.vercel.app/docs/overview
 - Changelog: https://apex-compiler.vercel.app/changelog
 - Repository: https://github.com/TheRemyyy/apex-compiler

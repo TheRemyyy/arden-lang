@@ -1,0 +1,130 @@
+name: Portable Install Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to smoke test
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - linux-x64
+          - macos-arm64
+          - windows-x64
+
+jobs:
+  portable-smoke-linux:
+    name: Portable Smoke (linux-x64)
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'linux-x64' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - uses: ./.github/actions/install-llvm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: portable-smoke-${{ runner.os }}-x86_64-unknown-linux-gnu-${{ hashFiles('**/Cargo.lock') }}
+      - name: Build release
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+      - run: chmod +x target/x86_64-unknown-linux-gnu/release/arden
+      - name: Package portable bundle
+        shell: bash
+        run: |
+          mkdir -p dist
+          python3 scripts/release/package_release.py \
+            --platform linux \
+            --binary target/x86_64-unknown-linux-gnu/release/arden \
+            --asset-name arden-linux-x64-portable \
+            --bundle-root dist \
+            --llvm-prefix "${LLVM_SYS_211_PREFIX}" \
+            --extra-bin "$(command -v mold)"
+      - run: bash scripts/release/smoke_portable_unix.sh dist/arden-linux-x64-portable.tar.gz
+
+  portable-smoke-macos:
+    name: Portable Smoke (macos-arm64)
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'macos-arm64' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: ./.github/actions/install-llvm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: portable-smoke-${{ runner.os }}-aarch64-apple-darwin-${{ hashFiles('**/Cargo.lock') }}
+      - name: Build release
+        run: cargo build --release --target aarch64-apple-darwin
+      - run: chmod +x target/aarch64-apple-darwin/release/arden
+      - name: Package portable bundle
+        shell: bash
+        run: |
+          mkdir -p dist
+          python3 scripts/release/package_release.py \
+            --platform macos \
+            --binary target/aarch64-apple-darwin/release/arden \
+            --asset-name arden-macos-arm64-portable \
+            --bundle-root dist \
+            --llvm-prefix "${LLVM_SYS_211_PREFIX}" \
+            --extra-prefix "$(brew --prefix lld@21)"
+      - run: bash scripts/release/smoke_portable_unix.sh dist/arden-macos-arm64-portable.tar.gz
+
+  portable-smoke-windows:
+    name: Portable Smoke (windows-x64)
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'windows-x64' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: actions/cache@v4
+        with:
+          path: C:\arden-toolchains\llvm-21.1.8
+          key: ${{ runner.os }}-llvm-21.1.8-x64
+      - uses: ./.github/actions/install-llvm
+      - uses: lukka/get-cmake@latest
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: portable-smoke-${{ runner.os }}-x86_64-pc-windows-msvc-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Windows build dependencies
+        shell: pwsh
+        run: |
+          vcpkg install libxml2:x64-windows-static
+          $LibPath = "C:\vcpkg\installed\x64-windows-static\lib"
+          Copy-Item "$LibPath\libxml2.lib" "$LibPath\libxml2s.lib" -Force
+          echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
+      - name: Build release
+        run: cargo build --release --target x86_64-pc-windows-msvc
+        env:
+          RUSTFLAGS: ${{ format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) }}
+      - name: Package portable bundle
+        shell: bash
+        env:
+          BUNDLE_LLVM_PREFIX: ${{ env.ARDEN_LLVM_REAL_PREFIX }}
+        run: |
+          mkdir -p dist
+          python3 scripts/release/package_release.py \
+            --platform windows \
+            --binary target/x86_64-pc-windows-msvc/release/arden.exe \
+            --asset-name arden-windows-x64-portable \
+            --bundle-root dist \
+            --llvm-prefix "${BUNDLE_LLVM_PREFIX}"
+      - run: .\scripts\release\smoke_portable_windows.ps1 -ArchivePath dist\arden-windows-x64-portable.zip
+        shell: pwsh

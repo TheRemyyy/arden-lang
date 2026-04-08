@@ -1,10 +1,64 @@
 # Installation
 
-Arden is currently installed by building the compiler from source.
+Arden can now be installed in two practical ways:
 
-This guide focuses on getting a working local compiler, not on producing a polished package-manager install.
+- download a portable bundle from the latest GitHub release
+- build the compiler from source when you want the full repository workflow
 
-## Requirements
+If you only want a working compiler fast, use the portable bundle path first.
+
+## Fastest Path: Portable Bundle
+
+Latest stable releases publish portable archives for:
+
+- Windows x64
+- Linux x64
+- macOS Apple Silicon
+- macOS Intel
+
+Each portable archive includes:
+
+- the Arden compiler
+- a bundled LLVM toolchain layout
+- the linker helper binaries Arden expects on that platform
+- a launcher script (`arden` or `arden.cmd`)
+
+The simplest flow is:
+
+1. Open the latest GitHub release.
+2. Download the archive for your platform.
+3. Extract it.
+4. Run the included launcher.
+5. Optional: run the bundled install script if you want Arden on PATH permanently.
+
+Example verification:
+
+```bash
+./arden --version
+./arden --help
+```
+
+On Windows:
+
+```powershell
+.\arden.cmd --version
+.\arden.cmd --help
+```
+
+Optional install helpers shipped inside the portable bundles:
+
+- Windows: `install.ps1`
+- Linux / macOS: `install.sh`
+
+Those scripts are convenience helpers for PATH setup. The launcher itself is intended to work directly from the extracted folder.
+
+If you want the compiler on your shell PATH permanently, add the extracted bundle directory to PATH after verifying it runs.
+
+## Build From Source
+
+Use the source build path when you want to work inside the repository, hack on the compiler itself, or reproduce CI-style toolchain setup locally.
+
+### Requirements
 
 You need:
 
@@ -20,7 +74,7 @@ Linker policy is explicit:
 - macOS: LLVM `lld`
 - Windows: LLVM `lld`
 
-## Clone The Repository
+### Clone The Repository
 
 ```bash
 git clone https://github.com/TheRemyyy/apex-compiler.git arden
@@ -29,7 +83,7 @@ cd arden
 
 If the repository is renamed later, use the current upstream URL and keep the rest of the steps the same.
 
-## Build The Compiler
+### Build The Compiler
 
 ```bash
 cargo build --release
@@ -40,7 +94,7 @@ The resulting binary is:
 - `target/release/arden`
 - `target/release/arden.exe` on Windows
 
-## First Verification
+### First Verification
 
 Before changing shell config or editor settings, make sure the freshly built binary actually runs:
 
@@ -56,9 +110,9 @@ On Windows:
 .\target\release\arden.exe --help
 ```
 
-## Platform Notes
+### Platform Notes
 
-### Fedora / Linux
+#### Fedora / Linux
 
 Example package install:
 
@@ -72,7 +126,7 @@ If `llvm-sys` does not auto-detect LLVM correctly, point it at the installed pre
 export LLVM_SYS_211_PREFIX=/usr
 ```
 
-### macOS
+#### macOS
 
 You need LLVM 21 tooling available and LLVM `lld` for final linking.
 
@@ -84,7 +138,7 @@ Typical things to verify:
 - `ld.lld --version` or equivalent LLVM linker path
 - the active Rust toolchain can build normal Rust crates successfully
 
-### Windows
+#### Windows
 
 Windows builds use the MSVC toolchain plus LLVM tooling. CI also installs `libxml2` through `vcpkg`, which is a useful reference if you are reproducing the GitHub Actions environment locally.
 
@@ -94,9 +148,9 @@ The simplest path is usually:
 - LLVM tools installed and reachable
 - PowerShell session with the required toolchain paths available
 
-## Add Arden To Your PATH
+### Add Arden To Your PATH
 
-### Linux / macOS
+#### Linux / macOS
 
 ```bash
 export PATH="$PATH:$(pwd)/target/release"
@@ -104,13 +158,13 @@ export PATH="$PATH:$(pwd)/target/release"
 
 Add that line to your shell config if you want it permanently.
 
-### Windows PowerShell
+#### Windows PowerShell
 
 ```powershell
 $env:PATH += ";$(pwd)\target\release"
 ```
 
-## Verify The Installation
+### Verify The Installation
 
 ```bash
 arden --version
@@ -132,7 +186,7 @@ EOF
 arden run hello.arden
 ```
 
-## Common Problems
+### Common Problems
 
 - `cargo build --release` fails because LLVM headers/libs are missing
 - linking fails because the expected linker (`mold` or `lld`) is not installed

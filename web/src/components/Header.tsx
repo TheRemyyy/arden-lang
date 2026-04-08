@@ -3,6 +3,7 @@ import { GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
 
 const navLinks = [
     { href: '/docs/overview', label: 'Documentation' },
+    { href: '/install', label: 'Installation' },
     { href: '/docs/getting_started/quick_start', label: 'Quick Start' },
     { href: '/changelog', label: 'Changelog' },
 ];

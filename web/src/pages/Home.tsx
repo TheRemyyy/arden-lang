@@ -1,4 +1,5 @@
 import { ArrowRight, BookOpen, Gauge, MoveRight, ShieldCheck, TerminalSquare } from 'lucide-react';
+import { InstallationExperience } from '../components/InstallationExperience';
 import { FLATTENED_DOCS, NAV_ITEMS } from '../lib/docs';
 import { CURRENT_VERSION, GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
 
@@ -81,6 +82,12 @@ export function Home() {
                             >
                                 Open documentation
                                 <ArrowRight size={16} />
+                            </a>
+                            <a
+                                href="/install"
+                                className="inline-flex h-12 items-center rounded-full border border-[rgba(57,52,46,0.16)] bg-white/80 px-6 text-sm font-semibold text-[var(--text)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                            >
+                                Installation
                             </a>
                             <a
                                 href="/docs/getting_started/quick_start"
@@ -204,17 +211,20 @@ export function Home() {
 
             <section className="pb-24">
                 <div className="mx-auto max-w-7xl px-6">
-                    <div className="grid gap-10 lg:grid-cols-[0.88fr_1.12fr]">
-                        <div className="paper-panel rounded-[2rem] p-8 md:p-10">
-                            <p className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">
-                                Documentation
-                            </p>
-                            <h2 className="mt-4 font-display text-4xl font-bold leading-tight tracking-[-0.04em] text-[var(--text)] md:text-5xl">
-                                The web docs now follow the repository docs tree.
-                            </h2>
-                            <p className="mt-5 text-base leading-8 text-[var(--text-muted)]">
-                                Every markdown page under `docs/` is copied into the web build and indexed into documentation navigation, so the site stays aligned with the repo instead of drifting behind it.
-                            </p>
+                    <div className="grid items-start gap-10 lg:grid-cols-[0.88fr_1.12fr]">
+                        <div>
+                            <InstallationExperience compact />
+                            <div className="mt-10">
+                                <p className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                                    Documentation
+                                </p>
+                                <h3 className="mt-4 font-display text-3xl font-bold leading-tight tracking-[-0.04em] text-[var(--text)] md:text-4xl">
+                                    The web docs now follow the repository docs tree.
+                                </h3>
+                                <p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-muted)]">
+                                    Every markdown page under `docs/` is copied into the web build and indexed into documentation navigation, so the site stays aligned with the repo instead of drifting behind it.
+                                </p>
+                            </div>
                             <dl className="mt-8 space-y-5 border-t border-[rgba(57,52,46,0.12)] pt-6">
                                 <div className="flex items-end justify-between gap-6">
                                     <dt className="text-sm uppercase tracking-[0.18em] text-[var(--text-muted)]">Published docs</dt>
@@ -236,12 +246,6 @@ export function Home() {
                                 >
                                     Explore all docs
                                     <BookOpen className="h-4 w-4" />
-                                </a>
-                                <a
-                                    href="/docs/getting_started/quick_start"
-                                    className="inline-flex h-12 items-center rounded-full border border-[rgba(57,52,46,0.16)] bg-white/80 px-6 text-sm font-semibold text-[var(--text)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
-                                >
-                                    Start with quick start
                                 </a>
                             </div>
                         </div>

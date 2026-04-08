@@ -1,0 +1,43 @@
+$ErrorActionPreference = "Stop"
+
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$ArchivePath
+)
+
+$TempRoot = Join-Path $env:RUNNER_TEMP "arden-portable-smoke"
+if (Test-Path $TempRoot) {
+    Remove-Item -Recurse -Force $TempRoot
+}
+New-Item -ItemType Directory -Path $TempRoot | Out-Null
+
+Expand-Archive -Path $ArchivePath -DestinationPath $TempRoot -Force
+$BundleDir = Get-ChildItem -Path $TempRoot -Directory | Select-Object -First 1
+if (-not $BundleDir) {
+    throw "Portable bundle directory not found after extraction"
+}
+
+& (Join-Path $BundleDir.FullName "arden.cmd") --version
+
+$WorkDir = Join-Path $TempRoot "work"
+New-Item -ItemType Directory -Path $WorkDir | Out-Null
+$HelloFile = Join-Path $WorkDir "hello.arden"
+@'
+import std.io.*;
+
+function main(): None {
+    println("Hello from portable Arden!");
+    return None;
+}
+'@ | Set-Content -Path $HelloFile -Encoding UTF8
+
+$RunOutput = & (Join-Path $BundleDir.FullName "arden.cmd") run $HelloFile
+$RunOutput | Write-Host
+if (-not ($RunOutput -match "Hello from portable Arden!")) {
+    throw "Portable run output did not contain the expected hello string"
+}
+
+$env:USERPROFILE = Join-Path $TempRoot "profile"
+New-Item -ItemType Directory -Path $env:USERPROFILE -Force | Out-Null
+& (Join-Path $BundleDir.FullName "install.ps1")
+& (Join-Path $env:USERPROFILE "AppData\Local\Arden\bin\arden.cmd") --version
