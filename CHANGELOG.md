@@ -4,7 +4,7 @@ All notable changes to the Arden will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [1.3.6] - Compiler UX, Type/Codegen Correctness, and Project Reliability - 2026-04-08
 
 ### ✨ Added
 
@@ -36,7 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed test-runner output consistency so ignored tests, suite headings, and final summaries now read as one coherent UI instead of a mix of legacy banner styles.
 
 
-## [1.3.6] - Tooling, Performance, and Build Reliability - 2026-03-08
+## [1.3.5] - Tooling, Performance, and Build Reliability - 2026-03-08
 
 ### ✨ Added
 
