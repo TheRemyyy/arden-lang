@@ -910,7 +910,8 @@ impl<'ctx> Codegen<'ctx> {
                         )
                         .unwrap()
                 };
-                let needle = self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
+                let needle =
+                    self.compile_expr_for_concrete_class_payload(&args[0].node, inner_ty)?;
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "set_len")
@@ -3127,7 +3128,8 @@ impl<'ctx> Codegen<'ctx> {
                     Type::List(inner) => &**inner,
                     _ => return Err(CodegenError::new("Expected List type")),
                 };
-                let value = self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
+                let value =
+                    self.compile_expr_for_concrete_class_payload(&args[0].node, inner_ty)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 // Increment length
@@ -3604,7 +3606,8 @@ impl<'ctx> Codegen<'ctx> {
                     Type::List(inner) => &**inner,
                     _ => return Err(CodegenError::new("Expected List type")),
                 };
-                let value = self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
+                let value =
+                    self.compile_expr_for_concrete_class_payload(&args[0].node, inner_ty)?;
                 self.builder.build_store(typed_elem_ptr, value).unwrap();
 
                 let new_length = self

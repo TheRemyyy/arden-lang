@@ -16826,6 +16826,91 @@ fn compile_source_no_check_rejects_assignment_between_unrelated_concrete_classes
 }
 
 #[test]
+fn compile_source_no_check_rejects_list_push_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-list-push-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_list_push_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_list_push_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                xs: List<B> = List<B>();
+                xs.push(A());
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class list push should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_option_some_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-option-some-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_option_some_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_option_some_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                value: Option<B> = Option.Some(A());
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class Option.some payload should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_result_ok_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-result-ok-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_result_ok_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_result_ok_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function main(): Integer {
+                value: Result<B, String> = Result.Ok(A());
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class Result.ok payload should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");

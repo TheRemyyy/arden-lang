@@ -12883,8 +12883,10 @@ impl<'ctx> Codegen<'ctx> {
                                         "Option.some() requires exactly 1 argument",
                                     ));
                                 }
-                                let value =
-                                    self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
+                                let value = self.compile_expr_for_concrete_class_payload(
+                                    &args[0].node,
+                                    inner_ty,
+                                )?;
                                 return self.create_option_some_typed(value, inner_ty);
                             }
                             ("Option__none", Type::Option(inner_ty)) => {
@@ -12912,8 +12914,10 @@ impl<'ctx> Codegen<'ctx> {
                                         "Result.ok() requires exactly 1 argument",
                                     ));
                                 }
-                                let value =
-                                    self.compile_expr_with_expected_type(&args[0].node, ok_ty)?;
+                                let value = self.compile_expr_for_concrete_class_payload(
+                                    &args[0].node,
+                                    ok_ty,
+                                )?;
                                 return self.create_result_ok_typed(value, ok_ty, err_ty);
                             }
                             ("Result__error", Type::Result(ok_ty, err_ty)) => {
@@ -12927,8 +12931,10 @@ impl<'ctx> Codegen<'ctx> {
                                         "Result.error() requires exactly 1 argument",
                                     ));
                                 }
-                                let value =
-                                    self.compile_expr_with_expected_type(&args[0].node, err_ty)?;
+                                let value = self.compile_expr_for_concrete_class_payload(
+                                    &args[0].node,
+                                    err_ty,
+                                )?;
                                 return self.create_result_error_typed(value, ok_ty, err_ty);
                             }
                             _ => {}
@@ -12946,8 +12952,8 @@ impl<'ctx> Codegen<'ctx> {
                                     "Option.some() requires exactly 1 argument",
                                 ));
                             }
-                            let value =
-                                self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
+                            let value = self
+                                .compile_expr_for_concrete_class_payload(&args[0].node, inner_ty)?;
                             return self.create_option_some_typed(value, inner_ty);
                         }
                         ("Option", "none", Type::Option(inner_ty)) => {
@@ -12976,7 +12982,7 @@ impl<'ctx> Codegen<'ctx> {
                                 ));
                             }
                             let value =
-                                self.compile_expr_with_expected_type(&args[0].node, ok_ty)?;
+                                self.compile_expr_for_concrete_class_payload(&args[0].node, ok_ty)?;
                             return self.create_result_ok_typed(value, ok_ty, err_ty);
                         }
                         ("Result", "error", Type::Result(ok_ty, err_ty)) => {
@@ -12990,8 +12996,8 @@ impl<'ctx> Codegen<'ctx> {
                                     "Result.error() requires exactly 1 argument",
                                 ));
                             }
-                            let value =
-                                self.compile_expr_with_expected_type(&args[0].node, err_ty)?;
+                            let value = self
+                                .compile_expr_for_concrete_class_payload(&args[0].node, err_ty)?;
                             return self.create_result_error_typed(value, ok_ty, err_ty);
                         }
                         _ => {}
@@ -13112,6 +13118,17 @@ impl<'ctx> Codegen<'ctx> {
                 .into());
         }
 
+        Ok(value)
+    }
+
+    pub(crate) fn compile_expr_for_concrete_class_payload(
+        &mut self,
+        expr: &Expr,
+        expected_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
+        let value = self.compile_expr_with_expected_type(expr, expected_ty)?;
+        let actual_ty = self.infer_expr_type(expr, &[]);
+        self.reject_unrelated_concrete_class_assignment(expected_ty, &actual_ty)?;
         Ok(value)
     }
 
@@ -15821,8 +15838,10 @@ impl<'ctx> Codegen<'ctx> {
                                 ));
                             }
                             if let Type::Option(inner_ty) = &inferred_expr_ty {
-                                let val =
-                                    self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
+                                let val = self.compile_expr_for_concrete_class_payload(
+                                    &args[0].node,
+                                    inner_ty,
+                                )?;
                                 return self.create_option_some_typed(val, inner_ty);
                             }
                             let arg_ty = self.infer_builtin_argument_type(&args[0].node);
@@ -15849,8 +15868,10 @@ impl<'ctx> Codegen<'ctx> {
                                 ));
                             }
                             if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
-                                let val =
-                                    self.compile_expr_with_expected_type(&args[0].node, ok_ty)?;
+                                let val = self.compile_expr_for_concrete_class_payload(
+                                    &args[0].node,
+                                    ok_ty,
+                                )?;
                                 return self.create_result_ok_typed(val, ok_ty, err_ty);
                             }
                             let arg_ty = self.infer_builtin_argument_type(&args[0].node);
@@ -15865,8 +15886,10 @@ impl<'ctx> Codegen<'ctx> {
                                 ));
                             }
                             if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
-                                let val =
-                                    self.compile_expr_with_expected_type(&args[0].node, err_ty)?;
+                                let val = self.compile_expr_for_concrete_class_payload(
+                                    &args[0].node,
+                                    err_ty,
+                                )?;
                                 return self.create_result_error_typed(val, ok_ty, err_ty);
                             }
                             let arg_ty = self.infer_builtin_argument_type(&args[0].node);
@@ -15885,8 +15908,8 @@ impl<'ctx> Codegen<'ctx> {
                             ));
                         }
                         if let Type::Option(inner_ty) = &inferred_expr_ty {
-                            let val =
-                                self.compile_expr_with_expected_type(&args[0].node, inner_ty)?;
+                            let val = self
+                                .compile_expr_for_concrete_class_payload(&args[0].node, inner_ty)?;
                             return self.create_option_some_typed(val, inner_ty);
                         }
                         let arg_ty = self.infer_builtin_argument_type(&args[0].node);
@@ -15912,7 +15935,8 @@ impl<'ctx> Codegen<'ctx> {
                             ));
                         }
                         if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
-                            let val = self.compile_expr_with_expected_type(&args[0].node, ok_ty)?;
+                            let val =
+                                self.compile_expr_for_concrete_class_payload(&args[0].node, ok_ty)?;
                             return self.create_result_ok_typed(val, ok_ty, err_ty);
                         }
                         let arg_ty = self.infer_builtin_argument_type(&args[0].node);
@@ -15926,8 +15950,8 @@ impl<'ctx> Codegen<'ctx> {
                             ));
                         }
                         if let Type::Result(ok_ty, err_ty) = &inferred_expr_ty {
-                            let val =
-                                self.compile_expr_with_expected_type(&args[0].node, err_ty)?;
+                            let val = self
+                                .compile_expr_for_concrete_class_payload(&args[0].node, err_ty)?;
                             return self.create_result_error_typed(val, ok_ty, err_ty);
                         }
                         let arg_ty = self.infer_builtin_argument_type(&args[0].node);
@@ -19286,7 +19310,9 @@ impl<'ctx> Codegen<'ctx> {
 
                 let mut values = Vec::with_capacity(args.len());
                 for (arg, expected_ty) in args.iter().zip(variant_info.fields.iter()) {
-                    values.push(self.compile_expr_with_expected_type(&arg.node, expected_ty)?);
+                    values.push(
+                        self.compile_expr_for_concrete_class_payload(&arg.node, expected_ty)?,
+                    );
                 }
                 return self.build_enum_value(&enum_name, &variant_info, &values);
             }
