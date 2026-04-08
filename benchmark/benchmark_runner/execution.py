@@ -11,21 +11,24 @@ from .jobs import (
     timed_run,
 )
 from .mutations import (
+    apply_api_surface_cascade_changes,
     apply_incremental_source_change,
     apply_incremental_source_changes,
     apply_mixed_invalidation_changes,
 )
 from .project_small import (
     generate_compile_project_starter_graph,
+    generate_incremental_rebuild_api_surface_cascade,
     generate_incremental_rebuild_large_project_batch,
 )
 from .project_synthetic import generate_compile_project_synthetic_graph
 from .specs import LANGUAGES, select_synthetic_graph_config
 from .system import compute_stats, exe_path
-from .timings import parse_build_timings, summarize_arden_phase_timings
+from .timings import parse_build_timings, run_arden_profile, summarize_arden_phase_timings
 
 INCREMENTAL_KINDS = {
     "incremental",
+    "incremental_api_surface_cascade",
     "incremental_batch",
     "incremental_batch_synthetic_mega_graph",
     "incremental_mixed_synthetic_mega_graph",
@@ -69,7 +72,7 @@ def _finalize_benchmark(spec, lang_data: dict, benchmark_compile_mode: str | Non
     }
 
 
-def run_runtime_benchmark(spec, root: Path, bin_dir: Path, build_env: dict[str, str], opt_level: str, target: str | None, warmup: int, repeats: int) -> dict:
+def run_runtime_benchmark(spec, root: Path, bin_dir: Path, build_env: dict[str, str], opt_level: str, target: str | None, warmup: int, repeats: int, capture_profile: bool = False) -> dict:
     lang_data: dict[str, dict] = {}
     reference_checksum = None
     binaries = {
@@ -81,6 +84,11 @@ def run_runtime_benchmark(spec, root: Path, bin_dir: Path, build_env: dict[str, 
     compile_arden(root, spec.name, binaries["arden"], build_env, opt_level, target)
     compile_rust(root, spec.name, binaries["rust"])
     compile_go(root, spec.name, binaries["go"])
+
+    arden_profile_output: str = ""
+    if capture_profile:
+        print(f"  [profile] arden {spec.name}...", flush=True)
+        arden_profile_output = run_arden_profile(root, spec.name, build_env)
 
     for lang in LANGUAGES:
         print(f"Running {lang} runtime for {spec.name}...", flush=True)
@@ -99,7 +107,10 @@ def run_runtime_benchmark(spec, root: Path, bin_dir: Path, build_env: dict[str, 
             reference_checksum = checksum
         elif checksum != reference_checksum:
             raise RuntimeError(f"Checksum mismatch for {spec.name}: {lang}={checksum}, expected={reference_checksum}")
-        lang_data[lang] = {"checksum": checksum, "samples_s": samples, "stats": compute_stats(samples), "metric": "runtime"}
+        entry: dict = {"checksum": checksum, "samples_s": samples, "stats": compute_stats(samples), "metric": "runtime"}
+        if lang == "arden" and arden_profile_output:
+            entry["profile_output"] = arden_profile_output
+        lang_data[lang] = entry
 
     return _finalize_benchmark(spec, lang_data, None, None, None, None)
 
@@ -275,13 +286,30 @@ def run_incremental_mixed_benchmark(spec, root: Path, build_env: dict[str, str],
     )
 
 
-def run_selected_benchmarks(selected: list, root: Path, bin_dir: Path, build_env: dict[str, str], opt_level: str, target: str | None, compile_mode: str, warmup: int, repeats: int, arden_timings: bool) -> list[dict]:
+def run_api_surface_cascade_benchmark(spec, root: Path, build_env: dict[str, str], arden_timings: bool, warmup: int, repeats: int) -> dict:
+    return _run_two_phase_incremental(
+        spec,
+        root,
+        build_env,
+        arden_timings,
+        warmup,
+        repeats,
+        lambda: generate_incremental_rebuild_api_surface_cascade(root, spec.name),
+        lambda lang, job, cycle: apply_api_surface_cascade_changes(lang, job, f"{cycle}"),
+        "cold_then_api_surface_cascade",
+        "cold full build mean (s)",
+        "rebuild after API-surface cascade mean (s)",
+        "rebuild/cold",
+    )
+
+
+def run_selected_benchmarks(selected: list, root: Path, bin_dir: Path, build_env: dict[str, str], opt_level: str, target: str | None, compile_mode: str, warmup: int, repeats: int, arden_timings: bool, capture_profile: bool = False) -> list[dict]:
     results: list[dict] = []
     total = len(selected)
     for index, spec in enumerate(selected, start=1):
         print(f"\n=== [{index}/{total}] {spec.name} ===", flush=True)
         if spec.kind == "runtime":
-            results.append(run_runtime_benchmark(spec, root, bin_dir, build_env, opt_level, target, warmup, repeats))
+            results.append(run_runtime_benchmark(spec, root, bin_dir, build_env, opt_level, target, warmup, repeats, capture_profile))
             continue
         if spec.kind == "compile":
             results.append(run_compile_benchmark(spec, root, build_env, arden_timings, compile_mode, warmup, repeats))
@@ -294,6 +322,9 @@ def run_selected_benchmarks(selected: list, root: Path, bin_dir: Path, build_env
             continue
         if spec.kind in {"incremental_mixed_synthetic_mega_graph", "incremental_mixed_extreme_graph"}:
             results.append(run_incremental_mixed_benchmark(spec, root, build_env, arden_timings, warmup, repeats))
+            continue
+        if spec.kind == "incremental_api_surface_cascade":
+            results.append(run_api_surface_cascade_benchmark(spec, root, build_env, arden_timings, warmup, repeats))
             continue
         raise RuntimeError(f"Unsupported benchmark kind: {spec.kind}")
     return results

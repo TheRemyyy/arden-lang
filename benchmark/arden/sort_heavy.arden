@@ -1,0 +1,35 @@
+import std.io.*;
+
+function main(): None {
+    n: Integer = 20000;
+
+    a: List<Integer> = List<Integer>();
+    mut p: Integer = 0;
+    while (p < n) {
+        a.push(((p * 1664525 + 1013904223) % 2147483647) % 100000);
+        p = p + 1;
+    }
+
+    // Insertion sort — same algorithm as all three language variants
+    mut i: Integer = 1;
+    while (i < n) {
+        key: Integer = a.get(i);
+        mut j: Integer = i - 1;
+        while (j >= 0 && a.get(j) > key) {
+            a.set(j + 1, a.get(j));
+            j = j - 1;
+        }
+        a.set(j + 1, key);
+        i = i + 1;
+    }
+
+    mut checksum: Integer = 0;
+    mut q: Integer = 0;
+    while (q < n) {
+        checksum = checksum + a.get(q) * (q + 1);
+        q = q + 1;
+    }
+
+    println(to_string(checksum));
+    return None;
+}

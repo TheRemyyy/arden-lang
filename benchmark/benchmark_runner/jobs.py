@@ -112,6 +112,9 @@ def make_compile_jobs(
             "mutate_sources": compile_projects["arden"].get("mutate_sources", []),
             "mixed_leaf_sources": compile_projects["arden"].get("mixed_leaf_sources", []),
             "mixed_groups": compile_projects["arden"].get("mixed_groups", []),
+            "api_core_file": compile_projects["arden"].get("api_core_file"),
+            "api_part_files": compile_projects["arden"].get("api_part_files", []),
+            "api_main_file": compile_projects["arden"].get("api_main_file"),
         },
         "rust": {
             "cmd": [
@@ -131,6 +134,9 @@ def make_compile_jobs(
             "mutate_sources": compile_projects["rust"].get("mutate_sources", []),
             "mixed_leaf_sources": compile_projects["rust"].get("mixed_leaf_sources", []),
             "mixed_groups": compile_projects["rust"].get("mixed_groups", []),
+            "api_core_file": compile_projects["rust"].get("api_core_file"),
+            "api_part_files": compile_projects["rust"].get("api_part_files", []),
+            "api_main_file": compile_projects["rust"].get("api_main_file"),
         },
         "go": {
             "cmd": ["go", "build", "-trimpath", "-o", str(compile_projects["go"]["binary"]), "."],
@@ -145,6 +151,9 @@ def make_compile_jobs(
             "mutate_sources": compile_projects["go"].get("mutate_sources", []),
             "mixed_leaf_sources": compile_projects["go"].get("mixed_leaf_sources", []),
             "mixed_groups": compile_projects["go"].get("mixed_groups", []),
+            "api_core_file": compile_projects["go"].get("api_core_file"),
+            "api_part_files": compile_projects["go"].get("api_part_files", []),
+            "api_main_file": compile_projects["go"].get("api_main_file"),
         },
     }
 

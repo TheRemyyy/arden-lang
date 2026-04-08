@@ -189,3 +189,205 @@ def generate_incremental_rebuild_large_project_batch(
         funcs_per_file=320,
         mutate_count=10,
     )
+
+
+def generate_incremental_rebuild_api_surface_cascade(
+    root: Path,
+    bench_name: str,
+    file_count: int = 10,
+    funcs_per_file: int = 180,
+) -> dict[str, dict[str, Path]]:
+    """
+    Generate a project with a shared core function (`core_blend`) that has an
+    API-mutation hook.  All *file_count* part files call `core_blend`, so
+    changing its signature cascades a re-typecheck to every dependent.
+
+    Returned job dicts include the extra keys required by
+    `apply_api_surface_cascade_changes`:
+      - "api_core_file"     – the shared core file to mutate
+      - "api_part_files"    – list of part files whose calls must be updated
+      - "api_main_file"     – the main entry file (arden / rust / go)
+    """
+    generated_root = root / "benchmark" / "generated" / bench_name
+    reset_generated_root(generated_root)
+
+    # ── Arden ────────────────────────────────────────────────────────────────
+    arden_dir = generated_root / "arden"
+    arden_src = arden_dir / "src"
+    arden_src.mkdir(parents=True, exist_ok=True)
+    arden_files = ["src/core.arden"]
+    arden_core = arden_src / "core.arden"
+    arden_core.write_text(
+        "\n".join([
+            "import std.io.*;",
+            "",
+            "function core_mix(x: Integer, k: Integer): Integer {",
+            "    return x + k;",
+            "}",
+            "",
+            "// API_BLEND_SIG",
+            "function core_blend(x: Integer, k: Integer): Integer {",
+            "    return x * k + k;",
+            "}",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+
+    arden_part_files: list[Path] = []
+    for index in range(file_count):
+        part_name = f"part_{index:02d}"
+        part_file = arden_src / f"{part_name}.arden"
+        arden_files.append(f"src/{part_name}.arden")
+        arden_part_files.append(part_file)
+        lines = ["import std.io.*;", ""]
+        for func_index in range(funcs_per_file):
+            lines.append(
+                f"function {part_name}_f{func_index:03d}(x: Integer): Integer {{ return core_mix(x, {index + func_index + 1}); }}"
+            )
+        lines.extend([
+            "",
+            f"// API_BLEND_CALL_{part_name}",
+            f"function {part_name}_blend_step(x: Integer): Integer {{ return core_blend(x, {index + 1}); }}",
+            "",
+            f"function {part_name}_apply(x: Integer): Integer {{",
+            "    mut y: Integer = x;",
+        ])
+        for func_index in range(funcs_per_file):
+            lines.append(f"    y = {part_name}_f{func_index:03d}(y);")
+        lines.append(f"    y = {part_name}_blend_step(y);")
+        lines.extend(["    return y;", "}"])
+        part_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    arden_main = arden_src / "main.arden"
+    main_lines = ["import std.io.*;", "", "function main(): None {", "    mut acc: Integer = 0;"]
+    for index in range(file_count):
+        main_lines.append(f"    acc = part_{index:02d}_apply(acc);")
+    main_lines.extend(['    println(to_string(acc));', "    return None;", "}"])
+    arden_main.write_text("\n".join(main_lines) + "\n", encoding="utf-8")
+    arden_files.append("src/main.arden")
+
+    toml_lines = [
+        f'name = "{bench_name}"',
+        'version = "0.1.0"',
+        'entry = "src/main.arden"',
+        "files = [",
+    ]
+    toml_lines.extend([f'    "{value}",' for value in arden_files])
+    toml_lines.extend(["]", f'output = "{bench_name}"', 'opt_level = "3"'])
+    (arden_dir / "arden.toml").write_text("\n".join(toml_lines) + "\n", encoding="utf-8")
+
+    # ── Rust ──────────────────────────────────────────────────────────────────
+    rust_dir = generated_root / "rust"
+    rust_dir.mkdir(parents=True, exist_ok=True)
+    rust_core = rust_dir / "core.rs"
+    rust_core.write_text(
+        "\n".join([
+            "// API_BLEND_SIG",
+            "pub fn mix(x: i64, k: i64) -> i64 { x + k }",
+            "pub fn blend(x: i64, k: i64) -> i64 { x * k + k }",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+
+    rust_part_files: list[Path] = []
+    rust_main = ["mod core;"]
+    for index in range(file_count):
+        rust_main.append(f"mod part_{index:02d};")
+    rust_main.extend(["", "fn main() {", "    let mut acc: i64 = 0;"])
+    for index in range(file_count):
+        rust_main.append(f"    acc = part_{index:02d}::apply(acc);")
+    rust_main.extend(['    println!("{acc}");', "}"])
+    (rust_dir / "main.rs").write_text("\n".join(rust_main) + "\n", encoding="utf-8")
+
+    for index in range(file_count):
+        part_name = f"part_{index:02d}"
+        part_file = rust_dir / f"{part_name}.rs"
+        rust_part_files.append(part_file)
+        lines = [
+            f"// API_BLEND_CALL_{part_name}",
+            f"fn blend_step_{index}(x: i64) -> i64 {{ crate::core::blend(x, {index + 1}) }}",
+            "",
+            "pub fn apply(x: i64) -> i64 {",
+            "    let mut y = x;",
+        ]
+        for func_index in range(funcs_per_file):
+            lines.append(f"    y = crate::core::mix(y, {index + func_index + 1});")
+        lines.append(f"    y = blend_step_{index}(y);")
+        lines.extend(["    y", "}"])
+        part_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # ── Go ────────────────────────────────────────────────────────────────────
+    go_dir = generated_root / "go"
+    go_dir.mkdir(parents=True, exist_ok=True)
+    (go_dir / "go.mod").write_text("module apicascade\n\ngo 1.22\n", encoding="utf-8")
+    go_core = go_dir / "core.go"
+    go_core.write_text(
+        "\n".join([
+            "package main",
+            "",
+            "// API_BLEND_SIG",
+            "func coreMix(x int64, k int64) int64 { return x + k }",
+            "func coreBlend(x int64, k int64) int64 { return x*k + k }",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+
+    go_part_files: list[Path] = []
+    go_main = ["package main", "", 'import "fmt"', "", "func main() {", "    var acc int64 = 0"]
+    for index in range(file_count):
+        go_main.append(f"    acc = part_{index:02d}_apply(acc)")
+    go_main.extend(["    fmt.Println(acc)", "}"])
+    (go_dir / "main.go").write_text("\n".join(go_main) + "\n", encoding="utf-8")
+
+    for index in range(file_count):
+        part_name = f"part_{index:02d}"
+        part_file = go_dir / f"unit_{index:04d}.go"
+        go_part_files.append(part_file)
+        lines = [
+            "package main",
+            "",
+            f"// API_BLEND_CALL_{part_name}",
+            f"func {part_name}_blend(x int64) int64 {{ return coreBlend(x, {index + 1}) }}",
+            "",
+            f"func {part_name}_apply(x int64) int64 {{",
+            "    y := x",
+        ]
+        for func_index in range(funcs_per_file):
+            lines.append(f"    y = coreMix(y, {index + func_index + 1})")
+        lines.append(f"    y = {part_name}_blend(y)")
+        lines.extend(["    return y", "}"])
+        part_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    return {
+        "arden": {
+            "project_dir": arden_dir,
+            "binary": arden_dir / bench_name,
+            "mutate_source": arden_part_files[-1],
+            "mutate_sources": [],
+            "api_core_file": str(arden_core),
+            "api_part_files": [str(f) for f in arden_part_files],
+            "api_main_file": str(arden_main),
+        },
+        "rust": {
+            "project_dir": rust_dir,
+            "binary": rust_dir / f"{bench_name}_rust",
+            "mutate_source": rust_part_files[-1],
+            "mutate_sources": [],
+            "api_core_file": str(rust_core),
+            "api_part_files": [str(f) for f in rust_part_files],
+            "api_main_file": str(rust_dir / "main.rs"),
+        },
+        "go": {
+            "project_dir": go_dir,
+            "binary": go_dir / f"{bench_name}_go",
+            "mutate_source": go_part_files[-1],
+            "mutate_sources": [],
+            "api_core_file": str(go_core),
+            "api_part_files": [str(f) for f in go_part_files],
+            "api_main_file": str(go_dir / "main.go"),
+            "go_cache_dir": go_dir / ".gocache",
+        },
+    }

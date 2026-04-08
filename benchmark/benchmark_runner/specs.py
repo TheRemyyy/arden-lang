@@ -32,6 +32,14 @@ BENCHMARKS = [
         default_enabled=False,
     ),
     BenchmarkSpec(
+        "fibonacci_recursive",
+        "Naive recursive Fibonacci (fib(38)) — stresses function-call overhead and branch prediction",
+    ),
+    BenchmarkSpec(
+        "sort_heavy",
+        "Insertion sort on 20,000 pseudo-random integers — stresses memory access and loop overhead",
+    ),
+    BenchmarkSpec(
         "compile_project_starter_graph",
         "Compile stress test on a generated starter project graph per language",
         kind="compile",
@@ -57,9 +65,14 @@ BENCHMARKS = [
     ),
     BenchmarkSpec(
         "incremental_rebuild_shared_core",
-        "Compile a starter project graph with a shared core dependency, mutate the shared core, then rebuild",
+        "Compile a starter project graph with a shared core dependency, mutate the shared core body (no API change), then rebuild",
         kind="incremental",
         aliases=("incremental_rebuild_central_file",),
+    ),
+    BenchmarkSpec(
+        "incremental_rebuild_api_surface_cascade",
+        "Compile a starter project graph, then rebuild after an API-surface change to the shared core cascades to all dependent files",
+        kind="incremental_api_surface_cascade",
     ),
     BenchmarkSpec(
         "incremental_rebuild_large_project_batch",
