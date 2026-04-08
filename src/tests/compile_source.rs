@@ -17185,6 +17185,42 @@ fn compile_source_no_check_rejects_async_tail_between_unrelated_concrete_classes
 }
 
 #[test]
+fn compile_source_no_check_rejects_match_arm_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-match-arm-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_match_arm_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_match_arm_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            enum Choice {
+                Left
+                Right
+            }
+
+            function main(): Integer {
+                value: B = match (Choice.Left) {
+                    Choice.Left => A(),
+                    Choice.Right => B(),
+                };
+                return 0;
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class match arm should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");

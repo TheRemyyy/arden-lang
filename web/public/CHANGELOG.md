@@ -32,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed unchecked return boundaries from accepting unrelated concrete classes:
   - codegen now validates the inferred result type before emitting `return` instructions for ordinary function returns and async block tail returns
   - this fixes invalid unchecked code such as `function make(): B { return A(); }` and `task: Task<B> = async { A() };`, which previously compiled even though `A` and `B` were unrelated classes
+- Fixed unchecked typed `match` expressions from accepting unrelated concrete classes across arms:
+  - codegen now validates the inferred tail expression of each typed match arm before merging the arm result into the final expression value
+  - this fixes invalid unchecked code such as `value: B = match (Choice.Left) { Choice.Left => A(), Choice.Right => B(), };`, which previously compiled even though `A` and `B` were unrelated classes
 - Fixed unchecked extern function values bypassing the first-class-value ban through adapter signatures:
   - codegen now rejects extern named function values before any signature-adapter lowering instead of only rejecting the exact-signature closure path
   - this fixes invalid unchecked builds such as `f: (String) -> Float = puts`, which previously compiled by wrapping the extern function in a return-adapter closure even though extern functions are not supported as first-class values

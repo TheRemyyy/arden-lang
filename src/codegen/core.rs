@@ -14228,7 +14228,7 @@ impl<'ctx> Codegen<'ctx> {
         false
     }
 
-    fn reject_unrelated_concrete_class_assignment(
+    pub(crate) fn reject_unrelated_concrete_class_assignment(
         &self,
         expected: &Type,
         actual: &Type,

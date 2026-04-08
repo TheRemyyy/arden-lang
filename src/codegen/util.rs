@@ -1895,7 +1895,14 @@ impl<'ctx> Codegen<'ctx> {
                             .cloned()
                             .or_else(|| self.builtin_argument_type_hint(&e.node));
                         arm_result = if let Some(expected_ty) = arm_expected_ty.as_ref() {
-                            self.compile_expr_with_expected_type(&e.node, expected_ty)?
+                            let inferred_expr_ty = self.infer_expr_type(&e.node, &[]);
+                            let value =
+                                self.compile_expr_with_expected_type(&e.node, expected_ty)?;
+                            self.reject_unrelated_concrete_class_assignment(
+                                expected_ty,
+                                &inferred_expr_ty,
+                            )?;
+                            value
                         } else {
                             self.compile_expr(&e.node)?
                         };
