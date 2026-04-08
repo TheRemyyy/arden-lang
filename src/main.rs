@@ -66,7 +66,7 @@ struct ObjectCodegenShard {
 #[command(name = "arden")]
 #[command(bin_name = "arden")]
 #[command(author = "TheRemyyy")]
-#[command(version = "1.3.5")]
+#[command(version = "1.3.6")]
 #[command(about = "Arden and project CLI")]
 #[command(long_about = None)]
 struct Cli {
