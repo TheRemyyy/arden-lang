@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Refined CLI output for `build`, `run`, `fmt`, `fix`, and `check` with consistent project-style status lines, build durations, and web-aligned terminal colors instead of the previous mix of ad-hoc cyan/green messages.
 - Switched CLI build and timing summaries to seconds with enough precision for hot-cache runs, so near-instant builds no longer look absurdly tiny or rounded inconsistently in raw milliseconds.
 - Polished developer-facing terminal UX again by aligning `arden lsp` lifecycle logs and the generated `arden test` runner output with the newer neutral CLI presentation instead of the older plain-text banners.
+- Simplified `arden test` runtime output further by dropping runner banners and suite/summary noise in favor of plain per-test `ok` and `skip` lines with CLI-side coloring.
 - Shortened and clarified docs around function/test returns and assertion helpers so examples match actual language behavior without over-explaining every small variant.
 
 ### 🐛 Fixed

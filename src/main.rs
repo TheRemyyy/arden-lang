@@ -332,6 +332,20 @@ fn cli_elapsed(duration: Duration) -> String {
     format!("{:.6} s", duration.as_secs_f64())
 }
 
+fn print_test_runner_output(stdout: &str) {
+    for line in stdout.lines() {
+        if let Some(name) = line.strip_prefix("ok    ") {
+            println!("{} {}", cli_accent("ok"), cli_soft(name));
+        } else if let Some(name) = line.strip_prefix("skip  ") {
+            println!("{} {}", cli_tertiary("skip"), cli_soft(name));
+        } else if let Some(reason) = line.strip_prefix("      ") {
+            println!("      {}", cli_tertiary(reason));
+        } else {
+            println!("{line}");
+        }
+    }
+}
+
 fn print_cli_step(message: impl AsRef<str>) {
     println!("{} {}", cli_accent("›"), cli_accent(message.as_ref()));
 }
@@ -5187,14 +5201,13 @@ fn compile_and_run_test(source_path: &Path, exe_path: &Path) -> Result<(), Strin
 fn run_test_executable(exe_path: &Path) -> Result<(), String> {
     use std::process::Command;
 
-    println!("\n{}", cli_accent("Running tests"));
     println!();
 
     let output = Command::new(exe_path)
         .output()
         .map_err(|e| format!("Failed to run test runner: {}", e))?;
 
-    print!("{}", String::from_utf8_lossy(&output.stdout));
+    print_test_runner_output(&String::from_utf8_lossy(&output.stdout));
     eprint!("{}", String::from_utf8_lossy(&output.stderr));
 
     if !output.status.success() {
