@@ -16979,6 +16979,73 @@ fn compile_source_no_check_rejects_enum_variant_payload_between_unrelated_concre
 }
 
 #[test]
+fn compile_source_no_check_rejects_function_argument_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-fn-arg-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_fn_arg_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_fn_arg_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            function take(value: B): Integer {
+                return 0;
+            }
+
+            function main(): Integer {
+                return take(A());
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class function argument should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_rejects_method_argument_between_unrelated_concrete_classes() {
+    let temp_root = make_temp_project_root("no-check-method-arg-unrelated-concrete-classes");
+    let source_path = temp_root.join("no_check_method_arg_unrelated_concrete_classes.arden");
+    let output_path = temp_root.join("no_check_method_arg_unrelated_concrete_classes");
+    let source = r#"
+            class A {
+                constructor() {}
+            }
+
+            class B {
+                constructor() {}
+            }
+
+            class Holder {
+                constructor() {}
+
+                function take(value: B): Integer {
+                    return 0;
+                }
+            }
+
+            function main(): Integer {
+                h: Holder = Holder();
+                return h.take(A());
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    let err = compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect_err("unrelated concrete class method argument should fail in codegen");
+    assert!(err.contains("Type mismatch: expected B, got A"), "{err}");
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_runs_builtin_to_float_function_value_runtime() {
     let temp_root = make_temp_project_root("builtin-to-float-fn-value-runtime");
     let source_path = temp_root.join("builtin_to_float_fn_value_runtime.arden");

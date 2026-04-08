@@ -16017,8 +16017,9 @@ impl<'ctx> Codegen<'ctx> {
                         .into()];
                     if let Type::Function(params, _) = &func_ty {
                         for (arg, param_ty) in args.iter().zip(params.iter()) {
-                            compiled_args
-                                .push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+                            compiled_args.push(
+                                self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?,
+                            );
                         }
                     } else {
                         for arg in args {
@@ -16052,9 +16053,9 @@ impl<'ctx> Codegen<'ctx> {
                             .into()];
                         if let Type::Function(params, _) = &func_ty {
                             for (arg, param_ty) in args.iter().zip(params.iter()) {
-                                compiled_args.push(
-                                    self.compile_expr_with_expected_type(&arg.node, param_ty)?,
-                                );
+                                compiled_args.push(self.compile_expr_for_concrete_class_payload(
+                                    &arg.node, param_ty,
+                                )?);
                             }
                         } else {
                             for arg in args {
@@ -16128,8 +16129,9 @@ impl<'ctx> Codegen<'ctx> {
                         .into()];
                     if let Type::Function(params, _) = &func_ty {
                         for (arg, param_ty) in args.iter().zip(params.iter()) {
-                            compiled_args
-                                .push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+                            compiled_args.push(
+                                self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?,
+                            );
                         }
                     } else {
                         for arg in args {
@@ -16163,9 +16165,9 @@ impl<'ctx> Codegen<'ctx> {
                             .into()];
                         if let Type::Function(params, _) = &func_ty {
                             for (arg, param_ty) in args.iter().zip(params.iter()) {
-                                compiled_args.push(
-                                    self.compile_expr_with_expected_type(&arg.node, param_ty)?,
-                                );
+                                compiled_args.push(self.compile_expr_for_concrete_class_payload(
+                                    &arg.node, param_ty,
+                                )?);
                             }
                         } else {
                             for arg in args {
@@ -16395,7 +16397,8 @@ impl<'ctx> Codegen<'ctx> {
 
                 let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
                 for (arg, param_ty) in args.iter().zip(param_types.iter()) {
-                    compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+                    compiled_args
+                        .push(self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?);
                 }
 
                 let args_meta: Vec<BasicMetadataValueEnum> =
@@ -16473,8 +16476,9 @@ impl<'ctx> Codegen<'ctx> {
 
                         let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
                         for (arg, param_ty) in args.iter().zip(param_types.iter()) {
-                            compiled_args
-                                .push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+                            compiled_args.push(
+                                self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?,
+                            );
                         }
 
                         let args_meta: Vec<BasicMetadataValueEnum> =
@@ -16550,7 +16554,8 @@ impl<'ctx> Codegen<'ctx> {
                 return Err(Self::function_call_arity_error(&callee_ty, args.len()));
             }
             for (arg, param_ty) in args.iter().zip(param_types.iter()) {
-                compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+                compiled_args
+                    .push(self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?);
             }
             if is_variadic_extern_call {
                 for arg in args.iter().skip(param_types.len()) {
@@ -16887,7 +16892,8 @@ impl<'ctx> Codegen<'ctx> {
                 ));
             }
             for (arg, param_ty) in args.iter().zip(param_types.iter()) {
-                compiled_args.push(self.compile_expr_with_expected_type(&arg.node, param_ty)?);
+                compiled_args
+                    .push(self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?);
             }
         } else {
             let llvm_param_types = func.get_type().get_param_types();
