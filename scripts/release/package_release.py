@@ -159,6 +159,14 @@ if [[ -z "${SDKROOT:-}" ]] && command -v xcrun >/dev/null 2>&1; then
     export SDKROOT
   fi
 fi
+if [[ -z "${SDKROOT:-}" || ! -d "${SDKROOT}" ]]; then
+  if command -v xcode-select >/dev/null 2>&1; then
+    xcode-select --install >/dev/null 2>&1 || true
+  fi
+  printf '%s\n' 'error: macOS SDK not found. Arden can ship LLVM/lld, but Apple SDK files must come from Command Line Tools or Xcode.' >&2
+  printf '%s\n' 'Run `xcode-select --install`, then retry.' >&2
+  exit 1
+fi
 """
     return f"""#!/usr/bin/env bash
 set -euo pipefail
@@ -198,6 +206,14 @@ if [[ -z "\\${SDKROOT:-}" ]] && command -v xcrun >/dev/null 2>&1; then
   if [[ -n "\\${SDKROOT}" ]]; then
     export SDKROOT
   fi
+fi
+if [[ -z "\\${SDKROOT:-}" || ! -d "\\${SDKROOT}" ]]; then
+  if command -v xcode-select >/dev/null 2>&1; then
+    xcode-select --install >/dev/null 2>&1 || true
+  fi
+  printf '%s\n' 'error: macOS SDK not found. Arden can ship LLVM/lld, but Apple SDK files must come from Command Line Tools or Xcode.' >&2
+  printf '%s\n' 'Run `xcode-select --install`, then retry.' >&2
+  exit 1
 fi
 """
     return f"""#!/usr/bin/env bash
@@ -299,8 +315,8 @@ def build_readme(platform_name: str, asset_name: str) -> str:
             "- Linux bundles are designed so Arden can run directly from the extracted folder."
         ),
         "macos": (
-            "- macOS bundles include Arden, LLVM, and lld, but still rely on Apple Command Line Tools/Xcode-provided SDK files.\n"
-            "- The launcher auto-detects `SDKROOT` with `xcrun`, so normal machines with Apple developer tools installed should work after extraction."
+            "- macOS bundles include Arden, LLVM, and lld, but Apple SDK files still come from Command Line Tools or Xcode.\n"
+            "- On machines missing the Apple SDK, the launcher now triggers the native `xcode-select --install` prompt and exits with a clear instruction."
         ),
     }[platform_name]
     return f"""Arden portable bundle
