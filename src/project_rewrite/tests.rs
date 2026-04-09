@@ -57,6 +57,7 @@ fn fix_module_local_expr(
     imported_modules: &HashMap<String, (String, String)>,
     global_interface_map: &HashMap<String, String>,
 ) -> Expr {
+    let class_symbol_names = super::collect_global_class_symbols(global_class_map, entry_namespace);
     super::fix_module_local_expr(
         expr,
         super::ModuleRewriteContext {
@@ -64,6 +65,7 @@ fn fix_module_local_expr(
             call_ctx: super::CallRewriteContext {
                 local_functions,
                 local_modules,
+                class_symbol_names: &class_symbol_names,
                 imported_map: &HashMap::new(),
                 global_function_map: &HashMap::new(),
                 global_module_map: &HashMap::new(),

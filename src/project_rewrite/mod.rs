@@ -206,6 +206,7 @@ struct ResolvedRewriteContext<'a> {
     imported_modules: &'a ImportedMap,
     global_function_map: &'a HashMap<String, String>,
     global_class_map: &'a HashMap<String, String>,
+    global_class_symbols: &'a HashSet<String>,
     global_interface_map: &'a HashMap<String, String>,
     global_enum_map: &'a HashMap<String, String>,
     global_module_map: &'a HashMap<String, String>,
@@ -215,6 +216,7 @@ struct ResolvedRewriteContext<'a> {
 struct CallRewriteContext<'a> {
     local_functions: &'a HashSet<String>,
     local_modules: &'a HashSet<String>,
+    class_symbol_names: &'a HashSet<String>,
     type_ctx: RewriteTypeContext<'a>,
     imported_map: &'a ImportedMap,
     global_function_map: &'a HashMap<String, String>,
@@ -250,6 +252,7 @@ impl<'a> ResolvedRewriteContext<'a> {
         CallRewriteContext {
             local_functions,
             local_modules,
+            class_symbol_names: self.global_class_symbols,
             type_ctx: RewriteTypeContext {
                 current_namespace: self.current_namespace,
                 local_classes,
@@ -283,6 +286,16 @@ impl<'a> CallRewriteContext<'a> {
 
 fn alias_qualified_symbol_name(alias: &str, symbol_name: &str) -> String {
     format!("{}.{}", alias, symbol_name.replace("__", "."))
+}
+
+fn collect_global_class_symbols(
+    global_class_map: &HashMap<String, String>,
+    entry_namespace: &str,
+) -> HashSet<String> {
+    global_class_map
+        .iter()
+        .map(|(class_name, owner_ns)| mangle_project_symbol(owner_ns, entry_namespace, class_name))
+        .collect()
 }
 
 fn resolve_exact_imported_symbol_path(
@@ -1141,6 +1154,7 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
     let global_function_map = ctx.global_function_map;
     let namespace_classes = ctx.namespace_classes;
     let global_class_map = ctx.global_class_map;
+    let global_class_symbols = collect_global_class_symbols(global_class_map, entry_namespace);
     let namespace_interfaces = ctx.namespace_interfaces;
     let global_interface_map = ctx.global_interface_map;
     let namespace_enums = ctx.namespace_enums;
@@ -1206,6 +1220,7 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
         imported_modules: &imported_modules,
         global_function_map,
         global_class_map,
+        global_class_symbols: &global_class_symbols,
         global_interface_map,
         global_enum_map,
         global_module_map,
@@ -1434,6 +1449,7 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                             imported_modules: &module_imported_modules,
                             global_function_map,
                             global_class_map,
+                            global_class_symbols: &global_class_symbols,
                             global_interface_map,
                             global_enum_map,
                             global_module_map,
@@ -2964,6 +2980,7 @@ fn rewrite_nested_module_decl_for_project(
         &mut module_imported_enums,
         &mut module_imported_modules,
     );
+    let global_class_symbols = collect_global_class_symbols(global_class_map, entry_namespace);
     let resolved_ctx = ResolvedRewriteContext {
         current_namespace,
         entry_namespace,
@@ -2974,6 +2991,7 @@ fn rewrite_nested_module_decl_for_project(
         imported_modules: &module_imported_modules,
         global_function_map,
         global_class_map,
+        global_class_symbols: &global_class_symbols,
         global_interface_map,
         global_enum_map,
         global_module_map,
@@ -5629,6 +5647,7 @@ fn rewrite_expr_calls_for_project(
     let imported_enums = ctx.type_ctx.imported_enums;
     let global_enum_map = ctx.type_ctx.global_enum_map;
     let local_modules = ctx.local_modules;
+    let class_symbol_names = ctx.class_symbol_names;
     let imported_modules = ctx.type_ctx.imported_modules;
     let global_module_map = ctx.global_module_map;
     let rewrite_type_for_project_with_interfaces =
@@ -6448,14 +6467,7 @@ fn rewrite_expr_calls_for_project(
                 other => self::rewrite_expr_calls_for_project(other, ctx, scopes),
             };
             if let Expr::Ident(name) = &rewritten_callee {
-                let is_class_symbol = local_classes.iter().any(|class_name| {
-                    mangle_project_symbol(current_namespace, entry_namespace, class_name) == *name
-                }) || global_class_map.iter().any(
-                    |(class_name, owner_ns)| {
-                        mangle_project_symbol(owner_ns, entry_namespace, class_name) == *name
-                    },
-                );
-                if is_class_symbol {
+                if class_symbol_names.contains(name) {
                     let rewritten_type_args = type_args
                         .iter()
                         .map(|ty| {
