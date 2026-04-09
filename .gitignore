@@ -24,8 +24,15 @@ benchmark/bin/matrix_mul_heavy_arden
 benchmark/bin/matrix_mul_heavy_c
 benchmark/bin/matrix_mul_heavy_rust
 benchmark/bin/matrix_mul_heavy_go
+benchmark/bin/fibonacci_recursive_arden
+benchmark/bin/fibonacci_recursive_rust
+benchmark/bin/fibonacci_recursive_go
+benchmark/bin/sort_heavy_arden
+benchmark/bin/sort_heavy_rust
+benchmark/bin/sort_heavy_go
 benchmark/results/latest.json
 benchmark/results/latest.md
+benchmark/results/latest.csv
 benchmark/generated/
 benchmark/__pycache__/
 benchmark/benchmark_runner/__pycache__/
