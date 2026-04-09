@@ -1,6 +1,21 @@
 use super::*;
 
 impl TypeChecker {
+    fn register_function_leaf_name(&mut self, key: &str) {
+        let leaf_name = key.rsplit("__").next().unwrap_or(key);
+        match self.function_leaf_names.get_mut(leaf_name) {
+            Some(existing) => {
+                if existing.as_deref() != Some(key) {
+                    *existing = None;
+                }
+            }
+            None => {
+                self.function_leaf_names
+                    .insert(leaf_name.to_string(), Some(key.to_string()));
+            }
+        }
+    }
+
     pub(crate) fn collect_declarations(&mut self, program: &Program) {
         self.predeclare_nominal_types(program);
         for decl in &program.declarations {
@@ -444,6 +459,7 @@ impl TypeChecker {
                 span,
             },
         );
+        self.register_function_leaf_name(key);
     }
 
     pub(crate) fn collect_module_function_signatures(&mut self, module: &ModuleDecl, prefix: &str) {

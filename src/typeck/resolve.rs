@@ -263,21 +263,9 @@ impl TypeChecker {
             name
         };
 
-        let mut matches = self
-            .functions
-            .keys()
-            .filter(|candidate| {
-                *candidate == suffix || candidate.ends_with(&format!("__{}", suffix))
-            })
-            .map(|candidate| candidate.as_str())
-            .collect::<Vec<_>>();
-        matches.sort_unstable();
-        matches.dedup();
-        if matches.len() == 1 {
-            Some(matches[0])
-        } else {
-            None
-        }
+        self.function_leaf_names
+            .get(suffix)
+            .and_then(|resolved| resolved.as_deref())
     }
 
     pub(crate) fn module_scoped_type_name(&self, name: &str) -> Option<String> {

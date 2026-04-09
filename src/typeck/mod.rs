@@ -286,6 +286,8 @@ pub struct TypeChecker {
     current_scope: usize,
     /// Function signatures
     functions: HashMap<String, FuncSig>,
+    /// Reverse lookup: unqualified function name -> unique canonical name, or None if ambiguous
+    function_leaf_names: HashMap<String, Option<String>>,
     /// Class definitions
     classes: HashMap<String, ClassInfo>,
     /// Enum definitions
@@ -475,6 +477,7 @@ impl TypeChecker {
             scopes: vec![global_scope],
             current_scope: 0,
             functions: HashMap::new(),
+            function_leaf_names: HashMap::new(),
             classes: HashMap::new(),
             enums: HashMap::new(),
             interfaces: HashMap::new(),

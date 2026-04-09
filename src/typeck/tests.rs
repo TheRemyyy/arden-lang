@@ -3348,3 +3348,77 @@ fn seeded_check_supports_interface_extending_multiple_nested_namespace_aliased_i
         .check_with_effect_seeds(&program, &HashMap::new(), &HashMap::new())
         .expect("seeded check should support multiple nested aliased parent interfaces");
 }
+
+#[test]
+fn resolve_function_value_name_uses_unique_leaf_index() {
+    let mut checker = TypeChecker::new();
+    let span = 0..0;
+
+    checker.functions.insert(
+        "math__add".to_string(),
+        FuncSig {
+            params: Vec::new(),
+            return_type: ResolvedType::Integer,
+            generic_type_vars: Vec::new(),
+            is_variadic: false,
+            is_extern: false,
+            effects: Vec::new(),
+            is_pure: false,
+            allow_any: false,
+            has_explicit_effects: false,
+            span: span.clone(),
+        },
+    );
+    checker
+        .function_leaf_names
+        .insert("add".to_string(), Some("math__add".to_string()));
+
+    assert_eq!(
+        checker.resolve_function_value_name("add"),
+        Some("math__add")
+    );
+    assert_eq!(
+        checker.resolve_function_value_name("math__add"),
+        Some("math__add")
+    );
+}
+
+#[test]
+fn resolve_function_value_name_returns_none_for_ambiguous_leaf() {
+    let mut checker = TypeChecker::new();
+    let span = 0..0;
+
+    checker.functions.insert(
+        "math__dup".to_string(),
+        FuncSig {
+            params: Vec::new(),
+            return_type: ResolvedType::Integer,
+            generic_type_vars: Vec::new(),
+            is_variadic: false,
+            is_extern: false,
+            effects: Vec::new(),
+            is_pure: false,
+            allow_any: false,
+            has_explicit_effects: false,
+            span: span.clone(),
+        },
+    );
+    checker.functions.insert(
+        "util__dup".to_string(),
+        FuncSig {
+            params: Vec::new(),
+            return_type: ResolvedType::Integer,
+            generic_type_vars: Vec::new(),
+            is_variadic: false,
+            is_extern: false,
+            effects: Vec::new(),
+            is_pure: false,
+            allow_any: false,
+            has_explicit_effects: false,
+            span,
+        },
+    );
+    checker.function_leaf_names.insert("dup".to_string(), None);
+
+    assert_eq!(checker.resolve_function_value_name("dup"), None);
+}

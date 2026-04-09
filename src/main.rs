@@ -368,7 +368,7 @@ fn format_cli_path(path: &Path) -> String {
         if let Some(stripped) = raw.strip_prefix(r"\\?\") {
             return stripped.to_string();
         }
-        return raw;
+        raw
     }
 
     #[cfg(not(windows))]
