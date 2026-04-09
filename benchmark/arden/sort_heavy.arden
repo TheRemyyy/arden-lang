@@ -15,7 +15,10 @@ function main(): None {
     while (i < n) {
         key: Integer = a.get(i);
         mut j: Integer = i;
-        while (j > 0 && a.get(j - 1) > key) {
+        while (j > 0) {
+            if (!(a.get(j - 1) > key)) {
+                break;
+            }
             a.set(j, a.get(j - 1));
             j = j - 1;
         }
