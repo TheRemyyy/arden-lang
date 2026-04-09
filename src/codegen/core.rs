@@ -61,6 +61,18 @@ pub struct CodegenPhaseTimingSnapshot {
     pub body_pass_ns: u64,
     pub body_pass_decl_filter_ns: u64,
     pub body_pass_function_work_ns: u64,
+    pub body_function_setup_ns: u64,
+    pub body_function_param_alloc_ns: u64,
+    pub body_function_stmt_loop_ns: u64,
+    pub body_stmt_let_ns: u64,
+    pub body_stmt_assign_ns: u64,
+    pub body_stmt_expr_ns: u64,
+    pub body_stmt_return_ns: u64,
+    pub body_function_implicit_return_ns: u64,
+    pub expr_literal_ns: u64,
+    pub expr_ident_ns: u64,
+    pub expr_binary_ns: u64,
+    pub expr_call_ns: u64,
     pub body_pass_class_work_ns: u64,
     pub body_pass_module_work_ns: u64,
     pub total_decls_count: usize,
@@ -97,6 +109,18 @@ struct CodegenPhaseTimingTotals {
     body_pass_ns: AtomicU64,
     body_pass_decl_filter_ns: AtomicU64,
     body_pass_function_work_ns: AtomicU64,
+    body_function_setup_ns: AtomicU64,
+    body_function_param_alloc_ns: AtomicU64,
+    body_function_stmt_loop_ns: AtomicU64,
+    body_stmt_let_ns: AtomicU64,
+    body_stmt_assign_ns: AtomicU64,
+    body_stmt_expr_ns: AtomicU64,
+    body_stmt_return_ns: AtomicU64,
+    body_function_implicit_return_ns: AtomicU64,
+    expr_literal_ns: AtomicU64,
+    expr_ident_ns: AtomicU64,
+    expr_binary_ns: AtomicU64,
+    expr_call_ns: AtomicU64,
     body_pass_class_work_ns: AtomicU64,
     body_pass_module_work_ns: AtomicU64,
     total_decls_count: AtomicUsize,
@@ -133,6 +157,18 @@ static CODEGEN_PHASE_TIMING_TOTALS: CodegenPhaseTimingTotals = CodegenPhaseTimin
     body_pass_ns: AtomicU64::new(0),
     body_pass_decl_filter_ns: AtomicU64::new(0),
     body_pass_function_work_ns: AtomicU64::new(0),
+    body_function_setup_ns: AtomicU64::new(0),
+    body_function_param_alloc_ns: AtomicU64::new(0),
+    body_function_stmt_loop_ns: AtomicU64::new(0),
+    body_stmt_let_ns: AtomicU64::new(0),
+    body_stmt_assign_ns: AtomicU64::new(0),
+    body_stmt_expr_ns: AtomicU64::new(0),
+    body_stmt_return_ns: AtomicU64::new(0),
+    body_function_implicit_return_ns: AtomicU64::new(0),
+    expr_literal_ns: AtomicU64::new(0),
+    expr_ident_ns: AtomicU64::new(0),
+    expr_binary_ns: AtomicU64::new(0),
+    expr_call_ns: AtomicU64::new(0),
     body_pass_class_work_ns: AtomicU64::new(0),
     body_pass_module_work_ns: AtomicU64::new(0),
     total_decls_count: AtomicUsize::new(0),
@@ -206,6 +242,42 @@ pub fn reset_codegen_phase_timings() {
         .store(0, Ordering::Relaxed);
     CODEGEN_PHASE_TIMING_TOTALS
         .body_pass_function_work_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_function_setup_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_function_param_alloc_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_function_stmt_loop_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_stmt_let_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_stmt_assign_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_stmt_expr_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_stmt_return_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .body_function_implicit_return_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .expr_literal_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .expr_ident_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .expr_binary_ns
+        .store(0, Ordering::Relaxed);
+    CODEGEN_PHASE_TIMING_TOTALS
+        .expr_call_ns
         .store(0, Ordering::Relaxed);
     CODEGEN_PHASE_TIMING_TOTALS
         .body_pass_class_work_ns
@@ -309,6 +381,42 @@ pub fn snapshot_codegen_phase_timings() -> CodegenPhaseTimingSnapshot {
             .load(Ordering::Relaxed),
         body_pass_function_work_ns: CODEGEN_PHASE_TIMING_TOTALS
             .body_pass_function_work_ns
+            .load(Ordering::Relaxed),
+        body_function_setup_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_function_setup_ns
+            .load(Ordering::Relaxed),
+        body_function_param_alloc_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_function_param_alloc_ns
+            .load(Ordering::Relaxed),
+        body_function_stmt_loop_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_function_stmt_loop_ns
+            .load(Ordering::Relaxed),
+        body_stmt_let_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_stmt_let_ns
+            .load(Ordering::Relaxed),
+        body_stmt_assign_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_stmt_assign_ns
+            .load(Ordering::Relaxed),
+        body_stmt_expr_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_stmt_expr_ns
+            .load(Ordering::Relaxed),
+        body_stmt_return_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_stmt_return_ns
+            .load(Ordering::Relaxed),
+        body_function_implicit_return_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .body_function_implicit_return_ns
+            .load(Ordering::Relaxed),
+        expr_literal_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .expr_literal_ns
+            .load(Ordering::Relaxed),
+        expr_ident_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .expr_ident_ns
+            .load(Ordering::Relaxed),
+        expr_binary_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .expr_binary_ns
+            .load(Ordering::Relaxed),
+        expr_call_ns: CODEGEN_PHASE_TIMING_TOTALS
+            .expr_call_ns
             .load(Ordering::Relaxed),
         body_pass_class_work_ns: CODEGEN_PHASE_TIMING_TOTALS
             .body_pass_class_work_ns
@@ -10691,6 +10799,7 @@ impl<'ctx> Codegen<'ctx> {
 
         let (function, _) = self.functions.get(&func.name).unwrap().clone();
 
+        let setup_started_at = Instant::now();
         self.current_function = Some(function);
         self.current_return_type = Some(self.normalize_codegen_type(&func.return_type));
         let entry = self.context.append_basic_block(function, "entry");
@@ -10735,11 +10844,15 @@ impl<'ctx> Codegen<'ctx> {
                 .build_store(argv_global.as_pointer_value(), argv)
                 .unwrap();
         }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_function_setup_ns
+            .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
 
         // Allocate parameters
         // Param 0 is argc for main, but for other functions 0 is env_ptr
         // We skip argc/argv for main in the regular parameter allocation loop
         // because main() in Arden is usually main(): None
+        let param_alloc_started_at = Instant::now();
         let start_idx = if func.name == "main" { 2 } else { 1 };
         for (i, param) in func.params.iter().enumerate() {
             let normalized_param_ty = self.normalize_codegen_type(&param.ty);
@@ -10758,13 +10871,21 @@ impl<'ctx> Codegen<'ctx> {
                 },
             );
         }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_function_param_alloc_ns
+            .fetch_add(elapsed_nanos_u64(param_alloc_started_at), Ordering::Relaxed);
 
         // Compile body
+        let stmt_loop_started_at = Instant::now();
         for stmt in &func.body {
             self.compile_stmt(&stmt.node)?;
         }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_function_stmt_loop_ns
+            .fetch_add(elapsed_nanos_u64(stmt_loop_started_at), Ordering::Relaxed);
 
         // Add implicit return
+        let implicit_return_started_at = Instant::now();
         if self.needs_terminator() {
             if func.name == "main" {
                 // Main returns 0 for success
@@ -10781,6 +10902,12 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
         }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_function_implicit_return_ns
+            .fetch_add(
+                elapsed_nanos_u64(implicit_return_started_at),
+                Ordering::Relaxed,
+            );
 
         self.current_function = None;
         self.reset_current_generic_bounds();
@@ -10797,6 +10924,7 @@ impl<'ctx> Codegen<'ctx> {
                 value,
                 mutable,
             } => {
+                let stmt_started_at = Instant::now();
                 let normalized_ty = self.normalize_codegen_type(ty);
                 let val = self.compile_expr_with_expected_type(&value.node, &normalized_ty)?;
                 let actual_ty = self.infer_expr_type(&value.node, &[]);
@@ -10814,9 +10942,13 @@ impl<'ctx> Codegen<'ctx> {
                         mutable: *mutable,
                     },
                 );
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .body_stmt_let_ns
+                    .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
             }
 
             Stmt::Assign { target, value } => {
+                let stmt_started_at = Instant::now();
                 self.ensure_assignment_target_mutable(&target.node)?;
                 if let Some((op, rhs)) =
                     Self::match_compound_assign_target(&target.node, &value.node)
@@ -10844,6 +10976,9 @@ impl<'ctx> Codegen<'ctx> {
                         let result = self
                             .compile_binary_values(op, current, rhs_value, &target_ty, &rhs_ty)?;
                         self.builder.build_store(ptr, result).unwrap();
+                        CODEGEN_PHASE_TIMING_TOTALS
+                            .body_stmt_assign_ns
+                            .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
                         return Ok(());
                     }
                 }
@@ -10884,6 +11019,9 @@ impl<'ctx> Codegen<'ctx> {
                             self.compile_map_set_on_value_with_compiled_key_value(
                                 map_value, &map_ty, key, result,
                             )?;
+                            CODEGEN_PHASE_TIMING_TOTALS
+                                .body_stmt_assign_ns
+                                .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
                             return Ok(());
                         }
                         let args = [
@@ -10891,6 +11029,9 @@ impl<'ctx> Codegen<'ctx> {
                             Spanned::new(value.node.clone(), value.span.clone()),
                         ];
                         self.compile_map_method_on_value(map_value, &map_ty, "set", &args)?;
+                        CODEGEN_PHASE_TIMING_TOTALS
+                            .body_stmt_assign_ns
+                            .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
                         return Ok(());
                     }
                 }
@@ -10901,13 +11042,21 @@ impl<'ctx> Codegen<'ctx> {
                 let actual_ty = self.infer_expr_type(&value.node, &[]);
                 self.reject_incompatible_expected_type_value(&target_ty, &actual_ty, val)?;
                 self.builder.build_store(ptr, val).unwrap();
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .body_stmt_assign_ns
+                    .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
             }
 
             Stmt::Expr(expr) => {
+                let stmt_started_at = Instant::now();
                 self.compile_expr(&expr.node)?;
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .body_stmt_expr_ns
+                    .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
             }
 
             Stmt::Return(value) => {
+                let stmt_started_at = Instant::now();
                 // Check if we're in main function (returns i32)
                 let is_main = self
                     .current_function
@@ -10968,6 +11117,9 @@ impl<'ctx> Codegen<'ctx> {
                         }
                     }
                 }
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .body_stmt_return_ns
+                    .fetch_add(elapsed_nanos_u64(stmt_started_at), Ordering::Relaxed);
             }
 
             Stmt::If {
@@ -12650,44 +12802,58 @@ impl<'ctx> Codegen<'ctx> {
 
     pub fn compile_expr(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>> {
         match expr {
-            Expr::Literal(lit) => self.compile_literal(lit),
+            Expr::Literal(lit) => {
+                let expr_started_at = Instant::now();
+                let result = self.compile_literal(lit);
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .expr_literal_ns
+                    .fetch_add(elapsed_nanos_u64(expr_started_at), Ordering::Relaxed);
+                result
+            }
 
             Expr::Ident(name) => {
+                let expr_started_at = Instant::now();
                 if let Some(var) = self.variables.get(name) {
                     let val = self
                         .builder
                         .build_load(self.llvm_type(&var.ty), var.ptr, name)
                         .unwrap();
-                    Ok(val)
+                    let result = Ok(val);
+                    CODEGEN_PHASE_TIMING_TOTALS
+                        .expr_ident_ns
+                        .fetch_add(elapsed_nanos_u64(expr_started_at), Ordering::Relaxed);
+                    result
                 } else {
                     let resolved_name = self.resolve_function_alias(name);
                     let lookup_name = resolved_name.as_str();
-                    if let Some((func, ty)) = self.functions.get(lookup_name) {
+                    let result = if let Some((func, ty)) = self.functions.get(lookup_name) {
                         if self.extern_functions.contains(lookup_name) {
-                            return Err(CodegenError::new(format!(
+                            Err(CodegenError::new(format!(
                                 "extern function '{}' cannot be used as a first-class value yet",
                                 lookup_name
-                            )));
+                            )))
+                        } else {
+                            // Create a closure struct { fn_ptr, null_env }
+                            let struct_ty = self.llvm_type(ty).into_struct_type();
+                            let mut closure = struct_ty.get_undef();
+
+                            let fn_ptr = func.as_global_value().as_pointer_value();
+                            let null_env =
+                                self.context.ptr_type(AddressSpace::default()).const_null();
+
+                            closure = self
+                                .builder
+                                .build_insert_value(closure, fn_ptr, 0, "fn")
+                                .unwrap()
+                                .into_struct_value();
+                            closure = self
+                                .builder
+                                .build_insert_value(closure, null_env, 1, "env")
+                                .unwrap()
+                                .into_struct_value();
+
+                            Ok(closure.into())
                         }
-                        // Create a closure struct { fn_ptr, null_env }
-                        let struct_ty = self.llvm_type(ty).into_struct_type();
-                        let mut closure = struct_ty.get_undef();
-
-                        let fn_ptr = func.as_global_value().as_pointer_value();
-                        let null_env = self.context.ptr_type(AddressSpace::default()).const_null();
-
-                        closure = self
-                            .builder
-                            .build_insert_value(closure, fn_ptr, 0, "fn")
-                            .unwrap()
-                            .into_struct_value();
-                        closure = self
-                            .builder
-                            .build_insert_value(closure, null_env, 1, "env")
-                            .unwrap()
-                            .into_struct_value();
-
-                        Ok(closure.into())
                     } else if let Some((enum_name, variant_name)) =
                         self.resolve_import_alias_variant(name)
                     {
@@ -12714,11 +12880,22 @@ impl<'ctx> Codegen<'ctx> {
                         }
                     } else {
                         Err(Self::undefined_variable_error(name))
-                    }
+                    };
+                    CODEGEN_PHASE_TIMING_TOTALS
+                        .expr_ident_ns
+                        .fetch_add(elapsed_nanos_u64(expr_started_at), Ordering::Relaxed);
+                    result
                 }
             }
 
-            Expr::Binary { op, left, right } => self.compile_binary(*op, &left.node, &right.node),
+            Expr::Binary { op, left, right } => {
+                let expr_started_at = Instant::now();
+                let result = self.compile_binary(*op, &left.node, &right.node);
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .expr_binary_ns
+                    .fetch_add(elapsed_nanos_u64(expr_started_at), Ordering::Relaxed);
+                result
+            }
 
             Expr::Unary { op, expr } => self.compile_unary(*op, &expr.node),
 
@@ -12727,6 +12904,7 @@ impl<'ctx> Codegen<'ctx> {
                 args,
                 type_args,
             } => {
+                let expr_started_at = Instant::now();
                 if !type_args.is_empty() {
                     if let Some(err) = self.explicit_generic_field_access_error(&callee.node, true)
                     {
@@ -12802,11 +12980,19 @@ impl<'ctx> Codegen<'ctx> {
                         }
                     }
                     let _ = self.compile_call(&callee.node, args)?;
-                    return Err(CodegenError::new(
+                    let result = Err(CodegenError::new(
                         "Explicit generic call code generation is not supported yet".to_string(),
                     ));
+                    CODEGEN_PHASE_TIMING_TOTALS
+                        .expr_call_ns
+                        .fetch_add(elapsed_nanos_u64(expr_started_at), Ordering::Relaxed);
+                    return result;
                 }
-                self.compile_call(&callee.node, args)
+                let result = self.compile_call(&callee.node, args);
+                CODEGEN_PHASE_TIMING_TOTALS
+                    .expr_call_ns
+                    .fetch_add(elapsed_nanos_u64(expr_started_at), Ordering::Relaxed);
+                result
             }
 
             Expr::GenericFunctionValue { callee, .. } => {

@@ -3631,6 +3631,54 @@ fn build_project(
             codegen_phase_timings.body_pass_function_work_ns,
         );
         build_timings.record_duration_ns(
+            "object codegen/core body fn setup",
+            codegen_phase_timings.body_function_setup_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core body fn param alloc",
+            codegen_phase_timings.body_function_param_alloc_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core body fn stmt loop",
+            codegen_phase_timings.body_function_stmt_loop_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core stmt let",
+            codegen_phase_timings.body_stmt_let_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core stmt assign",
+            codegen_phase_timings.body_stmt_assign_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core stmt expr",
+            codegen_phase_timings.body_stmt_expr_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core stmt return",
+            codegen_phase_timings.body_stmt_return_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core body fn implicit return",
+            codegen_phase_timings.body_function_implicit_return_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core expr literal",
+            codegen_phase_timings.expr_literal_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core expr ident",
+            codegen_phase_timings.expr_ident_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core expr binary",
+            codegen_phase_timings.expr_binary_ns,
+        );
+        build_timings.record_duration_ns(
+            "object codegen/core expr call",
+            codegen_phase_timings.expr_call_ns,
+        );
+        build_timings.record_duration_ns(
             "object codegen/core body class work",
             codegen_phase_timings.body_pass_class_work_ns,
         );
