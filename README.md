@@ -242,16 +242,25 @@ The suite covers:
 - incremental rebuild benchmarks
 - optional larger synthetic graph stress tests
 
-Start here:
+There are two entrypoints:
+
+- **`benchmark/run.py`** — single benchmark runs, outputs to `benchmark/results/latest.*`
+- **`benchmark/full_campaign.py`** — multi-stage campaigns with presets, outputs to a timestamped `benchmark/results/campaign_*/` directory
+
+Quick start:
 
 ```bash
-python3 benchmark/run.py --help
-python3 benchmark/run.py --bench matrix_mul_heavy --repeats 3 --warmup 1
-python3 benchmark/run.py --bench compile_project_starter_graph --compile-mode hot --repeats 3 --warmup 1
-python3 benchmark/run.py --bench incremental_rebuild_large_project_batch --repeats 3 --warmup 1
+# Smoke test — does the harness work?
+python3 benchmark/run.py --bench matrix_mul_heavy --repeats 1 --warmup 0 --no-build
+
+# Quick sanity pass across all groups (~2–5 min)
+python3 benchmark/full_campaign.py --preset quick --no-build
+
+# Full publication-grade campaign (~15–30 min)
+python3 benchmark/full_campaign.py --preset full --no-build
 ```
 
-Reference: [benchmark/README.md](benchmark/README.md)
+Full documentation, command map, output layout, instrumentation flags, and methodology caveats: [benchmark/README.md](benchmark/README.md)
 
 The benchmark harness is intentionally part of the repository instead of an external gist so numbers can be regenerated, challenged, and updated. If benchmark results are published, they should always be tied to a command, machine, and date rather than presented as timeless marketing.
 
