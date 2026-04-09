@@ -118,6 +118,9 @@ jobs:
         shell: bash
         env:
           BUNDLE_LLVM_PREFIX: ${{ env.ARDEN_LLVM_REAL_PREFIX }}
+          ARDEN_WINDOWS_VC_LIB_DIR: ${{ env.ARDEN_WINDOWS_VC_LIB_DIR }}
+          ARDEN_WINDOWS_UCRT_LIB_DIR: ${{ env.ARDEN_WINDOWS_UCRT_LIB_DIR }}
+          ARDEN_WINDOWS_UM_LIB_DIR: ${{ env.ARDEN_WINDOWS_UM_LIB_DIR }}
         run: |
           mkdir -p dist
           python3 scripts/release/package_release.py \
@@ -125,7 +128,10 @@ jobs:
             --binary target/x86_64-pc-windows-msvc/release/arden.exe \
             --asset-name arden-windows-x64-portable \
             --bundle-root dist \
-            --llvm-prefix "${BUNDLE_LLVM_PREFIX}"
+            --llvm-prefix "${BUNDLE_LLVM_PREFIX}" \
+            --extra-lib-dir "vc=${ARDEN_WINDOWS_VC_LIB_DIR}" \
+            --extra-lib-dir "ucrt=${ARDEN_WINDOWS_UCRT_LIB_DIR}" \
+            --extra-lib-dir "um=${ARDEN_WINDOWS_UM_LIB_DIR}"
       - uses: actions/upload-artifact@v4
         with:
           name: arden-windows-x64

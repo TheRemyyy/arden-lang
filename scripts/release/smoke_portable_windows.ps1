@@ -17,6 +17,17 @@ if (-not $BundleDir) {
     throw "Portable bundle directory not found after extraction"
 }
 
+$RequiredBundledLibs = @(
+    (Join-Path $BundleDir.FullName "toolchain\windows-libs\vc\legacy_stdio_definitions.lib"),
+    (Join-Path $BundleDir.FullName "toolchain\windows-libs\ucrt\ucrt.lib"),
+    (Join-Path $BundleDir.FullName "toolchain\windows-libs\um\kernel32.lib")
+)
+foreach ($RequiredBundledLib in $RequiredBundledLibs) {
+    if (-not (Test-Path $RequiredBundledLib)) {
+        throw "Portable bundle is missing required Windows import lib: $RequiredBundledLib"
+    }
+}
+
 $OriginalPath = $env:Path
 $env:Path = "C:\Windows\System32;C:\Windows"
 $env:LLVM_SYS_211_PREFIX = ""

@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llvm-prefix", type=Path, required=True)
     parser.add_argument("--extra-prefix", action="append", default=[])
     parser.add_argument("--extra-bin", action="append", default=[])
+    parser.add_argument("--extra-lib-dir", action="append", default=[])
     return parser.parse_args()
 
 
@@ -175,6 +176,8 @@ def build_windows_wrapper() -> str:
 setlocal
 set "ROOT=%~dp0"
 set "PATH=%ROOT%toolchain\\llvm\\bin;%PATH%"
+set "LIB=%ROOT%toolchain\\windows-libs\\vc;%ROOT%toolchain\\windows-libs\\ucrt;%ROOT%toolchain\\windows-libs\\um;%LIB%"
+set "LIBPATH=%ROOT%toolchain\\windows-libs\\vc;%ROOT%toolchain\\windows-libs\\ucrt;%ROOT%toolchain\\windows-libs\\um;%LIBPATH%"
 "%ROOT%bin\\arden-real.exe" %*
 """
 
@@ -236,6 +239,8 @@ $Launcher = @"
 setlocal
 set "ROOT=$Root"
 set "PATH=%ROOT%\\toolchain\\llvm\\bin;%PATH%"
+set "LIB=%ROOT%\\toolchain\\windows-libs\\vc;%ROOT%\\toolchain\\windows-libs\\ucrt;%ROOT%\\toolchain\\windows-libs\\um;%LIB%"
+set "LIBPATH=%ROOT%\\toolchain\\windows-libs\\vc;%ROOT%\\toolchain\\windows-libs\\ucrt;%ROOT%\\toolchain\\windows-libs\\um;%LIBPATH%"
 "%ROOT%\\bin\\arden-real.exe" %*
 "@
 Set-Content -Path $Target -Value $Launcher -Encoding ASCII
@@ -285,7 +290,10 @@ def build_readme(platform_name: str, asset_name: str) -> str:
         else "- Optional: run `./install.sh` to install an Arden launcher into ~/.local/bin"
     )
     platform_notes = {
-        "windows": "- Windows bundles are intended to run directly after extraction without extra LLVM setup.",
+        "windows": (
+            "- Windows bundles are intended to run directly after extraction without extra LLVM setup.\n"
+            "- Windows bundles now include the MSVC/UCRT/Windows SDK import libraries Arden needs for linking on clean machines."
+        ),
         "linux": (
             "- Linux bundles still depend on the host kernel and compatible glibc baseline.\n"
             "- Linux bundles are designed so Arden can run directly from the extracted folder."
@@ -330,6 +338,19 @@ def make_archive(platform_name: str, source_dir: Path, archive_path: Path) -> No
         archive.add(source_dir, arcname=source_dir.name)
 
 
+def parse_named_windows_lib_dir(raw_value: str) -> tuple[str, Path]:
+    if "=" not in raw_value:
+        raise ValueError("expected NAME=PATH")
+    name, raw_path = raw_value.split("=", 1)
+    normalized_name = name.strip().lower()
+    if normalized_name not in {"vc", "ucrt", "um"}:
+        raise ValueError("name must be one of: vc, ucrt, um")
+    lib_dir = Path(raw_path.strip())
+    if not lib_dir.is_dir():
+        raise ValueError(f"directory does not exist: {lib_dir}")
+    return normalized_name, lib_dir
+
+
 def package_release() -> None:
     args = parse_args()
     bundle_dir = args.bundle_root / args.asset_name
@@ -360,6 +381,10 @@ def package_release() -> None:
 
     if args.platform == "linux":
         collect_linux_runtime_libraries(bundle_dir)
+
+    for extra_lib_dir_raw in args.extra_lib_dir:
+        lib_name, lib_dir = parse_named_windows_lib_dir(extra_lib_dir_raw)
+        copy_tree(lib_dir, bundle_dir / "toolchain" / "windows-libs" / lib_name)
 
     if args.platform == "windows":
         write_text_file(bundle_dir / "arden.cmd", build_windows_wrapper())

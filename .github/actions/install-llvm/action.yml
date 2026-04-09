@@ -88,6 +88,45 @@ runs:
           throw "LLVM include directory not found: $llvmInclude"
         }
 
+        $vsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+        if (-not (Test-Path $vsWhere)) {
+          throw "vswhere.exe not found: $vsWhere"
+        }
+
+        $vsInstallPath = & $vsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $vsInstallPath) {
+          throw "Visual Studio C++ toolchain installation not found via vswhere"
+        }
+
+        $msvcRoot = Get-ChildItem -Path (Join-Path $vsInstallPath "VC\Tools\MSVC") -Directory |
+          Sort-Object Name -Descending |
+          Select-Object -First 1
+        if (-not $msvcRoot) {
+          throw "MSVC tools directory not found under $vsInstallPath"
+        }
+
+        $vcLibDir = Join-Path $msvcRoot.FullName "lib\x64"
+        if (-not (Test-Path $vcLibDir)) {
+          throw "MSVC x64 lib directory not found: $vcLibDir"
+        }
+
+        $windowsKitLibRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\Lib"
+        $windowsKitVersion = Get-ChildItem -Path $windowsKitLibRoot -Directory |
+          Sort-Object Name -Descending |
+          Select-Object -First 1
+        if (-not $windowsKitVersion) {
+          throw "Windows SDK Lib directory not found: $windowsKitLibRoot"
+        }
+
+        $ucrtLibDir = Join-Path $windowsKitVersion.FullName "ucrt\x64"
+        $umLibDir = Join-Path $windowsKitVersion.FullName "um\x64"
+        if (-not (Test-Path $ucrtLibDir)) {
+          throw "Windows SDK UCRT lib directory not found: $ucrtLibDir"
+        }
+        if (-not (Test-Path $umLibDir)) {
+          throw "Windows SDK UM lib directory not found: $umLibDir"
+        }
+
         if (Test-Path $shimRoot) {
           Remove-Item -Recurse -Force $shimRoot
         }
@@ -187,6 +226,9 @@ runs:
 
         echo "ARDEN_LLVM_REAL_PREFIX=$llvmPrefix" >> $env:GITHUB_ENV
         echo "ARDEN_LLVM_SHIM_VERSION=$llvmVersion" >> $env:GITHUB_ENV
+        echo "ARDEN_WINDOWS_VC_LIB_DIR=$vcLibDir" >> $env:GITHUB_ENV
+        echo "ARDEN_WINDOWS_UCRT_LIB_DIR=$ucrtLibDir" >> $env:GITHUB_ENV
+        echo "ARDEN_WINDOWS_UM_LIB_DIR=$umLibDir" >> $env:GITHUB_ENV
         echo "LLVM_SYS_211_PREFIX=$shimRoot" >> $env:GITHUB_ENV
         echo "LLVM_CONFIG_PATH=$llvmConfig" >> $env:GITHUB_ENV
         echo "$llvmBin" >> $env:GITHUB_PATH
