@@ -3371,16 +3371,15 @@ fn build_project(
                         );
                         let closure_body_symbols_started_at = Instant::now();
                         let mut codegen_active_symbols = batch_active_symbols;
-                        for index in &shard.member_indices {
-                            let unit = &rewritten_files[*index];
-                            codegen_active_symbols.extend(closure_body_symbols_for_unit(
-                                &unit.file,
-                                &batch_declaration_symbols,
-                                &global_function_file_map,
-                                &global_class_file_map,
-                                &global_module_file_map,
-                            ));
-                        }
+                        let shard_member_files =
+                            shard.member_files.iter().cloned().collect::<HashSet<_>>();
+                        codegen_active_symbols.extend(closure_body_symbols_for_files(
+                            &shard_member_files,
+                            &batch_declaration_symbols,
+                            &global_function_file_map,
+                            &global_class_file_map,
+                            &global_module_file_map,
+                        ));
                         object_codegen_timing_totals
                             .closure_body_symbols_ns
                             .fetch_add(

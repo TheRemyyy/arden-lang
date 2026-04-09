@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Trimmed redundant scalar type validation in codegen `Assign` and `Return` hot paths, improving the 32k-function synthetic cold build from `1.079s` to `1.061s` in A/B `--timings` runs.
 - Trimmed repeated call-path lookups and small argument-buffer reallocations in codegen so hot `expr_call` work scales better on larger mixed `interface`/`enum`/`class` synthetic projects.
 - Reused per-namespace local enum sets during project rewrite instead of rebuilding them in recursive hot paths, dropping XL mixed synthetic rewrite worker time from about `2.36s` to `2.06s` in `--timings` runs.
+- Collapsed shard-local closure body symbol collection into a single pass per shard, cutting that object-codegen step from roughly `0.02s` to `0.003s` on the 32k-function synthetic cold build.
 
 ## [1.3.6] - Compiler UX, Type/Codegen Correctness, and Project Reliability - 2026-04-08
 

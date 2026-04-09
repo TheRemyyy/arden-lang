@@ -529,8 +529,8 @@ pub(crate) fn declaration_symbols_for_unit(
     }
 }
 
-pub(crate) fn closure_body_symbols_for_unit(
-    root_file: &Path,
+pub(crate) fn closure_body_symbols_for_files(
+    root_files: &HashSet<PathBuf>,
     declaration_symbols: &HashSet<String>,
     global_function_file_map: &HashMap<String, PathBuf>,
     global_class_file_map: &HashMap<String, PathBuf>,
@@ -542,26 +542,26 @@ pub(crate) fn closure_body_symbols_for_unit(
             if symbol.as_str() == "main" {
                 return global_function_file_map
                     .get("main")
-                    .is_some_and(|owner_file| owner_file == root_file);
+                    .is_some_and(|owner_file| root_files.contains(owner_file));
             }
 
             if global_function_file_map
                 .get(symbol.as_str())
-                .is_some_and(|owner_file| owner_file == root_file)
+                .is_some_and(|owner_file| root_files.contains(owner_file))
             {
                 return true;
             }
 
             if global_class_file_map
                 .get(symbol.as_str())
-                .is_some_and(|owner_file| owner_file == root_file)
+                .is_some_and(|owner_file| root_files.contains(owner_file))
             {
                 return true;
             }
 
             if global_module_file_map
                 .get(symbol.as_str())
-                .is_some_and(|owner_file| owner_file == root_file)
+                .is_some_and(|owner_file| root_files.contains(owner_file))
             {
                 return true;
             }
@@ -569,20 +569,20 @@ pub(crate) fn closure_body_symbols_for_unit(
             if let Some(owner) = symbol.strip_suffix("__new") {
                 return global_class_file_map
                     .get(owner)
-                    .is_some_and(|owner_file| owner_file == root_file);
+                    .is_some_and(|owner_file| root_files.contains(owner_file));
             }
 
             if let Some((owner, _)) = symbol.rsplit_once("__") {
                 if global_class_file_map
                     .get(owner)
-                    .is_some_and(|owner_file| owner_file == root_file)
+                    .is_some_and(|owner_file| root_files.contains(owner_file))
                 {
                     return true;
                 }
 
                 if global_module_file_map
                     .get(owner)
-                    .is_some_and(|owner_file| owner_file == root_file)
+                    .is_some_and(|owner_file| root_files.contains(owner_file))
                 {
                     return true;
                 }
