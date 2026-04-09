@@ -71,6 +71,11 @@ impl ResolvedType {
         matches!(self, ResolvedType::Integer | ResolvedType::Float)
     }
 
+    pub fn supports_ordered_comparison_with(&self, other: &ResolvedType) -> bool {
+        (self.is_numeric() && other.is_numeric())
+            || matches!((self, other), (ResolvedType::Char, ResolvedType::Char))
+    }
+
     pub fn is_reference(&self) -> bool {
         matches!(self, ResolvedType::Ref(_) | ResolvedType::MutRef(_))
     }
@@ -7527,10 +7532,10 @@ impl TypeChecker {
                 ResolvedType::Boolean
             }
             BinOp::Lt | BinOp::LtEq | BinOp::Gt | BinOp::GtEq => {
-                if !left.is_numeric() || !right.is_numeric() {
+                if !left.supports_ordered_comparison_with(right) {
                     self.error(
                         format!(
-                            "Comparison requires numeric types, got {} and {}",
+                            "Comparison requires ordered types, got {} and {}",
                             Self::format_resolved_type_for_diagnostic(left),
                             Self::format_resolved_type_for_diagnostic(right)
                         ),

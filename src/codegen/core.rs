@@ -15924,11 +15924,11 @@ impl<'ctx> Codegen<'ctx> {
                 }
             }
             BinOp::Lt | BinOp::LtEq | BinOp::Gt | BinOp::GtEq => {
-                if left_ty.is_numeric() && right_ty.is_numeric() {
+                if left_ty.supports_ordered_comparison_with(right_ty) {
                     Ok(())
                 } else {
                     Err(CodegenError::new(format!(
-                        "Comparison requires numeric types, got {} and {}",
+                        "Comparison requires ordered types, got {} and {}",
                         Self::format_diagnostic_type(left_ty),
                         Self::format_diagnostic_type(right_ty)
                     )))

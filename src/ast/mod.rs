@@ -250,6 +250,11 @@ impl Type {
         matches!(self, Type::Integer | Type::Float)
     }
 
+    pub fn supports_ordered_comparison_with(&self, other: &Type) -> bool {
+        (self.is_numeric() && other.is_numeric())
+            || matches!((self, other), (Type::Char, Type::Char))
+    }
+
     pub fn is_copy(&self) -> bool {
         matches!(
             self,

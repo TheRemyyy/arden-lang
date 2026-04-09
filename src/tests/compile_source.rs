@@ -5450,6 +5450,30 @@ fn compile_source_reports_only_primary_error_for_unknown_comparison_operand() {
 }
 
 #[test]
+fn compile_source_accepts_ordered_char_comparisons() {
+    let temp_root = make_temp_project_root("ordered-char-comparison-runtime");
+    let source_path = temp_root.join("ordered_char_comparison_runtime.arden");
+    let output_path = temp_root.join("ordered_char_comparison_runtime");
+    let source = r#"
+            function main(): Integer {
+                letter: Char = 'm';
+                return if ((letter >= 'a') && (letter <= 'z')) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, true, None, None)
+        .expect("ordered char comparison should compile");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run ordered char comparison binary");
+    assert_eq!(status.code(), Some(0));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn compile_source_reports_only_primary_error_for_unknown_logical_operand() {
     let temp_root = make_temp_project_root("unknown-logical-operand-primary-error-runtime");
     let source_path = temp_root.join("unknown_logical_operand_primary_error_runtime.arden");
@@ -8334,9 +8358,33 @@ fn compile_source_no_check_rejects_invalid_boolean_comparison_in_codegen() {
     let err = compile_source(source, &source_path, &output_path, false, false, None, None)
         .expect_err("invalid boolean comparison should fail in codegen without checks");
     assert!(
-        err.contains("Comparison requires numeric types, got Boolean and Boolean"),
+        err.contains("Comparison requires ordered types, got Boolean and Boolean"),
         "{err}"
     );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn compile_source_no_check_accepts_ordered_char_comparisons_in_codegen() {
+    let temp_root = make_temp_project_root("ordered-char-comparison-no-check-runtime");
+    let source_path = temp_root.join("ordered_char_comparison_no_check_runtime.arden");
+    let output_path = temp_root.join("ordered_char_comparison_no_check_runtime");
+    let source = r#"
+            function main(): Integer {
+                letter: Char = 'M';
+                return if ((letter >= 'A') && (letter <= 'Z')) { 0 } else { 1 };
+            }
+        "#;
+
+    fs::write(&source_path, source).expect("write source");
+    compile_source(source, &source_path, &output_path, false, false, None, None)
+        .expect("ordered char comparison should compile in codegen without checks");
+
+    let status = std::process::Command::new(&output_path)
+        .status()
+        .expect("run ordered char comparison no-check binary");
+    assert_eq!(status.code(), Some(0));
 
     let _ = fs::remove_dir_all(temp_root);
 }
