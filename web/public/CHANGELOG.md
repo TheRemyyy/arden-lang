@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Cached mangled class symbol names for project rewrite call handling instead of rescanning every class on each rewritten call, cutting XL mixed synthetic rewrite worker time to about `0.15s` and cold build time from about `1.10s` to `0.96s`.
 - Collapsed shard-local closure body symbol collection into a single pass per shard, cutting that object-codegen step from roughly `0.02s` to `0.003s` on the 32k-function synthetic cold build.
 - Precomputed top-level declaration/body filter decisions once per codegen pass, cutting mixed-project filter overhead and improving synthetic cold builds to about `1.046s` on 32k functions and `1.068s` on the XL mixed stress project.
+- Lowered the default large-project object-codegen shard size from `8` to `4`, improving LLVM 22 cold `--timings` runs to about `1.021s` on the 32k-functions stress project and `0.908s` on the XL mixed stress project while keeping warm and 10-file rebuilds near-instant.
 
 ## [1.3.6] - Compiler UX, Type/Codegen Correctness, and Project Reliability - 2026-04-08
 
