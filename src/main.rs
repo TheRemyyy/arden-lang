@@ -25,8 +25,8 @@ mod tests;
 mod typeck;
 
 use clap::{Parser as ClapParser, Subcommand};
-use colored::*;
 use colored::control;
+use colored::*;
 use inkwell::context::Context;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
