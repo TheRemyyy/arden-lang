@@ -1347,30 +1347,6 @@ output_kind = "bin"
     Ok(())
 }
 
-#[cfg(test)]
-mod cli_output_tests {
-    use super::*;
-
-    #[test]
-    fn cli_new_hint_uses_direct_run_command() {
-        assert_eq!(cli_new_run_hint(), "arden run");
-    }
-
-    #[cfg(not(windows))]
-    #[test]
-    fn cli_path_preserves_regular_unix_paths() {
-        let path = Path::new("/tmp/arden-demo");
-        assert_eq!(format_cli_path(path), "/tmp/arden-demo");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn cli_path_strips_verbatim_windows_prefix() {
-        let path = Path::new(r"\\?\C:\Users\demo\project");
-        assert_eq!(format_cli_path(path), r"C:\Users\demo\project");
-    }
-}
-
 fn validate_new_project_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err(format!(
@@ -5329,4 +5305,28 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_output_tests {
+    use super::*;
+
+    #[test]
+    fn cli_new_hint_uses_direct_run_command() {
+        assert_eq!(cli_new_run_hint(), "arden run");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn cli_path_preserves_regular_unix_paths() {
+        let path = Path::new("/tmp/arden-demo");
+        assert_eq!(format_cli_path(path), "/tmp/arden-demo");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cli_path_strips_verbatim_windows_prefix() {
+        let path = Path::new(r"\\?\C:\Users\demo\project");
+        assert_eq!(format_cli_path(path), r"C:\Users\demo\project");
+    }
 }
