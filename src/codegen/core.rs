@@ -7725,18 +7725,33 @@ impl<'ctx> Codegen<'ctx> {
             .import_alias_count
             .fetch_add(import_alias_count, Ordering::Relaxed);
 
+        let top_level_decl_filter_started_at = Instant::now();
+        let precomputed_declare_flags = specialized_declaration_symbols.as_ref().map(|symbols| {
+            program
+                .declarations
+                .iter()
+                .map(|decl| self.should_compile_decl(&decl.node, symbols))
+                .collect::<Vec<_>>()
+        });
+        let precomputed_body_flags = specialized_active_symbols.as_ref().map(|symbols| {
+            program
+                .declarations
+                .iter()
+                .map(|decl| self.should_emit_decl_body(&decl.node, symbols))
+                .collect::<Vec<_>>()
+        });
+        let top_level_decl_filter_ns = elapsed_nanos_u64(top_level_decl_filter_started_at);
+
         // First pass (0): declare all enums first so Named(Enum) resolves correctly.
         let enum_declare_pass_started_at = Instant::now();
-        let mut enum_declare_decl_filter_ns = 0_u64;
+        let enum_declare_decl_filter_ns = top_level_decl_filter_ns;
         let mut enum_declare_work_ns = 0_u64;
         let mut declared_enum_count = 0_usize;
-        for decl in &program.declarations {
-            let decl_filter_started_at = Instant::now();
-            let should_declare = specialized_declaration_symbols
+        for (decl_index, decl) in program.declarations.iter().enumerate() {
+            let should_declare = precomputed_declare_flags
                 .as_ref()
-                .map(|symbols| self.should_compile_decl(&decl.node, symbols))
+                .map(|flags| flags[decl_index])
                 .unwrap_or(true);
-            enum_declare_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
             if !should_declare {
                 continue;
             }
@@ -7763,7 +7778,7 @@ impl<'ctx> Codegen<'ctx> {
 
         // First pass: declare all classes and functions
         let decl_pass_started_at = Instant::now();
-        let mut decl_pass_decl_filter_ns = 0_u64;
+        let decl_pass_decl_filter_ns = top_level_decl_filter_ns;
         let mut decl_pass_class_work_ns = 0_u64;
         let mut decl_pass_function_work_ns = 0_u64;
         let mut decl_pass_module_work_ns = 0_u64;
@@ -7771,17 +7786,15 @@ impl<'ctx> Codegen<'ctx> {
         let mut declared_function_count = 0_usize;
         let mut declared_module_count = 0_usize;
         let mut pending_classes = Vec::new();
-        for decl in &program.declarations {
+        for (decl_index, decl) in program.declarations.iter().enumerate() {
             if let Decl::Class(class) = &decl.node {
                 pending_classes.push(class.clone());
                 continue;
             }
-            let decl_filter_started_at = Instant::now();
-            let should_declare = specialized_declaration_symbols
+            let should_declare = precomputed_declare_flags
                 .as_ref()
-                .map(|symbols| self.should_compile_decl(&decl.node, symbols))
+                .map(|flags| flags[decl_index])
                 .unwrap_or(true);
-            decl_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
             if !should_declare {
                 continue;
             }
@@ -7840,13 +7853,11 @@ impl<'ctx> Codegen<'ctx> {
             }
             pending_classes = next_pending;
         }
-        for decl in &program.declarations {
-            let decl_filter_started_at = Instant::now();
-            let should_declare = specialized_declaration_symbols
+        for (decl_index, decl) in program.declarations.iter().enumerate() {
+            let should_declare = precomputed_declare_flags
                 .as_ref()
-                .map(|symbols| self.should_compile_decl(&decl.node, symbols))
+                .map(|flags| flags[decl_index])
                 .unwrap_or(true);
-            decl_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
             if !should_declare {
                 continue;
             }
@@ -7884,20 +7895,18 @@ impl<'ctx> Codegen<'ctx> {
 
         // Second pass: compile function bodies
         let body_pass_started_at = Instant::now();
-        let mut body_pass_decl_filter_ns = 0_u64;
+        let body_pass_decl_filter_ns = top_level_decl_filter_ns;
         let mut body_pass_function_work_ns = 0_u64;
         let mut body_pass_class_work_ns = 0_u64;
         let mut body_pass_module_work_ns = 0_u64;
         let mut compiled_function_count = 0_usize;
         let mut compiled_class_count = 0_usize;
         let mut compiled_module_count = 0_usize;
-        for decl in &program.declarations {
-            let decl_filter_started_at = Instant::now();
-            let should_compile = specialized_active_symbols
+        for (decl_index, decl) in program.declarations.iter().enumerate() {
+            let should_compile = precomputed_body_flags
                 .as_ref()
-                .map(|symbols| self.should_emit_decl_body(&decl.node, symbols))
+                .map(|flags| flags[decl_index])
                 .unwrap_or(true);
-            body_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
             if !should_compile {
                 continue;
             }
@@ -7924,13 +7933,11 @@ impl<'ctx> Codegen<'ctx> {
                 Decl::Import(_) => {} // Handled at file level
             }
         }
-        for decl in &program.declarations {
-            let decl_filter_started_at = Instant::now();
-            let should_compile = specialized_active_symbols
+        for (decl_index, decl) in program.declarations.iter().enumerate() {
+            let should_compile = precomputed_body_flags
                 .as_ref()
-                .map(|symbols| self.should_emit_decl_body(&decl.node, symbols))
+                .map(|flags| flags[decl_index])
                 .unwrap_or(true);
-            body_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
             if !should_compile {
                 continue;
             }
