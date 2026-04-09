@@ -135,6 +135,74 @@ def parse_linux_dependencies(binary_path: Path) -> list[Path]:
     return dependencies
 
 
+def collect_macos_runtime_libraries(bundle_dir: Path) -> None:
+    bundle_root = bundle_dir.resolve()
+    inspect_queue: list[tuple[Path, Path]] = []
+    bundled_binary = bundle_dir / "bin" / "arden-real"
+    if bundled_binary.exists():
+        inspect_queue.append((bundled_binary, bundle_dir / "toolchain" / "llvm" / "lib"))
+
+    llvm_bin_dir = bundle_dir / "toolchain" / "llvm" / "bin"
+    if llvm_bin_dir.exists():
+        inspect_queue.extend(
+            (path, bundle_dir / "toolchain" / "llvm" / "lib")
+            for path in llvm_bin_dir.iterdir()
+            if path.is_file()
+        )
+
+    lld_bin_dir = bundle_dir / "toolchain" / "lld" / "bin"
+    if lld_bin_dir.exists():
+        inspect_queue.extend(
+            (path, bundle_dir / "toolchain" / "lld" / "lib")
+            for path in lld_bin_dir.iterdir()
+            if path.is_file()
+        )
+
+    inspected_paths: set[Path] = set()
+    while inspect_queue:
+        inspect_path, destination_dir = inspect_queue.pop()
+        resolved_inspect_path = inspect_path.resolve()
+        if resolved_inspect_path in inspected_paths:
+            continue
+        inspected_paths.add(resolved_inspect_path)
+
+        for dependency_path in parse_macos_dependencies(resolved_inspect_path):
+            resolved_dependency_path = dependency_path.resolve()
+            if bundle_root == resolved_dependency_path or bundle_root in resolved_dependency_path.parents:
+                continue
+            bundled_dependency = destination_dir / dependency_path.name
+            copy_file(resolved_dependency_path, bundled_dependency)
+            inspect_queue.append((resolved_dependency_path, destination_dir))
+
+
+def parse_macos_dependencies(binary_path: Path) -> list[Path]:
+    try:
+        result = subprocess.run(
+            ["otool", "-L", str(binary_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+
+    dependencies: list[Path] = []
+    for line in result.stdout.splitlines()[1:]:
+        stripped_line = line.strip()
+        if not stripped_line:
+            continue
+        candidate = stripped_line.split(" (compatibility version", 1)[0].strip()
+        if not candidate.startswith("/"):
+            continue
+        dependency_path = Path(candidate)
+        if not dependency_path.exists():
+            continue
+        if candidate.startswith("/System/") or candidate.startswith("/usr/lib/"):
+            continue
+        dependencies.append(dependency_path)
+    return dependencies
+
+
 def write_text_file(path: Path, contents: str, executable: bool = False) -> None:
     path.write_text(contents, encoding="utf8")
     if executable:
@@ -397,6 +465,8 @@ def package_release() -> None:
 
     if args.platform == "linux":
         collect_linux_runtime_libraries(bundle_dir)
+    elif args.platform == "macos":
+        collect_macos_runtime_libraries(bundle_dir)
 
     for extra_lib_dir_raw in args.extra_lib_dir:
         lib_name, lib_dir = parse_named_windows_lib_dir(extra_lib_dir_raw)
