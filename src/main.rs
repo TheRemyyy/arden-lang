@@ -26,10 +26,13 @@ mod typeck;
 
 use clap::{Parser as ClapParser, Subcommand};
 use colored::*;
+use colored::control;
 use inkwell::context::Context;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::Ordering;
@@ -212,6 +215,7 @@ enum Commands {
 }
 
 fn main() {
+    configure_cli_colors();
     let cli = Cli::parse();
 
     let result = match cli.command {
@@ -296,6 +300,28 @@ const CLI_WHITE_RGB: (u8, u8, u8) = (255, 255, 255);
 const CLI_SOFT_RGB: (u8, u8, u8) = (239, 232, 220);
 const CLI_TERTIARY_RGB: (u8, u8, u8) = (217, 178, 158);
 
+fn configure_cli_colors() {
+    let no_color = env::var_os("NO_COLOR").is_some();
+    let force_color = env::var_os("CLICOLOR_FORCE")
+        .map(|value| value.to_string_lossy() != "0")
+        .unwrap_or(false);
+    let stdout_is_terminal = std::io::stdout().is_terminal();
+    let stderr_is_terminal = std::io::stderr().is_terminal();
+
+    let colors_enabled = if no_color {
+        false
+    } else if force_color {
+        true
+    } else {
+        stdout_is_terminal || stderr_is_terminal
+    };
+
+    #[cfg(windows)]
+    let colors_enabled = colors_enabled && enable_ansi_support::enable_ansi_support().is_ok();
+
+    control::set_override(colors_enabled);
+}
+
 fn cli_accent(text: impl AsRef<str>) -> ColoredString {
     text.as_ref()
         .truecolor(CLI_WHITE_RGB.0, CLI_WHITE_RGB.1, CLI_WHITE_RGB.2)
@@ -325,7 +351,30 @@ fn cli_error(text: impl AsRef<str>) -> ColoredString {
 }
 
 fn cli_path(path: &Path) -> ColoredString {
-    cli_soft(path.display().to_string())
+    cli_soft(format_cli_path(path))
+}
+
+fn cli_new_run_hint() -> &'static str {
+    "arden run"
+}
+
+fn format_cli_path(path: &Path) -> String {
+    #[cfg(windows)]
+    {
+        let raw = path.to_string_lossy().replace('/', "\\");
+        if let Some(stripped) = raw.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{}", stripped);
+        }
+        if let Some(stripped) = raw.strip_prefix(r"\\?\") {
+            return stripped.to_string();
+        }
+        return raw;
+    }
+
+    #[cfg(not(windows))]
+    {
+        path.to_string_lossy().into_owned()
+    }
 }
 
 fn cli_elapsed(duration: Duration) -> String {
@@ -1291,11 +1340,35 @@ output_kind = "bin"
     println!(
         "  {} {}",
         cli_tertiary("cd"),
-        cli_soft(path.unwrap_or(Path::new(name)).display().to_string())
+        cli_soft(format_cli_path(path.unwrap_or(Path::new(name))))
     );
-    println!("  {} {}", cli_tertiary("run"), cli_soft("arden run"));
+    println!("  {}", cli_soft(cli_new_run_hint()));
 
     Ok(())
+}
+
+#[cfg(test)]
+mod cli_output_tests {
+    use super::*;
+
+    #[test]
+    fn cli_new_hint_uses_direct_run_command() {
+        assert_eq!(cli_new_run_hint(), "arden run");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn cli_path_preserves_regular_unix_paths() {
+        let path = Path::new("/tmp/arden-demo");
+        assert_eq!(format_cli_path(path), "/tmp/arden-demo");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cli_path_strips_verbatim_windows_prefix() {
+        let path = Path::new(r"\\?\C:\Users\demo\project");
+        assert_eq!(format_cli_path(path), r"C:\Users\demo\project");
+    }
 }
 
 fn validate_new_project_name(name: &str) -> Result<(), String> {
