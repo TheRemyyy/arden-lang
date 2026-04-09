@@ -7346,6 +7346,31 @@ impl<'ctx> Codegen<'ctx> {
                 Ordering::Relaxed,
             );
 
+        if Self::program_is_top_level_function_only(program) {
+            self.import_aliases.clear();
+            self.interfaces.clear();
+            self.interface_implementors.clear();
+
+            let import_alias_collection_started_at = Instant::now();
+            let import_alias_count =
+                self.collect_top_level_codegen_import_aliases(&program.declarations);
+            CODEGEN_PHASE_TIMING_TOTALS
+                .import_alias_collection_ns
+                .fetch_add(
+                    elapsed_nanos_u64(import_alias_collection_started_at),
+                    Ordering::Relaxed,
+                );
+            CODEGEN_PHASE_TIMING_TOTALS
+                .import_alias_count
+                .fetch_add(import_alias_count, Ordering::Relaxed);
+
+            return self.compile_top_level_function_only_program(
+                program,
+                specialized_active_symbols.as_ref(),
+                specialized_declaration_symbols.as_ref(),
+            );
+        }
+
         let import_alias_collection_started_at = Instant::now();
         let mut import_alias_count = 0_usize;
         let mut interface_extends: HashMap<String, Vec<(Option<String>, String)>> = HashMap::new();
@@ -7695,6 +7720,117 @@ impl<'ctx> Codegen<'ctx> {
         CODEGEN_PHASE_TIMING_TOTALS
             .compiled_module_count
             .fetch_add(compiled_module_count, Ordering::Relaxed);
+
+        Ok(())
+    }
+
+    fn program_is_top_level_function_only(program: &Program) -> bool {
+        program
+            .declarations
+            .iter()
+            .all(|decl| matches!(decl.node, Decl::Function(_) | Decl::Import(_)))
+    }
+
+    fn collect_top_level_codegen_import_aliases(
+        &mut self,
+        declarations: &[Spanned<Decl>],
+    ) -> usize {
+        let mut import_alias_count = 0_usize;
+        for decl in declarations {
+            if let Decl::Import(import) = &decl.node {
+                if let Some(alias) = &import.alias {
+                    self.import_aliases
+                        .entry(alias.clone())
+                        .or_default()
+                        .push((None, import.path.clone()));
+                    import_alias_count += 1;
+                } else if import.path.ends_with(".*") {
+                    self.import_aliases
+                        .entry(import.path.clone())
+                        .or_default()
+                        .push((None, import.path.clone()));
+                    import_alias_count += 1;
+                }
+            }
+        }
+        import_alias_count
+    }
+
+    fn compile_top_level_function_only_program(
+        &mut self,
+        program: &Program,
+        specialized_active_symbols: Option<&HashSet<String>>,
+        specialized_declaration_symbols: Option<&HashSet<String>>,
+    ) -> Result<()> {
+        let decl_pass_started_at = Instant::now();
+        let mut decl_pass_decl_filter_ns = 0_u64;
+        let mut decl_pass_function_work_ns = 0_u64;
+        let mut declared_function_count = 0_usize;
+        for decl in &program.declarations {
+            let Decl::Function(func) = &decl.node else {
+                continue;
+            };
+            let decl_filter_started_at = Instant::now();
+            let should_declare = specialized_declaration_symbols
+                .as_ref()
+                .map(|symbols| symbols.contains(&func.name) || func.name.contains("__spec__"))
+                .unwrap_or(true);
+            decl_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
+            if !should_declare {
+                continue;
+            }
+            let declare_started_at = Instant::now();
+            self.declare_function(func)?;
+            decl_pass_function_work_ns += elapsed_nanos_u64(declare_started_at);
+            declared_function_count += 1;
+        }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_ns
+            .fetch_add(elapsed_nanos_u64(decl_pass_started_at), Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_decl_filter_ns
+            .fetch_add(decl_pass_decl_filter_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .decl_pass_function_work_ns
+            .fetch_add(decl_pass_function_work_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .declared_function_count
+            .fetch_add(declared_function_count, Ordering::Relaxed);
+
+        let body_pass_started_at = Instant::now();
+        let mut body_pass_decl_filter_ns = 0_u64;
+        let mut body_pass_function_work_ns = 0_u64;
+        let mut compiled_function_count = 0_usize;
+        for decl in &program.declarations {
+            let Decl::Function(func) = &decl.node else {
+                continue;
+            };
+            let decl_filter_started_at = Instant::now();
+            let should_compile = specialized_active_symbols
+                .as_ref()
+                .map(|symbols| symbols.contains(&func.name) || func.name.contains("__spec__"))
+                .unwrap_or(true);
+            body_pass_decl_filter_ns += elapsed_nanos_u64(decl_filter_started_at);
+            if !should_compile {
+                continue;
+            }
+            let compile_started_at = Instant::now();
+            self.compile_function(func)?;
+            body_pass_function_work_ns += elapsed_nanos_u64(compile_started_at);
+            compiled_function_count += 1;
+        }
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_ns
+            .fetch_add(elapsed_nanos_u64(body_pass_started_at), Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_decl_filter_ns
+            .fetch_add(body_pass_decl_filter_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .body_pass_function_work_ns
+            .fetch_add(body_pass_function_work_ns, Ordering::Relaxed);
+        CODEGEN_PHASE_TIMING_TOTALS
+            .compiled_function_count
+            .fetch_add(compiled_function_count, Ordering::Relaxed);
 
         Ok(())
     }

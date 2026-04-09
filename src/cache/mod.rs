@@ -1080,7 +1080,10 @@ pub(crate) const OBJECT_CACHE_SCHEMA: &str = "v3";
 pub(crate) const OBJECT_SHARD_CACHE_SCHEMA: &str = "v1";
 pub(crate) const LINK_MANIFEST_CACHE_SCHEMA: &str = "v1";
 pub(crate) const OBJECT_CODEGEN_SHARD_SIZE: usize = 8;
-pub(crate) const OBJECT_CODEGEN_SHARD_THRESHOLD: usize = usize::MAX;
+// Large projects pay a disproportionate fixed cost per LLVM module/object emit.
+// Sharding only kicks in once the project is big enough that the cold-build win
+// outweighs the coarser invalidation granularity for object cache reuse.
+pub(crate) const OBJECT_CODEGEN_SHARD_THRESHOLD: usize = 256;
 
 pub(crate) fn env_usize_override(name: &str, default: usize) -> usize {
     std::env::var(name)
