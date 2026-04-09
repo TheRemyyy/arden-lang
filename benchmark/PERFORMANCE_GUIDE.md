@@ -4,7 +4,85 @@ This guide explains how to run a serious, publication-grade performance campaign
 
 ---
 
-## Quick Start
+## Full Campaign (Recommended Starting Point)
+
+`benchmark/full_campaign.py` orchestrates the entire benchmark matrix in a single command.
+It runs multiple stages, collects bulk data, and writes combined reports to a timestamped
+results directory.
+
+### Presets
+
+| Preset | Stages | Est. time | Use case |
+|---|---|---|---|
+| `quick` | 3 | ~2–5 min | Sanity check / harness validation |
+| `full` | 6 | ~15–30 min | Publication-grade data collection |
+| `exhaustive` | 9 | ~60+ min | Full matrix + extreme stress benchmarks |
+
+### One-Command Launch
+
+```bash
+# Build the compiler first (once)
+LLVM_SYS_211_PREFIX=/usr/lib/llvm-21 cargo build --release
+
+# Quick sanity check
+python3 benchmark/full_campaign.py --preset quick --no-build
+
+# Full publication-grade campaign
+python3 benchmark/full_campaign.py --preset full --no-build
+
+# Exhaustive campaign including 2200-file stress benchmarks
+python3 benchmark/full_campaign.py --preset exhaustive --no-build
+
+# Preview the plan without running anything
+python3 benchmark/full_campaign.py --preset full --dry-run
+```
+
+### What Gets Measured (full preset)
+
+| Stage | Benchmarks | repeats | warmup | extras |
+|---|---|---:|---:|---|
+| `runtime` | sum_loop, prime_count, matrix_mul, fibonacci_recursive, sort_heavy | 5 | 2 | — |
+| `runtime_heavy` | matrix_mul_heavy (220×220) | 5 | 2 | `--capture-profile` |
+| `compile_hot` | starter graph, mega-graph | 5 | 2 | `--arden-timings` |
+| `compile_cold` | starter graph, mega-graph | 5 | 2 | — |
+| `incremental_small` | single-file, shared-core, API-surface cascade | 5 | 2 | `--arden-timings` |
+| `incremental_large` | large-batch, mega-graph-batch, mega-graph-mixed | 5 | 2 | `--arden-timings` |
+
+### Output Layout
+
+```
+benchmark/results/campaign_<YYYYMMDD_HHMMSS>/
+├── README.md                  # How to reproduce + file index
+├── campaign_summary.json      # All stages combined (machine-readable)
+├── campaign_summary.md        # Master summary + per-stage detail tables
+├── campaign_summary.csv       # Tabular export — one row per language per phase
+├── stage_01_runtime.json      # Per-stage raw results
+├── stage_01_runtime.md        # Per-stage markdown detail report
+├── stage_02_runtime_heavy.json
+├── stage_02_runtime_heavy.md
+└── ...
+```
+
+The CSV uses these columns:
+
+```
+campaign_preset, stage, generated_at, benchmark, kind, phase,
+language, min_s, mean_s, median_s, max_s, stddev_s, checksum
+```
+
+The `stage` column lets you filter hot-compile vs cold-compile, or runtime vs
+incremental, without any manual post-processing.
+
+### Methodology Codified
+
+Every campaign run writes a `README.md` inside the results directory recording:
+- the exact command used
+- the preset and stage configuration
+- how to reproduce the run from a clean state
+
+---
+
+## Quick Start (Single Benchmark via run.py)
 
 ```bash
 # Build the compiler first
