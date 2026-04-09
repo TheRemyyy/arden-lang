@@ -1,0 +1,15 @@
+import std.io.*;
+
+function fib(n: Integer): Integer {
+    if (n <= 1) {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+function main(): None {
+    // fib(38) = 39088169; uses ~126M recursive calls — stresses call overhead
+    checksum: Integer = fib(38);
+    println(to_string(checksum));
+    return None;
+}

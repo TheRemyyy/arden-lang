@@ -14,7 +14,7 @@ describe('install helpers', () => {
             expect(getLatestDownloadUrl(option)).toContain(option.assetName);
         }
         expect(getLatestChecksumsDownloadUrl()).toBe(
-            'https://github.com/TheRemyyy/apex-compiler/releases/latest/download/SHA256SUMS.txt',
+            'https://github.com/TheRemyyy/arden-lang/releases/latest/download/SHA256SUMS.txt',
         );
     });
 
@@ -34,6 +34,6 @@ describe('install helpers', () => {
     });
 
     it('points metadata fetches at the GitHub latest release API', () => {
-        expect(LATEST_RELEASE_API_URL).toBe('https://api.github.com/repos/TheRemyyy/apex-compiler/releases/latest');
+        expect(LATEST_RELEASE_API_URL).toBe('https://api.github.com/repos/TheRemyyy/arden-lang/releases/latest');
     });
 });

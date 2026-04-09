@@ -3,7 +3,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 
-const siteUrl = 'https://apex-compiler.vercel.app';
+const siteUrl = 'https://www.arden-lang.dev';
 const projectRoot = path.resolve(process.cwd(), '..');
 const docsRoot = path.join(projectRoot, 'docs');
 const publicRoot = path.join(process.cwd(), 'public');
@@ -66,8 +66,8 @@ async function ensureCleanDir(dir) {
 }
 
 async function copyDirectory(sourceDir, targetDir) {
-  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
-  await fs.mkdir(targetDir, { recursive: true });
+    const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+    await fs.mkdir(targetDir, { recursive: true });
 
   for (const entry of entries) {
     const sourcePath = path.join(sourceDir, entry.name);
@@ -85,22 +85,35 @@ async function copyDirectory(sourceDir, targetDir) {
 }
 
 async function generateLogoDerivative(sourcePath, targetPath, size) {
-  await execFileAsync('magick', [
-    sourcePath,
-    '-resize',
-    `${size}x${size}`,
-    '-background',
-    'none',
-    '-gravity',
-    'center',
-    '-extent',
-    `${size}x${size}`,
-    targetPath,
-  ]);
-}
+  try {
+    await execFileAsync('magick', [
+      sourcePath,
+      '-resize',
+      `${size}x${size}`,
+      '-background',
+      'none',
+      '-gravity',
+      'center',
+      '-extent',
+      `${size}x${size}`,
+      targetPath,
+    ]);
+    return;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.warn(`[seo] magick resize failed for ${path.basename(targetPath)}, falling back to sharp: ${errorMessage}`);
+  }
 
-async function copyLogoFallback(targetPath) {
-  await fs.copyFile(logoPath, targetPath);
+  try {
+    const { default: sharp } = await import('sharp');
+    await sharp(sourcePath)
+      .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .toFile(targetPath);
+  } catch (error) {
+    throw new Error(
+      `[seo] Failed to generate ${path.basename(targetPath)}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 async function generateLogoAssets() {
@@ -112,15 +125,9 @@ async function generateLogoAssets() {
     { path: path.join(publicRoot, 'apple-touch-icon.png'), size: 180 },
   ];
 
-  try {
-    await Promise.all(
-      derivativeTargets.map((target) => generateLogoDerivative(logoPath, target.path, target.size)),
-    );
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.warn(`[seo] Logo derivative generation failed, using source logo as fallback: ${errorMessage}`);
-    await Promise.all(derivativeTargets.map((target) => copyLogoFallback(target.path)));
-  }
+  await Promise.all(
+    derivativeTargets.map((target) => generateLogoDerivative(logoPath, target.path, target.size)),
+  );
 }
 
 function getDocRoute(relativePath) {
@@ -309,7 +316,7 @@ function buildLlmsTxt() {
     `- Installation: ${siteUrl}/install`,
     `- Documentation: ${siteUrl}/docs/overview`,
     `- Changelog: ${siteUrl}/changelog`,
-    `- Repository: https://github.com/TheRemyyy/apex-compiler`,
+    `- Repository: https://github.com/TheRemyyy/arden-lang`,
     '',
     '## Guidance',
     '- Prefer the official documentation pages under /docs/ for language behavior and syntax.',

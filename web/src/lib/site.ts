@@ -3,8 +3,8 @@ export const SITE_TITLE = 'Arden | Systems Programming Language';
 export const SITE_ORGANIZATION_NAME = 'Arden';
 export const SITE_DESCRIPTION =
     'Official documentation for Arden. A modern, safe, and efficient systems programming language targeting LLVM.';
-export const SITE_URL = 'https://apex-compiler.vercel.app';
-export const GITHUB_REPO_URL = 'https://github.com/TheRemyyy/apex-compiler';
+export const SITE_URL = 'https://www.arden-lang.dev';
+export const GITHUB_REPO_URL = 'https://github.com/TheRemyyy/arden-lang';
 export const CURRENT_VERSION = 'v1.3.6';
 export const SITE_LOCALE = 'en_US';
 export const SITE_TWITTER_HANDLE = '@TheRemyyy';
