@@ -3362,6 +3362,7 @@ fn build_project(
                                 &rewritten_file_indices,
                                 &shard.member_files,
                                 Some(&batch_closure_files),
+                                Some(&batch_declaration_symbols),
                             )
                         };
                         object_codegen_timing_totals.codegen_program_ns.fetch_add(

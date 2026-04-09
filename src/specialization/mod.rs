@@ -75,6 +75,61 @@ pub(crate) fn api_projection_program(program: &Program) -> Program {
     }
 }
 
+fn program_is_top_level_function_only(program: &Program) -> bool {
+    program
+        .declarations
+        .iter()
+        .all(|decl| matches!(decl.node, Decl::Function(_) | Decl::Import(_)))
+}
+
+fn filtered_api_projection_decl(
+    decl: &Spanned<Decl>,
+    declaration_symbols: &HashSet<String>,
+) -> Option<Spanned<Decl>> {
+    match &decl.node {
+        Decl::Import(_) => Some(api_projection_decl(decl)),
+        Decl::Function(func) => declaration_symbols
+            .contains(&func.name)
+            .then(|| api_projection_decl(decl)),
+        Decl::Class(class) => declaration_symbols
+            .contains(&class.name)
+            .then(|| api_projection_decl(decl)),
+        Decl::Interface(interface) => declaration_symbols
+            .contains(&interface.name)
+            .then(|| api_projection_decl(decl)),
+        Decl::Enum(en) => declaration_symbols
+            .contains(&en.name)
+            .then(|| api_projection_decl(decl)),
+        Decl::Module(module) => {
+            let retained = module
+                .declarations
+                .iter()
+                .filter_map(|inner| filtered_api_projection_decl(inner, declaration_symbols))
+                .collect::<Vec<_>>();
+            if retained.is_empty() && !declaration_symbols.contains(&module.name) {
+                return None;
+            }
+            let mut projected = module.clone();
+            projected.declarations = retained;
+            Some(Spanned::new(Decl::Module(projected), decl.span.clone()))
+        }
+    }
+}
+
+pub(crate) fn api_projection_program_filtered(
+    program: &Program,
+    declaration_symbols: &HashSet<String>,
+) -> Program {
+    Program {
+        package: program.package.clone(),
+        declarations: program
+            .declarations
+            .iter()
+            .filter_map(|decl| filtered_api_projection_decl(decl, declaration_symbols))
+            .collect(),
+    }
+}
+
 pub(crate) fn api_program_fingerprint(program: &Program) -> String {
     let projected = api_projection_program(program);
     let canonical = formatter::format_program_canonical(&projected);
@@ -581,13 +636,14 @@ pub(crate) fn codegen_program_for_unit(
     rewritten_file_indices: &HashMap<PathBuf, usize>,
     active_file: &Path,
     _dependency_closure: Option<&HashSet<PathBuf>>,
-    _declaration_symbols: Option<&HashSet<String>>,
+    declaration_symbols: Option<&HashSet<String>>,
 ) -> Program {
     codegen_program_for_units(
         rewritten_files,
         rewritten_file_indices,
         &[active_file.to_path_buf()],
         _dependency_closure,
+        declaration_symbols,
     )
 }
 
@@ -596,6 +652,7 @@ pub(crate) fn codegen_program_for_units(
     rewritten_file_indices: &HashMap<PathBuf, usize>,
     active_files: &[PathBuf],
     dependency_closure: Option<&HashSet<PathBuf>>,
+    declaration_symbols: Option<&HashSet<String>>,
 ) -> Program {
     fn merge_codegen_declarations(
         output: &mut Vec<Spanned<Decl>>,
@@ -714,6 +771,10 @@ pub(crate) fn codegen_program_for_units(
             unit.program.clone()
         } else if specialization_demand_files.contains(&file) {
             unit.specialization_projection.clone()
+        } else if program_is_top_level_function_only(&unit.program) {
+            declaration_symbols
+                .map(|symbols| api_projection_program_filtered(&unit.program, symbols))
+                .unwrap_or_else(|| unit.api_program.clone())
         } else {
             unit.api_program.clone()
         };
