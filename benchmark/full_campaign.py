@@ -36,7 +36,7 @@ Usage examples
     python3 benchmark/full_campaign.py --preset full --dry-run
 
     # Build compiler then run full campaign
-    LLVM_SYS_211_PREFIX=/usr/lib/llvm-21 python3 benchmark/full_campaign.py --preset full
+    LLVM_SYS_221_PREFIX=/usr/lib/llvm-22 python3 benchmark/full_campaign.py --preset full
 
 Outputs
 -------
@@ -137,7 +137,7 @@ def main() -> int:
     if not args.dry_run:
         for tool in ("python3", "rustc", "go", "cargo"):
             ensure_tool(tool)
-        build_env: dict[str, str] = {"LLVM_SYS_211_PREFIX": detect_llvm_prefix()}
+        build_env: dict[str, str] = {"LLVM_SYS_221_PREFIX": detect_llvm_prefix()}
     else:
         build_env = {}
 

@@ -56,6 +56,10 @@ def format_seconds(value: float) -> str:
 
 
 def detect_llvm_prefix() -> str:
+    from_env = os.environ.get("LLVM_SYS_221_PREFIX", "").strip()
+    if from_env:
+        return from_env
+
     from_env = os.environ.get("LLVM_SYS_211_PREFIX", "").strip()
     if from_env:
         return from_env
@@ -63,7 +67,7 @@ def detect_llvm_prefix() -> str:
     llvm_config = shutil.which("llvm-config")
     if not llvm_config:
         raise RuntimeError(
-            "LLVM prefix not found. Set LLVM_SYS_211_PREFIX or install llvm-config."
+            "LLVM prefix not found. Set LLVM_SYS_221_PREFIX or install llvm-config."
         )
 
     proc = run_cmd([llvm_config, "--prefix"], Path.cwd())

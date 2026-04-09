@@ -32,8 +32,10 @@ fi
 env -i \
   HOME="${HOME_DIR}" \
   PATH="${BASE_PATH}" \
+  LLVM_SYS_221_PREFIX= \
   LLVM_SYS_211_PREFIX= \
   LLVM_CONFIG_PATH= \
+  LIBRARY_PATH= \
   LD_LIBRARY_PATH= \
   DYLD_LIBRARY_PATH= \
   "${BUNDLE_DIR}/arden" --version
@@ -50,8 +52,10 @@ EOF
 RUN_OUTPUT="$(env -i \
   HOME="${HOME_DIR}" \
   PATH="${BASE_PATH}" \
+  LLVM_SYS_221_PREFIX= \
   LLVM_SYS_211_PREFIX= \
   LLVM_CONFIG_PATH= \
+  LIBRARY_PATH= \
   LD_LIBRARY_PATH= \
   DYLD_LIBRARY_PATH= \
   "${BUNDLE_DIR}/arden" run "${WORK_DIR}/hello.arden")"
@@ -61,8 +65,10 @@ grep -F "Hello from portable Arden!" <<< "${RUN_OUTPUT}" >/dev/null
 env -i \
   HOME="${HOME_DIR}" \
   PATH="${BASE_PATH}" \
+  LLVM_SYS_221_PREFIX= \
   LLVM_SYS_211_PREFIX= \
   LLVM_CONFIG_PATH= \
+  LIBRARY_PATH= \
   LD_LIBRARY_PATH= \
   DYLD_LIBRARY_PATH= \
   "${BUNDLE_DIR}/install.sh"
@@ -70,8 +76,10 @@ env -i \
 env -i \
   HOME="${HOME_DIR}" \
   PATH="${HOME_DIR}/.local/bin:${BASE_PATH}" \
+  LLVM_SYS_221_PREFIX= \
   LLVM_SYS_211_PREFIX= \
   LLVM_CONFIG_PATH= \
+  LIBRARY_PATH= \
   LD_LIBRARY_PATH= \
   DYLD_LIBRARY_PATH= \
   arden --version

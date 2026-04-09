@@ -1,5 +1,5 @@
-name: Install LLVM 21
-description: Installs LLVM 21 on GitHub-hosted runners and exports LLVM_SYS_211_PREFIX.
+name: Install LLVM 22
+description: Installs an LLVM 22 toolchain on GitHub-hosted runners and exports LLVM_SYS_221_PREFIX.
 runs:
   using: composite
   steps:
@@ -7,21 +7,31 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        wget https://apt.llvm.org/llvm.sh
-        chmod +x llvm.sh
-        sudo ./llvm.sh 21 all
-        sudo apt-get install -y llvm-21-dev libpolly-21-dev mold
+        LLVM_VERSION="22.1.3"
+        LLVM_PREFIX="${RUNNER_TEMP}/llvm-${LLVM_VERSION}"
+        LLVM_ARCHIVE="LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
+        LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${LLVM_ARCHIVE}"
+        if [ ! -x "${LLVM_PREFIX}/bin/llvm-config" ]; then
+          curl -fsSL "${LLVM_URL}" -o "${RUNNER_TEMP}/${LLVM_ARCHIVE}"
+          rm -rf "${LLVM_PREFIX}" "${RUNNER_TEMP}/llvm-extract"
+          mkdir -p "${RUNNER_TEMP}/llvm-extract"
+          tar -xf "${RUNNER_TEMP}/${LLVM_ARCHIVE}" -C "${RUNNER_TEMP}/llvm-extract"
+          mv "${RUNNER_TEMP}/llvm-extract/LLVM-${LLVM_VERSION}-Linux-X64" "${LLVM_PREFIX}"
+        fi
+        sudo apt-get update
+        sudo apt-get install -y mold
         command -v mold
-        echo "LLVM_SYS_211_PREFIX=/usr/lib/llvm-21" >> "$GITHUB_ENV"
+        echo "LLVM_SYS_221_PREFIX=${LLVM_PREFIX}" >> "$GITHUB_ENV"
+        echo "${LLVM_PREFIX}/bin" >> "$GITHUB_PATH"
 
     - name: Install LLVM (macOS)
       if: runner.os == 'macOS'
       shell: bash
       run: |
-        brew install llvm@21 lld@21
-        LLVM_PREFIX="$(brew --prefix llvm@21)"
+        brew install llvm lld
+        LLVM_PREFIX="$(brew --prefix llvm)"
         LLVM_BIN="${LLVM_PREFIX}/bin"
-        LLD_PREFIX="$(brew --prefix lld@21)"
+        LLD_PREFIX="$(brew --prefix lld)"
         LLD_BIN="${LLD_PREFIX}/bin"
         mkdir -p "${HOME}/.local/bin"
         if [ -x "${LLD_BIN}/lld" ] && [ ! -e "${HOME}/.local/bin/lld" ]; then
@@ -32,7 +42,15 @@ runs:
         elif [ -x "${LLD_BIN}/ld64.lld" ] && [ ! -e "${HOME}/.local/bin/ld.lld" ]; then
           ln -sf "${LLD_BIN}/ld64.lld" "${HOME}/.local/bin/ld.lld"
         fi
-        echo "LLVM_SYS_211_PREFIX=${LLVM_PREFIX}" >> "$GITHUB_ENV"
+        LLVM_VERSION="$("${LLVM_BIN}/llvm-config" --version)"
+        case "${LLVM_VERSION}" in
+          22.*) ;;
+          *)
+            echo "error: expected Homebrew llvm major version 22, got ${LLVM_VERSION}" >&2
+            exit 1
+            ;;
+        esac
+        echo "LLVM_SYS_221_PREFIX=${LLVM_PREFIX}" >> "$GITHUB_ENV"
         echo "${LLVM_BIN}" >> "$GITHUB_PATH"
         echo "${LLD_BIN}" >> "$GITHUB_PATH"
         echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
@@ -42,7 +60,7 @@ runs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        $llvmVersion = "21.1.8"
+        $llvmVersion = "22.1.3"
         $llvmPrefix = "C:\arden-toolchains\llvm-$llvmVersion"
         $llvmBin = Join-Path $llvmPrefix "bin"
         $llvmLib = Join-Path $llvmPrefix "lib"
@@ -177,7 +195,7 @@ runs:
           '        return 1;',
           '    }',
           '    if (version == NULL || version[0] == ''\0'') {',
-          '        version = "21.1.8";',
+          '        version = "22.1.3";',
           '    }',
           '',
           '    for (i = 1; i < argc; ++i) {',
@@ -229,6 +247,6 @@ runs:
         echo "ARDEN_WINDOWS_VC_LIB_DIR=$vcLibDir" >> $env:GITHUB_ENV
         echo "ARDEN_WINDOWS_UCRT_LIB_DIR=$ucrtLibDir" >> $env:GITHUB_ENV
         echo "ARDEN_WINDOWS_UM_LIB_DIR=$umLibDir" >> $env:GITHUB_ENV
-        echo "LLVM_SYS_211_PREFIX=$shimRoot" >> $env:GITHUB_ENV
+        echo "LLVM_SYS_221_PREFIX=$shimRoot" >> $env:GITHUB_ENV
         echo "LLVM_CONFIG_PATH=$llvmConfig" >> $env:GITHUB_ENV
         echo "$llvmBin" >> $env:GITHUB_PATH

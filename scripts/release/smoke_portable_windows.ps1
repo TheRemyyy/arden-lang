@@ -30,6 +30,7 @@ foreach ($RequiredBundledLib in $RequiredBundledLibs) {
 
 $OriginalPath = $env:Path
 $env:Path = "C:\Windows\System32;C:\Windows"
+$env:LLVM_SYS_221_PREFIX = ""
 $env:LLVM_SYS_211_PREFIX = ""
 $env:LLVM_CONFIG_PATH = ""
 $env:LIB = ""

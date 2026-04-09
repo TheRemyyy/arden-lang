@@ -21,7 +21,7 @@ If a result matters, it should be reproducible from the commands in this file.
 Build the compiler once before running benchmarks (if not already built):
 
 ```bash
-LLVM_SYS_211_PREFIX=/usr/lib/llvm-21 cargo build --release
+LLVM_SYS_221_PREFIX=/usr/lib/llvm-22 cargo build --release
 ```
 
 ---
@@ -278,7 +278,7 @@ The `stage` column lets you filter hot-compile vs cold-compile, or runtime vs in
 - `rustc` (any recent stable)
 - `go` (1.21+)
 - Arden binary at `target/release/arden` (built with `cargo build --release`)
-- LLVM 21 (`LLVM_SYS_211_PREFIX=/usr/lib/llvm-21`)
+- LLVM 22.1+ (`LLVM_SYS_221_PREFIX=/usr/lib/llvm-22`)
 - `mold` on Linux, or LLVM `lld` on macOS/Windows
 
 No proprietary tools required. If the Arden binary is missing and `--no-build` is not set, the harness builds it automatically.

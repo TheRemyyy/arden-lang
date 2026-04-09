@@ -87,7 +87,7 @@ def main() -> int:
     for tool in ("python3", "rustc", "go", "cargo"):
         ensure_tool(tool)
 
-    build_env = {"LLVM_SYS_211_PREFIX": detect_llvm_prefix()}
+    build_env = {"LLVM_SYS_221_PREFIX": detect_llvm_prefix()}
     print(f"Benchmark root: {bench_dir}", flush=True)
     print(f"Results dir: {out_dir}", flush=True)
     print(

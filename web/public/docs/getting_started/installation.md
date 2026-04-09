@@ -62,8 +62,8 @@ Use the source build path when you want to work inside the repository, hack on t
 
 You need:
 
-- Rust `1.83+`
-- LLVM `21+`
+- Rust `1.85+`
+- LLVM `22.1+`
 - Clang
 - Git
 - a supported linker setup
@@ -123,12 +123,12 @@ sudo dnf install -y git clang mold cmake ninja-build make gcc gcc-c++ llvm llvm-
 If `llvm-sys` does not auto-detect LLVM correctly, point it at the installed prefix:
 
 ```bash
-export LLVM_SYS_211_PREFIX=/usr
+export LLVM_SYS_221_PREFIX=/usr/lib/llvm-22
 ```
 
 #### macOS
 
-You need LLVM 21 tooling available and LLVM `lld` for final linking.
+You need LLVM 22 tooling available and LLVM `lld` for final linking.
 
 If LLVM is not on your shell path by default, export the appropriate prefix before building.
 
