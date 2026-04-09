@@ -11039,8 +11039,14 @@ impl<'ctx> Codegen<'ctx> {
                 let target_ty = self.infer_expr_type(&target.node, &[]);
                 let ptr = self.compile_lvalue(&target.node)?;
                 let val = self.compile_expr_with_expected_type(&value.node, &target_ty)?;
-                let actual_ty = self.infer_expr_type(&value.node, &[]);
-                self.reject_incompatible_expected_type_value(&target_ty, &actual_ty, val)?;
+                let target_is_plain_scalar = matches!(
+                    target_ty,
+                    Type::Integer | Type::Float | Type::Boolean | Type::Char
+                );
+                if !target_is_plain_scalar || val.get_type() != self.llvm_type(&target_ty) {
+                    let actual_ty = self.infer_expr_type(&value.node, &[]);
+                    self.reject_incompatible_expected_type_value(&target_ty, &actual_ty, val)?;
+                }
                 self.builder.build_store(ptr, val).unwrap();
                 CODEGEN_PHASE_TIMING_TOTALS
                     .body_stmt_assign_ns
@@ -11075,14 +11081,22 @@ impl<'ctx> Codegen<'ctx> {
                             }
                         } else {
                             let val = if let Some(ret_ty) = self.current_return_type.clone() {
-                                let inferred_expr_ty = self.infer_expr_type(&expr.node, &[]);
                                 let compiled =
                                     self.compile_expr_with_expected_type(&expr.node, &ret_ty)?;
-                                self.reject_incompatible_expected_type_value(
-                                    &ret_ty,
-                                    &inferred_expr_ty,
-                                    compiled,
-                                )?;
+                                let ret_is_plain_scalar = matches!(
+                                    ret_ty,
+                                    Type::Integer | Type::Float | Type::Boolean | Type::Char
+                                );
+                                if !ret_is_plain_scalar
+                                    || compiled.get_type() != self.llvm_type(&ret_ty)
+                                {
+                                    let inferred_expr_ty = self.infer_expr_type(&expr.node, &[]);
+                                    self.reject_incompatible_expected_type_value(
+                                        &ret_ty,
+                                        &inferred_expr_ty,
+                                        compiled,
+                                    )?;
+                                }
                                 compiled
                             } else {
                                 self.compile_expr(&expr.node)?

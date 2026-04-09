@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### ♻️ Changed
 
 - Reworked function-value name resolution in the type checker to use a cached leaf-name index instead of repeatedly scanning every known function symbol, cutting large synthetic project cold-build time from roughly `52.7s` to `1.9s` while keeping 10-file body-only rebuilds around `0.7s` in the `--timings` benchmark flow.
+- Expanded internal codegen timing breakdown to report function body setup, parameter allocation, statement categories, and hot expression kinds in `arden build --timings`.
+- Trimmed redundant scalar type validation in codegen `Assign` and `Return` hot paths, improving the 32k-function synthetic cold build from `1.079s` to `1.061s` in A/B `--timings` runs.
 
 ## [1.3.6] - Compiler UX, Type/Codegen Correctness, and Project Reliability - 2026-04-08
 
