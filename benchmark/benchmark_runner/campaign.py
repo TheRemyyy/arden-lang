@@ -461,8 +461,20 @@ def build_combined_csv(campaign: dict) -> str:
     """Return a CSV string covering all stages and all benchmarks.
 
     Columns:
-    - campaign_preset, stage, generated_at, benchmark, kind, phase,
-      language, min_s, mean_s, median_s, max_s, stddev_s, checksum
+    - campaign_preset  The preset name (quick / full / exhaustive).
+    - stage            Campaign stage name (e.g. runtime, compile_hot).
+    - generated_at     ISO-style timestamp from the campaign run.
+    - benchmark        Benchmark name (e.g. matrix_mul_heavy).
+    - kind             Benchmark category: runtime / compile / incremental /
+                       incremental_batch / incremental_api_surface_cascade / etc.
+    - phase            Measurement phase within the benchmark:
+                       ``timed``       – runtime or compile (single timed value).
+                       ``cold_build``  – first phase of an incremental benchmark.
+                       ``rebuild``     – second phase (the actual incremental rebuild).
+    - language         arden / rust / go.
+    - min_s … stddev_s Per-benchmark stats in seconds.
+    - checksum         Integer checksum printed by the binary; used for cross-language
+                       correctness verification.
     """
     output = io.StringIO()
     writer = csv.writer(output)
