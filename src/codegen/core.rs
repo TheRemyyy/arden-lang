@@ -2547,6 +2547,10 @@ impl<'ctx> Codegen<'ctx> {
         generated_functions: &mut Vec<Spanned<Decl>>,
         generated_methods: &mut HashMap<String, Vec<FunctionDecl>>,
     ) -> Result<Stmt> {
+        if !Self::stmt_needs_generic_call_rewrite(stmt) {
+            return Ok(stmt.clone());
+        }
+
         Ok(match stmt {
             Stmt::Let {
                 name,
@@ -2808,6 +2812,139 @@ impl<'ctx> Codegen<'ctx> {
             Stmt::Break => Stmt::Break,
             Stmt::Continue => Stmt::Continue,
         })
+    }
+
+    fn stmt_needs_generic_call_rewrite(stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Let { value, .. } => Self::expr_needs_generic_call_rewrite(&value.node),
+            Stmt::Assign { target, value } => {
+                Self::expr_needs_generic_call_rewrite(&target.node)
+                    || Self::expr_needs_generic_call_rewrite(&value.node)
+            }
+            Stmt::Expr(expr) => Self::expr_needs_generic_call_rewrite(&expr.node),
+            Stmt::Return(expr) => expr
+                .as_ref()
+                .is_some_and(|expr| Self::expr_needs_generic_call_rewrite(&expr.node)),
+            Stmt::If {
+                condition,
+                then_block,
+                else_block,
+            } => {
+                Self::expr_needs_generic_call_rewrite(&condition.node)
+                    || then_block
+                        .iter()
+                        .any(|stmt| Self::stmt_needs_generic_call_rewrite(&stmt.node))
+                    || else_block.as_ref().is_some_and(|block| {
+                        block
+                            .iter()
+                            .any(|stmt| Self::stmt_needs_generic_call_rewrite(&stmt.node))
+                    })
+            }
+            Stmt::While { condition, body } => {
+                Self::expr_needs_generic_call_rewrite(&condition.node)
+                    || body
+                        .iter()
+                        .any(|stmt| Self::stmt_needs_generic_call_rewrite(&stmt.node))
+            }
+            Stmt::For { iterable, body, .. } => {
+                Self::expr_needs_generic_call_rewrite(&iterable.node)
+                    || body
+                        .iter()
+                        .any(|stmt| Self::stmt_needs_generic_call_rewrite(&stmt.node))
+            }
+            Stmt::Match { expr, arms } => {
+                Self::expr_needs_generic_call_rewrite(&expr.node)
+                    || arms.iter().any(|arm| {
+                        arm.body
+                            .iter()
+                            .any(|stmt| Self::stmt_needs_generic_call_rewrite(&stmt.node))
+                    })
+            }
+            Stmt::Break | Stmt::Continue => false,
+        }
+    }
+
+    fn expr_needs_generic_call_rewrite(expr: &Expr) -> bool {
+        match expr {
+            Expr::Call {
+                callee,
+                args,
+                type_args,
+            } => {
+                !type_args.is_empty()
+                    || Self::expr_needs_generic_call_rewrite(&callee.node)
+                    || args
+                        .iter()
+                        .any(|arg| Self::expr_needs_generic_call_rewrite(&arg.node))
+            }
+            Expr::GenericFunctionValue { callee, type_args } => {
+                !type_args.is_empty() || Self::expr_needs_generic_call_rewrite(&callee.node)
+            }
+            Expr::Construct { args, .. } => args
+                .iter()
+                .any(|arg| Self::expr_needs_generic_call_rewrite(&arg.node)),
+            Expr::Binary { left, right, .. } => {
+                Self::expr_needs_generic_call_rewrite(&left.node)
+                    || Self::expr_needs_generic_call_rewrite(&right.node)
+            }
+            Expr::Unary { expr, .. }
+            | Expr::Try(expr)
+            | Expr::Borrow(expr)
+            | Expr::MutBorrow(expr)
+            | Expr::Deref(expr)
+            | Expr::Await(expr)
+            | Expr::Field { object: expr, .. } => Self::expr_needs_generic_call_rewrite(&expr.node),
+            Expr::Index { object, index } => {
+                Self::expr_needs_generic_call_rewrite(&object.node)
+                    || Self::expr_needs_generic_call_rewrite(&index.node)
+            }
+            Expr::Lambda { body, .. } => Self::expr_needs_generic_call_rewrite(&body.node),
+            Expr::Match { expr, arms } => {
+                Self::expr_needs_generic_call_rewrite(&expr.node)
+                    || arms.iter().any(|arm| {
+                        arm.body
+                            .iter()
+                            .any(|stmt| Self::stmt_needs_generic_call_rewrite(&stmt.node))
+                    })
+            }
+            Expr::StringInterp(parts) => parts.iter().any(|part| match part {
+                StringPart::Literal(_) => false,
+                StringPart::Expr(expr) => Self::expr_needs_generic_call_rewrite(&expr.node),
+            }),
+            Expr::AsyncBlock(block) | Expr::Block(block) => block
+                .iter()
+                .any(|stmt| Self::stmt_needs_generic_call_rewrite(&stmt.node)),
+            Expr::Require { condition, message } => {
+                Self::expr_needs_generic_call_rewrite(&condition.node)
+                    || message
+                        .as_ref()
+                        .is_some_and(|message| Self::expr_needs_generic_call_rewrite(&message.node))
+            }
+            Expr::Range { start, end, .. } => {
+                start
+                    .as_ref()
+                    .is_some_and(|start| Self::expr_needs_generic_call_rewrite(&start.node))
+                    || end
+                        .as_ref()
+                        .is_some_and(|end| Self::expr_needs_generic_call_rewrite(&end.node))
+            }
+            Expr::IfExpr {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                Self::expr_needs_generic_call_rewrite(&condition.node)
+                    || then_branch
+                        .iter()
+                        .any(|stmt| Self::stmt_needs_generic_call_rewrite(&stmt.node))
+                    || else_branch.as_ref().is_some_and(|block| {
+                        block
+                            .iter()
+                            .any(|stmt| Self::stmt_needs_generic_call_rewrite(&stmt.node))
+                    })
+            }
+            Expr::Literal(_) | Expr::Ident(_) | Expr::This => false,
+        }
     }
 
     fn substitute_expr_types(expr: &Expr, bindings: &HashMap<String, Type>) -> Expr {
@@ -4535,6 +4672,10 @@ impl<'ctx> Codegen<'ctx> {
         generated_functions: &mut Vec<Spanned<Decl>>,
         generated_methods: &mut HashMap<String, Vec<FunctionDecl>>,
     ) -> Result<Expr> {
+        if !Self::expr_needs_generic_call_rewrite(expr) {
+            return Ok(expr.clone());
+        }
+
         Ok(match expr {
             Expr::Call {
                 callee,
@@ -15969,7 +16110,7 @@ impl<'ctx> Codegen<'ctx> {
         self.ensure_binary_operator_supported(op, &left_ty, &right_ty)?;
         let lhs = self.compile_expr_with_expected_type(left, &left_ty)?;
         let rhs = self.compile_expr_with_expected_type(right, &right_ty)?;
-        self.compile_binary_values(op, lhs, rhs, &left_ty, &right_ty)
+        self.compile_binary_values_unchecked(op, lhs, rhs, &left_ty, &right_ty)
     }
 
     fn compile_binary_values(
@@ -15981,7 +16122,17 @@ impl<'ctx> Codegen<'ctx> {
         right_ty: &Type,
     ) -> Result<BasicValueEnum<'ctx>> {
         self.ensure_binary_operator_supported(op, left_ty, right_ty)?;
+        self.compile_binary_values_unchecked(op, lhs, rhs, left_ty, right_ty)
+    }
 
+    fn compile_binary_values_unchecked(
+        &mut self,
+        op: BinOp,
+        lhs: BasicValueEnum<'ctx>,
+        rhs: BasicValueEnum<'ctx>,
+        left_ty: &Type,
+        right_ty: &Type,
+    ) -> Result<BasicValueEnum<'ctx>> {
         if left_ty.is_numeric()
             && right_ty.is_numeric()
             && (matches!(left_ty, Type::Float) || matches!(right_ty, Type::Float))
@@ -16370,24 +16521,19 @@ impl<'ctx> Codegen<'ctx> {
         callee: &Expr,
         args: &[Spanned<Expr>],
     ) -> Result<BasicValueEnum<'ctx>> {
-        let resolved_ident = if let Expr::Ident(name) = callee {
-            if self.variables.contains_key(name) {
-                name.clone()
-            } else {
-                self.resolve_function_alias(name)
-            }
-        } else {
-            String::new()
+        let ident_name = match callee {
+            Expr::Ident(name) => Some(name.as_str()),
+            _ => None,
         };
+        let ident_is_local_var = ident_name.is_some_and(|name| self.variables.contains_key(name));
+        let resolved_ident = ident_name
+            .filter(|_| !ident_is_local_var)
+            .map(|name| self.resolve_function_alias(name));
 
         // Check for built-in functions
         if let Expr::Ident(name) = callee {
-            let builtin_name = if resolved_ident.is_empty() {
-                name.as_str()
-            } else {
-                resolved_ident.as_str()
-            };
-            if !self.variables.contains_key(name)
+            let builtin_name = resolved_ident.as_deref().unwrap_or(name.as_str());
+            if !ident_is_local_var
                 && self
                     .resolve_alias_qualified_codegen_type_name(builtin_name)
                     .is_some_and(|resolved| self.classes.contains_key(&resolved))
@@ -16601,11 +16747,13 @@ impl<'ctx> Codegen<'ctx> {
                             return Err(Self::function_call_arity_error(&func_ty, args.len()));
                         }
                     }
-                    let mut compiled_args: Vec<BasicValueEnum> = vec![self
-                        .context
-                        .ptr_type(AddressSpace::default())
-                        .const_null()
-                        .into()];
+                    let mut compiled_args: Vec<BasicValueEnum> = Vec::with_capacity(args.len() + 1);
+                    compiled_args.push(
+                        self.context
+                            .ptr_type(AddressSpace::default())
+                            .const_null()
+                            .into(),
+                    );
                     if let Type::Function(params, _) = &func_ty {
                         for (arg, param_ty) in args.iter().zip(params.iter()) {
                             compiled_args.push(
@@ -16637,11 +16785,14 @@ impl<'ctx> Codegen<'ctx> {
                                 return Err(Self::function_call_arity_error(&func_ty, args.len()));
                             }
                         }
-                        let mut compiled_args: Vec<BasicValueEnum> = vec![self
-                            .context
-                            .ptr_type(AddressSpace::default())
-                            .const_null()
-                            .into()];
+                        let mut compiled_args: Vec<BasicValueEnum> =
+                            Vec::with_capacity(args.len() + 1);
+                        compiled_args.push(
+                            self.context
+                                .ptr_type(AddressSpace::default())
+                                .const_null()
+                                .into(),
+                        );
                         if let Type::Function(params, _) = &func_ty {
                             for (arg, param_ty) in args.iter().zip(params.iter()) {
                                 compiled_args.push(self.compile_expr_for_concrete_class_payload(
@@ -16714,11 +16865,13 @@ impl<'ctx> Codegen<'ctx> {
                             return Err(Self::function_call_arity_error(&func_ty, args.len()));
                         }
                     }
-                    let mut compiled_args: Vec<BasicValueEnum> = vec![self
-                        .context
-                        .ptr_type(AddressSpace::default())
-                        .const_null()
-                        .into()];
+                    let mut compiled_args: Vec<BasicValueEnum> = Vec::with_capacity(args.len() + 1);
+                    compiled_args.push(
+                        self.context
+                            .ptr_type(AddressSpace::default())
+                            .const_null()
+                            .into(),
+                    );
                     if let Type::Function(params, _) = &func_ty {
                         for (arg, param_ty) in args.iter().zip(params.iter()) {
                             compiled_args.push(
@@ -16750,11 +16903,14 @@ impl<'ctx> Codegen<'ctx> {
                                 return Err(Self::function_call_arity_error(&func_ty, args.len()));
                             }
                         }
-                        let mut compiled_args: Vec<BasicValueEnum> = vec![self
-                            .context
-                            .ptr_type(AddressSpace::default())
-                            .const_null()
-                            .into()];
+                        let mut compiled_args: Vec<BasicValueEnum> =
+                            Vec::with_capacity(args.len() + 1);
+                        compiled_args.push(
+                            self.context
+                                .ptr_type(AddressSpace::default())
+                                .const_null()
+                                .into(),
+                        );
                         if let Type::Function(params, _) = &func_ty {
                             for (arg, param_ty) in args.iter().zip(params.iter()) {
                                 compiled_args.push(self.compile_expr_for_concrete_class_payload(
@@ -16896,7 +17052,8 @@ impl<'ctx> Codegen<'ctx> {
                         _ => self.context.i8_type().fn_type(&llvm_params, false),
                     };
 
-                    let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
+                    let mut compiled_args: Vec<BasicValueEnum> = Vec::with_capacity(args.len() + 1);
+                    compiled_args.push(env_ptr);
                     if args.len() != param_types.len() {
                         return Err(Self::function_call_arity_error(
                             &Type::Function(param_types.clone(), ret_type.clone()),
@@ -16988,7 +17145,8 @@ impl<'ctx> Codegen<'ctx> {
                     ));
                 }
 
-                let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
+                let mut compiled_args: Vec<BasicValueEnum> = Vec::with_capacity(args.len() + 1);
+                compiled_args.push(env_ptr);
                 for (arg, param_ty) in args.iter().zip(param_types.iter()) {
                     compiled_args
                         .push(self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?);
@@ -17011,15 +17169,7 @@ impl<'ctx> Codegen<'ctx> {
         }
 
         // Regular function call
-        let callee_name = if let Expr::Ident(name) = callee {
-            if resolved_ident.is_empty() {
-                Some(name.clone())
-            } else {
-                Some(resolved_ident.clone())
-            }
-        } else {
-            None
-        };
+        let callee_name = ident_name.map(|name| resolved_ident.as_deref().unwrap_or(name));
         let (func, resolved_func_ty) = match callee {
             Expr::Ident(name) => {
                 // First check if it's a function pointer/local variable
@@ -17067,7 +17217,9 @@ impl<'ctx> Codegen<'ctx> {
                             return Err(Self::function_call_arity_error(&var.ty, args.len()));
                         }
 
-                        let mut compiled_args: Vec<BasicValueEnum> = vec![env_ptr];
+                        let mut compiled_args: Vec<BasicValueEnum> =
+                            Vec::with_capacity(args.len() + 1);
+                        compiled_args.push(env_ptr);
                         for (arg, param_ty) in args.iter().zip(param_types.iter()) {
                             compiled_args.push(
                                 self.compile_expr_for_concrete_class_payload(&arg.node, param_ty)?,
@@ -17094,18 +17246,11 @@ impl<'ctx> Codegen<'ctx> {
                     return Err(Self::non_function_call_error(&var.ty));
                 }
 
-                let looked_up_name = if resolved_ident.is_empty() {
-                    name
-                } else {
-                    resolved_ident.as_str()
-                };
+                let looked_up_name = resolved_ident.as_deref().unwrap_or(name.as_str());
 
                 // Fall back to global function lookup
-                if let Some((f, _)) = self.functions.get(looked_up_name) {
-                    (
-                        *f,
-                        self.functions.get(looked_up_name).map(|(_, ty)| ty.clone()),
-                    )
+                if let Some((f, func_ty)) = self.functions.get(looked_up_name).cloned() {
+                    (f, Some(func_ty))
                 } else if let Some(f) = self.module.get_function(looked_up_name) {
                     (f, None)
                 } else {
@@ -17115,14 +17260,15 @@ impl<'ctx> Codegen<'ctx> {
             _ => return Err(CodegenError::new("Invalid callee")),
         };
 
-        let mut compiled_args: Vec<BasicValueEnum> = Vec::new();
-        let func_name = func.get_name().to_str().unwrap_or_default().to_string();
         let is_extern_call = callee_name
-            .as_deref()
             .map(|n| self.extern_functions.contains(n))
             .unwrap_or(false);
+        let func_name = func.get_name();
+        let is_main_function = func_name.to_str().unwrap_or_default() == "main";
+        let env_arg_count = usize::from(!is_main_function && !is_extern_call);
+        let mut compiled_args: Vec<BasicValueEnum> = Vec::with_capacity(args.len() + env_arg_count);
         // Add null env_ptr for direct Arden calls (except main / extern C ABI)
-        if func_name != "main" && !is_extern_call {
+        if !is_main_function && !is_extern_call {
             compiled_args.push(
                 self.context
                     .ptr_type(AddressSpace::default())

@@ -2867,16 +2867,6 @@ fn rewrite_pattern_for_module(
     }
 }
 
-fn collect_local_enum_names(
-    global_enum_map: &HashMap<String, String>,
-    current_namespace: &str,
-) -> HashSet<String> {
-    global_enum_map
-        .iter()
-        .filter_map(|(name, owner_ns)| (owner_ns == current_namespace).then_some(name.clone()))
-        .collect()
-}
-
 type DirectModuleSymbolSets = (
     HashSet<String>,
     HashSet<String>,
@@ -5383,6 +5373,7 @@ fn rewrite_stmt_calls_for_project(
     let local_interfaces = ctx.type_ctx.local_interfaces;
     let imported_interfaces = ctx.type_ctx.imported_interfaces;
     let global_interface_map = ctx.type_ctx.global_interface_map;
+    let local_enums = ctx.type_ctx.local_enums;
     let imported_enums = ctx.type_ctx.imported_enums;
     let global_enum_map = ctx.type_ctx.global_enum_map;
     let local_modules = ctx.local_modules;
@@ -5459,7 +5450,7 @@ fn rewrite_stmt_calls_for_project(
                     local_interfaces,
                     imported_interfaces,
                     global_interface_map,
-                    &collect_local_enum_names(global_enum_map, current_namespace),
+                    local_enums,
                     imported_enums,
                     global_enum_map,
                     imported_modules,
@@ -5564,7 +5555,7 @@ fn rewrite_stmt_calls_for_project(
                         local_interfaces,
                         imported_interfaces,
                         global_interface_map,
-                        &collect_local_enum_names(global_enum_map, current_namespace),
+                        local_enums,
                         imported_enums,
                         global_enum_map,
                         imported_modules,
@@ -5634,6 +5625,7 @@ fn rewrite_expr_calls_for_project(
     let local_interfaces = ctx.type_ctx.local_interfaces;
     let imported_interfaces = ctx.type_ctx.imported_interfaces;
     let global_interface_map = ctx.type_ctx.global_interface_map;
+    let local_enums = ctx.type_ctx.local_enums;
     let imported_enums = ctx.type_ctx.imported_enums;
     let global_enum_map = ctx.type_ctx.global_enum_map;
     let local_modules = ctx.local_modules;
@@ -5724,10 +5716,7 @@ fn rewrite_expr_calls_for_project(
                                             local_interfaces,
                                             imported_interfaces,
                                             global_interface_map,
-                                            &collect_local_enum_names(
-                                                global_enum_map,
-                                                current_namespace,
-                                            ),
+                                            local_enums,
                                             imported_enums,
                                             global_enum_map,
                                             imported_modules,
@@ -5790,10 +5779,7 @@ fn rewrite_expr_calls_for_project(
                                         local_interfaces,
                                         imported_interfaces,
                                         global_interface_map,
-                                        &collect_local_enum_names(
-                                            global_enum_map,
-                                            current_namespace,
-                                        ),
+                                        local_enums,
                                         imported_enums,
                                         global_enum_map,
                                         imported_modules,
@@ -5900,10 +5886,7 @@ fn rewrite_expr_calls_for_project(
                                         local_interfaces,
                                         imported_interfaces,
                                         global_interface_map,
-                                        &collect_local_enum_names(
-                                            global_enum_map,
-                                            current_namespace,
-                                        ),
+                                        local_enums,
                                         imported_enums,
                                         global_enum_map,
                                         imported_modules,
@@ -5945,7 +5928,7 @@ fn rewrite_expr_calls_for_project(
                                     local_interfaces,
                                     imported_interfaces,
                                     global_interface_map,
-                                    &collect_local_enum_names(global_enum_map, current_namespace),
+                                    local_enums,
                                     imported_enums,
                                     global_enum_map,
                                     imported_modules,
@@ -6065,10 +6048,7 @@ fn rewrite_expr_calls_for_project(
                                             local_interfaces,
                                             imported_interfaces,
                                             global_interface_map,
-                                            &collect_local_enum_names(
-                                                global_enum_map,
-                                                current_namespace,
-                                            ),
+                                            local_enums,
                                             imported_enums,
                                             global_enum_map,
                                             imported_modules,
@@ -6191,10 +6171,7 @@ fn rewrite_expr_calls_for_project(
                                                 local_interfaces,
                                                 imported_interfaces,
                                                 global_interface_map,
-                                                &collect_local_enum_names(
-                                                    global_enum_map,
-                                                    current_namespace,
-                                                ),
+                                                local_enums,
                                                 imported_enums,
                                                 global_enum_map,
                                                 imported_modules,
@@ -6329,10 +6306,7 @@ fn rewrite_expr_calls_for_project(
                                             local_interfaces,
                                             imported_interfaces,
                                             global_interface_map,
-                                            &collect_local_enum_names(
-                                                global_enum_map,
-                                                current_namespace,
-                                            ),
+                                            local_enums,
                                             imported_enums,
                                             global_enum_map,
                                             imported_modules,
@@ -6494,7 +6468,7 @@ fn rewrite_expr_calls_for_project(
                                 local_interfaces,
                                 imported_interfaces,
                                 global_interface_map,
-                                &collect_local_enum_names(global_enum_map, current_namespace),
+                                local_enums,
                                 imported_enums,
                                 global_enum_map,
                                 imported_modules,
@@ -6539,7 +6513,7 @@ fn rewrite_expr_calls_for_project(
                             local_interfaces,
                             imported_interfaces,
                             global_interface_map,
-                            &collect_local_enum_names(global_enum_map, current_namespace),
+                            local_enums,
                             imported_enums,
                             global_enum_map,
                             imported_modules,
@@ -6941,7 +6915,7 @@ fn rewrite_expr_calls_for_project(
                         local_interfaces,
                         imported_interfaces,
                         global_interface_map,
-                        local_enums: &collect_local_enum_names(global_enum_map, current_namespace),
+                        local_enums,
                         imported_enums,
                         global_enum_map,
                         imported_modules,
@@ -6976,7 +6950,7 @@ fn rewrite_expr_calls_for_project(
                         local_interfaces,
                         imported_interfaces,
                         global_interface_map,
-                        &collect_local_enum_names(global_enum_map, current_namespace),
+                        local_enums,
                         imported_enums,
                         global_enum_map,
                         imported_modules,
@@ -7027,7 +7001,7 @@ fn rewrite_expr_calls_for_project(
                             local_interfaces,
                             imported_interfaces,
                             global_interface_map,
-                            &collect_local_enum_names(global_enum_map, current_namespace),
+                            local_enums,
                             imported_enums,
                             global_enum_map,
                             imported_modules,
