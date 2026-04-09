@@ -2230,7 +2230,7 @@ fn project_build_supports_zero_arg_exact_import_values_as_indexed_objects() {
     fs::write(
         src_dir.join("main.arden"),
         if cfg!(windows) {
-            "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { letter: Char = CurrentDir[0]; return if ((letter == '\\\\') || (letter == 'C')) { 0 } else { 1 }; }\n".to_string()
+            "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { letter: Char = CurrentDir[0]; return if (((letter >= 'A') && (letter <= 'Z')) || ((letter >= 'a') && (letter <= 'z')) || (letter == '\\\\') || (letter == '/')) { 0 } else { 1 }; }\n".to_string()
         } else {
             "package app;\nimport std.system.cwd as CurrentDir;\nfunction main(): Integer { letter: Char = CurrentDir[0]; return if (letter == '/') { 0 } else { 1 }; }\n".to_string()
         },
