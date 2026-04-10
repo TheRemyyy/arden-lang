@@ -399,7 +399,7 @@ fn link_with_mold(
     let mut command = Command::new(linker_path);
     command
         .arg(format!("--thread-count={}", linker_thread_count()))
-        .arg("--build-id=fast")
+        .arg("--build-id")
         .arg("--as-needed")
         .arg("-o")
         .arg(output_path);

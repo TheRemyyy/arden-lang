@@ -220,6 +220,7 @@ runs:
         echo "ARDEN_WINDOWS_UCRT_LIB_DIR=$ucrtLibDir" >> $env:GITHUB_ENV
         echo "ARDEN_WINDOWS_UM_LIB_DIR=$umLibDir" >> $env:GITHUB_ENV
         echo "ARDEN_WINDOWS_BUILTINS_LIB=$builtinsLib" >> $env:GITHUB_ENV
-        echo "LLVM_SYS_221_PREFIX=$shimRoot" >> $env:GITHUB_ENV
+        echo "LLVM_SYS_221_PREFIX=$llvmPrefix" >> $env:GITHUB_ENV
         echo "LLVM_CONFIG_PATH=$llvmConfig" >> $env:GITHUB_ENV
+        echo "$shimBin" >> $env:GITHUB_PATH
         echo "$llvmBin" >> $env:GITHUB_PATH

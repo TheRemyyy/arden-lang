@@ -3,7 +3,7 @@ linker = ".cargo/linkers/linux-x86_64-mold.sh"
 rustflags = [
   "-C", "target-cpu=native",
   "-C", "link-arg=--as-needed",
-  "-C", "link-arg=--build-id=fast",
+  "-C", "link-arg=--build-id",
 ]
 
 [target.aarch64-unknown-linux-gnu]
@@ -11,7 +11,7 @@ linker = ".cargo/linkers/linux-aarch64-mold.sh"
 rustflags = [
   "-C", "target-cpu=native",
   "-C", "link-arg=--as-needed",
-  "-C", "link-arg=--build-id=fast",
+  "-C", "link-arg=--build-id",
 ]
 
 [target.aarch64-apple-darwin]

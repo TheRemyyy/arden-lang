@@ -56,6 +56,7 @@ linking_binary=1
 for arg in "$@"; do
   case "$arg" in
     -m64|-m32) ;;
+    -nodefaultlibs) ;;
     -B*) ;;
     -fuse-ld=*) ;;
     -shared)
@@ -80,7 +81,7 @@ if [[ -n "$gcc_dir" ]]; then
   forwarded_args=("-L" "$gcc_dir" "${forwarded_args[@]}")
 fi
 
-prefix_args=("--thread-count=$(nproc)" "--build-id=fast" "--as-needed")
+prefix_args=("--thread-count=$(nproc)" "--build-id" "--as-needed")
 suffix_args=()
 
 if [[ "$linking_binary" -eq 1 ]]; then

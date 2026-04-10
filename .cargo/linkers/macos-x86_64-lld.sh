@@ -43,7 +43,7 @@ for arg in "$@"; do
     continue
   fi
   case "$arg" in
-    -fuse-ld=*|-mmacosx-version-min=*)
+    -fuse-ld=*|-mmacosx-version-min=*|-nodefaultlibs)
       ;;
     -arch)
       skip_next=1

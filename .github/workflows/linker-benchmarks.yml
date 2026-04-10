@@ -1,0 +1,127 @@
+name: Linker Benchmarks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Bench (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-latest
+            linker_env_name: CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER
+            linker_env_value: .cargo/linkers/linux-x86_64-mold.sh
+          - name: macos-arm64
+            os: macos-latest
+            linker_env_name: CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER
+            linker_env_value: .cargo/linkers/macos-aarch64-lld.sh
+          - name: macos-x64
+            os: macos-26-intel
+            linker_env_name: CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER
+            linker_env_value: .cargo/linkers/macos-x86_64-lld.sh
+          - name: windows-x64
+            os: windows-latest
+            linker_env_name: CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER
+            linker_env_value: lld-link
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: ./.github/actions/install-llvm
+
+      - uses: lukka/get-cmake@latest
+
+      - name: Install Windows build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install libxml2:x64-windows-static
+          $LibPath = "C:\vcpkg\installed\x64-windows-static\lib"
+          Copy-Item "$LibPath\libxml2.lib" "$LibPath\libxml2s.lib" -Force
+          echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
+
+      - name: Build Arden release compiler
+        shell: bash
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
+        run: |
+          export "${{ matrix.linker_env_name }}=${{ matrix.linker_env_value }}"
+          cargo build --release
+
+      - name: Run compile/link benchmark matrix
+        shell: bash
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
+        run: |
+          export "${{ matrix.linker_env_name }}=${{ matrix.linker_env_value }}"
+          mkdir -p benchmark/results/${{ matrix.name }}
+
+          python3 benchmark/run.py \
+            --bench compile_project_starter_graph \
+            --compile-mode cold \
+            --arden-timings \
+            --repeats 3 \
+            --warmup 1 \
+            --no-build
+          cp benchmark/results/latest.json benchmark/results/${{ matrix.name }}/starter_cold.json
+          cp benchmark/results/latest.md benchmark/results/${{ matrix.name }}/starter_cold.md
+
+          python3 benchmark/run.py \
+            --bench compile_project_starter_graph \
+            --compile-mode hot \
+            --arden-timings \
+            --repeats 3 \
+            --warmup 1 \
+            --no-build
+          cp benchmark/results/latest.json benchmark/results/${{ matrix.name }}/starter_hot.json
+          cp benchmark/results/latest.md benchmark/results/${{ matrix.name }}/starter_hot.md
+
+          python3 benchmark/run.py \
+            --bench compile_project_mega_graph \
+            --compile-mode cold \
+            --arden-timings \
+            --repeats 3 \
+            --warmup 1 \
+            --no-build
+          cp benchmark/results/latest.json benchmark/results/${{ matrix.name }}/mega_cold.json
+          cp benchmark/results/latest.md benchmark/results/${{ matrix.name }}/mega_cold.md
+
+          python3 benchmark/run.py \
+            --bench compile_project_mega_graph \
+            --compile-mode hot \
+            --arden-timings \
+            --repeats 3 \
+            --warmup 1 \
+            --no-build
+          cp benchmark/results/latest.json benchmark/results/${{ matrix.name }}/mega_hot.json
+          cp benchmark/results/latest.md benchmark/results/${{ matrix.name }}/mega_hot.md
+
+          python3 benchmark/run.py \
+            --bench incremental_rebuild_large_project_batch \
+            --arden-timings \
+            --repeats 3 \
+            --warmup 1 \
+            --no-build
+          cp benchmark/results/latest.json benchmark/results/${{ matrix.name }}/incremental_large_batch.json
+          cp benchmark/results/latest.md benchmark/results/${{ matrix.name }}/incremental_large_batch.md
+
+          python3 benchmark/run.py \
+            --bench incremental_rebuild_mega_graph_mixed \
+            --arden-timings \
+            --repeats 3 \
+            --warmup 1 \
+            --no-build
+          cp benchmark/results/latest.json benchmark/results/${{ matrix.name }}/incremental_mega_mixed.json
+          cp benchmark/results/latest.md benchmark/results/${{ matrix.name }}/incremental_mega_mixed.md
+
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linker-benchmarks-${{ matrix.name }}
+          path: benchmark/results/${{ matrix.name }}
