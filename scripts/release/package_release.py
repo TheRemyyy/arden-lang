@@ -30,40 +30,66 @@ def ensure_clean_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def copy_path(source: Path, destination: Path, visited_dirs: set[Path]) -> None:
+    if source.is_symlink():
+        resolved = source.resolve()
+        if resolved.is_dir():
+            real_dir = resolved.resolve()
+            if real_dir in visited_dirs:
+                return
+            visited_dirs.add(real_dir)
+            destination.mkdir(parents=True, exist_ok=True)
+            for child in resolved.iterdir():
+                copy_path(child, destination / child.name, visited_dirs)
+            return
+        copy_symlinked_file(resolved, destination)
+        return
+
+    if source.is_dir():
+        real_dir = source.resolve()
+        if real_dir in visited_dirs:
+            return
+        visited_dirs.add(real_dir)
+        destination.mkdir(parents=True, exist_ok=True)
+        for child in source.iterdir():
+            copy_path(child, destination / child.name, visited_dirs)
+        return
+
+    copy_file(source, destination)
+
+
 def copy_tree(source: Path, destination: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
     destination.mkdir(parents=True, exist_ok=True)
+    copy_path(source, destination, set())
+
+
+def copy_selected_paths(source_root: Path, destination_root: Path, relative_paths: list[Path]) -> None:
     visited_dirs: set[Path] = set()
+    for relative_path in relative_paths:
+        source_path = source_root / relative_path
+        if not source_path.exists() and not source_path.is_symlink():
+            raise FileNotFoundError(f"required packaging path not found: {source_path}")
+        copy_path(source_path, destination_root / relative_path, visited_dirs)
 
-    def copy_entry(current_source: Path, current_destination: Path) -> None:
-        if current_source.is_symlink():
-            resolved = current_source.resolve()
-            if resolved.is_dir():
-                real_dir = resolved.resolve()
-                if real_dir in visited_dirs:
-                    return
-                visited_dirs.add(real_dir)
-                current_destination.mkdir(parents=True, exist_ok=True)
-                for child in resolved.iterdir():
-                    copy_entry(child, current_destination / child.name)
-                return
-            copy_symlinked_file(resolved, current_destination)
-            return
 
-        if current_source.is_dir():
-            real_dir = current_source.resolve()
-            if real_dir in visited_dirs:
-                return
-            visited_dirs.add(real_dir)
-            current_destination.mkdir(parents=True, exist_ok=True)
-            for child in current_source.iterdir():
-                copy_entry(child, current_destination / child.name)
-            return
+def copy_linux_llvm_runtime(source_root: Path, destination_root: Path) -> None:
+    copy_selected_paths(
+        source_root,
+        destination_root,
+        [
+            Path("bin") / "clang",
+            Path("lib") / "clang",
+        ],
+    )
 
-        copy_file(current_source, current_destination)
 
-    copy_entry(source, destination)
+def copy_llvm_prefix(platform_name: str, source_root: Path, destination_root: Path) -> None:
+    if platform_name == "linux":
+        copy_linux_llvm_runtime(source_root, destination_root)
+        return
+    copy_tree(source_root, destination_root)
 
 
 def copy_symlinked_file(resolved_source: Path, destination: Path) -> None:
@@ -442,7 +468,7 @@ def package_release() -> None:
 
     real_binary_name = "arden-real.exe" if args.platform == "windows" else "arden-real"
     copy_file(args.binary, bundle_dir / "bin" / real_binary_name)
-    copy_tree(args.llvm_prefix, bundle_dir / "toolchain" / "llvm")
+    copy_llvm_prefix(args.platform, args.llvm_prefix, bundle_dir / "toolchain" / "llvm")
 
     for extra_prefix_raw in args.extra_prefix:
         extra_prefix = Path(extra_prefix_raw)
