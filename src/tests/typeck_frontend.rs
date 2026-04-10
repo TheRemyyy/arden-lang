@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 use crate::typeck::TypeChecker;
 use std::fs;

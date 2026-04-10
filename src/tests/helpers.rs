@@ -1,7 +1,6 @@
-#![allow(unused_variables)]
-
 use crate::ast::Program;
 use crate::borrowck::BorrowChecker;
+pub(crate) use crate::cli::paths::process_current_dir_lock as cli_test_lock;
 use crate::formatter::format_program_canonical;
 use crate::parser::Parser;
 use crate::typeck::TypeChecker;
@@ -14,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) struct ProjectSymbolMaps {
@@ -33,23 +32,7 @@ pub(crate) struct ProjectSymbolMaps {
 }
 
 impl ProjectSymbolMaps {
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        HashMap<String, Vec<PathBuf>>,
-        HashMap<String, HashMap<String, PathBuf>>,
-        HashMap<String, HashMap<String, PathBuf>>,
-        HashMap<String, HashMap<String, PathBuf>>,
-        HashMap<String, String>,
-        HashMap<String, PathBuf>,
-        HashMap<String, String>,
-        HashMap<String, PathBuf>,
-        HashMap<String, String>,
-        HashMap<String, PathBuf>,
-        HashMap<String, String>,
-        HashMap<String, PathBuf>,
-    ) {
+    pub(crate) fn into_parts(self) -> ProjectSymbolMapsParts {
         (
             self.namespace_files_map,
             self.namespace_function_files,
@@ -66,6 +49,25 @@ impl ProjectSymbolMaps {
         )
     }
 }
+
+type NamespaceFilesMap = HashMap<String, Vec<PathBuf>>;
+type SymbolFileMap = HashMap<String, HashMap<String, PathBuf>>;
+type GlobalSymbolMap = HashMap<String, String>;
+type GlobalSymbolFileMap = HashMap<String, PathBuf>;
+type ProjectSymbolMapsParts = (
+    NamespaceFilesMap,
+    SymbolFileMap,
+    SymbolFileMap,
+    SymbolFileMap,
+    GlobalSymbolMap,
+    GlobalSymbolFileMap,
+    GlobalSymbolMap,
+    GlobalSymbolFileMap,
+    GlobalSymbolMap,
+    GlobalSymbolFileMap,
+    GlobalSymbolMap,
+    GlobalSymbolFileMap,
+);
 
 pub(crate) fn parse_program(source: &str) -> Program {
     let tokens = crate::lexer::tokenize(source).expect("tokenize");
@@ -116,7 +118,6 @@ pub(crate) fn rewrite_fingerprint_for_test_unit(
         .iter()
         .map(|unit| (unit.file.clone(), unit.api_fingerprint.clone()))
         .collect::<HashMap<_, _>>();
-    let namespace_interface_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_interface_map: HashMap<String, String> = HashMap::new();
     let global_interface_file_map: HashMap<String, PathBuf> = HashMap::new();
     let symbol_lookup = Arc::new(build_project_symbol_lookup(
@@ -230,39 +231,9 @@ pub(crate) fn normalize_output(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).replace("\r\n", "\n")
 }
 
-pub(crate) fn cli_test_lock() -> &'static Mutex<()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-}
-
-pub(crate) struct CwdRestore {
-    previous: PathBuf,
-}
-
-fn fallback_working_dir() -> PathBuf {
-    std::env::temp_dir()
-}
-
-fn capture_working_dir() -> PathBuf {
-    std::env::current_dir().unwrap_or_else(|_| fallback_working_dir())
-}
-
-impl Drop for CwdRestore {
-    fn drop(&mut self) {
-        if std::env::set_current_dir(&self.previous).is_err() {
-            let _ = std::env::set_current_dir(fallback_working_dir());
-        }
-    }
-}
-
 pub(crate) fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
-    let _lock = cli_test_lock()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let previous = capture_working_dir();
-    std::env::set_current_dir(dir).expect("set current dir");
-    let _restore = CwdRestore { previous };
-    f()
+    crate::cli::paths::with_process_current_dir(dir, || Ok::<T, String>(f()))
+        .expect("set current dir")
 }
 
 pub(crate) fn normalize_nested_cargo_linker_env(command: &mut Command) {

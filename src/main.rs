@@ -4,6 +4,7 @@ mod ast;
 mod bindgen;
 mod borrowck;
 mod cache;
+mod cli;
 mod codegen;
 mod dependency;
 mod diagnostics;
@@ -25,7 +26,6 @@ mod tests;
 mod typeck;
 
 use clap::{Parser as ClapParser, Subcommand};
-use colored::control;
 use colored::*;
 use inkwell::context::Context;
 use rayon::prelude::*;
@@ -36,13 +36,18 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
 use std::time::Instant;
 use std::time::UNIX_EPOCH;
 
 use crate::ast::{Block, Decl, Expr, ImportDecl, Pattern, Program, Stmt, Type};
 use crate::borrowck::BorrowChecker;
 use crate::cache::*;
+use crate::cli::output::*;
+pub(crate) use crate::cli::paths::collect_arden_files;
+use crate::cli::paths::{
+    current_dir_checked, format_target_label, validate_source_file_path, with_process_current_dir,
+};
+use crate::cli::test_discovery::find_test_files;
 use crate::codegen::Codegen;
 use crate::dependency::*;
 use crate::diagnostics::*;
@@ -282,232 +287,6 @@ fn main() {
     if let Err(e) = result {
         eprintln!("{}", e);
         std::process::exit(1);
-    }
-}
-
-fn current_dir_checked() -> Result<PathBuf, String> {
-    std::env::current_dir()
-        .or_else(|_| {
-            let fallback = std::env::temp_dir();
-            if fallback.is_dir() {
-                Ok(fallback)
-            } else {
-                Err(std::io::Error::other("temporary directory is unavailable"))
-            }
-        })
-        .map_err(|e| {
-            format!(
-                "{}: Failed to read current directory: {}",
-                "error".red().bold(),
-                e
-            )
-        })
-}
-
-const CLI_WHITE_RGB: (u8, u8, u8) = (255, 255, 255);
-const CLI_SOFT_RGB: (u8, u8, u8) = (239, 232, 220);
-const CLI_TERTIARY_RGB: (u8, u8, u8) = (217, 178, 158);
-
-fn configure_cli_colors() {
-    #[cfg(windows)]
-    let _ = enable_ansi_support::enable_ansi_support();
-
-    control::set_override(true);
-}
-
-pub(crate) fn cli_accent(text: impl AsRef<str>) -> String {
-    #[cfg(windows)]
-    {
-        return text
-            .as_ref()
-            .truecolor(CLI_WHITE_RGB.0, CLI_WHITE_RGB.1, CLI_WHITE_RGB.2)
-            .bold()
-            .to_string();
-    }
-
-    #[cfg(not(windows))]
-    {
-        ansi_truecolor(text.as_ref(), CLI_WHITE_RGB, true)
-    }
-}
-
-pub(crate) fn cli_soft(text: impl AsRef<str>) -> String {
-    #[cfg(windows)]
-    {
-        return text
-            .as_ref()
-            .truecolor(CLI_SOFT_RGB.0, CLI_SOFT_RGB.1, CLI_SOFT_RGB.2)
-            .to_string();
-    }
-
-    #[cfg(not(windows))]
-    {
-        ansi_truecolor(text.as_ref(), CLI_SOFT_RGB, false)
-    }
-}
-
-pub(crate) fn cli_tertiary(text: impl AsRef<str>) -> String {
-    #[cfg(windows)]
-    {
-        return text
-            .as_ref()
-            .truecolor(CLI_TERTIARY_RGB.0, CLI_TERTIARY_RGB.1, CLI_TERTIARY_RGB.2)
-            .to_string();
-    }
-
-    #[cfg(not(windows))]
-    {
-        ansi_truecolor(text.as_ref(), CLI_TERTIARY_RGB, false)
-    }
-}
-
-fn cli_success(text: impl AsRef<str>) -> String {
-    cli_accent(text)
-}
-
-fn cli_warning(text: impl AsRef<str>) -> String {
-    cli_soft(text)
-}
-
-fn cli_error(text: impl AsRef<str>) -> String {
-    cli_accent(text)
-}
-
-fn cli_path(path: &Path) -> String {
-    cli_soft(format_cli_path(path))
-}
-
-fn ansi_truecolor(text: &str, rgb: (u8, u8, u8), bold: bool) -> String {
-    let bold_prefix = if bold { "\x1b[1m" } else { "" };
-    format!(
-        "{bold_prefix}\x1b[38;2;{};{};{}m{text}\x1b[0m",
-        rgb.0, rgb.1, rgb.2
-    )
-}
-
-fn cli_new_run_hint() -> &'static str {
-    "arden run"
-}
-
-fn format_cli_path(path: &Path) -> String {
-    #[cfg(windows)]
-    {
-        let raw = path.to_string_lossy().replace('/', "\\");
-        if let Some(stripped) = raw.strip_prefix(r"\\?\UNC\") {
-            return format!(r"\\{}", stripped);
-        }
-        if let Some(stripped) = raw.strip_prefix(r"\\?\") {
-            return stripped.to_string();
-        }
-        raw
-    }
-
-    #[cfg(not(windows))]
-    {
-        path.to_string_lossy().into_owned()
-    }
-}
-
-fn cli_elapsed(duration: Duration) -> String {
-    format!("{:.6} s", duration.as_secs_f64())
-}
-
-struct TestRunReport {
-    passed: usize,
-    failed: usize,
-    ignored: usize,
-}
-
-fn print_test_runner_output(stdout: &str, success: bool) -> TestRunReport {
-    let mut report = TestRunReport {
-        passed: 0,
-        failed: 0,
-        ignored: 0,
-    };
-    let mut active_test: Option<String> = None;
-
-    for line in stdout.lines() {
-        if let Some(name) = line.strip_prefix("__ARDEN_TEST_START__ ") {
-            active_test = Some(name.to_string());
-        } else if let Some(name) = line.strip_prefix("__ARDEN_TEST_PASS__ ") {
-            report.passed += 1;
-            active_test = None;
-            println!(
-                "{} {} {}",
-                cli_accent("PASS"),
-                cli_tertiary(">"),
-                cli_soft(name)
-            );
-        } else if let Some(name) = line.strip_prefix("__ARDEN_TEST_SKIP__ ") {
-            report.ignored += 1;
-            println!(
-                "{} {} {}",
-                cli_tertiary("SKIP"),
-                cli_tertiary(">"),
-                cli_soft(name)
-            );
-        } else if let Some(reason) = line.strip_prefix("__ARDEN_TEST_SKIP_REASON__ ") {
-            println!(" {}", cli_tertiary(reason));
-        } else {
-            println!("{line}");
-        }
-    }
-
-    if !success {
-        if let Some(name) = active_test {
-            report.failed = 1;
-            println!(
-                "{} {} {}",
-                cli_accent("FAILED"),
-                cli_tertiary(">"),
-                cli_soft(name)
-            );
-        } else {
-            report.failed = 1;
-        }
-    }
-
-    report
-}
-
-fn print_cli_step(message: impl AsRef<str>) {
-    println!("{} {}", cli_accent("›"), cli_accent(message.as_ref()));
-}
-
-fn print_cli_cache(message: impl AsRef<str>) {
-    println!("{} {}", cli_success("↺"), cli_success(message.as_ref()));
-}
-
-fn print_cli_artifact_result(action: &str, subject: &str, path: &Path, elapsed: Duration) {
-    println!(
-        "{} {} {} {} {}",
-        cli_success(action),
-        cli_accent(subject),
-        cli_tertiary("->"),
-        cli_path(path),
-        cli_tertiary(format!("({})", cli_elapsed(elapsed)))
-    );
-}
-
-fn format_target_label(path: Option<&Path>, current_dir: &Path) -> String {
-    if let Some(path) = path {
-        return path.display().to_string();
-    }
-    if let Some(project_root) = find_project_root(current_dir) {
-        return project_root.display().to_string();
-    }
-    current_dir.display().to_string()
-}
-
-struct CwdRestore {
-    previous: PathBuf,
-}
-
-impl Drop for CwdRestore {
-    fn drop(&mut self) {
-        if std::env::set_current_dir(&self.previous).is_err() {
-            let _ = std::env::set_current_dir(std::env::temp_dir());
-        }
     }
 }
 
@@ -4691,77 +4470,6 @@ fn resolve_default_file(path: Option<&Path>) -> Result<PathBuf, String> {
     Err("No file specified and no arden.toml found in the current directory".to_string())
 }
 
-fn path_traverses_symlinked_directories(path: &Path) -> Result<bool, String> {
-    let mut current = path.parent();
-    while let Some(dir) = current {
-        if dir.as_os_str().is_empty() {
-            break;
-        }
-        let metadata = fs::symlink_metadata(dir).map_err(|e| {
-            format!(
-                "{}: Failed to inspect path ancestor '{}': {}",
-                "error".red().bold(),
-                dir.display(),
-                e
-            )
-        })?;
-        if metadata.file_type().is_symlink() {
-            return Ok(true);
-        }
-        current = dir.parent();
-    }
-    Ok(false)
-}
-
-fn validate_source_file_path(path: &Path) -> Result<(), String> {
-    if !path.exists() {
-        return Err(format!("Path '{}' does not exist", path.display()));
-    }
-    if !path.is_file() {
-        return Err(format!("Path '{}' is not a file", path.display()));
-    }
-    if path.extension().and_then(|ext| ext.to_str()) != Some("arden") {
-        return Err(format!("Path '{}' is not an .arden file", path.display()));
-    }
-
-    let parent_dir = path.parent().unwrap_or(Path::new("."));
-    let normalized_parent = if parent_dir.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        parent_dir
-    };
-    let canonical_parent = normalized_parent.canonicalize().map_err(|e| {
-        format!(
-            "{}: Failed to resolve parent directory for '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-    let canonical_path = path.canonicalize().map_err(|e| {
-        format!(
-            "{}: Failed to resolve path '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })?;
-    if !canonical_path.starts_with(&canonical_parent) {
-        return Err(format!(
-            "Path '{}' resolves outside the requested directory tree",
-            path.display()
-        ));
-    }
-    if path_traverses_symlinked_directories(path)? {
-        return Err(format!(
-            "Path '{}' must not traverse symlinked directories",
-            path.display()
-        ));
-    }
-
-    Ok(())
-}
-
 fn lint_target(path: Option<&Path>) -> Result<(), String> {
     let file = resolve_default_file(path)?;
     let source = fs::read_to_string(&file)
@@ -4804,58 +4512,6 @@ fn fix_target(path: Option<&Path>) -> Result<(), String> {
     fs::write(&file, formatted_source)
         .map_err(|e| format!("{}: Failed to write file: {}", "error".red().bold(), e))?;
     println!("{} {}", cli_success("Updated"), cli_path(&file));
-    Ok(())
-}
-
-fn collect_arden_files(path: &Path) -> Result<Vec<PathBuf>, String> {
-    if path.is_file() {
-        validate_source_file_path(path)?;
-        return Ok(vec![path.to_path_buf()]);
-    }
-
-    if !path.is_dir() {
-        return Err(format!("Path '{}' does not exist", path.display()));
-    }
-    if path_traverses_symlinked_directories(path)? {
-        return Err(format!(
-            "Path '{}' must not traverse symlinked directories",
-            path.display()
-        ));
-    }
-
-    let mut files = Vec::new();
-    collect_arden_files_recursive(path, &mut files)?;
-    files.sort();
-    Ok(files)
-}
-
-fn collect_arden_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-    for entry in fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?
-    {
-        let entry = entry.map_err(|e| {
-            format!(
-                "Failed to read directory entry in '{}': {}",
-                dir.display(),
-                e
-            )
-        })?;
-        let file_type = entry.file_type().map_err(|e| {
-            format!(
-                "Failed to inspect directory entry '{}': {}",
-                entry.path().display(),
-                e
-            )
-        })?;
-        let path = entry.path();
-        if file_type.is_dir() {
-            collect_arden_files_recursive(&path, files)?;
-        } else if file_type.is_file()
-            && path.extension().and_then(|ext| ext.to_str()) == Some("arden")
-        {
-            files.push(path);
-        }
-    }
     Ok(())
 }
 
@@ -5141,13 +4797,9 @@ fn run_tests(
                     test_file,
                     &runner_code,
                 )?;
-                let previous_dir = current_dir_checked()?;
-                std::env::set_current_dir(&temp_dir)
-                    .map_err(|e| format!("Failed to enter test runner workspace: {}", e))?;
-                let _cwd_restore = CwdRestore {
-                    previous: previous_dir,
-                };
-                let build_result = build_project(false, false, true, false, false);
+                let build_result = with_process_current_dir(&temp_dir, || {
+                    build_project(false, false, true, false, false)
+                });
                 let result =
                     build_result.and_then(|_| run_test_executable(&exe_path, filtered_out_tests));
                 let _ = fs::remove_dir_all(&temp_dir);
@@ -5307,67 +4959,6 @@ fn create_project_test_runner_workspace(
     Ok((temp_dir.clone(), temp_dir.join("runner")))
 }
 
-/// Find test files in a directory
-fn find_test_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
-    if !dir.exists() {
-        return Err(format!("Path '{}' does not exist", dir.display()));
-    }
-    if !dir.is_dir() {
-        return Err(format!("Path '{}' is not a directory", dir.display()));
-    }
-
-    let mut test_files = Vec::new();
-    find_test_files_recursive(dir, &mut test_files)?;
-    test_files.sort();
-    Ok(test_files)
-}
-
-fn is_test_like_file(path: &Path) -> bool {
-    if path.extension().and_then(|ext| ext.to_str()) != Some("arden") {
-        return false;
-    }
-
-    let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    let lowercase = file_name.to_ascii_lowercase();
-    lowercase.contains("test") || lowercase.contains("spec")
-}
-
-fn find_test_files_recursive(dir: &Path, test_files: &mut Vec<PathBuf>) -> Result<(), String> {
-    for entry in fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?
-    {
-        let entry = entry.map_err(|e| {
-            format!(
-                "Failed to read directory entry in '{}': {}",
-                dir.display(),
-                e
-            )
-        })?;
-        let file_type = entry.file_type().map_err(|e| {
-            format!(
-                "Failed to inspect directory entry '{}' : {}",
-                entry.path().display(),
-                e
-            )
-        })?;
-        let path = entry.path();
-
-        if file_type.is_symlink() {
-            continue;
-        }
-
-        if file_type.is_dir() {
-            find_test_files_recursive(&path, test_files)?;
-            continue;
-        }
-
-        if file_type.is_file() && is_test_like_file(&path) {
-            test_files.push(path);
-        }
-    }
-    Ok(())
-}
-
 /// Compile and run a test file
 fn compile_and_run_test(
     source_path: &Path,
@@ -5389,7 +4980,13 @@ fn run_test_executable(exe_path: &Path, filtered_out: usize) -> Result<(), Strin
     let started_at = Instant::now();
     println!();
 
+    let working_dir = exe_path
+        .parent()
+        .filter(|dir| dir.is_dir())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(std::env::temp_dir);
     let output = Command::new(exe_path)
+        .current_dir(working_dir)
         .output()
         .map_err(|e| format!("Failed to run test runner: {}", e))?;
 
@@ -5436,28 +5033,4 @@ fn bindgen_header(header: &Path, output: Option<&Path>) -> Result<(), String> {
         );
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod cli_output_tests {
-    use super::*;
-
-    #[test]
-    fn cli_new_hint_uses_direct_run_command() {
-        assert_eq!(cli_new_run_hint(), "arden run");
-    }
-
-    #[cfg(not(windows))]
-    #[test]
-    fn cli_path_preserves_regular_unix_paths() {
-        let path = Path::new("/tmp/arden-demo");
-        assert_eq!(format_cli_path(path), "/tmp/arden-demo");
-    }
-
-    #[cfg(windows)]
-    #[test]
-    fn cli_path_strips_verbatim_windows_prefix() {
-        let path = Path::new(r"\\?\C:\Users\demo\project");
-        assert_eq!(format_cli_path(path), r"C:\Users\demo\project");
-    }
 }

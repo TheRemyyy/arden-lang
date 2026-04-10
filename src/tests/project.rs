@@ -1,6 +1,3 @@
-#![allow(unused_variables)]
-
-#[allow(unused_imports)]
 use super::*;
 use crate::ast::{
     Decl, Expr, FunctionDecl, ImportDecl, Literal, Program, Spanned, Stmt, Type, Visibility,
@@ -8814,9 +8811,9 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
     ];
     let (
         namespace_files_map,
-        namespace_function_files,
-        namespace_class_files,
-        namespace_module_files,
+        _namespace_function_files,
+        _namespace_class_files,
+        _namespace_module_files,
         global_function_map,
         global_function_file_map,
         global_class_map,
@@ -8930,9 +8927,9 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
     ];
     let (
         _namespace_files_map_before,
-        namespace_function_files_before,
-        namespace_class_files_before,
-        namespace_module_files_before,
+        _namespace_function_files_before,
+        _namespace_class_files_before,
+        _namespace_module_files_before,
         global_function_map_before,
         global_function_file_map_before,
         global_class_map_before,
@@ -9429,9 +9426,9 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
     ];
     let (
         _namespace_files_map_before,
-        namespace_function_files_before,
-        namespace_class_files_before,
-        namespace_module_files_before,
+        _namespace_function_files_before,
+        _namespace_class_files_before,
+        _namespace_module_files_before,
         global_function_map_before,
         global_function_file_map_before,
         global_class_map_before,
@@ -9521,9 +9518,9 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
     ];
     let (
         _namespace_files_map_after,
-        namespace_function_files_after,
-        namespace_class_files_after,
-        namespace_module_files_after,
+        _namespace_function_files_after,
+        _namespace_class_files_after,
+        _namespace_module_files_after,
         global_function_map_after,
         global_function_file_map_after,
         global_class_map_after,
@@ -9793,9 +9790,9 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
         ];
         let (
             _namespace_files_map_before,
-            namespace_function_files_before,
-            namespace_class_files_before,
-            namespace_module_files_before,
+            _namespace_function_files_before,
+            _namespace_class_files_before,
+            _namespace_module_files_before,
             global_function_map_before,
             global_function_file_map_before,
             global_class_map_before,
@@ -9882,9 +9879,9 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
         ];
         let (
             _namespace_files_map_after,
-            namespace_function_files_after,
-            namespace_class_files_after,
-            namespace_module_files_after,
+            _namespace_function_files_after,
+            _namespace_class_files_after,
+            _namespace_module_files_after,
             global_function_map_after,
             global_function_file_map_after,
             global_class_map_after,
@@ -9996,9 +9993,9 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
         ];
         let (
             _namespace_files_map_before,
-            namespace_function_files_before,
-            namespace_class_files_before,
-            namespace_module_files_before,
+            _namespace_function_files_before,
+            _namespace_class_files_before,
+            _namespace_module_files_before,
             global_function_map_before,
             global_function_file_map_before,
             global_class_map_before,
@@ -10085,9 +10082,9 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
         ];
         let (
             _namespace_files_map_after,
-            namespace_function_files_after,
-            namespace_class_files_after,
-            namespace_module_files_after,
+            _namespace_function_files_after,
+            _namespace_class_files_after,
+            _namespace_module_files_after,
             global_function_map_after,
             global_function_file_map_after,
             global_class_map_after,
@@ -10228,7 +10225,7 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
         ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
         ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
     ]);
-    let namespace_function_files = HashMap::from([(
+    let _namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
             ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
@@ -10236,13 +10233,13 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
         ]),
     )]);
     let namespace_classes = HashMap::new();
-    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let _namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_class_map = HashMap::new();
     let global_class_file_map = HashMap::new();
     let global_enum_map = HashMap::new();
     let global_enum_file_map = HashMap::new();
     let namespace_modules = HashMap::new();
-    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let _namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_module_map = HashMap::new();
     let global_module_file_map = HashMap::new();
     let namespace_api_fingerprints = HashMap::from([("lib".to_string(), "ns-v1".to_string())]);
@@ -10352,7 +10349,7 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
         ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
         ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
     ]);
-    let namespace_function_files = HashMap::from([(
+    let _namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
             ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
@@ -10360,13 +10357,13 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
         ]),
     )]);
     let namespace_classes = HashMap::new();
-    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let _namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_class_map = HashMap::new();
     let global_class_file_map = HashMap::new();
     let global_enum_map = HashMap::new();
     let global_enum_file_map = HashMap::new();
     let namespace_modules = HashMap::new();
-    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let _namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_module_map = HashMap::new();
     let global_module_file_map = HashMap::new();
     let namespace_api_fingerprints_a = HashMap::from([("lib".to_string(), "ns-v1".to_string())]);
@@ -10470,15 +10467,15 @@ fn dependency_graph_tracks_specific_symbol_owner_file_only() {
     let global_enum_file_map = HashMap::new();
     let global_module_map = HashMap::new();
     let global_module_file_map = HashMap::new();
-    let namespace_function_files = HashMap::from([(
+    let _namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
             ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
             ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
         ]),
     )]);
-    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let _namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let _namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
         global_function_map: &global_function_map,
@@ -10528,12 +10525,12 @@ fn dependency_graph_tracks_same_namespace_symbol_references() {
             PathBuf::from("src/helper.arden"),
         ],
     )]);
-    let namespace_function_files = HashMap::from([(
+    let _namespace_function_files = HashMap::from([(
         "app".to_string(),
         HashMap::from([("helper".to_string(), PathBuf::from("src/helper.arden"))]),
     )]);
-    let namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
-    let namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let _namespace_class_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
+    let _namespace_module_files: HashMap<String, HashMap<String, PathBuf>> = HashMap::new();
     let global_function_map = HashMap::from([("helper".to_string(), "app".to_string())]);
     let global_function_file_map =
         HashMap::from([("helper".to_string(), PathBuf::from("src/helper.arden"))]);
@@ -10603,7 +10600,7 @@ fn dependency_graph_limits_wildcard_imports_to_used_owner_files() {
             ],
         ),
     ]);
-    let namespace_function_files = HashMap::from([(
+    let _namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
             ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
@@ -10676,7 +10673,7 @@ fn dependency_graph_keeps_wildcard_namespace_dependencies_when_symbol_disappears
             ],
         ),
     ]);
-    let namespace_function_files = HashMap::from([(
+    let _namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([
             ("other".to_string(), PathBuf::from("src/lib_foo.arden")),
@@ -10750,7 +10747,7 @@ fn dependency_graph_keeps_nested_module_wildcard_namespace_dependencies_when_sym
         ),
         ("app.U".to_string(), vec![PathBuf::from("src/helper.arden")]),
     ]);
-    let namespace_module_files = HashMap::from([(
+    let _namespace_module_files = HashMap::from([(
         "app".to_string(),
         HashMap::from([("U".to_string(), PathBuf::from("src/helper.arden"))]),
     )]);
@@ -10814,9 +10811,9 @@ fn parsed_dependency_graph_tracks_nested_module_wildcard_import_owner_files() {
     ];
     let (
         namespace_files_map,
-        namespace_function_files,
-        namespace_class_files,
-        namespace_module_files,
+        _namespace_function_files,
+        _namespace_class_files,
+        _namespace_module_files,
         global_function_map,
         global_function_file_map,
         global_class_map,
@@ -11732,7 +11729,7 @@ fn dependency_graph_recomputes_direct_neighbors_after_api_change() {
         ("app".to_string(), vec![PathBuf::from("src/app.arden")]),
         ("lib".to_string(), vec![PathBuf::from("src/lib_foo.arden")]),
     ]);
-    let namespace_function_files = HashMap::from([(
+    let _namespace_function_files = HashMap::from([(
         "lib".to_string(),
         HashMap::from([("foo".to_string(), PathBuf::from("src/lib_foo.arden"))]),
     )]);

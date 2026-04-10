@@ -471,7 +471,8 @@ fn macos_sdk_root() -> Result<PathBuf, String> {
         }
     }
 
-    let mut command = Command::new("xcrun");
+    let xcrun_path = find_tool_in_path("xcrun").unwrap_or_else(|| PathBuf::from("/usr/bin/xcrun"));
+    let mut command = Command::new(xcrun_path);
     command.arg("--sdk").arg("macosx").arg("--show-sdk-path");
     apply_fallback_current_dir(&mut command);
     let output = command.output().map_err(|error| {
@@ -506,7 +507,8 @@ fn macos_sdk_version() -> Result<String, String> {
         return Ok(version.to_string_lossy().into_owned());
     }
 
-    let mut command = Command::new("xcrun");
+    let xcrun_path = find_tool_in_path("xcrun").unwrap_or_else(|| PathBuf::from("/usr/bin/xcrun"));
+    let mut command = Command::new(xcrun_path);
     command.arg("--sdk").arg("macosx").arg("--show-sdk-version");
     apply_fallback_current_dir(&mut command);
     let output = command.output().map_err(|error| {
@@ -686,14 +688,9 @@ fn link_with_lld_link(
         command.arg(builtins);
     }
 
-    for lib in [
-        "libcmt",
-        "oldnames",
-        "vcruntime",
-        "ucrt",
-        "legacy_stdio_definitions",
-        "kernel32",
-    ] {
+    command.arg("/defaultlib:msvcrt");
+
+    for lib in ["oldnames", "legacy_stdio_definitions", "kernel32"] {
         command.arg(normalize_windows_lib_name(lib));
     }
     for lib in link.link_libs {

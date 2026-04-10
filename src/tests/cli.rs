@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 use super::*;
 #[cfg(unix)]
 use crate::collect_arden_files;
@@ -511,7 +510,7 @@ fn cli_run_tests_executes_project_local_alias_import_tests() {
 fn cli_build_reports_import_check_errors_only_once() {
     let _lock = cli_test_lock()
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(|poisoned: std::sync::PoisonError<_>| poisoned.into_inner());
     let temp_root = make_temp_project_root("cli-build-import-check-single-print");
     write_test_project_config(
         &temp_root,
