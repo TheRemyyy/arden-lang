@@ -487,7 +487,7 @@ fn collect_expr_idents(
                 collect_expr_idents(&end.node, declared, used, scope_stack, next_scope_id);
             }
         }
-        Expr::IfExpr {
+        Expr::If {
             condition,
             then_branch,
             else_branch,
@@ -810,7 +810,7 @@ fn check_shadowed_in_expr(
                 check_shadowed_in_expr(&end.node, scopes, findings);
             }
         }
-        Expr::IfExpr {
+        Expr::If {
             condition,
             then_branch,
             else_branch,
@@ -1202,7 +1202,7 @@ fn collect_expr_names(expr: &Expr, used: &mut HashSet<String>) {
                 collect_expr_names(&end.node, used);
             }
         }
-        Expr::IfExpr {
+        Expr::If {
             condition,
             then_branch,
             else_branch,

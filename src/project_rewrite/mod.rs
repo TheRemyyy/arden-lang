@@ -634,7 +634,7 @@ fn materialize_builtin_async_tail_expr(
     }
 
     match expr {
-        Expr::IfExpr {
+        Expr::If {
             condition,
             then_branch,
             else_branch,
@@ -651,7 +651,7 @@ fn materialize_builtin_async_tail_expr(
             if rewritten_then.is_none() && rewritten_else.is_none() {
                 return None;
             }
-            Some(Expr::IfExpr {
+            Some(Expr::If {
                 condition: condition.clone(),
                 then_branch: rewritten_then.unwrap_or_else(|| then_branch.clone()),
                 else_branch: rewritten_else.or_else(|| else_branch.clone()),
@@ -4017,11 +4017,11 @@ fn rename_shadowed_module_imports_in_expr(
                 expr.span.clone(),
             )),
         },
-        Expr::IfExpr {
+        Expr::If {
             condition,
             then_branch,
             else_branch,
-        } => Expr::IfExpr {
+        } => Expr::If {
             condition: Box::new(ast::Spanned::new(
                 rename_shadowed_module_imports_in_expr(
                     &condition.node,
@@ -4731,11 +4731,11 @@ fn fix_module_local_expr(expr: &Expr, ctx: ModuleRewriteContext<'_>) -> Expr {
                 expr.span.clone(),
             )),
         },
-        Expr::IfExpr {
+        Expr::If {
             condition,
             then_branch,
             else_branch,
-        } => Expr::IfExpr {
+        } => Expr::If {
             condition: Box::new(ast::Spanned::new(
                 fix_module_local_expr(&condition.node, module_rewrite_ctx),
                 condition.span.clone(),
@@ -7065,7 +7065,7 @@ fn rewrite_expr_calls_for_project(
             }
         }
         Expr::Block(stmts) => Expr::Block(rewrite_block_calls_for_project(stmts, ctx, scopes)),
-        Expr::IfExpr {
+        Expr::If {
             condition,
             then_branch,
             else_branch,
@@ -7083,7 +7083,7 @@ fn rewrite_expr_calls_for_project(
                 pop_scope(scopes);
                 rewritten
             });
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,

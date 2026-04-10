@@ -455,7 +455,7 @@ impl TypeChecker {
                     self.collect_effects_expr(&e.node, current_class, out);
                 }
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,

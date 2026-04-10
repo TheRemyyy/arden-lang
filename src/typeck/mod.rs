@@ -1304,7 +1304,7 @@ impl TypeChecker {
                     Self::expr_mentions_ident_with_shadowing(&expr.node, ident, local_names)
                 })
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -1931,7 +1931,7 @@ impl TypeChecker {
                 // Check type compatibility. If the value is an if-expression that already
                 // produced a branch mismatch diagnostic, avoid cascading a second local
                 // assignment mismatch for the same root cause.
-                let suppress_assignment_mismatch = matches!(&value.node, Expr::IfExpr { .. })
+                let suppress_assignment_mismatch = matches!(&value.node, Expr::If { .. })
                     && !self.types_compatible(&expected_type, &value_type)
                     && self.errors.iter().any(|error| {
                         error.message.contains("If expression branch type mismatch")
@@ -2972,7 +2972,7 @@ impl TypeChecker {
             }),
             Expr::StringInterp(_) => Some(ResolvedType::String),
             Expr::Block(body) => self.builtin_argument_block_type_hint(body),
-            Expr::IfExpr {
+            Expr::If {
                 then_branch,
                 else_branch,
                 ..
@@ -3199,7 +3199,7 @@ impl TypeChecker {
             return self.check_block_expr_with_expected_type(body, expected_ty);
         }
         if let (
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -4871,7 +4871,7 @@ impl TypeChecker {
                 ResolvedType::Range(Box::new(ResolvedType::Integer))
             }
 
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,

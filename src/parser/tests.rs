@@ -973,7 +973,7 @@ fn test_parse_if_expression() {
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("Expected let statement");
     };
-    let Expr::IfExpr {
+    let Expr::If {
         condition,
         then_branch,
         else_branch,
@@ -1004,7 +1004,7 @@ fn test_parse_if_expression_without_else() {
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("Expected let statement");
     };
-    let Expr::IfExpr { else_branch, .. } = &value.node else {
+    let Expr::If { else_branch, .. } = &value.node else {
         panic!("Expected if expression");
     };
     assert!(else_branch.is_none());
@@ -1051,7 +1051,7 @@ fn test_parse_if_expression_with_else_if() {
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("Expected let statement");
     };
-    let Expr::IfExpr { else_branch, .. } = &value.node else {
+    let Expr::If { else_branch, .. } = &value.node else {
         panic!("Expected if expression");
     };
     let else_branch = else_branch
@@ -1060,7 +1060,7 @@ fn test_parse_if_expression_with_else_if() {
     assert!(matches!(
         else_branch[0].node,
         Stmt::Expr(Spanned {
-            node: Expr::IfExpr { .. },
+            node: Expr::If { .. },
             ..
         })
     ));
@@ -1085,7 +1085,7 @@ fn test_parse_if_expression_generic_constructor_branches() {
     let Stmt::Return(Some(value)) = &func.body[0].node else {
         panic!("Expected return statement");
     };
-    let Expr::IfExpr {
+    let Expr::If {
         then_branch,
         else_branch,
         ..
@@ -1186,7 +1186,7 @@ fn test_parse_if_expression_branch_match_statement_with_semicolon() {
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("Expected let statement");
     };
-    let Expr::IfExpr { then_branch, .. } = &value.node else {
+    let Expr::If { then_branch, .. } = &value.node else {
         panic!("Expected if expression");
     };
     assert!(matches!(then_branch[0].node, Stmt::Match { .. }));

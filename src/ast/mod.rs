@@ -8,9 +8,6 @@
 //! - Async/await
 //! - Full pattern matching
 
-#![allow(dead_code)]
-#![allow(clippy::enum_variant_names)]
-
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
@@ -254,17 +251,6 @@ impl Type {
         (self.is_numeric() && other.is_numeric())
             || matches!((self, other), (Type::Char, Type::Char))
     }
-
-    pub fn is_copy(&self) -> bool {
-        matches!(
-            self,
-            Type::Integer | Type::Float | Type::Boolean | Type::Char | Type::None | Type::Ptr(_)
-        )
-    }
-
-    pub fn is_reference(&self) -> bool {
-        matches!(self, Type::Ref(_) | Type::MutRef(_))
-    }
 }
 
 pub(crate) fn flatten_field_chain(expr: &Expr) -> Option<Vec<String>> {
@@ -444,7 +430,7 @@ pub enum Expr {
         inclusive: bool,
     },
     /// If expression (returns value)
-    IfExpr {
+    If {
         condition: Box<Spanned<Expr>>,
         then_branch: Block,
         else_branch: Option<Block>,

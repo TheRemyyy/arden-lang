@@ -1,6 +1,4 @@
 //! Type-specific codegen helpers for collections, Option, and Result types
-#![allow(dead_code)]
-
 use crate::ast::{Expr, Spanned, Type};
 use inkwell::targets::{
     CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
@@ -1282,22 +1280,6 @@ impl<'ctx> Codegen<'ctx> {
 
     // === Option<T> methods ===
 
-    pub fn compile_option_method(
-        &mut self,
-        option_name: &str,
-        method: &str,
-        args: &[Spanned<Expr>],
-    ) -> Result<BasicValueEnum<'ctx>> {
-        let (ptr, ty) = {
-            let var = self
-                .variables
-                .get(option_name)
-                .ok_or_else(|| Self::undefined_variable_error(option_name))?;
-            (var.ptr, var.ty.clone())
-        };
-        self.compile_option_method_on_value(ptr.into(), &ty, method, args)
-    }
-
     pub fn compile_option_method_on_value(
         &mut self,
         option_value: BasicValueEnum<'ctx>,
@@ -1466,22 +1448,6 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     // === Result<T, E> methods ===
-
-    pub fn compile_result_method(
-        &mut self,
-        result_name: &str,
-        method: &str,
-        args: &[Spanned<Expr>],
-    ) -> Result<BasicValueEnum<'ctx>> {
-        let (ptr, ty) = {
-            let var = self
-                .variables
-                .get(result_name)
-                .ok_or_else(|| Self::undefined_variable_error(result_name))?;
-            (var.ptr, var.ty.clone())
-        };
-        self.compile_result_method_on_value(ptr.into(), &ty, method, args)
-    }
 
     pub fn compile_result_method_on_value(
         &mut self,
@@ -1992,10 +1958,6 @@ impl<'ctx> Codegen<'ctx> {
             .unwrap())
     }
 
-    pub fn create_default_result(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        self.create_default_result_typed(&Type::Integer, &Type::String)
-    }
-
     fn create_default_result_typed_with_guard(
         &mut self,
         ok_ty: &Type,
@@ -2080,99 +2042,6 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     // === List<T> helpers ===
-
-    pub fn create_fixed_list(
-        &mut self,
-        size: u64,
-        list_ty: Option<&Type>,
-    ) -> Result<BasicValueEnum<'ctx>> {
-        if size == 0 {
-            return self.create_empty_list(list_ty);
-        }
-        let (elem_llvm_ty, _) = if let Some(list_ty) = list_ty {
-            self.list_element_layout_from_list_type(list_ty)
-        } else {
-            self.list_element_layout_default()
-        };
-
-        // List struct: { capacity: i64, length: i64, data: ptr }
-        let list_type = self.context.struct_type(
-            &[
-                self.context.i64_type().into(),
-                self.context.i64_type().into(),
-                self.context.ptr_type(AddressSpace::default()).into(),
-            ],
-            false,
-        );
-
-        let alloca = self.builder.build_alloca(list_type, "list").unwrap();
-        let i32_type = self.context.i32_type();
-        let zero = i32_type.const_int(0, false);
-
-        let capacity_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    list_type.as_basic_type_enum(),
-                    alloca,
-                    &[zero, i32_type.const_int(0, false)],
-                    "capacity",
-                )
-                .unwrap()
-        };
-        self.builder
-            .build_store(capacity_ptr, self.context.i64_type().const_int(size, false))
-            .unwrap();
-
-        let length_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    list_type.as_basic_type_enum(),
-                    alloca,
-                    &[zero, i32_type.const_int(1, false)],
-                    "length",
-                )
-                .unwrap()
-        };
-        self.builder
-            .build_store(length_ptr, self.context.i64_type().const_zero())
-            .unwrap();
-
-        let malloc = self.get_or_declare_malloc();
-        let elem_size = self.storage_size_of_llvm_type(elem_llvm_ty);
-        let total_size = size.saturating_mul(elem_size);
-        let data_call = self
-            .builder
-            .build_call(
-                malloc,
-                &[self.context.i64_type().const_int(total_size, false).into()],
-                "list_fixed_data",
-            )
-            .unwrap();
-        let data_i8_ptr = self.extract_call_pointer_value(
-            data_call,
-            "malloc did not produce a pointer while allocating fixed list storage",
-        )?;
-        self.zero_initialize_allocated_bytes(
-            data_i8_ptr,
-            total_size,
-            "fixed list zero initialization",
-        )?;
-        let data_ptr_field = unsafe {
-            self.builder
-                .build_gep(
-                    list_type.as_basic_type_enum(),
-                    alloca,
-                    &[zero, i32_type.const_int(2, false)],
-                    "data_ptr",
-                )
-                .unwrap()
-        };
-        self.builder
-            .build_store(data_ptr_field, data_i8_ptr)
-            .unwrap();
-
-        Ok(self.builder.build_load(list_type, alloca, "list").unwrap())
-    }
 
     pub fn create_list_with_capacity_value(
         &mut self,
@@ -2512,10 +2381,6 @@ impl<'ctx> Codegen<'ctx> {
 
     // === Map<K,V> helpers ===
 
-    pub fn create_empty_map(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        self.create_empty_map_for_type(&Type::Map(Box::new(Type::Integer), Box::new(Type::Integer)))
-    }
-
     pub fn create_empty_map_for_type(
         &mut self,
         map_expr_ty: &Type,
@@ -2627,10 +2492,6 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.build_store(values_field, values_ptr).unwrap();
 
         Ok(self.builder.build_load(map_type, alloca, "map").unwrap())
-    }
-
-    pub fn create_empty_set(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        self.create_empty_set_for_type(&Type::Set(Box::new(Type::Integer)))
     }
 
     pub fn create_empty_set_for_type(
@@ -2904,10 +2765,6 @@ impl<'ctx> Codegen<'ctx> {
         self.create_default_value_for_type_with_guard(ty, &mut visited_classes)
     }
 
-    pub fn create_empty_box(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        self.create_empty_box_typed(&Type::Integer)
-    }
-
     pub fn create_empty_box_typed(&mut self, box_ty: &Type) -> Result<BasicValueEnum<'ctx>> {
         let inner_ty = match self.deref_codegen_type(box_ty) {
             Type::Box(inner) => inner.as_ref(),
@@ -2926,10 +2783,6 @@ impl<'ctx> Codegen<'ctx> {
             _ => &Type::Integer,
         };
         self.create_heap_value_with_payload(inner_ty, payload, "box", "Box")
-    }
-
-    pub fn create_empty_rc(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        self.create_empty_rc_typed(&Type::Integer)
     }
 
     pub fn create_empty_rc_typed(&mut self, rc_ty: &Type) -> Result<BasicValueEnum<'ctx>> {
@@ -2952,10 +2805,6 @@ impl<'ctx> Codegen<'ctx> {
         self.create_heap_value_with_payload(inner_ty, payload, "rc", "Rc")
     }
 
-    pub fn create_empty_arc(&mut self) -> Result<BasicValueEnum<'ctx>> {
-        self.create_empty_arc_typed(&Type::Integer)
-    }
-
     pub fn create_empty_arc_typed(&mut self, arc_ty: &Type) -> Result<BasicValueEnum<'ctx>> {
         let inner_ty = match self.deref_codegen_type(arc_ty) {
             Type::Arc(inner) => inner.as_ref(),
@@ -2974,22 +2823,6 @@ impl<'ctx> Codegen<'ctx> {
             _ => &Type::Integer,
         };
         self.create_heap_value_with_payload(inner_ty, payload, "arc", "Arc")
-    }
-
-    pub fn compile_list_method(
-        &mut self,
-        list_name: &str,
-        method: &str,
-        args: &[Spanned<Expr>],
-    ) -> Result<BasicValueEnum<'ctx>> {
-        let (list_ptr, list_ty) = {
-            let var = self
-                .variables
-                .get(list_name)
-                .ok_or_else(|| Self::undefined_variable_error(list_name))?;
-            (var.ptr, var.ty.clone())
-        };
-        self.compile_list_method_ptr(list_ptr, &list_ty, method, args)
     }
 
     pub fn compile_list_method_on_value(

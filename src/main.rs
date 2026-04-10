@@ -675,7 +675,7 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
                     collect_expr_refs(&end.node, out, qualified_out);
                 }
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,

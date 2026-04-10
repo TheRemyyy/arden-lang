@@ -1,6 +1,4 @@
 //! Utility functions for codegen: C library declarations and helper methods
-#![allow(dead_code)]
-
 use crate::ast::{
     BinOp, Expr, Literal, MatchArm, Parameter, Pattern, Spanned, Stmt, StringPart, Type, UnaryOp,
 };
@@ -397,7 +395,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 self.infer_expr_type(expr, params)
             }
-            Expr::IfExpr {
+            Expr::If {
                 then_branch,
                 else_branch,
                 ..
@@ -740,6 +738,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, fn_type, None)
     }
 
+    #[cfg(windows)]
     pub fn get_or_declare_sleep_win(&self) -> FunctionValue<'ctx> {
         let name = "Sleep";
         if let Some(f) = self.module.get_function(name) {
@@ -951,22 +950,6 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, fn_type, None)
     }
 
-    pub fn get_or_declare_fgets(&self) -> FunctionValue<'ctx> {
-        let name = "fgets";
-        if let Some(f) = self.module.get_function(name) {
-            return f;
-        }
-        let fn_type = self.context.ptr_type(AddressSpace::default()).fn_type(
-            &[
-                self.context.ptr_type(AddressSpace::default()).into(),
-                self.context.i32_type().into(),
-                self.context.ptr_type(AddressSpace::default()).into(),
-            ],
-            false,
-        );
-        self.module.add_function(name, fn_type, None)
-    }
-
     pub fn get_or_declare_getchar(&self) -> FunctionValue<'ctx> {
         let name = "getchar";
         if let Some(f) = self.module.get_function(name) {
@@ -974,46 +957,6 @@ impl<'ctx> Codegen<'ctx> {
         }
         let fn_type = self.context.i32_type().fn_type(&[], false);
         self.module.add_function(name, fn_type, None)
-    }
-
-    pub fn get_or_declare_stdin(&self) -> Result<PointerValue<'ctx>> {
-        #[cfg(windows)]
-        {
-            let name = "__acrt_iob_func";
-            let func = if let Some(f) = self.module.get_function(name) {
-                f
-            } else {
-                let fn_type = self
-                    .context
-                    .ptr_type(AddressSpace::default())
-                    .fn_type(&[self.context.i32_type().into()], false);
-                self.module.add_function(name, fn_type, None)
-            };
-            let call = self
-                .builder
-                .build_call(
-                    func,
-                    &[self.context.i32_type().const_int(0, false).into()],
-                    "stdin",
-                )
-                .unwrap();
-            Ok(self.extract_call_value(call)?.into_pointer_value())
-        }
-
-        #[cfg(not(windows))]
-        {
-            let ptr_type = self.context.ptr_type(AddressSpace::default());
-            let stdin_global = if let Some(global) = self.module.get_global("stdin") {
-                global
-            } else {
-                self.module.add_global(ptr_type, None, "stdin")
-            };
-            Ok(self
-                .builder
-                .build_load(ptr_type, stdin_global.as_pointer_value(), "stdin")
-                .unwrap()
-                .into_pointer_value())
-        }
     }
 
     pub fn get_or_declare_exit(&self) -> FunctionValue<'ctx> {
@@ -2539,7 +2482,7 @@ impl<'ctx> Codegen<'ctx> {
                 Type::Ref(inner) | Type::MutRef(inner) | Type::Ptr(inner) => Some((*inner).clone()),
                 _ => None,
             },
-            Expr::IfExpr {
+            Expr::If {
                 then_branch,
                 else_branch,
                 ..
@@ -3091,56 +3034,6 @@ impl<'ctx> Codegen<'ctx> {
         machine
     }
 
-    pub fn emit_object_bytes(
-        &self,
-        opt_level: Option<&str>,
-        target_triple: Option<&str>,
-        output_kind: &OutputKind,
-    ) -> std::result::Result<Vec<u8>, String> {
-        let started_at = Instant::now();
-        OBJECT_WRITE_TIMING_TOTALS
-            .emit_object_call_count
-            .fetch_add(1, Ordering::Relaxed);
-        let result =
-            Self::with_target_machine(opt_level, target_triple, output_kind, |machine, triple| {
-                let setup_started_at = Instant::now();
-                let set_triple_started_at = Instant::now();
-                self.module.set_triple(triple);
-                OBJECT_WRITE_TIMING_TOTALS
-                    .module_set_triple_ns
-                    .fetch_add(elapsed_nanos_u64(set_triple_started_at), Ordering::Relaxed);
-                let set_data_layout_started_at = Instant::now();
-                self.module
-                    .set_data_layout(&machine.get_target_data().get_data_layout());
-                OBJECT_WRITE_TIMING_TOTALS
-                    .module_set_data_layout_ns
-                    .fetch_add(
-                        elapsed_nanos_u64(set_data_layout_started_at),
-                        Ordering::Relaxed,
-                    );
-                OBJECT_WRITE_TIMING_TOTALS
-                    .target_machine_setup_ns
-                    .fetch_add(elapsed_nanos_u64(setup_started_at), Ordering::Relaxed);
-                let emit_started_at = Instant::now();
-                let buffer = machine
-                    .write_to_memory_buffer(&self.module, FileType::Object)
-                    .map_err(|e| e.to_string())?;
-                OBJECT_WRITE_TIMING_TOTALS
-                    .write_to_memory_buffer_ns
-                    .fetch_add(elapsed_nanos_u64(emit_started_at), Ordering::Relaxed);
-                let to_vec_started_at = Instant::now();
-                let object = buffer.as_slice().to_vec();
-                OBJECT_WRITE_TIMING_TOTALS
-                    .memory_buffer_to_vec_ns
-                    .fetch_add(elapsed_nanos_u64(to_vec_started_at), Ordering::Relaxed);
-                Ok(object)
-            });
-        OBJECT_WRITE_TIMING_TOTALS
-            .emit_object_bytes_ns
-            .fetch_add(elapsed_nanos_u64(started_at), Ordering::Relaxed);
-        result
-    }
-
     pub fn write_object_with_config(
         &self,
         path: &Path,
@@ -3310,7 +3203,7 @@ impl<'ctx> Codegen<'ctx> {
                 }
                 self.walk_expr_for_captures(&l_body.node, &nested_params, captures, seen);
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -3773,7 +3666,7 @@ impl<'ctx> Codegen<'ctx> {
             Expr::Block(stmts) => self
                 .infer_block_tail_type_with_params(stmts, params)
                 .unwrap_or(Type::None),
-            Expr::IfExpr {
+            Expr::If {
                 then_branch,
                 else_branch,
                 ..
@@ -3879,20 +3772,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, pthread_cancel_type, None)
     }
 
-    pub fn get_or_declare_pthread_timedjoin_np(&self) -> FunctionValue<'ctx> {
-        let name = "pthread_timedjoin_np";
-        if let Some(f) = self.module.get_function(name) {
-            return f;
-        }
-
-        let ptr = self.context.ptr_type(AddressSpace::default());
-        let pthread_timedjoin_type = self.context.i32_type().fn_type(
-            &[self.context.i64_type().into(), ptr.into(), ptr.into()],
-            false,
-        );
-        self.module.add_function(name, pthread_timedjoin_type, None)
-    }
-
+    #[cfg(windows)]
     pub fn get_or_declare_create_thread_win(&self) -> FunctionValue<'ctx> {
         let name = "CreateThread";
         if let Some(f) = self.module.get_function(name) {
@@ -3915,6 +3795,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, create_thread_type, None)
     }
 
+    #[cfg(windows)]
     pub fn get_or_declare_wait_for_single_object_win(&self) -> FunctionValue<'ctx> {
         let name = "WaitForSingleObject";
         if let Some(f) = self.module.get_function(name) {
@@ -3929,20 +3810,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, wait_type, None)
     }
 
-    pub fn get_or_declare_terminate_thread_win(&self) -> FunctionValue<'ctx> {
-        let name = "TerminateThread";
-        if let Some(f) = self.module.get_function(name) {
-            return f;
-        }
-
-        let ptr = self.context.ptr_type(AddressSpace::default());
-        let terminate_type = self
-            .context
-            .i32_type()
-            .fn_type(&[ptr.into(), self.context.i32_type().into()], false);
-        self.module.add_function(name, terminate_type, None)
-    }
-
+    #[cfg(windows)]
     pub fn get_or_declare_close_handle_win(&self) -> FunctionValue<'ctx> {
         let name = "CloseHandle";
         if let Some(f) = self.module.get_function(name) {
@@ -3952,20 +3820,6 @@ impl<'ctx> Codegen<'ctx> {
         let ptr = self.context.ptr_type(AddressSpace::default());
         let close_type = self.context.i32_type().fn_type(&[ptr.into()], false);
         self.module.add_function(name, close_type, None)
-    }
-
-    pub fn get_or_declare_clock_gettime(&self) -> FunctionValue<'ctx> {
-        let name = "clock_gettime";
-        if let Some(f) = self.module.get_function(name) {
-            return f;
-        }
-
-        let ptr = self.context.ptr_type(AddressSpace::default());
-        let clock_gettime_type = self
-            .context
-            .i32_type()
-            .fn_type(&[self.context.i32_type().into(), ptr.into()], false);
-        self.module.add_function(name, clock_gettime_type, None)
     }
 
     pub fn get_or_declare_sprintf(&self) -> FunctionValue<'ctx> {
@@ -4161,174 +4015,5 @@ impl<'ctx> Codegen<'ctx> {
         self.builder.build_store(current_ptr, start).unwrap();
 
         Ok(range_ptr)
-    }
-
-    /// Get the next value from a Range iterator
-    /// Returns (value, has_more) tuple
-    pub fn range_next(
-        &mut self,
-        range_ptr: PointerValue<'ctx>,
-    ) -> Result<(BasicValueEnum<'ctx>, BasicValueEnum<'ctx>)> {
-        let range_type = self.get_range_type(self.context.i64_type().into())?;
-        let i64_type = self.context.i64_type();
-        let i32_type = self.context.i32_type();
-        let zero = i32_type.const_int(0, false);
-        let one = i32_type.const_int(1, false);
-        let two = i32_type.const_int(2, false);
-        let three = i32_type.const_int(3, false);
-
-        // Load current value
-        let current_ptr = unsafe {
-            self.builder
-                .build_gep(range_type, range_ptr, &[zero, three], "current_ptr")
-                .unwrap()
-        };
-        let current = self
-            .builder
-            .build_load(i64_type, current_ptr, "current")
-            .unwrap();
-
-        // Load step
-        let step_ptr = unsafe {
-            self.builder
-                .build_gep(range_type, range_ptr, &[zero, two], "step_ptr")
-                .unwrap()
-        };
-        let step = self.builder.build_load(i64_type, step_ptr, "step").unwrap();
-
-        // Calculate next: current + step
-        let next_val = self
-            .builder
-            .build_int_add(current.into_int_value(), step.into_int_value(), "next")
-            .unwrap();
-        self.builder.build_store(current_ptr, next_val).unwrap();
-
-        // Load end to check if we're done
-        let end_ptr = unsafe {
-            self.builder
-                .build_gep(range_type, range_ptr, &[zero, one], "end_ptr")
-                .unwrap()
-        };
-        let end = self.builder.build_load(i64_type, end_ptr, "end").unwrap();
-
-        // Load step to determine comparison direction
-        let step_val = step.into_int_value();
-        let step_is_positive = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::SGT,
-                step_val,
-                i64_type.const_int(0, false),
-                "step_positive",
-            )
-            .unwrap();
-
-        // has_more = step > 0 ? current < end : current > end
-        let cmp_positive = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::SLT,
-                current.into_int_value(),
-                end.into_int_value(),
-                "cmp_pos",
-            )
-            .unwrap();
-
-        let cmp_negative = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::SGT,
-                current.into_int_value(),
-                end.into_int_value(),
-                "cmp_neg",
-            )
-            .unwrap();
-
-        let has_more = self
-            .builder
-            .build_select(step_is_positive, cmp_positive, cmp_negative, "has_more")
-            .unwrap();
-
-        Ok((current, has_more))
-    }
-
-    /// Check if Range has more elements
-    pub fn range_has_next(
-        &mut self,
-        range_ptr: PointerValue<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>> {
-        let range_type = self.get_range_type(self.context.i64_type().into())?;
-        let i64_type = self.context.i64_type();
-        let i32_type = self.context.i32_type();
-        let zero = i32_type.const_int(0, false);
-        let one = i32_type.const_int(1, false);
-        let two = i32_type.const_int(2, false);
-        let three = i32_type.const_int(3, false);
-
-        // Load current
-        let current_ptr = unsafe {
-            self.builder
-                .build_gep(range_type, range_ptr, &[zero, three], "current_ptr")
-                .unwrap()
-        };
-        let current = self
-            .builder
-            .build_load(i64_type, current_ptr, "current")
-            .unwrap();
-
-        // Load end
-        let end_ptr = unsafe {
-            self.builder
-                .build_gep(range_type, range_ptr, &[zero, one], "end_ptr")
-                .unwrap()
-        };
-        let end = self.builder.build_load(i64_type, end_ptr, "end").unwrap();
-
-        // Load step
-        let step_ptr = unsafe {
-            self.builder
-                .build_gep(range_type, range_ptr, &[zero, two], "step_ptr")
-                .unwrap()
-        };
-        let step = self.builder.build_load(i64_type, step_ptr, "step").unwrap();
-
-        // Check step direction
-        let step_is_positive = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::SGT,
-                step.into_int_value(),
-                i64_type.const_int(0, false),
-                "step_positive",
-            )
-            .unwrap();
-
-        // Compare based on direction
-        let cmp_positive = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::SLT,
-                current.into_int_value(),
-                end.into_int_value(),
-                "cmp_pos",
-            )
-            .unwrap();
-
-        let cmp_negative = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::SGT,
-                current.into_int_value(),
-                end.into_int_value(),
-                "cmp_neg",
-            )
-            .unwrap();
-
-        let has_more = self
-            .builder
-            .build_select(step_is_positive, cmp_positive, cmp_negative, "has_more")
-            .unwrap();
-
-        Ok(has_more)
     }
 }

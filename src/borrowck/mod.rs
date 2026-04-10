@@ -975,7 +975,7 @@ impl BorrowChecker {
                 }
             }
 
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -1641,7 +1641,7 @@ impl BorrowChecker {
             Expr::AsyncBlock(body) => body
                 .iter()
                 .any(|stmt| self.stmt_mutates_this(class_name, &stmt.node)),
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -1857,7 +1857,7 @@ impl BorrowChecker {
                         .as_ref()
                         .is_some_and(|e| Self::expr_calls_this_method_in_set(&e.node, methods))
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -2049,7 +2049,7 @@ impl BorrowChecker {
                     Self::collect_free_idents_inner(&end.node, params, out);
                 }
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -2195,7 +2195,7 @@ impl BorrowChecker {
                         .map(|e| self.expr_moves_ident(&e.node, ident))
                         .unwrap_or(false)
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -2374,7 +2374,7 @@ impl BorrowChecker {
                         .map(|e| self.expr_mutably_borrows_ident(&e.node, ident))
                         .unwrap_or(false)
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,

@@ -246,7 +246,7 @@ pub(crate) fn expr_has_codegen_specialization_demand(expr: &Expr) -> bool {
                     .as_ref()
                     .is_some_and(|expr| expr_has_codegen_specialization_demand(&expr.node))
         }
-        Expr::IfExpr {
+        Expr::If {
             condition,
             then_branch,
             else_branch,

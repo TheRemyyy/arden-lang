@@ -382,7 +382,7 @@ impl Formatter {
                 let formatted = self.format_expr(&expr.node);
                 if is_expression_tail {
                     self.push_line(&formatted);
-                } else if matches!(expr.node, Expr::Match { .. } | Expr::IfExpr { .. }) {
+                } else if matches!(expr.node, Expr::Match { .. } | Expr::If { .. }) {
                     self.push_line(&format!("({});", formatted));
                 } else {
                     self.push_line(&format!("{};", formatted));
@@ -685,7 +685,7 @@ impl Formatter {
                     formatted
                 }
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -699,7 +699,7 @@ impl Formatter {
                     formatted.push_str(" else ");
                     if let [nested] = else_branch.as_slice() {
                         if let Stmt::Expr(expr) = &nested.node {
-                            if let Expr::IfExpr { .. } = &expr.node {
+                            if let Expr::If { .. } = &expr.node {
                                 formatted.push_str(&self.format_expr(&expr.node));
                             } else {
                                 formatted.push_str(&self.format_inline_block(else_branch));

@@ -1883,7 +1883,7 @@ impl<'src> Parser<'src> {
 
         let end = self.current_span().start;
         Ok(Spanned::new(
-            Expr::IfExpr {
+            Expr::If {
                 condition: Box::new(condition),
                 then_branch,
                 else_branch,

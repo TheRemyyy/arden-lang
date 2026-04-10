@@ -2575,7 +2575,7 @@ fn rewrites_if_expression_function_value_branches() {
                 body: vec![sp(Stmt::Let {
                     name: "f".to_string(),
                     ty: ast::Type::Function(vec![ast::Type::Integer], Box::new(ast::Type::Integer)),
-                    value: sp(Expr::IfExpr {
+                    value: sp(Expr::If {
                         condition: Box::new(sp(Expr::Literal(ast::Literal::Boolean(true)))),
                         then_branch: vec![sp(Stmt::Expr(sp(Expr::Ident("inc".to_string()))))],
                         else_branch: Some(vec![sp(Stmt::Expr(sp(Expr::Ident("dec".to_string()))))]),
@@ -2623,7 +2623,7 @@ fn rewrites_if_expression_function_value_branches() {
     let Stmt::Let { value, .. } = &func.body[0].node else {
         panic!("expected let statement");
     };
-    let Expr::IfExpr {
+    let Expr::If {
         then_branch,
         else_branch,
         ..

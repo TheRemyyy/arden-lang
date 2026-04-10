@@ -419,7 +419,7 @@ impl<'a> ScopedSymbolResolver<'a> {
                     self.walk_expr(end);
                 }
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -1196,7 +1196,7 @@ impl Backend {
                     self.collect_symbol_spans_expr(text, symbol, end, out);
                 }
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,

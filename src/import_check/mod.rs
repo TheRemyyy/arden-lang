@@ -1430,7 +1430,7 @@ impl<'a> ImportChecker<'a> {
                     self.check_decl_type(ty, fallback_span.clone());
                 }
             }
-            Expr::IfExpr {
+            Expr::If {
                 condition,
                 then_branch,
                 else_branch,
