@@ -34,10 +34,9 @@ def copy_path(source: Path, destination: Path, visited_dirs: set[Path]) -> None:
     if source.is_symlink():
         resolved = source.resolve()
         if resolved.is_dir():
-            real_dir = resolved.resolve()
-            if real_dir in visited_dirs:
+            if resolved in visited_dirs:
                 return
-            visited_dirs.add(real_dir)
+            visited_dirs.add(resolved)
             destination.mkdir(parents=True, exist_ok=True)
             for child in resolved.iterdir():
                 copy_path(child, destination / child.name, visited_dirs)
