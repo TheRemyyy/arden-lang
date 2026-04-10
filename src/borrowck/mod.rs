@@ -2510,17 +2510,28 @@ impl BorrowChecker {
         let var = VarState {
             state: OwnershipState::Owned,
             mutable,
-            declared_at: span,
+            declared_at: span.clone(),
             needs_drop,
             ty,
         };
-        self.scopes
-            .last_mut()
-            .unwrap()
-            .insert(name.to_string(), var);
+        let Some(current_scope) = self.scopes.last_mut() else {
+            self.errors.push(BorrowError::new(
+                "internal borrow checker error: variable declaration without an active scope",
+                span.clone(),
+            ));
+            return;
+        };
+        current_scope.insert(name.to_string(), var);
 
         if needs_drop {
-            self.drop_queue.last_mut().unwrap().push(name.to_string());
+            let Some(current_drop_queue) = self.drop_queue.last_mut() else {
+                self.errors.push(BorrowError::new(
+                    "internal borrow checker error: variable declaration without an active drop scope",
+                    span,
+                ));
+                return;
+            };
+            current_drop_queue.push(name.to_string());
         }
     }
 

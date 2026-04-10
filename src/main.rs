@@ -286,13 +286,22 @@ fn main() {
 }
 
 fn current_dir_checked() -> Result<PathBuf, String> {
-    std::env::current_dir().map_err(|e| {
-        format!(
-            "{}: Failed to read current directory: {}",
-            "error".red().bold(),
-            e
-        )
-    })
+    std::env::current_dir()
+        .or_else(|_| {
+            let fallback = std::env::temp_dir();
+            if fallback.is_dir() {
+                Ok(fallback)
+            } else {
+                Err(std::io::Error::other("temporary directory is unavailable"))
+            }
+        })
+        .map_err(|e| {
+            format!(
+                "{}: Failed to read current directory: {}",
+                "error".red().bold(),
+                e
+            )
+        })
 }
 
 const CLI_WHITE_RGB: (u8, u8, u8) = (255, 255, 255);
@@ -300,9 +309,6 @@ const CLI_SOFT_RGB: (u8, u8, u8) = (239, 232, 220);
 const CLI_TERTIARY_RGB: (u8, u8, u8) = (217, 178, 158);
 
 fn configure_cli_colors() {
-    env::remove_var("NO_COLOR");
-    env::set_var("CLICOLOR_FORCE", "1");
-
     #[cfg(windows)]
     let _ = enable_ansi_support::enable_ansi_support();
 
@@ -310,15 +316,49 @@ fn configure_cli_colors() {
 }
 
 pub(crate) fn cli_accent(text: impl AsRef<str>) -> String {
-    ansi_truecolor(text.as_ref(), CLI_WHITE_RGB, true)
+    #[cfg(windows)]
+    {
+        return text
+            .as_ref()
+            .truecolor(CLI_WHITE_RGB.0, CLI_WHITE_RGB.1, CLI_WHITE_RGB.2)
+            .bold()
+            .to_string();
+    }
+
+    #[cfg(not(windows))]
+    {
+        ansi_truecolor(text.as_ref(), CLI_WHITE_RGB, true)
+    }
 }
 
 pub(crate) fn cli_soft(text: impl AsRef<str>) -> String {
-    ansi_truecolor(text.as_ref(), CLI_SOFT_RGB, false)
+    #[cfg(windows)]
+    {
+        return text
+            .as_ref()
+            .truecolor(CLI_SOFT_RGB.0, CLI_SOFT_RGB.1, CLI_SOFT_RGB.2)
+            .to_string();
+    }
+
+    #[cfg(not(windows))]
+    {
+        ansi_truecolor(text.as_ref(), CLI_SOFT_RGB, false)
+    }
 }
 
 pub(crate) fn cli_tertiary(text: impl AsRef<str>) -> String {
-    ansi_truecolor(text.as_ref(), CLI_TERTIARY_RGB, false)
+    #[cfg(windows)]
+    {
+        return text
+            .as_ref()
+            .truecolor(CLI_TERTIARY_RGB.0, CLI_TERTIARY_RGB.1, CLI_TERTIARY_RGB.2)
+            .to_string();
+    }
+
+    #[cfg(not(windows))]
+    {
+        ansi_truecolor(text.as_ref(), CLI_TERTIARY_RGB, false)
+    }
 }
 
 fn cli_success(text: impl AsRef<str>) -> String {
@@ -465,7 +505,9 @@ struct CwdRestore {
 
 impl Drop for CwdRestore {
     fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.previous);
+        if std::env::set_current_dir(&self.previous).is_err() {
+            let _ = std::env::set_current_dir(std::env::temp_dir());
+        }
     }
 }
 
@@ -1033,9 +1075,13 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
         api_referenced_symbols,
         import_check_fingerprint,
     ) = if from_parse_cache {
-        let cache = cached_entry
-            .as_ref()
-            .expect("parse cache hit should have cache entry available");
+        let cache = cached_entry.as_ref().ok_or_else(|| {
+            format!(
+                "{}: parse cache reported a hit for '{}' but no cache entry was available",
+                cli_error("error"),
+                file.display()
+            )
+        })?;
         (
             cache.function_names.clone(),
             cache.class_names.clone(),
@@ -1118,8 +1164,13 @@ fn parse_project_unit(project_root: &Path, file: &Path) -> Result<ParsedProjectU
             schema: PARSE_CACHE_SCHEMA.to_string(),
             compiler_version: env!("CARGO_PKG_VERSION").to_string(),
             file_metadata,
-            source_fingerprint: source_fingerprint_for_cache
-                .expect("fresh parse should have source fingerprint"),
+            source_fingerprint: source_fingerprint_for_cache.clone().ok_or_else(|| {
+                format!(
+                    "{}: parsed file '{}' is missing a source fingerprint",
+                    cli_error("error"),
+                    file.display()
+                )
+            })?,
             api_fingerprint: api_fingerprint.clone(),
             semantic_fingerprint: semantic_fingerprint.clone(),
             import_check_fingerprint: import_check_fingerprint.clone(),
@@ -2823,7 +2874,12 @@ fn build_project(
             && typecheck_summary_cache_matches(
                 previous_typecheck_summary
                     .as_ref()
-                    .expect("component cache checked above"),
+                    .ok_or_else(|| {
+                        format!(
+                            "{}: semantic cache reuse was attempted without a previous typecheck summary",
+                            cli_error("error")
+                        )
+                    })?,
                 &current_semantic_fingerprints,
                 &semantic_components,
             );
@@ -3216,7 +3272,13 @@ fn build_project(
                                 let unit = &rewritten_files[index];
                                 let cache_paths = object_cache_paths_by_file
                                     .get(&unit.file)
-                                    .expect("object cache paths should exist for rewritten unit");
+                                    .ok_or_else(|| {
+                                        format!(
+                                            "{}: missing object cache paths for rewritten unit '{}'",
+                                            cli_error("error"),
+                                            unit.file.display()
+                                        )
+                                    })?;
                                 load_object_cache_hit(
                                     cache_paths,
                                     &unit.semantic_fingerprint,
@@ -3298,7 +3360,13 @@ fn build_project(
                             let unit = &rewritten_files[shard.member_indices[0]];
                             object_cache_paths_by_file
                                 .get(&unit.file)
-                                .expect("object cache paths should exist for rewritten unit")
+                                .ok_or_else(|| {
+                                    format!(
+                                        "{}: missing object cache paths for rewritten unit '{}'",
+                                        cli_error("error"),
+                                        unit.file.display()
+                                    )
+                                })?
                                 .object_path
                                 .clone()
                         };
@@ -3399,9 +3467,14 @@ fn build_project(
                             )?;
                         } else {
                             let unit = &rewritten_files[shard.member_indices[0]];
-                            let cache_paths = object_cache_paths_by_file
-                                .get(&unit.file)
-                                .expect("object cache paths should exist for rewritten unit");
+                            let cache_paths =
+                                object_cache_paths_by_file.get(&unit.file).ok_or_else(|| {
+                                    format!(
+                                        "{}: missing object cache paths for rewritten unit '{}'",
+                                        cli_error("error"),
+                                        unit.file.display()
+                                    )
+                                })?;
                             save_object_cache_meta(
                                 cache_paths,
                                 &unit.semantic_fingerprint,
@@ -4530,7 +4603,7 @@ fn show_project_info() -> Result<(), String> {
 }
 
 fn format_targets(path: Option<&Path>, check_only: bool) -> Result<(), String> {
-    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+    let current_dir = current_dir_checked()?;
     let target_label = format_target_label(path, &current_dir);
     let targets = if let Some(path) = path {
         collect_arden_files(path)?
@@ -4972,7 +5045,7 @@ fn run_tests(
         }
     } else {
         // Default: use project files when inside a project, otherwise scan cwd.
-        let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+        let current_dir = current_dir_checked()?;
         default_test_files(&current_dir)?
     };
 

@@ -1089,11 +1089,34 @@ pub(crate) const OBJECT_CODEGEN_SHARD_SIZE: usize = 4;
 pub(crate) const OBJECT_CODEGEN_SHARD_THRESHOLD: usize = 256;
 
 pub(crate) fn env_usize_override(name: &str, default: usize) -> usize {
-    std::env::var(name)
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(default)
+    let Ok(raw_value) = std::env::var(name) else {
+        return default;
+    };
+
+    match raw_value.parse::<usize>() {
+        Ok(value) if value > 0 => value,
+        Ok(_) => {
+            eprintln!(
+                "{}: ignoring {}='{}'; expected a positive integer, using {}",
+                cli_tertiary("warning"),
+                cli_accent(name),
+                cli_soft(&raw_value),
+                cli_soft(default.to_string())
+            );
+            default
+        }
+        Err(error) => {
+            eprintln!(
+                "{}: ignoring {}='{}'; failed to parse positive integer ({}) , using {}",
+                cli_tertiary("warning"),
+                cli_accent(name),
+                cli_soft(&raw_value),
+                cli_soft(error.to_string()),
+                cli_soft(default.to_string())
+            );
+            default
+        }
+    }
 }
 
 pub(crate) fn object_codegen_shard_size() -> usize {

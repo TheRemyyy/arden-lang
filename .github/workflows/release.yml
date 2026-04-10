@@ -68,7 +68,14 @@ jobs:
           echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == "linux" ]]; then
+            cargo build --release --target "${{ matrix.target }}" \
+              --config 'target.x86_64-unknown-linux-gnu.rustflags=["-C","target-cpu=x86-64","-C","link-arg=--as-needed","-C","link-arg=--build-id"]'
+          else
+            cargo build --release --target "${{ matrix.target }}"
+          fi
         env:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.platform == 'linux' && '.cargo/linkers/linux-x86_64-mold.sh' || '' }}
           CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER: ${{ matrix.target == 'aarch64-apple-darwin' && '.cargo/linkers/macos-aarch64-lld.sh' || '' }}

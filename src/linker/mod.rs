@@ -471,13 +471,10 @@ fn macos_sdk_root() -> Result<PathBuf, String> {
         }
     }
 
-    let output = Command::new("xcrun")
-        .arg("--sdk")
-        .arg("macosx")
-        .arg("--show-sdk-path");
-    let mut output = output;
-    apply_fallback_current_dir(&mut output);
-    let output = output.output().map_err(|error| {
+    let mut command = Command::new("xcrun");
+    command.arg("--sdk").arg("macosx").arg("--show-sdk-path");
+    apply_fallback_current_dir(&mut command);
+    let output = command.output().map_err(|error| {
         format!(
             "{}: Failed to launch xcrun to resolve the macOS SDK path: {}",
             "error".red().bold(),
@@ -509,13 +506,10 @@ fn macos_sdk_version() -> Result<String, String> {
         return Ok(version.to_string_lossy().into_owned());
     }
 
-    let output = Command::new("xcrun")
-        .arg("--sdk")
-        .arg("macosx")
-        .arg("--show-sdk-version");
-    let mut output = output;
-    apply_fallback_current_dir(&mut output);
-    let output = output.output().map_err(|error| {
+    let mut command = Command::new("xcrun");
+    command.arg("--sdk").arg("macosx").arg("--show-sdk-version");
+    apply_fallback_current_dir(&mut command);
+    let output = command.output().map_err(|error| {
         format!(
             "{}: Failed to launch xcrun to resolve the macOS SDK version: {}",
             "error".red().bold(),

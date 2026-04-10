@@ -8,8 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### ♻️ Changed
 
-- Reworked native artifact production and Cargo self-builds around explicit linker-only backends, so Arden now emits objects directly from LLVM, links Linux outputs through `mold`, links macOS/Windows outputs through LLVM `lld`, pins dedicated Cargo wrapper scripts instead of `clang` in `.cargo/config.toml`, and reuses exact Windows builtins paths instead of rescanning LLVM on each link.
-- Added cross-platform linker benchmark coverage in CI, including a dedicated benchmark workflow for full cold/hot/incremental timing captures plus a quick main-CI benchmark pass that uploads fresh timing artifacts on Linux, macOS, and Windows.
+- Reworked native artifact production around explicit linker-only backends, so Arden now emits objects directly from LLVM, links Linux outputs through `mold`, and links macOS/Windows outputs through LLVM `lld`.
+- Switched Cargo self-builds away from pinned `clang` wrappers toward dedicated linker wrapper scripts in `.cargo/config.toml`, and reused exact Windows builtins paths instead of rescanning LLVM on each link.
+- Added broader cross-platform linker benchmark coverage in CI, including a dedicated workflow for cold/hot/incremental timing captures plus a quick main-CI benchmark pass that uploads fresh timing artifacts on Linux, macOS, and Windows.
+- Switched portable Linux release and smoke builds back to a baseline `x86-64` CPU target instead of `target-cpu=native`, while keeping native-tuned benchmark and check flows fast on CI hosts.
+- Unified `arden build --timings` output with the main CLI palette instead of using a separate ad-hoc cyan header path.
+- Tightened terminal styling so `arden new`, timings, and the rest of the CLI keep a consistent color path, while using a safer Windows-specific rendering path than raw ANSI everywhere.
+
+### 🐛 Fixed
+
+- Fixed checked and unchecked ordered comparisons for `Char`, so Windows project builds that validate drive-letter prefixes from `std.system.cwd` no longer fail on expressions like `letter >= 'A'`.
+- Fixed macOS portable release bundles after the LLVM 22 upgrade by collecting transitive non-system dylib dependencies such as `libz3`, so packaged `arden-real` no longer aborts during smoke tests on clean runners.
+- Fixed nested Cargo test runs and CLI/test-runner cwd recovery across Linux/macOS CI.
+- Corrected Windows `lld-link` machine detection so `x86_64` targets no longer get mislinked as `x86`.
+- Replaced several build-path panic-style invariants with explicit user-facing errors and warnings, including parse cache reuse, typecheck cache reuse, object cache path lookup, and invalid object shard env overrides.
 
 ## [1.3.7] - 2026-04-10
 
