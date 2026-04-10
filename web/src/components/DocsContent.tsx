@@ -31,7 +31,7 @@ function TableOfContents({ headings }: { headings: PageHeading[] }) {
     if (headings.length === 0) return null;
 
     return (
-        <div className="custom-scrollbar fixed right-0 top-0 hidden h-full w-64 overflow-y-auto border-l border-white/10 bg-[#171411] p-8 pt-24 xl:block">
+        <div className="custom-scrollbar fixed right-0 top-0 hidden h-full w-64 overflow-y-auto border-l border-white/10 bg-[#1f1d1a] p-8 pt-24 xl:block">
             <h5 className="mb-4 text-xs font-bold uppercase tracking-widest text-white/45">On This Page</h5>
             <ul className="space-y-3">
                 {headings.map((heading) => (
@@ -66,7 +66,7 @@ export function DocsContent({
 
     return (
         <div className="flex min-h-screen min-w-0 flex-col overflow-x-hidden bg-[#0f0d0b] pt-16 font-sans text-[#f3ece3] selection:bg-[rgba(184,92,56,0.28)] selection:text-white lg:flex-row lg:pt-16">
-            <div className="fixed left-0 right-0 top-16 z-40 border-b border-white/10 bg-[#171411] lg:hidden">
+            <div className="fixed left-0 right-0 top-16 z-40 border-b border-white/10 bg-[#1f1d1a] lg:hidden">
                 <div className="relative flex h-16 items-center gap-3 px-4">
                     <div className="relative min-w-0 flex-1">
                         <input
@@ -80,7 +80,7 @@ export function DocsContent({
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" />
                         </svg>
                         {searchQuery.trim().length > 0 && (
-                            <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#161311] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+                            <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#1f1d1a] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
                                 {searchResults.length > 0 ? (
                                     <div className="custom-scrollbar max-h-80 overflow-y-auto py-2">
                                         {searchResults.map((result) => (
@@ -118,7 +118,7 @@ export function DocsContent({
             </div>
 
             <nav
-                className={`fixed bottom-0 left-0 top-32 z-30 flex w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-white/10 bg-[#171411] transition-transform duration-300 lg:top-16 lg:h-[calc(100vh-4rem)] ${
+                className={`fixed bottom-0 left-0 top-32 z-30 flex w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-white/10 bg-[#1f1d1a] transition-transform duration-300 lg:top-16 lg:h-[calc(100vh-4rem)] ${
                     isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
                 }`}
             >
@@ -139,7 +139,7 @@ export function DocsContent({
                                                         href={item.path}
                                                         className={`block w-full rounded-md border px-3 py-1.5 text-left text-[14px] font-medium transition-colors duration-100 ${
                                                             isActive
-                                                                ? 'border-white/10 bg-[#201d19] text-white'
+                                                                ? 'border-white/10 bg-[#292621] text-white'
                                                                 : 'border-transparent text-white/60 hover:bg-white/5 hover:text-white'
                                                         }`}
                                                         onClick={() => setIsSidebarOpen(false)}
@@ -156,7 +156,7 @@ export function DocsContent({
                                     href={section.path}
                                     className={`mb-2 block w-full rounded-md border px-3 py-1.5 text-left text-[14px] font-bold uppercase tracking-wider transition-colors duration-100 ${
                                         normalizedPath === section.path
-                                            ? 'border-white/10 bg-[#201d19] text-white'
+                                            ? 'border-white/10 bg-[#292621] text-white'
                                             : 'border-transparent text-white/60 hover:bg-white/5 hover:text-white'
                                     }`}
                                     onClick={() => setIsSidebarOpen(false)}
@@ -220,7 +220,7 @@ export function DocsContent({
                             prose-strong:font-semibold prose-strong:text-white
                             prose-a:text-[var(--accent-soft)] prose-a:no-underline hover:prose-a:text-white
                             prose-code:border-0 prose-code:bg-transparent prose-code:px-0 prose-code:py-0 prose-code:text-[13px] prose-code:text-[#f2d6c8] prose-code:before:content-none prose-code:after:content-none
-                            prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:rounded-[1.5rem] prose-pre:border prose-pre:border-white/10 prose-pre:bg-[#211e1a] prose-pre:text-[#f7efe5] prose-pre:shadow-sm"
+                            prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:rounded-[1.5rem] prose-pre:border prose-pre:border-white/10 prose-pre:bg-[#292621] prose-pre:text-[#f7efe5] prose-pre:shadow-sm"
                         dangerouslySetInnerHTML={{ __html: content }}
                     />
 

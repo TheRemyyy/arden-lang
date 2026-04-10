@@ -242,7 +242,7 @@ function MobileReleaseRail({
     }, [activeReleaseId]);
 
     return (
-        <div className="fixed left-0 right-0 top-16 z-30 border-b border-white/10 bg-[#11100d] lg:hidden">
+        <div className="fixed left-0 right-0 top-16 z-30 border-b border-white/10 bg-[#1f1d1a] lg:hidden">
             <div ref={containerRef} className="custom-scrollbar overflow-x-auto px-4 py-3">
                 <div className="flex min-w-max gap-2">
                     {releases.map((release) => (
@@ -312,7 +312,7 @@ function CategoryCard({
                         prose-strong:text-white
                         prose-a:text-[var(--accent-soft)] prose-a:no-underline hover:prose-a:text-white
                         prose-code:border-0 prose-code:bg-transparent prose-code:px-0 prose-code:py-0 prose-code:text-[13px] prose-code:text-[#f2d6c8] prose-code:before:content-none prose-code:after:content-none
-                        prose-pre:rounded-[1.25rem] prose-pre:border prose-pre:border-white/10 prose-pre:bg-[#231f1b] prose-pre:text-[#f7efe5]
+                        prose-pre:rounded-[1.25rem] prose-pre:border prose-pre:border-white/10 prose-pre:bg-[#292621] prose-pre:text-[#f7efe5]
                         prose-blockquote:border-l-[var(--accent-soft)] prose-blockquote:text-white"
                     dangerouslySetInnerHTML={{ __html: category.html }}
                 />

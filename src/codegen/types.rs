@@ -2089,10 +2089,9 @@ impl<'ctx> Codegen<'ctx> {
             .build_store(err_ptr, default_err_value)
             .map_err(|_| CodegenError::new("failed to store default Result err value"))?;
 
-        Ok(self
-            .builder
+        self.builder
             .build_load(result_type, alloca, "result")
-            .unwrap())
+            .map_err(|_| CodegenError::new("failed to load default Result value"))
     }
 
     pub fn create_default_result_typed(
@@ -2128,7 +2127,10 @@ impl<'ctx> Codegen<'ctx> {
             ],
             false,
         );
-        let alloca = self.builder.build_alloca(list_type, "list").unwrap();
+        let alloca = self
+            .builder
+            .build_alloca(list_type, "list")
+            .map_err(|_| CodegenError::new("failed to allocate List storage"))?;
         let i32_type = self.context.i32_type();
         let i64_type = self.context.i64_type();
         let zero = i32_type.const_zero();
@@ -2147,10 +2149,10 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_zero(),
                 "list_ctor_capacity_negative",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compare List constructor capacity"))?;
         self.builder
             .build_conditional_branch(is_negative, negative_bb, valid_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch on List constructor capacity"))?;
 
         self.builder.position_at_end(negative_bb);
         self.emit_runtime_error(
@@ -2167,7 +2169,7 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_zero(),
                 "list_ctor_capacity_is_zero",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to test zero List constructor capacity"))?;
         let effective_capacity = self
             .builder
             .build_select(
@@ -2176,7 +2178,7 @@ impl<'ctx> Codegen<'ctx> {
                 requested_capacity,
                 "list_ctor_effective_capacity",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to select effective List capacity"))?
             .into_int_value();
 
         let capacity_ptr = unsafe {
@@ -2187,11 +2189,11 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_zero()],
                     "capacity",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute List capacity pointer"))?
         };
         self.builder
             .build_store(capacity_ptr, effective_capacity)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to store List capacity"))?;
 
         let length_ptr = unsafe {
             self.builder
@@ -2201,11 +2203,11 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(1, false)],
                     "length",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute List length pointer"))?
         };
         self.builder
             .build_store(length_ptr, i64_type.const_zero())
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize List length"))?;
 
         let malloc = self.get_or_declare_malloc();
         let total_size = self
@@ -2215,11 +2217,11 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_int(elem_size, false),
                 "list_ctor_total_size",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute List allocation size"))?;
         let data_call = self
             .builder
             .build_call(malloc, &[total_size.into()], "list_ctor_data")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit List malloc call"))?;
         let data_ptr = self.extract_call_pointer_value(
             data_call,
             "malloc did not produce a pointer while allocating list constructor storage",
@@ -2232,11 +2234,15 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(2, false)],
                     "data_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute List data pointer field"))?
         };
-        self.builder.build_store(data_ptr_field, data_ptr).unwrap();
+        self.builder
+            .build_store(data_ptr_field, data_ptr)
+            .map_err(|_| CodegenError::new("failed to store List data pointer"))?;
 
-        Ok(self.builder.build_load(list_type, alloca, "list").unwrap())
+        self.builder
+            .build_load(list_type, alloca, "list")
+            .map_err(|_| CodegenError::new("failed to load constructed List"))
     }
 
     pub fn create_empty_list(&mut self, list_ty: Option<&Type>) -> Result<BasicValueEnum<'ctx>> {
@@ -2255,7 +2261,10 @@ impl<'ctx> Codegen<'ctx> {
             false,
         );
 
-        let alloca = self.builder.build_alloca(list_type, "list").unwrap();
+        let alloca = self
+            .builder
+            .build_alloca(list_type, "list")
+            .map_err(|_| CodegenError::new("failed to allocate empty List storage"))?;
 
         // Initial capacity = 8
         let initial_capacity: u64 = 8;
@@ -2269,14 +2278,14 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(0, false)],
                     "capacity",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute empty List capacity pointer"))?
         };
         self.builder
             .build_store(
                 capacity_ptr,
                 self.context.i64_type().const_int(initial_capacity, false),
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to store empty List capacity"))?;
 
         // Length = 0
         let length_ptr = unsafe {
@@ -2287,11 +2296,11 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(1, false)],
                     "length",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute empty List length pointer"))?
         };
         self.builder
             .build_store(length_ptr, self.context.i64_type().const_int(0, false))
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize empty List length"))?;
 
         // Allocate data - malloc(capacity * 8) for i64 elements
         let malloc = self.get_or_declare_malloc();
@@ -2302,7 +2311,7 @@ impl<'ctx> Codegen<'ctx> {
         let call_result = self
             .builder
             .build_call(malloc, &[size.into()], "data")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit empty List malloc call"))?;
         let data_ptr = self.extract_call_value_with_context(
             call_result,
             "malloc did not produce a value while allocating list storage",
@@ -2316,11 +2325,15 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(2, false)],
                     "data_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute empty List data pointer field"))?
         };
-        self.builder.build_store(data_ptr_field, data_ptr).unwrap();
+        self.builder
+            .build_store(data_ptr_field, data_ptr)
+            .map_err(|_| CodegenError::new("failed to store empty List data pointer"))?;
 
-        Ok(self.builder.build_load(list_type, alloca, "list").unwrap())
+        self.builder
+            .build_load(list_type, alloca, "list")
+            .map_err(|_| CodegenError::new("failed to load empty List"))
     }
 
     fn grow_list_data_with_copy(
@@ -2336,7 +2349,7 @@ impl<'ctx> Codegen<'ctx> {
         let new_capacity = self
             .builder
             .build_int_mul(capacity, i64_type.const_int(2, false), "new_cap")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute grown List capacity"))?;
         let new_size = self
             .builder
             .build_int_mul(
@@ -2344,7 +2357,7 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_int(elem_size, false),
                 "new_size",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute grown List allocation size"))?;
         let old_data = self
             .builder
             .build_load(
@@ -2352,14 +2365,14 @@ impl<'ctx> Codegen<'ctx> {
                 data_ptr_ptr,
                 "old_data",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load old List data pointer"))?
             .into_pointer_value();
 
         let malloc = self.get_or_declare_malloc();
         let grown_call = self
             .builder
             .build_call(malloc, &[new_size.into()], "grown_data")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit List growth malloc call"))?;
         let grown_data = self.extract_call_pointer_value(
             grown_call,
             "malloc did not produce a pointer while growing list storage",
@@ -2368,7 +2381,7 @@ impl<'ctx> Codegen<'ctx> {
         let bytes_to_copy = self
             .builder
             .build_int_mul(length, i64_type.const_int(elem_size, false), "copy_bytes")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute List copy byte count"))?;
         let has_bytes = self
             .builder
             .build_int_compare(
@@ -2377,67 +2390,80 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_zero(),
                 "has_copy_bytes",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compare List copy byte count"))?;
 
         let copy_cond_bb = self.context.append_basic_block(function, "list_copy_cond");
         let copy_body_bb = self.context.append_basic_block(function, "list_copy_body");
         let copy_done_bb = self.context.append_basic_block(function, "list_copy_done");
         self.builder
             .build_conditional_branch(has_bytes, copy_cond_bb, copy_done_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for List copy"))?;
 
         self.builder.position_at_end(copy_cond_bb);
-        let idx_ptr = self.builder.build_alloca(i64_type, "copy_idx").unwrap();
+        let idx_ptr = self
+            .builder
+            .build_alloca(i64_type, "copy_idx")
+            .map_err(|_| CodegenError::new("failed to allocate List copy index"))?;
         self.builder
             .build_store(idx_ptr, i64_type.const_zero())
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize List copy index"))?;
         let cond_bb = self
             .context
             .append_basic_block(function, "list_copy_loop_cond");
-        self.builder.build_unconditional_branch(cond_bb).unwrap();
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|_| CodegenError::new("failed to enter List copy loop"))?;
 
         self.builder.position_at_end(cond_bb);
         let idx = self
             .builder
             .build_load(i64_type, idx_ptr, "copy_idx_val")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load List copy index"))?
             .into_int_value();
         let keep_copying = self
             .builder
             .build_int_compare(IntPredicate::SLT, idx, bytes_to_copy, "copy_continue")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compare List copy loop bound"))?;
         self.builder
             .build_conditional_branch(keep_copying, copy_body_bb, copy_done_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch in List copy loop"))?;
 
         self.builder.position_at_end(copy_body_bb);
         let src = unsafe {
             self.builder
                 .build_gep(self.context.i8_type(), old_data, &[idx], "copy_src")
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute List copy source pointer"))?
         };
         let dst = unsafe {
             self.builder
                 .build_gep(self.context.i8_type(), grown_data, &[idx], "copy_dst")
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute List copy destination pointer"))?
         };
         let byte = self
             .builder
             .build_load(self.context.i8_type(), src, "copy_byte")
-            .unwrap();
-        self.builder.build_store(dst, byte).unwrap();
+            .map_err(|_| CodegenError::new("failed to load copied List byte"))?;
+        self.builder
+            .build_store(dst, byte)
+            .map_err(|_| CodegenError::new("failed to store copied List byte"))?;
         let next_idx = self
             .builder
             .build_int_add(idx, i64_type.const_int(1, false), "copy_next_idx")
-            .unwrap();
-        self.builder.build_store(idx_ptr, next_idx).unwrap();
-        self.builder.build_unconditional_branch(cond_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to increment List copy index"))?;
+        self.builder
+            .build_store(idx_ptr, next_idx)
+            .map_err(|_| CodegenError::new("failed to store List copy index"))?;
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|_| CodegenError::new("failed to continue List copy loop"))?;
 
         self.builder.position_at_end(copy_done_bb);
-        self.builder.build_store(data_ptr_ptr, grown_data).unwrap();
+        self.builder
+            .build_store(data_ptr_ptr, grown_data)
+            .map_err(|_| CodegenError::new("failed to store grown List data pointer"))?;
         self.builder
             .build_store(capacity_ptr, new_capacity)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to store grown List capacity"))?;
 
         Ok(())
     }
@@ -2459,7 +2485,10 @@ impl<'ctx> Codegen<'ctx> {
             false,
         );
 
-        let alloca = self.builder.build_alloca(map_type, "map").unwrap();
+        let alloca = self
+            .builder
+            .build_alloca(map_type, "map")
+            .map_err(|_| CodegenError::new("failed to allocate Map storage"))?;
 
         // Initial capacity = 8
         let initial_capacity: u64 = 8;
@@ -2473,14 +2502,14 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(0, false)],
                     "capacity",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map capacity pointer"))?
         };
         self.builder
             .build_store(
                 capacity_ptr,
                 self.context.i64_type().const_int(initial_capacity, false),
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to store Map capacity"))?;
 
         // Length = 0
         let length_ptr = unsafe {
@@ -2491,11 +2520,11 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(1, false)],
                     "length",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map length pointer"))?
         };
         self.builder
             .build_store(length_ptr, self.context.i64_type().const_int(0, false))
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize Map length"))?;
 
         // Allocate keys and values arrays
         let malloc = self.get_or_declare_malloc();
@@ -2517,7 +2546,7 @@ impl<'ctx> Codegen<'ctx> {
         let keys_call = self
             .builder
             .build_call(malloc, &[keys_size.into()], "keys")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit Map keys malloc call"))?;
         let keys_ptr = self.extract_call_value_with_context(
             keys_call,
             "malloc did not produce a value while allocating map keys storage",
@@ -2530,14 +2559,16 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(2, false)],
                     "keys_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map keys field pointer"))?
         };
-        self.builder.build_store(keys_field, keys_ptr).unwrap();
+        self.builder
+            .build_store(keys_field, keys_ptr)
+            .map_err(|_| CodegenError::new("failed to store Map keys pointer"))?;
 
         let values_call = self
             .builder
             .build_call(malloc, &[values_size.into()], "values")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit Map values malloc call"))?;
         let values_ptr = self.extract_call_value_with_context(
             values_call,
             "malloc did not produce a value while allocating map values storage",
@@ -2550,11 +2581,15 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(3, false)],
                     "values_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map values field pointer"))?
         };
-        self.builder.build_store(values_field, values_ptr).unwrap();
+        self.builder
+            .build_store(values_field, values_ptr)
+            .map_err(|_| CodegenError::new("failed to store Map values pointer"))?;
 
-        Ok(self.builder.build_load(map_type, alloca, "map").unwrap())
+        self.builder
+            .build_load(map_type, alloca, "map")
+            .map_err(|_| CodegenError::new("failed to load empty Map"))
     }
 
     pub fn create_empty_set_for_type(
@@ -2571,7 +2606,10 @@ impl<'ctx> Codegen<'ctx> {
             false,
         );
 
-        let alloca = self.builder.build_alloca(set_type, "set").unwrap();
+        let alloca = self
+            .builder
+            .build_alloca(set_type, "set")
+            .map_err(|_| CodegenError::new("failed to allocate Set storage"))?;
 
         // Initial capacity = 8
         let initial_capacity: u64 = 8;
@@ -2585,14 +2623,14 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(0, false)],
                     "capacity",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Set capacity pointer"))?
         };
         self.builder
             .build_store(
                 capacity_ptr,
                 self.context.i64_type().const_int(initial_capacity, false),
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to store Set capacity"))?;
 
         // Length = 0
         let length_ptr = unsafe {
@@ -2603,11 +2641,11 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(1, false)],
                     "length",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Set length pointer"))?
         };
         self.builder
             .build_store(length_ptr, self.context.i64_type().const_int(0, false))
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize Set length"))?;
 
         // Allocate data - malloc(capacity * 8)
         let malloc = self.get_or_declare_malloc();
@@ -2622,7 +2660,7 @@ impl<'ctx> Codegen<'ctx> {
         let call_result = self
             .builder
             .build_call(malloc, &[size.into()], "data")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit Set malloc call"))?;
         let data_ptr = self.extract_call_value_with_context(
             call_result,
             "malloc did not produce a value while allocating set storage",
@@ -2636,11 +2674,15 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(2, false)],
                     "data_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Set data field pointer"))?
         };
-        self.builder.build_store(data_ptr_field, data_ptr).unwrap();
+        self.builder
+            .build_store(data_ptr_field, data_ptr)
+            .map_err(|_| CodegenError::new("failed to store Set data pointer"))?;
 
-        Ok(self.builder.build_load(set_type, alloca, "set").unwrap())
+        self.builder
+            .build_load(set_type, alloca, "set")
+            .map_err(|_| CodegenError::new("failed to load empty Set"))
     }
 
     fn create_zero_initialized_heap_value(
@@ -2658,7 +2700,11 @@ impl<'ctx> Codegen<'ctx> {
         let call_result = self
             .builder
             .build_call(malloc, &[size.into()], allocation_name)
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new(format!(
+                    "failed to emit malloc call for {context_name} storage"
+                ))
+            })?;
         let ptr = self.extract_call_pointer_value(
             call_result,
             &format!("malloc did not produce a pointer while allocating {context_name} storage"),
@@ -2685,12 +2731,18 @@ impl<'ctx> Codegen<'ctx> {
         let call_result = self
             .builder
             .build_call(malloc, &[size.into()], allocation_name)
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new(format!(
+                    "failed to emit malloc call for {context_name} storage"
+                ))
+            })?;
         let ptr = self.extract_call_pointer_value(
             call_result,
             &format!("malloc did not produce a pointer while allocating {context_name} storage"),
         )?;
-        self.builder.build_store(ptr, payload).unwrap();
+        self.builder.build_store(ptr, payload).map_err(|_| {
+            CodegenError::new(format!("failed to store payload for {context_name}"))
+        })?;
         Ok(ptr.into())
     }
 
@@ -2711,7 +2763,9 @@ impl<'ctx> Codegen<'ctx> {
         let call_result = self
             .builder
             .build_call(malloc, &[size.into()], "default_class_alloc")
-            .unwrap();
+            .map_err(|_| {
+                CodegenError::new("failed to emit malloc call for class default storage")
+            })?;
         let ptr = self.extract_call_pointer_value(
             call_result,
             "malloc did not produce a pointer while allocating class default storage",
@@ -2739,9 +2793,19 @@ impl<'ctx> Codegen<'ctx> {
                         &[zero, i32_type.const_int(*field_index as u64, false)],
                         &format!("default_{}_{}", class_name, field_name),
                     )
-                    .unwrap()
+                    .map_err(|_| {
+                        CodegenError::new(format!(
+                            "failed to compute default field pointer for {class_name}.{field_name}"
+                        ))
+                    })?
             };
-            self.builder.build_store(field_ptr, default_value).unwrap();
+            self.builder
+                .build_store(field_ptr, default_value)
+                .map_err(|_| {
+                    CodegenError::new(format!(
+                        "failed to store default field value for {class_name}.{field_name}"
+                    ))
+                })?;
         }
         if inserted_class {
             visited_classes.remove(class_name);
@@ -2790,14 +2854,16 @@ impl<'ctx> Codegen<'ctx> {
                         &[self.context.i64_type().const_int(1, false).into()],
                         "default_string_alloc",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to emit malloc call for default String storage")
+                    })?;
                 let ptr = self.extract_call_pointer_value(
                     call_result,
                     "malloc did not produce a pointer while allocating default String storage",
                 )?;
                 self.builder
                     .build_store(ptr, self.context.i8_type().const_zero())
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to store default String terminator"))?;
                 Ok(ptr.into())
             }
             Type::Named(name) if self.classes.contains_key(name) => {
@@ -2930,7 +2996,7 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(0, false)],
                             "cap_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List capacity pointer"))?
                 };
                 let length_ptr = unsafe {
                     self.builder
@@ -2940,7 +3006,7 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List length pointer"))?
                 };
                 let data_ptr_ptr = unsafe {
                     self.builder
@@ -2950,25 +3016,25 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(2, false)],
                             "data_ptr_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List data pointer"))?
                 };
 
                 let capacity = self
                     .builder
                     .build_load(i64_type, capacity_ptr, "cap")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List capacity"))?
                     .into_int_value();
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List length"))?
                     .into_int_value();
 
                 // Grow backing storage when length reaches capacity.
                 let need_grow = self
                     .builder
                     .build_int_compare(IntPredicate::SGE, length, capacity, "need_grow")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare List growth need"))?;
                 let function = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("No current function for list push"))?;
@@ -2976,7 +3042,7 @@ impl<'ctx> Codegen<'ctx> {
                 let cont_bb = self.context.append_basic_block(function, "list_push_cont");
                 self.builder
                     .build_conditional_branch(need_grow, grow_bb, cont_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for List growth"))?;
 
                 self.builder.position_at_end(grow_bb);
                 self.grow_list_data_with_copy(
@@ -2987,7 +3053,9 @@ impl<'ctx> Codegen<'ctx> {
                     length,
                     elem_size,
                 )?;
-                self.builder.build_unconditional_branch(cont_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(cont_bb)
+                    .map_err(|_| CodegenError::new("failed to continue List push after growth"))?;
 
                 self.builder.position_at_end(cont_bb);
                 let data_ptr = self
@@ -2997,18 +3065,18 @@ impl<'ctx> Codegen<'ctx> {
                         data_ptr_ptr,
                         "data",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List data pointer"))?
                     .into_pointer_value();
 
                 // Calculate element pointer: data + length * 8
                 let offset = self
                     .builder
                     .build_int_mul(length, elem_size_i64, "offset")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute List push offset"))?;
                 let elem_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List element pointer"))?
                 };
                 let typed_elem_ptr = self
                     .builder
@@ -3017,7 +3085,7 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_elem_ptr",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to cast List element pointer"))?;
 
                 // Store the value
                 let inner_ty = match self.deref_codegen_type(list_ty) {
@@ -3026,14 +3094,18 @@ impl<'ctx> Codegen<'ctx> {
                 };
                 let value =
                     self.compile_expr_for_concrete_class_payload(&args[0].node, inner_ty)?;
-                self.builder.build_store(typed_elem_ptr, value).unwrap();
+                self.builder
+                    .build_store(typed_elem_ptr, value)
+                    .map_err(|_| CodegenError::new("failed to store pushed List value"))?;
 
                 // Increment length
                 let new_length = self
                     .builder
                     .build_int_add(length, one_i64, "new_len")
-                    .unwrap();
-                self.builder.build_store(length_ptr, new_length).unwrap();
+                    .map_err(|_| CodegenError::new("failed to increment List length"))?;
+                self.builder
+                    .build_store(length_ptr, new_length)
+                    .map_err(|_| CodegenError::new("failed to store List length"))?;
 
                 Ok(self.context.i8_type().const_int(0, false).into())
             }
@@ -3048,12 +3120,12 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List length pointer"))?
                 };
                 let length = self
                     .builder
                     .build_load(self.context.i64_type(), length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List length"))?
                     .into_int_value();
                 let index = self.compile_non_negative_integer_index_expr(
                     &args[0].node,
@@ -3072,18 +3144,18 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_zero(),
                         "list_get_non_negative",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to check List.get index sign"))?;
                 let in_bounds = self
                     .builder
                     .build_int_compare(IntPredicate::SLT, index, length, "list_get_in_bounds")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to check List.get bounds"))?;
                 let valid = self
                     .builder
                     .build_and(non_negative, in_bounds, "list_get_valid")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to combine List.get bounds checks"))?;
                 self.builder
                     .build_conditional_branch(valid, ok_bb, fail_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for List.get"))?;
 
                 self.builder.position_at_end(fail_bb);
                 self.emit_runtime_error("List.get() index out of bounds", "list_get_oob")?;
@@ -3097,7 +3169,7 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(2, false)],
                             "data_ptr_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List data pointer"))?
                 };
                 let data_ptr = self
                     .builder
@@ -3106,7 +3178,7 @@ impl<'ctx> Codegen<'ctx> {
                         data_ptr_ptr,
                         "data",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List data pointer"))?
                     .into_pointer_value();
 
                 let offset = self
@@ -3116,11 +3188,13 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(elem_size, false),
                         "offset",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute List.get offset"))?;
                 let elem_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List.get element pointer")
+                        })?
                 };
                 let typed_elem_ptr = self
                     .builder
@@ -3129,13 +3203,13 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_elem_ptr",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to cast List.get element pointer"))?;
 
                 // Load and return the value
                 let val = self
                     .builder
                     .build_load(elem_llvm_ty, typed_elem_ptr, "val")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load List.get value"))?;
                 Ok(val)
             }
             "length" => {
@@ -3149,12 +3223,12 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List length pointer"))?
                 };
                 let length = self
                     .builder
                     .build_load(self.context.i64_type(), length_ptr, "len")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load List length"))?;
                 Ok(length)
             }
             "pop" => {
@@ -3168,12 +3242,12 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List length pointer"))?
                 };
                 let length = self
                     .builder
                     .build_load(self.context.i64_type(), length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List length"))?
                     .into_int_value();
                 let current_fn = self
                     .current_function
@@ -3188,10 +3262,10 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_zero(),
                         "list_pop_has_items",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to check List.pop emptiness"))?;
                 self.builder
                     .build_conditional_branch(has_items, ok_bb, fail_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for List.pop"))?;
 
                 self.builder.position_at_end(fail_bb);
                 self.emit_runtime_error("List.pop() on empty list", "list_pop_empty")?;
@@ -3206,10 +3280,12 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(1, false),
                         "new_len",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to decrement List length"))?;
 
                 // Update length
-                self.builder.build_store(length_ptr, new_length).unwrap();
+                self.builder
+                    .build_store(length_ptr, new_length)
+                    .map_err(|_| CodegenError::new("failed to store List length after pop"))?;
 
                 // Get data pointer
                 let data_ptr_ptr = unsafe {
@@ -3220,7 +3296,7 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(2, false)],
                             "data_ptr_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List data pointer"))?
                 };
                 let data_ptr = self
                     .builder
@@ -3229,7 +3305,7 @@ impl<'ctx> Codegen<'ctx> {
                         data_ptr_ptr,
                         "data",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List data pointer"))?
                     .into_pointer_value();
 
                 // Get value at new_length (the old last element)
@@ -3240,11 +3316,13 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(elem_size, false),
                         "offset",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute List.pop offset"))?;
                 let elem_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List.pop element pointer")
+                        })?
                 };
                 let typed_elem_ptr = self
                     .builder
@@ -3253,11 +3331,11 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_elem_ptr",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to cast List.pop element pointer"))?;
                 let val = self
                     .builder
                     .build_load(elem_llvm_ty, typed_elem_ptr, "val")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load List.pop value"))?;
                 Ok(val)
             }
             "set" => {
@@ -3271,12 +3349,12 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List length pointer"))?
                 };
                 let length = self
                     .builder
                     .build_load(self.context.i64_type(), length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List length"))?
                     .into_int_value();
                 let index = self.compile_non_negative_integer_index_expr(
                     &args[0].node,
@@ -3295,18 +3373,18 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_zero(),
                         "list_set_non_negative",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to check List.set index sign"))?;
                 let in_bounds = self
                     .builder
                     .build_int_compare(IntPredicate::SLT, index, length, "list_set_in_bounds")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to check List.set bounds"))?;
                 let valid = self
                     .builder
                     .build_and(non_negative, in_bounds, "list_set_valid")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to combine List.set bounds checks"))?;
                 self.builder
                     .build_conditional_branch(valid, ok_bb, fail_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for List.set"))?;
 
                 self.builder.position_at_end(fail_bb);
                 self.emit_runtime_error("List.set() index out of bounds", "list_set_oob")?;
@@ -3320,7 +3398,7 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(2, false)],
                             "data_ptr_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute List data pointer"))?
                 };
                 let data_ptr = self
                     .builder
@@ -3329,7 +3407,7 @@ impl<'ctx> Codegen<'ctx> {
                         data_ptr_ptr,
                         "data",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List data pointer"))?
                     .into_pointer_value();
 
                 let offset = self
@@ -3339,11 +3417,13 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(elem_size, false),
                         "offset",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute List.set offset"))?;
                 let elem_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List.set element pointer")
+                        })?
                 };
                 let typed_elem_ptr = self
                     .builder
@@ -3352,7 +3432,7 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_elem_ptr",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to cast List.set element pointer"))?;
 
                 // Store the value
                 let inner_ty = match self.deref_codegen_type(list_ty) {
@@ -3362,7 +3442,9 @@ impl<'ctx> Codegen<'ctx> {
                 let actual_value_ty = self.infer_expr_type(&args[1].node, &[]);
                 let value = self.compile_expr_with_expected_type(&args[1].node, inner_ty)?;
                 self.reject_incompatible_expected_type_value(inner_ty, &actual_value_ty, value)?;
-                self.builder.build_store(typed_elem_ptr, value).unwrap();
+                self.builder
+                    .build_store(typed_elem_ptr, value)
+                    .map_err(|_| CodegenError::new("failed to store List.set value"))?;
 
                 Ok(self.context.i8_type().const_int(0, false).into())
             }
@@ -3413,7 +3495,9 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(0, false)],
                             "cap_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer capacity pointer")
+                        })?
                 };
                 let length_ptr = unsafe {
                     self.builder
@@ -3423,7 +3507,9 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer length pointer")
+                        })?
                 };
                 let data_ptr_ptr = unsafe {
                     self.builder
@@ -3433,24 +3519,26 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(2, false)],
                             "data_ptr_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer data pointer")
+                        })?
                 };
 
                 let capacity = self
                     .builder
                     .build_load(i64_type, capacity_ptr, "cap")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List pointer capacity"))?
                     .into_int_value();
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List pointer length"))?
                     .into_int_value();
 
                 let need_grow = self
                     .builder
                     .build_int_compare(IntPredicate::SGE, length, capacity, "need_grow")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare List pointer growth need"))?;
                 let function = self
                     .current_function
                     .ok_or_else(|| CodegenError::new("No current function for list push"))?;
@@ -3458,7 +3546,7 @@ impl<'ctx> Codegen<'ctx> {
                 let cont_bb = self.context.append_basic_block(function, "list_push_cont");
                 self.builder
                     .build_conditional_branch(need_grow, grow_bb, cont_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for List pointer growth"))?;
 
                 self.builder.position_at_end(grow_bb);
                 self.grow_list_data_with_copy(
@@ -3469,7 +3557,11 @@ impl<'ctx> Codegen<'ctx> {
                     length,
                     elem_size,
                 )?;
-                self.builder.build_unconditional_branch(cont_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(cont_bb)
+                    .map_err(|_| {
+                        CodegenError::new("failed to continue List pointer push after growth")
+                    })?;
 
                 self.builder.position_at_end(cont_bb);
                 let data_ptr = self
@@ -3479,17 +3571,19 @@ impl<'ctx> Codegen<'ctx> {
                         data_ptr_ptr,
                         "data",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List pointer data"))?
                     .into_pointer_value();
 
                 let offset = self
                     .builder
                     .build_int_mul(length, elem_size_i64, "offset")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute List pointer push offset"))?;
                 let elem_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer element pointer")
+                        })?
                 };
                 let typed_elem_ptr = self
                     .builder
@@ -3498,7 +3592,9 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_elem_ptr",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to cast List pointer element pointer")
+                    })?;
 
                 let inner_ty = match self.deref_codegen_type(list_ty) {
                     Type::List(inner) => &**inner,
@@ -3506,13 +3602,17 @@ impl<'ctx> Codegen<'ctx> {
                 };
                 let value =
                     self.compile_expr_for_concrete_class_payload(&args[0].node, inner_ty)?;
-                self.builder.build_store(typed_elem_ptr, value).unwrap();
+                self.builder
+                    .build_store(typed_elem_ptr, value)
+                    .map_err(|_| CodegenError::new("failed to store pushed List pointer value"))?;
 
                 let new_length = self
                     .builder
                     .build_int_add(length, one_i64, "new_len")
-                    .unwrap();
-                self.builder.build_store(length_ptr, new_length).unwrap();
+                    .map_err(|_| CodegenError::new("failed to increment List pointer length"))?;
+                self.builder
+                    .build_store(length_ptr, new_length)
+                    .map_err(|_| CodegenError::new("failed to store List pointer length"))?;
 
                 Ok(self.context.i8_type().const_int(0, false).into())
             }
@@ -3525,12 +3625,14 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer length pointer")
+                        })?
                 };
                 let length = self
                     .builder
                     .build_load(self.context.i64_type(), length_ptr, "len")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load List pointer length"))?;
                 Ok(length)
             }
             "get" => {
@@ -3542,12 +3644,14 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer length pointer")
+                        })?
                 };
                 let length = self
                     .builder
                     .build_load(self.context.i64_type(), length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List pointer length"))?
                     .into_int_value();
                 let index = self.compile_non_negative_integer_index_expr(
                     &args[0].node,
@@ -3570,18 +3674,22 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_zero(),
                         "list_ptr_get_non_negative",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to check List pointer get index sign")
+                    })?;
                 let in_bounds = self
                     .builder
                     .build_int_compare(IntPredicate::SLT, index, length, "list_ptr_get_in_bounds")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to check List pointer get bounds"))?;
                 let valid = self
                     .builder
                     .build_and(non_negative, in_bounds, "list_ptr_get_valid")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to combine List pointer get bounds checks")
+                    })?;
                 self.builder
                     .build_conditional_branch(valid, ok_bb, fail_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for List pointer get"))?;
 
                 self.builder.position_at_end(fail_bb);
                 self.emit_runtime_error("List.get() index out of bounds", "list_ptr_get_oob")?;
@@ -3595,7 +3703,9 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(2, false)],
                             "data_ptr_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer data pointer")
+                        })?
                 };
                 let data_ptr = self
                     .builder
@@ -3604,7 +3714,7 @@ impl<'ctx> Codegen<'ctx> {
                         data_ptr_ptr,
                         "data",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List pointer data"))?
                     .into_pointer_value();
 
                 let offset = self
@@ -3614,11 +3724,13 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(elem_size, false),
                         "offset",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute List pointer get offset"))?;
                 let elem_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer get element pointer")
+                        })?
                 };
                 let typed_elem_ptr = self
                     .builder
@@ -3627,12 +3739,14 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_elem_ptr",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to cast List pointer get element pointer")
+                    })?;
 
                 let val = self
                     .builder
                     .build_load(elem_llvm_ty, typed_elem_ptr, "val")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load List pointer get value"))?;
                 Ok(val)
             }
             "set" => {
@@ -3644,12 +3758,14 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer length pointer")
+                        })?
                 };
                 let length = self
                     .builder
                     .build_load(self.context.i64_type(), length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List pointer length"))?
                     .into_int_value();
                 let index = self.compile_non_negative_integer_index_expr(
                     &args[0].node,
@@ -3672,18 +3788,22 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_zero(),
                         "list_ptr_set_non_negative",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to check List pointer set index sign")
+                    })?;
                 let in_bounds = self
                     .builder
                     .build_int_compare(IntPredicate::SLT, index, length, "list_ptr_set_in_bounds")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to check List pointer set bounds"))?;
                 let valid = self
                     .builder
                     .build_and(non_negative, in_bounds, "list_ptr_set_valid")
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to combine List pointer set bounds checks")
+                    })?;
                 self.builder
                     .build_conditional_branch(valid, ok_bb, fail_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for List pointer set"))?;
 
                 self.builder.position_at_end(fail_bb);
                 self.emit_runtime_error("List.set() index out of bounds", "list_ptr_set_oob")?;
@@ -3697,7 +3817,9 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(2, false)],
                             "data_ptr_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer data pointer")
+                        })?
                 };
                 let data_ptr = self
                     .builder
@@ -3706,7 +3828,7 @@ impl<'ctx> Codegen<'ctx> {
                         data_ptr_ptr,
                         "data",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List pointer data"))?
                     .into_pointer_value();
 
                 let offset = self
@@ -3716,11 +3838,13 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(elem_size, false),
                         "offset",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute List pointer set offset"))?;
                 let elem_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer set element pointer")
+                        })?
                 };
                 let typed_elem_ptr = self
                     .builder
@@ -3729,7 +3853,9 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_elem_ptr",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to cast List pointer set element pointer")
+                    })?;
 
                 // Store the value
                 let inner_ty = match self.deref_codegen_type(list_ty) {
@@ -3739,7 +3865,9 @@ impl<'ctx> Codegen<'ctx> {
                 let actual_value_ty = self.infer_expr_type(&args[1].node, &[]);
                 let value = self.compile_expr_with_expected_type(&args[1].node, inner_ty)?;
                 self.reject_incompatible_expected_type_value(inner_ty, &actual_value_ty, value)?;
-                self.builder.build_store(typed_elem_ptr, value).unwrap();
+                self.builder
+                    .build_store(typed_elem_ptr, value)
+                    .map_err(|_| CodegenError::new("failed to store List pointer set value"))?;
 
                 Ok(self.context.i8_type().const_int(0, false).into())
             }
@@ -3752,12 +3880,14 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(1, false)],
                             "len_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer length pointer")
+                        })?
                 };
                 let length = self
                     .builder
                     .build_load(self.context.i64_type(), length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List pointer length"))?
                     .into_int_value();
                 let current_fn = self
                     .current_function
@@ -3776,10 +3906,10 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_zero(),
                         "list_ptr_pop_has_items",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to check List pointer pop emptiness"))?;
                 self.builder
                     .build_conditional_branch(has_items, ok_bb, fail_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch for List pointer pop"))?;
 
                 self.builder.position_at_end(fail_bb);
                 self.emit_runtime_error("List.pop() on empty list", "list_ptr_pop_empty")?;
@@ -3794,10 +3924,14 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(1, false),
                         "new_len",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to decrement List pointer length"))?;
 
                 // Update length
-                self.builder.build_store(length_ptr, new_length).unwrap();
+                self.builder
+                    .build_store(length_ptr, new_length)
+                    .map_err(|_| {
+                        CodegenError::new("failed to store List pointer length after pop")
+                    })?;
 
                 // Get data pointer
                 let data_ptr_ptr = unsafe {
@@ -3808,7 +3942,9 @@ impl<'ctx> Codegen<'ctx> {
                             &[zero, i32_type.const_int(2, false)],
                             "data_ptr_ptr",
                         )
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer data pointer")
+                        })?
                 };
                 let data_ptr = self
                     .builder
@@ -3817,7 +3953,7 @@ impl<'ctx> Codegen<'ctx> {
                         data_ptr_ptr,
                         "data",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load List pointer data"))?
                     .into_pointer_value();
 
                 // Get value at new_length (the old last element)
@@ -3828,11 +3964,13 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.i64_type().const_int(elem_size, false),
                         "offset",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute List pointer pop offset"))?;
                 let elem_ptr = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), data_ptr, &[offset], "elem_ptr")
-                        .unwrap()
+                        .map_err(|_| {
+                            CodegenError::new("failed to compute List pointer pop element pointer")
+                        })?
                 };
                 let typed_elem_ptr = self
                     .builder
@@ -3841,11 +3979,13 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_elem_ptr",
                     )
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to cast List pointer pop element pointer")
+                    })?;
                 let val = self
                     .builder
                     .build_load(elem_llvm_ty, typed_elem_ptr, "val")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load List pointer pop value"))?;
                 Ok(val)
             }
             _ => Err(CodegenError::new(format!(
@@ -3915,7 +4055,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(1, false)],
                     "len_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map length pointer"))?
         };
         let keys_ptr_ptr = unsafe {
             self.builder
@@ -3925,7 +4065,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(2, false)],
                     "keys_ptr_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map keys pointer"))?
         };
         let values_ptr_ptr = unsafe {
             self.builder
@@ -3935,14 +4075,14 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(3, false)],
                     "vals_ptr_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map values pointer"))?
         };
 
         match method {
-            "length" => Ok(self
+            "length" => self
                 .builder
                 .build_load(i64_type, length_ptr, "len")
-                .unwrap()),
+                .map_err(|_| CodegenError::new("failed to load Map length")),
             "insert" => self.compile_map_method_on_value(map_value, map_expr_ty, "set", args),
             "set" => {
                 let actual_key_ty = self.infer_expr_type(&args[0].node, &[]);
@@ -3965,7 +4105,7 @@ impl<'ctx> Codegen<'ctx> {
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Map length"))?
                     .into_int_value();
                 let keys_ptr = self
                     .builder
@@ -3974,7 +4114,7 @@ impl<'ctx> Codegen<'ctx> {
                         keys_ptr_ptr,
                         "keys",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Map keys data pointer"))?
                     .into_pointer_value();
                 let values_ptr = self
                     .builder
@@ -3983,24 +4123,30 @@ impl<'ctx> Codegen<'ctx> {
                         values_ptr_ptr,
                         "vals",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Map values data pointer"))?
                     .into_pointer_value();
 
-                let idx_ptr = self.builder.build_alloca(i64_type, "map_idx").unwrap();
-                let res_ptr = self.builder.build_alloca(val_llvm, "map_get_res").unwrap();
+                let idx_ptr = self
+                    .builder
+                    .build_alloca(i64_type, "map_idx")
+                    .map_err(|_| CodegenError::new("failed to allocate Map.get index"))?;
+                let res_ptr = self
+                    .builder
+                    .build_alloca(val_llvm, "map_get_res")
+                    .map_err(|_| CodegenError::new("failed to allocate Map.get result slot"))?;
                 let found_ptr = self
                     .builder
                     .build_alloca(self.context.bool_type(), "map_get_found")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate Map.get found flag"))?;
                 self.builder
                     .build_store(idx_ptr, i64_type.const_int(0, false))
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to initialize Map.get index"))?;
                 self.builder
                     .build_store(res_ptr, val_llvm.const_zero())
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to initialize Map.get result slot"))?;
                 self.builder
                     .build_store(found_ptr, self.context.bool_type().const_zero())
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to initialize Map.get found flag"))?;
 
                 let current_fn = self
                     .current_function
@@ -4010,31 +4156,33 @@ impl<'ctx> Codegen<'ctx> {
                 let done_bb = self.context.append_basic_block(current_fn, "map_get.done");
                 let merge_bb = self.context.append_basic_block(current_fn, "map_get.merge");
                 let fail_bb = self.context.append_basic_block(current_fn, "map_get.fail");
-                self.builder.build_unconditional_branch(cond_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(cond_bb)
+                    .map_err(|_| CodegenError::new("failed to enter Map.get loop"))?;
 
                 self.builder.position_at_end(cond_bb);
                 let i = self
                     .builder
                     .build_load(i64_type, idx_ptr, "i")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Map.get index"))?
                     .into_int_value();
                 let in_bounds = self
                     .builder
                     .build_int_compare(IntPredicate::SLT, i, length, "i_lt_len")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare Map.get bounds"))?;
                 self.builder
                     .build_conditional_branch(in_bounds, body_bb, done_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch in Map.get loop"))?;
 
                 self.builder.position_at_end(body_bb);
                 let offset = self
                     .builder
                     .build_int_mul(i, i64_type.const_int(key_size, false), "offset")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute Map.get key offset"))?;
                 let key_slot = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), keys_ptr, &[offset], "key_slot")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute Map.get key slot"))?
                 };
                 let typed_key_slot = self
                     .builder
@@ -4043,23 +4191,23 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_key_slot",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to cast Map.get key slot"))?;
                 let existing = self
                     .builder
                     .build_load(key_llvm, typed_key_slot, "existing")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load Map.get existing key"))?;
                 let eq = self.build_value_equality(existing, key, &key_ty, "eq")?;
                 let next_bb = self.context.append_basic_block(current_fn, "map_get.next");
                 let found_bb = self.context.append_basic_block(current_fn, "map_get.found");
                 self.builder
                     .build_conditional_branch(eq, found_bb, next_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on Map.get key equality"))?;
 
                 self.builder.position_at_end(found_bb);
                 let value_offset = self
                     .builder
                     .build_int_mul(i, i64_type.const_int(val_size, false), "value_offset")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute Map.get value offset"))?;
                 let val_slot = unsafe {
                     self.builder
                         .build_gep(
@@ -4068,7 +4216,7 @@ impl<'ctx> Codegen<'ctx> {
                             &[value_offset],
                             "val_slot",
                         )
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute Map.get value slot"))?
                 };
                 let typed_val_slot = self
                     .builder
@@ -4077,43 +4225,50 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_val_slot",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to cast Map.get value slot"))?;
                 let found = self
                     .builder
                     .build_load(val_llvm, typed_val_slot, "found")
-                    .unwrap();
-                self.builder.build_store(res_ptr, found).unwrap();
+                    .map_err(|_| CodegenError::new("failed to load Map.get value"))?;
+                self.builder
+                    .build_store(res_ptr, found)
+                    .map_err(|_| CodegenError::new("failed to store Map.get value"))?;
                 self.builder
                     .build_store(found_ptr, self.context.bool_type().const_all_ones())
-                    .unwrap();
-                self.builder.build_unconditional_branch(done_bb).unwrap();
+                    .map_err(|_| CodegenError::new("failed to mark Map.get as found"))?;
+                self.builder
+                    .build_unconditional_branch(done_bb)
+                    .map_err(|_| CodegenError::new("failed to finish Map.get after match"))?;
 
                 self.builder.position_at_end(next_bb);
                 let next_i = self
                     .builder
                     .build_int_add(i, i64_type.const_int(1, false), "next_i")
-                    .unwrap();
-                self.builder.build_store(idx_ptr, next_i).unwrap();
-                self.builder.build_unconditional_branch(cond_bb).unwrap();
+                    .map_err(|_| CodegenError::new("failed to increment Map.get index"))?;
+                self.builder
+                    .build_store(idx_ptr, next_i)
+                    .map_err(|_| CodegenError::new("failed to store Map.get index"))?;
+                self.builder
+                    .build_unconditional_branch(cond_bb)
+                    .map_err(|_| CodegenError::new("failed to continue Map.get loop"))?;
 
                 self.builder.position_at_end(done_bb);
                 let found = self
                     .builder
                     .build_load(self.context.bool_type(), found_ptr, "map_get_found")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Map.get found flag"))?
                     .into_int_value();
                 self.builder
                     .build_conditional_branch(found, merge_bb, fail_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch on Map.get result"))?;
 
                 self.builder.position_at_end(fail_bb);
                 self.emit_runtime_error("Map.get() missing key", "map_get_missing_key")?;
 
                 self.builder.position_at_end(merge_bb);
-                Ok(self
-                    .builder
+                self.builder
                     .build_load(val_llvm, res_ptr, "map_get_res")
-                    .unwrap())
+                    .map_err(|_| CodegenError::new("failed to load Map.get result"))
             }
             "contains" => {
                 let actual_key_ty = self.infer_expr_type(&args[0].node, &[]);
@@ -4122,7 +4277,7 @@ impl<'ctx> Codegen<'ctx> {
                 let length = self
                     .builder
                     .build_load(i64_type, length_ptr, "len")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Map length"))?
                     .into_int_value();
                 let keys_ptr = self
                     .builder
@@ -4131,20 +4286,23 @@ impl<'ctx> Codegen<'ctx> {
                         keys_ptr_ptr,
                         "keys",
                     )
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Map keys data pointer"))?
                     .into_pointer_value();
 
-                let idx_ptr = self.builder.build_alloca(i64_type, "map_idx").unwrap();
+                let idx_ptr = self
+                    .builder
+                    .build_alloca(i64_type, "map_idx")
+                    .map_err(|_| CodegenError::new("failed to allocate Map.contains index"))?;
                 let res_ptr = self
                     .builder
                     .build_alloca(self.context.bool_type(), "contains_res")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to allocate Map.contains result"))?;
                 self.builder
                     .build_store(idx_ptr, i64_type.const_int(0, false))
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to initialize Map.contains index"))?;
                 self.builder
                     .build_store(res_ptr, self.context.bool_type().const_int(0, false))
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to initialize Map.contains result"))?;
 
                 let current_fn = self
                     .current_function
@@ -4158,31 +4316,33 @@ impl<'ctx> Codegen<'ctx> {
                 let done_bb = self
                     .context
                     .append_basic_block(current_fn, "map_contains.done");
-                self.builder.build_unconditional_branch(cond_bb).unwrap();
+                self.builder
+                    .build_unconditional_branch(cond_bb)
+                    .map_err(|_| CodegenError::new("failed to enter Map.contains loop"))?;
 
                 self.builder.position_at_end(cond_bb);
                 let i = self
                     .builder
                     .build_load(i64_type, idx_ptr, "i")
-                    .unwrap()
+                    .map_err(|_| CodegenError::new("failed to load Map.contains index"))?
                     .into_int_value();
                 let in_bounds = self
                     .builder
                     .build_int_compare(IntPredicate::SLT, i, length, "i_lt_len")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compare Map.contains bounds"))?;
                 self.builder
                     .build_conditional_branch(in_bounds, body_bb, done_bb)
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to branch in Map.contains loop"))?;
 
                 self.builder.position_at_end(body_bb);
                 let offset = self
                     .builder
                     .build_int_mul(i, i64_type.const_int(key_size, false), "offset")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to compute Map.contains key offset"))?;
                 let key_slot = unsafe {
                     self.builder
                         .build_gep(self.context.i8_type(), keys_ptr, &[offset], "key_slot")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute Map.contains key slot"))?
                 };
                 let typed_key_slot = self
                     .builder
@@ -4191,11 +4351,11 @@ impl<'ctx> Codegen<'ctx> {
                         self.context.ptr_type(AddressSpace::default()),
                         "typed_key_slot",
                     )
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to cast Map.contains key slot"))?;
                 let existing = self
                     .builder
                     .build_load(key_llvm, typed_key_slot, "existing")
-                    .unwrap();
+                    .map_err(|_| CodegenError::new("failed to load Map.contains existing key"))?;
                 let eq = self.build_value_equality(existing, key, &key_ty, "eq")?;
                 let next_bb = self
                     .context
@@ -4205,27 +4365,34 @@ impl<'ctx> Codegen<'ctx> {
                     .append_basic_block(current_fn, "map_contains.found");
                 self.builder
                     .build_conditional_branch(eq, found_bb, next_bb)
-                    .unwrap();
+                    .map_err(|_| {
+                        CodegenError::new("failed to branch on Map.contains key equality")
+                    })?;
 
                 self.builder.position_at_end(found_bb);
                 self.builder
                     .build_store(res_ptr, self.context.bool_type().const_int(1, false))
-                    .unwrap();
-                self.builder.build_unconditional_branch(done_bb).unwrap();
+                    .map_err(|_| CodegenError::new("failed to store Map.contains result"))?;
+                self.builder
+                    .build_unconditional_branch(done_bb)
+                    .map_err(|_| CodegenError::new("failed to finish Map.contains after match"))?;
 
                 self.builder.position_at_end(next_bb);
                 let next_i = self
                     .builder
                     .build_int_add(i, i64_type.const_int(1, false), "next_i")
-                    .unwrap();
-                self.builder.build_store(idx_ptr, next_i).unwrap();
-                self.builder.build_unconditional_branch(cond_bb).unwrap();
+                    .map_err(|_| CodegenError::new("failed to increment Map.contains index"))?;
+                self.builder
+                    .build_store(idx_ptr, next_i)
+                    .map_err(|_| CodegenError::new("failed to store Map.contains index"))?;
+                self.builder
+                    .build_unconditional_branch(cond_bb)
+                    .map_err(|_| CodegenError::new("failed to continue Map.contains loop"))?;
 
                 self.builder.position_at_end(done_bb);
-                Ok(self
-                    .builder
+                self.builder
                     .build_load(self.context.bool_type(), res_ptr, "contains_res")
-                    .unwrap())
+                    .map_err(|_| CodegenError::new("failed to load Map.contains result"))
             }
             _ => Err(CodegenError::new(format!("Unknown Map method: {}", method))),
         }
@@ -4268,7 +4435,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(1, false)],
                     "len_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map.set length pointer"))?
         };
         let keys_ptr_ptr = unsafe {
             self.builder
@@ -4278,7 +4445,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(2, false)],
                     "keys_ptr_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map.set keys pointer"))?
         };
         let values_ptr_ptr = unsafe {
             self.builder
@@ -4288,12 +4455,12 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(3, false)],
                     "vals_ptr_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map.set values pointer"))?
         };
         let length = self
             .builder
             .build_load(i64_type, length_ptr, "len")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load Map.set length"))?
             .into_int_value();
         let keys_ptr = self
             .builder
@@ -4302,7 +4469,7 @@ impl<'ctx> Codegen<'ctx> {
                 keys_ptr_ptr,
                 "keys",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load Map.set keys data"))?
             .into_pointer_value();
         let values_ptr = self
             .builder
@@ -4311,13 +4478,16 @@ impl<'ctx> Codegen<'ctx> {
                 values_ptr_ptr,
                 "vals",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load Map.set values data"))?
             .into_pointer_value();
 
-        let idx_ptr = self.builder.build_alloca(i64_type, "map_idx").unwrap();
+        let idx_ptr = self
+            .builder
+            .build_alloca(i64_type, "map_idx")
+            .map_err(|_| CodegenError::new("failed to allocate Map.set index"))?;
         self.builder
             .build_store(idx_ptr, i64_type.const_int(0, false))
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize Map.set index"))?;
         let current_fn = self
             .current_function
             .ok_or_else(|| CodegenError::new("Map.set used outside function"))?;
@@ -4332,30 +4502,32 @@ impl<'ctx> Codegen<'ctx> {
             .append_basic_block(current_fn, "map_set.append");
         let done_bb = self.context.append_basic_block(current_fn, "map_set.done");
 
-        self.builder.build_unconditional_branch(cond_bb).unwrap();
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|_| CodegenError::new("failed to enter Map.set loop"))?;
         self.builder.position_at_end(cond_bb);
         let i = self
             .builder
             .build_load(i64_type, idx_ptr, "i")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load Map.set index"))?
             .into_int_value();
         let in_bounds = self
             .builder
             .build_int_compare(IntPredicate::SLT, i, length, "i_lt_len")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compare Map.set bounds"))?;
         self.builder
             .build_conditional_branch(in_bounds, body_bb, append_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch in Map.set loop"))?;
 
         self.builder.position_at_end(body_bb);
         let offset = self
             .builder
             .build_int_mul(i, i64_type.const_int(key_size, false), "offset")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute Map.set key offset"))?;
         let key_slot = unsafe {
             self.builder
                 .build_gep(self.context.i8_type(), keys_ptr, &[offset], "key_slot")
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map.set key slot"))?
         };
         let typed_key_slot = self
             .builder
@@ -4364,21 +4536,21 @@ impl<'ctx> Codegen<'ctx> {
                 self.context.ptr_type(AddressSpace::default()),
                 "typed_key_slot",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to cast Map.set key slot"))?;
         let existing = self
             .builder
             .build_load(key_llvm, typed_key_slot, "existing")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to load Map.set existing key"))?;
         let eq = self.build_value_equality(existing, key, &key_ty, "eq")?;
         self.builder
             .build_conditional_branch(eq, update_bb, cont_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch on Map.set key equality"))?;
 
         self.builder.position_at_end(update_bb);
         let value_offset = self
             .builder
             .build_int_mul(i, i64_type.const_int(val_size, false), "value_offset")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute Map.set value offset"))?;
         let val_slot = unsafe {
             self.builder
                 .build_gep(
@@ -4387,7 +4559,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[value_offset],
                     "val_slot",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map.set value slot"))?
         };
         let typed_val_slot = self
             .builder
@@ -4396,22 +4568,30 @@ impl<'ctx> Codegen<'ctx> {
                 self.context.ptr_type(AddressSpace::default()),
                 "typed_val_slot",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to cast Map.set value slot"))?;
         if val_llvm.is_struct_type() || val_llvm.is_array_type() {
             self.builder
                 .build_store(typed_val_slot, val_llvm.const_zero())
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to clear existing Map.set value slot"))?;
         }
-        self.builder.build_store(typed_val_slot, value).unwrap();
-        self.builder.build_unconditional_branch(done_bb).unwrap();
+        self.builder
+            .build_store(typed_val_slot, value)
+            .map_err(|_| CodegenError::new("failed to store updated Map value"))?;
+        self.builder
+            .build_unconditional_branch(done_bb)
+            .map_err(|_| CodegenError::new("failed to finish Map.set update"))?;
 
         self.builder.position_at_end(cont_bb);
         let next_i = self
             .builder
             .build_int_add(i, i64_type.const_int(1, false), "next_i")
-            .unwrap();
-        self.builder.build_store(idx_ptr, next_i).unwrap();
-        self.builder.build_unconditional_branch(cond_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to increment Map.set index"))?;
+        self.builder
+            .build_store(idx_ptr, next_i)
+            .map_err(|_| CodegenError::new("failed to store Map.set index"))?;
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|_| CodegenError::new("failed to continue Map.set loop"))?;
 
         self.builder.position_at_end(append_bb);
         let capacity_ptr = unsafe {
@@ -4422,29 +4602,29 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(0, false)],
                     "capacity_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map capacity pointer"))?
         };
         let capacity = self
             .builder
             .build_load(i64_type, capacity_ptr, "capacity")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load Map capacity"))?
             .into_int_value();
         let need_growth = self
             .builder
             .build_int_compare(IntPredicate::UGE, length, capacity, "need_growth")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compare Map growth need"))?;
         let grow_bb = self.context.append_basic_block(current_fn, "map_set.grow");
         let store_bb = self.context.append_basic_block(current_fn, "map_set.store");
         self.builder
             .build_conditional_branch(need_growth, grow_bb, store_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch for Map growth"))?;
 
         self.builder.position_at_end(grow_bb);
         let realloc = self.get_or_declare_realloc();
         let grown_capacity = self
             .builder
             .build_int_mul(capacity, i64_type.const_int(2, false), "grown_capacity")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute grown Map capacity"))?;
         let new_key_size = self
             .builder
             .build_int_mul(
@@ -4452,7 +4632,7 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_int(key_size, false),
                 "new_key_size",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute grown Map key storage"))?;
         let grown_keys_call = self
             .builder
             .build_call(
@@ -4460,7 +4640,7 @@ impl<'ctx> Codegen<'ctx> {
                 &[keys_ptr.into(), new_key_size.into()],
                 "grown_keys",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit realloc for Map keys"))?;
         let grown_keys =
             self.extract_call_pointer_value(grown_keys_call, "realloc failed for Map key growth")?;
         let new_val_size = self
@@ -4470,7 +4650,7 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_int(val_size, false),
                 "new_val_size",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute grown Map value storage"))?;
         let grown_vals_call = self
             .builder
             .build_call(
@@ -4478,17 +4658,21 @@ impl<'ctx> Codegen<'ctx> {
                 &[values_ptr.into(), new_val_size.into()],
                 "grown_vals",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to emit realloc for Map values"))?;
         let grown_vals = self
             .extract_call_pointer_value(grown_vals_call, "realloc failed for Map value growth")?;
-        self.builder.build_store(keys_ptr_ptr, grown_keys).unwrap();
+        self.builder
+            .build_store(keys_ptr_ptr, grown_keys)
+            .map_err(|_| CodegenError::new("failed to store grown Map keys pointer"))?;
         self.builder
             .build_store(values_ptr_ptr, grown_vals)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to store grown Map values pointer"))?;
         self.builder
             .build_store(capacity_ptr, grown_capacity)
-            .unwrap();
-        self.builder.build_unconditional_branch(store_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to store grown Map capacity"))?;
+        self.builder
+            .build_unconditional_branch(store_bb)
+            .map_err(|_| CodegenError::new("failed to continue after Map growth"))?;
 
         self.builder.position_at_end(store_bb);
         let active_keys_ptr = self
@@ -4498,7 +4682,7 @@ impl<'ctx> Codegen<'ctx> {
                 keys_ptr_ptr,
                 "active_keys",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load active Map keys pointer"))?
             .into_pointer_value();
         let active_values_ptr = self
             .builder
@@ -4507,12 +4691,12 @@ impl<'ctx> Codegen<'ctx> {
                 values_ptr_ptr,
                 "active_vals",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load active Map values pointer"))?
             .into_pointer_value();
         let offset = self
             .builder
             .build_int_mul(length, i64_type.const_int(key_size, false), "append_off")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute Map append key offset"))?;
         let key_slot = unsafe {
             self.builder
                 .build_gep(
@@ -4521,7 +4705,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[offset],
                     "key_slot_new",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map append key slot"))?
         };
         let typed_key_slot = self
             .builder
@@ -4530,13 +4714,15 @@ impl<'ctx> Codegen<'ctx> {
                 self.context.ptr_type(AddressSpace::default()),
                 "typed_key_slot_new",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to cast Map append key slot"))?;
         if key_llvm.is_struct_type() || key_llvm.is_array_type() {
             self.builder
                 .build_store(typed_key_slot, key_llvm.const_zero())
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to clear Map append key slot"))?;
         }
-        self.builder.build_store(typed_key_slot, key).unwrap();
+        self.builder
+            .build_store(typed_key_slot, key)
+            .map_err(|_| CodegenError::new("failed to store appended Map key"))?;
         let value_offset = self
             .builder
             .build_int_mul(
@@ -4544,7 +4730,7 @@ impl<'ctx> Codegen<'ctx> {
                 i64_type.const_int(val_size, false),
                 "append_val_off",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute Map append value offset"))?;
         let val_slot = unsafe {
             self.builder
                 .build_gep(
@@ -4553,7 +4739,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[value_offset],
                     "val_slot_new",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map append value slot"))?
         };
         let typed_val_slot = self
             .builder
@@ -4562,19 +4748,25 @@ impl<'ctx> Codegen<'ctx> {
                 self.context.ptr_type(AddressSpace::default()),
                 "typed_val_slot_new",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to cast Map append value slot"))?;
         if val_llvm.is_struct_type() || val_llvm.is_array_type() {
             self.builder
                 .build_store(typed_val_slot, val_llvm.const_zero())
-                .unwrap();
+                .map_err(|_| CodegenError::new("failed to clear Map append value slot"))?;
         }
-        self.builder.build_store(typed_val_slot, value).unwrap();
+        self.builder
+            .build_store(typed_val_slot, value)
+            .map_err(|_| CodegenError::new("failed to store appended Map value"))?;
         let new_len = self
             .builder
             .build_int_add(length, i64_type.const_int(1, false), "new_len")
-            .unwrap();
-        self.builder.build_store(length_ptr, new_len).unwrap();
-        self.builder.build_unconditional_branch(done_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to increment Map length"))?;
+        self.builder
+            .build_store(length_ptr, new_len)
+            .map_err(|_| CodegenError::new("failed to store Map length"))?;
+        self.builder
+            .build_unconditional_branch(done_bb)
+            .map_err(|_| CodegenError::new("failed to finish Map append"))?;
 
         self.builder.position_at_end(done_bb);
         Ok(self.context.i8_type().const_int(0, false).into())
@@ -4617,7 +4809,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(1, false)],
                     "len_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map.get length pointer"))?
         };
         let keys_ptr_ptr = unsafe {
             self.builder
@@ -4627,7 +4819,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(2, false)],
                     "keys_ptr_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map.get keys pointer"))?
         };
         let values_ptr_ptr = unsafe {
             self.builder
@@ -4637,13 +4829,13 @@ impl<'ctx> Codegen<'ctx> {
                     &[zero, i32_type.const_int(3, false)],
                     "vals_ptr_ptr",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute Map.get values pointer"))?
         };
 
         let length = self
             .builder
             .build_load(i64_type, length_ptr, "len")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load Map.get length"))?
             .into_int_value();
         let keys_ptr = self
             .builder
@@ -4652,7 +4844,7 @@ impl<'ctx> Codegen<'ctx> {
                 keys_ptr_ptr,
                 "keys",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load Map.get keys data"))?
             .into_pointer_value();
         let values_ptr = self
             .builder
@@ -4661,24 +4853,30 @@ impl<'ctx> Codegen<'ctx> {
                 values_ptr_ptr,
                 "vals",
             )
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load Map.get values data"))?
             .into_pointer_value();
 
-        let idx_ptr = self.builder.build_alloca(i64_type, "map_idx").unwrap();
-        let res_ptr = self.builder.build_alloca(val_llvm, "map_get_res").unwrap();
+        let idx_ptr = self
+            .builder
+            .build_alloca(i64_type, "map_idx")
+            .map_err(|_| CodegenError::new("failed to allocate Map.get index"))?;
+        let res_ptr = self
+            .builder
+            .build_alloca(val_llvm, "map_get_res")
+            .map_err(|_| CodegenError::new("failed to allocate Map.get result slot"))?;
         let found_ptr = self
             .builder
             .build_alloca(self.context.bool_type(), "map_get_found")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to allocate Map.get found flag"))?;
         self.builder
             .build_store(idx_ptr, i64_type.const_int(0, false))
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize Map.get index"))?;
         self.builder
             .build_store(res_ptr, val_llvm.const_zero())
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize Map.get result slot"))?;
         self.builder
             .build_store(found_ptr, self.context.bool_type().const_zero())
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to initialize Map.get found flag"))?;
 
         let current_fn = self
             .current_function
@@ -4688,31 +4886,33 @@ impl<'ctx> Codegen<'ctx> {
         let done_bb = self.context.append_basic_block(current_fn, "map_get.done");
         let merge_bb = self.context.append_basic_block(current_fn, "map_get.merge");
         let fail_bb = self.context.append_basic_block(current_fn, "map_get.fail");
-        self.builder.build_unconditional_branch(cond_bb).unwrap();
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|_| CodegenError::new("failed to enter compiled Map.get loop"))?;
 
         self.builder.position_at_end(cond_bb);
         let i = self
             .builder
             .build_load(i64_type, idx_ptr, "i")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load compiled Map.get index"))?
             .into_int_value();
         let in_bounds = self
             .builder
             .build_int_compare(IntPredicate::SLT, i, length, "i_lt_len")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compare compiled Map.get bounds"))?;
         self.builder
             .build_conditional_branch(in_bounds, body_bb, done_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch in compiled Map.get loop"))?;
 
         self.builder.position_at_end(body_bb);
         let offset = self
             .builder
             .build_int_mul(i, i64_type.const_int(key_size, false), "offset")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute compiled Map.get key offset"))?;
         let key_slot = unsafe {
             self.builder
                 .build_gep(self.context.i8_type(), keys_ptr, &[offset], "key_slot")
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute compiled Map.get key slot"))?
         };
         let typed_key_slot = self
             .builder
@@ -4721,23 +4921,23 @@ impl<'ctx> Codegen<'ctx> {
                 self.context.ptr_type(AddressSpace::default()),
                 "typed_key_slot",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to cast compiled Map.get key slot"))?;
         let existing = self
             .builder
             .build_load(key_llvm, typed_key_slot, "existing")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to load compiled Map.get existing key"))?;
         let eq = self.build_value_equality(existing, key, &key_ty, "eq")?;
         let next_bb = self.context.append_basic_block(current_fn, "map_get.next");
         let found_bb = self.context.append_basic_block(current_fn, "map_get.found");
         self.builder
             .build_conditional_branch(eq, found_bb, next_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch on compiled Map.get equality"))?;
 
         self.builder.position_at_end(found_bb);
         let value_offset = self
             .builder
             .build_int_mul(i, i64_type.const_int(val_size, false), "value_offset")
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to compute compiled Map.get value offset"))?;
         let val_slot = unsafe {
             self.builder
                 .build_gep(
@@ -4746,7 +4946,7 @@ impl<'ctx> Codegen<'ctx> {
                     &[value_offset],
                     "val_slot",
                 )
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to compute compiled Map.get value slot"))?
         };
         let typed_val_slot = self
             .builder
@@ -4755,43 +4955,50 @@ impl<'ctx> Codegen<'ctx> {
                 self.context.ptr_type(AddressSpace::default()),
                 "typed_val_slot",
             )
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to cast compiled Map.get value slot"))?;
         let found = self
             .builder
             .build_load(val_llvm, typed_val_slot, "found")
-            .unwrap();
-        self.builder.build_store(res_ptr, found).unwrap();
+            .map_err(|_| CodegenError::new("failed to load compiled Map.get value"))?;
+        self.builder
+            .build_store(res_ptr, found)
+            .map_err(|_| CodegenError::new("failed to store compiled Map.get value"))?;
         self.builder
             .build_store(found_ptr, self.context.bool_type().const_all_ones())
-            .unwrap();
-        self.builder.build_unconditional_branch(done_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to mark compiled Map.get as found"))?;
+        self.builder
+            .build_unconditional_branch(done_bb)
+            .map_err(|_| CodegenError::new("failed to finish compiled Map.get after match"))?;
 
         self.builder.position_at_end(next_bb);
         let next_i = self
             .builder
             .build_int_add(i, i64_type.const_int(1, false), "next_i")
-            .unwrap();
-        self.builder.build_store(idx_ptr, next_i).unwrap();
-        self.builder.build_unconditional_branch(cond_bb).unwrap();
+            .map_err(|_| CodegenError::new("failed to increment compiled Map.get index"))?;
+        self.builder
+            .build_store(idx_ptr, next_i)
+            .map_err(|_| CodegenError::new("failed to store compiled Map.get index"))?;
+        self.builder
+            .build_unconditional_branch(cond_bb)
+            .map_err(|_| CodegenError::new("failed to continue compiled Map.get loop"))?;
 
         self.builder.position_at_end(done_bb);
         let found = self
             .builder
             .build_load(self.context.bool_type(), found_ptr, "map_get_found")
-            .unwrap()
+            .map_err(|_| CodegenError::new("failed to load compiled Map.get found flag"))?
             .into_int_value();
         self.builder
             .build_conditional_branch(found, merge_bb, fail_bb)
-            .unwrap();
+            .map_err(|_| CodegenError::new("failed to branch on compiled Map.get result"))?;
 
         self.builder.position_at_end(fail_bb);
         self.emit_runtime_error("Map.get() missing key", "map_get_missing_key")?;
 
         self.builder.position_at_end(merge_bb);
-        Ok(self
-            .builder
+        self.builder
             .build_load(val_llvm, res_ptr, "map_get_res")
-            .unwrap())
+            .map_err(|_| CodegenError::new("failed to load compiled Map.get result"))
     }
 
     /// Compile range method calls
@@ -4810,7 +5017,7 @@ impl<'ctx> Codegen<'ctx> {
             let range_ptr = self
                 .builder
                 .build_load(ptr_type, var.ptr, "range_ptr")
-                .unwrap()
+                .map_err(|_| CodegenError::new("failed to load range pointer"))?
                 .into_pointer_value();
             (range_ptr, var.ty.clone())
         };
@@ -4854,17 +5061,17 @@ impl<'ctx> Codegen<'ctx> {
                 let step_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, two], "step_ptr")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute range step pointer"))?
                 };
                 let current_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, three], "current_ptr")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute range current pointer"))?
                 };
                 let end_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, one], "end_ptr")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute range end pointer"))?
                 };
 
                 match element_llvm_ty {
@@ -4872,17 +5079,19 @@ impl<'ctx> Codegen<'ctx> {
                         let step = self
                             .builder
                             .build_load(int_ty, step_ptr, "step")
-                            .unwrap()
+                            .map_err(|_| CodegenError::new("failed to load integer range step"))?
                             .into_int_value();
                         let current = self
                             .builder
                             .build_load(int_ty, current_ptr, "current")
-                            .unwrap()
+                            .map_err(|_| {
+                                CodegenError::new("failed to load integer range current value")
+                            })?
                             .into_int_value();
                         let end = self
                             .builder
                             .build_load(int_ty, end_ptr, "end")
-                            .unwrap()
+                            .map_err(|_| CodegenError::new("failed to load integer range end"))?
                             .into_int_value();
 
                         let step_positive = self
@@ -4893,36 +5102,46 @@ impl<'ctx> Codegen<'ctx> {
                                 int_ty.const_zero(),
                                 "step_positive",
                             )
-                            .unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to compare integer range step direction")
+                            })?;
                         let current_lt_end = self
                             .builder
                             .build_int_compare(IntPredicate::SLT, current, end, "current_lt_end")
-                            .unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to compare integer range current < end")
+                            })?;
                         let current_gt_end = self
                             .builder
                             .build_int_compare(IntPredicate::SGT, current, end, "current_gt_end")
-                            .unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to compare integer range current > end")
+                            })?;
                         let result = self
                             .builder
                             .build_select(step_positive, current_lt_end, current_gt_end, "has_next")
-                            .unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to select integer range has_next result")
+                            })?;
                         Ok(result.into_int_value().into())
                     }
                     inkwell::types::BasicTypeEnum::FloatType(float_ty) => {
                         let step = self
                             .builder
                             .build_load(float_ty, step_ptr, "step")
-                            .unwrap()
+                            .map_err(|_| CodegenError::new("failed to load float range step"))?
                             .into_float_value();
                         let current = self
                             .builder
                             .build_load(float_ty, current_ptr, "current")
-                            .unwrap()
+                            .map_err(|_| {
+                                CodegenError::new("failed to load float range current value")
+                            })?
                             .into_float_value();
                         let end = self
                             .builder
                             .build_load(float_ty, end_ptr, "end")
-                            .unwrap()
+                            .map_err(|_| CodegenError::new("failed to load float range end"))?
                             .into_float_value();
 
                         let step_positive = self
@@ -4933,7 +5152,9 @@ impl<'ctx> Codegen<'ctx> {
                                 float_ty.const_float(0.0),
                                 "step_positive",
                             )
-                            .unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to compare float range step direction")
+                            })?;
                         let current_lt_end = self
                             .builder
                             .build_float_compare(
@@ -4942,7 +5163,9 @@ impl<'ctx> Codegen<'ctx> {
                                 end,
                                 "current_lt_end",
                             )
-                            .unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to compare float range current < end")
+                            })?;
                         let current_gt_end = self
                             .builder
                             .build_float_compare(
@@ -4951,11 +5174,15 @@ impl<'ctx> Codegen<'ctx> {
                                 end,
                                 "current_gt_end",
                             )
-                            .unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to compare float range current > end")
+                            })?;
                         let result = self
                             .builder
                             .build_select(step_positive, current_lt_end, current_gt_end, "has_next")
-                            .unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to select float range has_next result")
+                            })?;
                         Ok(result.into_int_value().into())
                     }
                     _ => Err(CodegenError::new(
@@ -4967,12 +5194,12 @@ impl<'ctx> Codegen<'ctx> {
                 let current_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, three], "current_ptr")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute range current pointer"))?
                 };
                 let step_ptr = unsafe {
                     self.builder
                         .build_gep(range_type, range_ptr, &[zero, two], "step_ptr")
-                        .unwrap()
+                        .map_err(|_| CodegenError::new("failed to compute range step pointer"))?
                 };
 
                 match element_llvm_ty {
@@ -4980,36 +5207,48 @@ impl<'ctx> Codegen<'ctx> {
                         let current = self
                             .builder
                             .build_load(int_ty, current_ptr, "current")
-                            .unwrap()
+                            .map_err(|_| CodegenError::new("failed to load integer range current"))?
                             .into_int_value();
                         let step = self
                             .builder
                             .build_load(int_ty, step_ptr, "step")
-                            .unwrap()
+                            .map_err(|_| CodegenError::new("failed to load integer range step"))?
                             .into_int_value();
                         let new_current = self
                             .builder
                             .build_int_add(current, step, "new_current")
-                            .unwrap();
-                        self.builder.build_store(current_ptr, new_current).unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to advance integer range current")
+                            })?;
+                        self.builder
+                            .build_store(current_ptr, new_current)
+                            .map_err(|_| {
+                                CodegenError::new("failed to store integer range current")
+                            })?;
                         Ok(current.into())
                     }
                     inkwell::types::BasicTypeEnum::FloatType(float_ty) => {
                         let current = self
                             .builder
                             .build_load(float_ty, current_ptr, "current")
-                            .unwrap()
+                            .map_err(|_| CodegenError::new("failed to load float range current"))?
                             .into_float_value();
                         let step = self
                             .builder
                             .build_load(float_ty, step_ptr, "step")
-                            .unwrap()
+                            .map_err(|_| CodegenError::new("failed to load float range step"))?
                             .into_float_value();
                         let new_current = self
                             .builder
                             .build_float_add(current, step, "new_current")
-                            .unwrap();
-                        self.builder.build_store(current_ptr, new_current).unwrap();
+                            .map_err(|_| {
+                                CodegenError::new("failed to advance float range current")
+                            })?;
+                        self.builder
+                            .build_store(current_ptr, new_current)
+                            .map_err(|_| {
+                                CodegenError::new("failed to store float range current")
+                            })?;
                         Ok(current.into())
                     }
                     _ => Err(CodegenError::new(
