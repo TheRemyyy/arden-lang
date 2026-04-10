@@ -1,6 +1,6 @@
 # Arden
 
-> Arden is a native systems programming language targeting LLVM with static safety checks, ownership/borrowing model, and an integrated all-in-one CLI workflow. Current release: v1.3.6.
+> Arden is a native systems programming language targeting LLVM with static safety checks, ownership/borrowing model, and an integrated all-in-one CLI workflow. Current release: v1.3.7.
 
 ## Project
 - [Homepage](https://www.arden-lang.dev/): Landing page and project overview
