@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if ! pwd -P >/dev/null 2>&1; then
+  cd /
+fi
+
 find_first_existing() {
   local candidate
   for candidate in "$@"; do

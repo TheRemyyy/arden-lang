@@ -114,6 +114,7 @@ jobs:
         run: |
           vcpkg install libxml2:x64-windows-static
           $LibPath = "C:\vcpkg\installed\x64-windows-static\lib"
+          Copy-Item "$LibPath\libxml2.lib" "$LibPath\xml2s.lib" -Force
           Copy-Item "$LibPath\libxml2.lib" "$LibPath\libxml2s.lib" -Force
           echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
       - name: Build release
@@ -218,6 +219,7 @@ jobs:
         run: |
           vcpkg install libxml2:x64-windows-static
           $LibPath = "C:\vcpkg\installed\x64-windows-static\lib"
+          Copy-Item "$LibPath\libxml2.lib" "$LibPath\xml2s.lib" -Force
           Copy-Item "$LibPath\libxml2.lib" "$LibPath\libxml2s.lib" -Force
           echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
       - run: cargo check --locked --all-targets --all-features --verbose
@@ -288,6 +290,67 @@ jobs:
         env:
           CI_SKIP_COMPILER_BUILD: "1"
           ARDEN_COMPILER_PATH: ${{ github.workspace }}\target\release\arden.exe
+
+  benchmarks-quick:
+    name: Bench Quick (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-latest
+            linker_env_name: CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER
+            linker_env_value: .cargo/linkers/linux-x86_64-mold.sh
+          - name: macos-arm64
+            os: macos-latest
+            linker_env_name: CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER
+            linker_env_value: .cargo/linkers/macos-aarch64-lld.sh
+          - name: windows-x64
+            os: windows-latest
+            linker_env_name: CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER
+            linker_env_value: lld-link
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/install-llvm
+      - uses: lukka/get-cmake@latest
+      - name: Install Windows build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install libxml2:x64-windows-static
+          $LibPath = "C:\vcpkg\installed\x64-windows-static\lib"
+          Copy-Item "$LibPath\libxml2.lib" "$LibPath\xml2s.lib" -Force
+          Copy-Item "$LibPath\libxml2.lib" "$LibPath\libxml2s.lib" -Force
+          echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
+      - name: Build Arden release compiler
+        shell: bash
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
+        run: |
+          export "${{ matrix.linker_env_name }}=${{ matrix.linker_env_value }}"
+          cargo build --release
+      - name: Run quick compile benchmark
+        shell: bash
+        env:
+          RUSTFLAGS: ${{ runner.os == 'Windows' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
+        run: |
+          export "${{ matrix.linker_env_name }}=${{ matrix.linker_env_value }}"
+          python3 benchmark/run.py \
+            --bench compile_project_starter_graph \
+            --compile-mode hot \
+            --arden-timings \
+            --repeats 1 \
+            --warmup 0 \
+            --no-build
+          mkdir -p benchmark/results/ci/${{ matrix.name }}
+          cp benchmark/results/latest.json benchmark/results/ci/${{ matrix.name }}/latest.json
+          cp benchmark/results/latest.md benchmark/results/ci/${{ matrix.name }}/latest.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-quick-${{ matrix.name }}
+          path: benchmark/results/ci/${{ matrix.name }}
 
   portable-smoke-linux:
     name: Portable Smoke (linux-x64)

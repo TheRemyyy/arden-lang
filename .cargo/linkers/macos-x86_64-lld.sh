@@ -45,6 +45,9 @@ for arg in "$@"; do
   case "$arg" in
     -fuse-ld=*|-mmacosx-version-min=*|-nodefaultlibs)
       ;;
+    -dynamiclib)
+      forwarded_args+=("-dylib")
+      ;;
     -arch)
       skip_next=1
       ;;

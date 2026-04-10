@@ -144,6 +144,7 @@ jobs:
         run: |
           vcpkg install libxml2:x64-windows-static
           $LibPath = "C:\vcpkg\installed\x64-windows-static\lib"
+          Copy-Item "$LibPath\libxml2.lib" "$LibPath\xml2s.lib" -Force
           Copy-Item "$LibPath\libxml2.lib" "$LibPath\libxml2s.lib" -Force
           echo "LIBXML2_LIB_PATH=$LibPath" >> $env:GITHUB_ENV
       - name: Build release

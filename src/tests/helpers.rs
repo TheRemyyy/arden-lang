@@ -238,9 +238,19 @@ pub(crate) struct CwdRestore {
     previous: PathBuf,
 }
 
+fn fallback_working_dir() -> PathBuf {
+    std::env::temp_dir()
+}
+
+fn capture_working_dir() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| fallback_working_dir())
+}
+
 impl Drop for CwdRestore {
     fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.previous);
+        if std::env::set_current_dir(&self.previous).is_err() {
+            let _ = std::env::set_current_dir(fallback_working_dir());
+        }
     }
 }
 
@@ -248,7 +258,7 @@ pub(crate) fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
     let _lock = cli_test_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let previous = std::env::current_dir().expect("current dir");
+    let previous = capture_working_dir();
     std::env::set_current_dir(dir).expect("set current dir");
     let _restore = CwdRestore { previous };
     f()
