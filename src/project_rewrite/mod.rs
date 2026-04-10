@@ -7278,4 +7278,5 @@ fn rewrite_expr_calls_for_project(
 }
 
 #[cfg(test)]
+#[path = "../tests/project_rewrite.rs"]
 mod tests;

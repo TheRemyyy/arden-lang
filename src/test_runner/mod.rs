@@ -728,4 +728,5 @@ pub fn print_discovery(discovery: &TestDiscovery) {
 }
 
 #[cfg(test)]
+#[path = "../tests/test_runner.rs"]
 mod tests;

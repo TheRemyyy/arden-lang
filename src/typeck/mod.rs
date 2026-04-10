@@ -7794,6 +7794,7 @@ mod display;
 mod effects;
 mod resolve;
 #[cfg(test)]
+#[path = "../tests/typeck.rs"]
 mod tests;
 
 pub(crate) use display::format_errors;
