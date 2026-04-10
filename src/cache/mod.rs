@@ -4,6 +4,7 @@ use crate::formatter;
 use crate::linker::*;
 use crate::project::ProjectConfig;
 use crate::typeck::{ClassMethodEffectsSummary, FunctionEffectsSummary};
+use crate::{cli_accent, cli_soft, cli_tertiary};
 use colored::*;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -584,11 +585,11 @@ impl BuildTimings {
             return;
         }
 
-        println!("{}", "Build timings".cyan().bold());
+        println!("{}", cli_accent("Build timings"));
         if self.phases.iter().any(|phase| phase.label.contains('/')) {
-            println!(
+            println!("{}", cli_soft(
                 "  note: subphase timings are cumulative worker time for parallel sections and can exceed parent wall time"
-            );
+            ));
         }
         for phase in &self.phases {
             let counters = if phase.counters.is_empty() {
@@ -605,16 +606,18 @@ impl BuildTimings {
                 )
             };
             println!(
-                "  {:<28} {:>10}{}",
-                phase.label,
-                Self::format_seconds(phase.ms),
-                counters
+                "  {} {}{}",
+                cli_tertiary(format!("{:<28}", phase.label)),
+                cli_soft(format!("{:>10}", Self::format_seconds(phase.ms))),
+                cli_soft(counters)
             );
         }
         println!(
-            "  {:<28} {:>10}",
-            "total",
-            Self::format_seconds(self.started_at.elapsed().as_secs_f64() * 1000.0)
+            "  {} {}",
+            cli_accent(format!("{:<28}", "total")),
+            cli_soft(Self::format_seconds(
+                self.started_at.elapsed().as_secs_f64() * 1000.0
+            ))
         );
     }
 }

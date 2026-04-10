@@ -142,7 +142,13 @@ fn linker_thread_count() -> usize {
         .unwrap_or(1)
 }
 
+fn apply_fallback_current_dir(command: &mut Command) {
+    let working_dir = env::current_dir().unwrap_or_else(|_| env::temp_dir());
+    command.current_dir(working_dir);
+}
+
 fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String> {
+    apply_fallback_current_dir(&mut command);
     let output = command.output().map_err(|error| {
         format!(
             "{}: Failed to launch {}: {}",
@@ -468,15 +474,16 @@ fn macos_sdk_root() -> Result<PathBuf, String> {
     let output = Command::new("xcrun")
         .arg("--sdk")
         .arg("macosx")
-        .arg("--show-sdk-path")
-        .output()
-        .map_err(|error| {
-            format!(
-                "{}: Failed to launch xcrun to resolve the macOS SDK path: {}",
-                "error".red().bold(),
-                error
-            )
-        })?;
+        .arg("--show-sdk-path");
+    let mut output = output;
+    apply_fallback_current_dir(&mut output);
+    let output = output.output().map_err(|error| {
+        format!(
+            "{}: Failed to launch xcrun to resolve the macOS SDK path: {}",
+            "error".red().bold(),
+            error
+        )
+    })?;
     if !output.status.success() {
         return Err(format!(
             "{}: Failed to resolve macOS SDK path with xcrun.",
@@ -505,15 +512,16 @@ fn macos_sdk_version() -> Result<String, String> {
     let output = Command::new("xcrun")
         .arg("--sdk")
         .arg("macosx")
-        .arg("--show-sdk-version")
-        .output()
-        .map_err(|error| {
-            format!(
-                "{}: Failed to launch xcrun to resolve the macOS SDK version: {}",
-                "error".red().bold(),
-                error
-            )
-        })?;
+        .arg("--show-sdk-version");
+    let mut output = output;
+    apply_fallback_current_dir(&mut output);
+    let output = output.output().map_err(|error| {
+        format!(
+            "{}: Failed to launch xcrun to resolve the macOS SDK version: {}",
+            "error".red().bold(),
+            error
+        )
+    })?;
     if !output.status.success() {
         return Err(format!(
             "{}: Failed to resolve the macOS SDK version with xcrun.",
@@ -556,13 +564,15 @@ fn write_link_response_file(path: &Path, args: &[String]) -> Result<(), String> 
     })
 }
 
-#[cfg(windows)]
+#[cfg(any(test, windows))]
 fn windows_machine_flag(target: Option<&str>) -> &'static str {
     let target = target
         .unwrap_or("x86_64-pc-windows-msvc")
         .to_ascii_lowercase();
     if target.contains("aarch64") || target.contains("arm64") {
         "arm64"
+    } else if target.contains("x86_64") || target.contains("amd64") {
+        "x64"
     } else if target.contains("i686") || target.contains("x86") {
         "x86"
     } else {
@@ -780,18 +790,16 @@ pub(crate) fn link_objects(
 
     match link.output_kind {
         OutputKind::Static => {
-            let status = Command::new("ar")
-                .arg("rcs")
-                .arg(output_path)
-                .args(objects)
-                .status()
-                .map_err(|e| {
-                    format!(
-                        "{}: Failed to run ar for static library creation: {}",
-                        "error".red().bold(),
-                        e
-                    )
-                })?;
+            let mut command = Command::new("ar");
+            command.arg("rcs").arg(output_path).args(objects);
+            apply_fallback_current_dir(&mut command);
+            let status = command.status().map_err(|e| {
+                format!(
+                    "{}: Failed to run ar for static library creation: {}",
+                    "error".red().bold(),
+                    e
+                )
+            })?;
             if !status.success() {
                 return Err(format!(
                     "{}: ar failed while creating static library",
@@ -814,5 +822,25 @@ pub(crate) fn link_objects(
                 link_with_lld_link(objects, output_path, link)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::windows_machine_flag;
+
+    #[test]
+    fn windows_machine_flag_prefers_x64_over_x86_substring() {
+        assert_eq!(windows_machine_flag(Some("x86_64-pc-windows-msvc")), "x64");
+        assert_eq!(windows_machine_flag(Some("amd64-pc-windows-msvc")), "x64");
+    }
+
+    #[test]
+    fn windows_machine_flag_keeps_other_windows_arches() {
+        assert_eq!(windows_machine_flag(Some("i686-pc-windows-msvc")), "x86");
+        assert_eq!(
+            windows_machine_flag(Some("aarch64-pc-windows-msvc")),
+            "arm64"
+        );
     }
 }

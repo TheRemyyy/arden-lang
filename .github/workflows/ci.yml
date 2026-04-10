@@ -182,6 +182,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.12'
       - uses: ./.github/actions/install-llvm
       - uses: lukka/get-cmake@latest
       - uses: actions/cache@v4
@@ -347,6 +350,8 @@ jobs:
           mkdir -p benchmark/results/ci/${{ matrix.name }}
           cp benchmark/results/latest.json benchmark/results/ci/${{ matrix.name }}/latest.json
           cp benchmark/results/latest.md benchmark/results/ci/${{ matrix.name }}/latest.md
+          printf '\n%s\n' 'Benchmark summary:'
+          cat benchmark/results/latest.md
       - uses: actions/upload-artifact@v4
         with:
           name: bench-quick-${{ matrix.name }}

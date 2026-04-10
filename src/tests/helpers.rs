@@ -13,6 +13,7 @@ use crate::{
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -262,6 +263,26 @@ pub(crate) fn with_current_dir<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
     std::env::set_current_dir(dir).expect("set current dir");
     let _restore = CwdRestore { previous };
     f()
+}
+
+pub(crate) fn normalize_nested_cargo_linker_env(command: &mut Command) {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for (key, value) in std::env::vars_os() {
+        let key_text = key.to_string_lossy();
+        if !key_text.starts_with("CARGO_TARGET_") || !key_text.ends_with("_LINKER") {
+            continue;
+        }
+
+        let linker = PathBuf::from(&value);
+        let linker_text = linker.to_string_lossy();
+        let looks_like_relative_path = linker.is_relative()
+            && (linker_text.starts_with('.')
+                || linker_text.contains('/')
+                || linker_text.contains('\\'));
+        if looks_like_relative_path {
+            command.env(&key, repo_root.join(linker));
+        }
+    }
 }
 
 pub(crate) fn write_test_project_config(root: &Path, files: &[&str], entry: &str, output: &str) {

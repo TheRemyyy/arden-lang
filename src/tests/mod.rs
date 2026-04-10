@@ -20,8 +20,9 @@ pub(crate) use crate::{
 #[allow(unused_imports)]
 pub(crate) use helpers::{
     assert_frontend_pipeline_ok, cli_test_lock, collect_project_symbol_maps, fingerprint_for,
-    make_temp_project_root, normalize_output, parse_program, rewrite_fingerprint_for_test_unit,
-    with_current_dir, write_test_project_config, CwdRestore, ProjectSymbolMaps,
+    make_temp_project_root, normalize_nested_cargo_linker_env, normalize_output, parse_program,
+    rewrite_fingerprint_for_test_unit, with_current_dir, write_test_project_config, CwdRestore,
+    ProjectSymbolMaps,
 };
 
 mod cli;

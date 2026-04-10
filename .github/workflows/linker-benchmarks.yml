@@ -33,6 +33,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.12'
+
       - uses: ./.github/actions/install-llvm
 
       - uses: lukka/get-cmake@latest
@@ -120,6 +124,8 @@ jobs:
             --no-build
           cp benchmark/results/latest.json benchmark/results/${{ matrix.name }}/incremental_mega_mixed.json
           cp benchmark/results/latest.md benchmark/results/${{ matrix.name }}/incremental_mega_mixed.md
+          printf '\n%s\n' 'Benchmark summary:'
+          cat benchmark/results/latest.md
 
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4

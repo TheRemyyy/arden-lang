@@ -530,7 +530,9 @@ fn cli_build_reports_import_check_errors_only_once() {
         )
         .expect("write helper");
 
-    let status = Command::new("cargo")
+    let mut initial_build = Command::new("cargo");
+    normalize_nested_cargo_linker_env(&mut initial_build);
+    let status = initial_build
         .arg("run")
         .arg("--quiet")
         .arg("--manifest-path")
@@ -549,7 +551,9 @@ fn cli_build_reports_import_check_errors_only_once() {
         )
         .expect("rewrite helper without imported constructor symbol");
 
-    let output = Command::new("cargo")
+    let mut stale_import_build = Command::new("cargo");
+    normalize_nested_cargo_linker_env(&mut stale_import_build);
+    let output = stale_import_build
         .arg("run")
         .arg("--quiet")
         .arg("--manifest-path")

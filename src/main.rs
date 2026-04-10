@@ -32,7 +32,6 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
-use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::Ordering;
@@ -301,57 +300,49 @@ const CLI_SOFT_RGB: (u8, u8, u8) = (239, 232, 220);
 const CLI_TERTIARY_RGB: (u8, u8, u8) = (217, 178, 158);
 
 fn configure_cli_colors() {
-    let no_color = env::var_os("NO_COLOR").is_some();
-    let force_color = env::var_os("CLICOLOR_FORCE")
-        .map(|value| value.to_string_lossy() != "0")
-        .unwrap_or(false);
-    let stdout_is_terminal = std::io::stdout().is_terminal();
-    let stderr_is_terminal = std::io::stderr().is_terminal();
-
-    let colors_enabled = if no_color {
-        false
-    } else if force_color {
-        true
-    } else {
-        stdout_is_terminal || stderr_is_terminal
-    };
+    env::remove_var("NO_COLOR");
+    env::set_var("CLICOLOR_FORCE", "1");
 
     #[cfg(windows)]
-    let colors_enabled = colors_enabled && enable_ansi_support::enable_ansi_support().is_ok();
+    let _ = enable_ansi_support::enable_ansi_support();
 
-    control::set_override(colors_enabled);
+    control::set_override(true);
 }
 
-fn cli_accent(text: impl AsRef<str>) -> ColoredString {
-    text.as_ref()
-        .truecolor(CLI_WHITE_RGB.0, CLI_WHITE_RGB.1, CLI_WHITE_RGB.2)
-        .bold()
+pub(crate) fn cli_accent(text: impl AsRef<str>) -> String {
+    ansi_truecolor(text.as_ref(), CLI_WHITE_RGB, true)
 }
 
-fn cli_soft(text: impl AsRef<str>) -> ColoredString {
-    text.as_ref()
-        .truecolor(CLI_SOFT_RGB.0, CLI_SOFT_RGB.1, CLI_SOFT_RGB.2)
+pub(crate) fn cli_soft(text: impl AsRef<str>) -> String {
+    ansi_truecolor(text.as_ref(), CLI_SOFT_RGB, false)
 }
 
-fn cli_tertiary(text: impl AsRef<str>) -> ColoredString {
-    text.as_ref()
-        .truecolor(CLI_TERTIARY_RGB.0, CLI_TERTIARY_RGB.1, CLI_TERTIARY_RGB.2)
+pub(crate) fn cli_tertiary(text: impl AsRef<str>) -> String {
+    ansi_truecolor(text.as_ref(), CLI_TERTIARY_RGB, false)
 }
 
-fn cli_success(text: impl AsRef<str>) -> ColoredString {
+fn cli_success(text: impl AsRef<str>) -> String {
     cli_accent(text)
 }
 
-fn cli_warning(text: impl AsRef<str>) -> ColoredString {
+fn cli_warning(text: impl AsRef<str>) -> String {
     cli_soft(text)
 }
 
-fn cli_error(text: impl AsRef<str>) -> ColoredString {
+fn cli_error(text: impl AsRef<str>) -> String {
     cli_accent(text)
 }
 
-fn cli_path(path: &Path) -> ColoredString {
+fn cli_path(path: &Path) -> String {
     cli_soft(format_cli_path(path))
+}
+
+fn ansi_truecolor(text: &str, rgb: (u8, u8, u8), bold: bool) -> String {
+    let bold_prefix = if bold { "\x1b[1m" } else { "" };
+    format!(
+        "{bold_prefix}\x1b[38;2;{};{};{}m{text}\x1b[0m",
+        rgb.0, rgb.1, rgb.2
+    )
 }
 
 fn cli_new_run_hint() -> &'static str {
