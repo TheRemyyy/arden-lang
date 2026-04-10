@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Arden Changelog</title>
+  <link>https://www.arden-lang.dev/changelog</link>
+  <description>Release notes and changelog updates for Arden.</description>
+  <language>en-us</language>
+  <item>
+    <title>Unreleased</title>
+    <link>https://www.arden-lang.dev/changelog#unreleased</link>
+    <guid>https://www.arden-lang.dev/changelog#unreleased</guid>
+    <description>Reworked native artifact production around explicit linker-only backends, so Arden now emits objects directly from LLVM, links Linux outputs through `mold`, and links macOS/Windows outputs through LLVM `lld`.</description>
+    <pubDate>Fri, 10 Apr 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.3.7</title>
+    <link>https://www.arden-lang.dev/changelog#1-3-7</link>
+    <guid>https://www.arden-lang.dev/changelog#1-3-7</guid>
+    <description>2026-04-10. Upgraded the LLVM integration to LLVM 22.1.x across Cargo, CI, release packaging, benchmark tooling, and install docs, including the move to `inkwell` `llvm22-1` and `LLVM_SYS_221_PREFIX`.</description>
+    <pubDate>Fri, 10 Apr 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.3.6</title>
+    <link>https://www.arden-lang.dev/changelog#1-3-6</link>
+    <guid>https://www.arden-lang.dev/changelog#1-3-6</guid>
+    <description>Compiler UX, Type/Codegen Correctness, and Project Reliability. Added broader language and tooling coverage across formatter, lint/fix flows, benchmarking, import handling, and project rewrite paths.</description>
+    <pubDate>Wed, 08 Apr 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.3.5</title>
+    <link>https://www.arden-lang.dev/changelog#1-3-5</link>
+    <guid>https://www.arden-lang.dev/changelog#1-3-5</guid>
+    <description>Tooling, Performance, and Build Reliability. Added `arden fmt`, `arden lint`, `arden fix`, `arden bench`, and `arden profile`, plus new lint rules, compound-assignment parsing, richer examples, and broader CLI/frontend/CI smoke coverage.</description>
+    <pubDate>Sun, 08 Mar 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.3.4</title>
+    <link>https://www.arden-lang.dev/changelog#1-3-4</link>
+    <guid>https://www.arden-lang.dev/changelog#1-3-4</guid>
+    <description>Async Runtime, FFI, Bindgen. **Threaded Async Runtime**: `Task&lt;T&gt;` now uses a real thread-backed runtime with result caching.</description>
+    <pubDate>Thu, 05 Mar 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.3.3</title>
+    <link>https://www.arden-lang.dev/changelog#1-3-3</link>
+    <guid>https://www.arden-lang.dev/changelog#1-3-3</guid>
+    <description>Compiler/LSP/Docs Sync. **Module Dot Syntax**: Added semantic/codegen support for `Module.function(...)` while keeping `Module__function(...)` compatibility.</description>
+    <pubDate>Thu, 05 Mar 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.3.2</title>
+    <link>https://www.arden-lang.dev/changelog#1-3-2</link>
+    <guid>https://www.arden-lang.dev/changelog#1-3-2</guid>
+    <description>Range Types. **Range Type**: Full iterator-based range type for numeric sequences</description>
+    <pubDate>Sun, 22 Feb 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.3.1</title>
+    <link>https://www.arden-lang.dev/changelog#1-3-1</link>
+    <guid>https://www.arden-lang.dev/changelog#1-3-1</guid>
+    <description>Import System Fixes. **Wildcard Imports for Stdlib**: Fixed wildcard imports (`import std.io.*;`) not properly importing stdlib functions like `println`, `print`.</description>
+    <pubDate>Sun, 22 Feb 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.3.0</title>
+    <link>https://www.arden-lang.dev/changelog#1-3-0</link>
+    <guid>https://www.arden-lang.dev/changelog#1-3-0</guid>
+    <description>Multi-File &amp; Namespace System. **Multi-File Project Support**: Arden now supports organizing code into projects with multiple source files.</description>
+    <pubDate>Sat, 21 Feb 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.2.0</title>
+    <link>https://www.arden-lang.dev/changelog#1-2-0</link>
+    <guid>https://www.arden-lang.dev/changelog#1-2-0</guid>
+    <description>Performance Push &amp; Codegen Refactor. **LLVM Aggressive Optimizations**: Switched from `OptimizationLevel::Default` to `OptimizationLevel::Aggressive` for maximum performance.</description>
+    <pubDate>Sat, 21 Feb 2026 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.1.4</title>
+    <link>https://www.arden-lang.dev/changelog#1-1-4</link>
+    <guid>https://www.arden-lang.dev/changelog#1-1-4</guid>
+    <description>Stdlib Expansion &amp; Runtime Utilities. **Args Module**: Introduced support for command-line arguments via the `Args` object.</description>
+    <pubDate>Mon, 29 Dec 2025 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.1.3</title>
+    <link>https://www.arden-lang.dev/changelog#1-1-3</link>
+    <guid>https://www.arden-lang.dev/changelog#1-1-3</guid>
+    <description>File I/O &amp; Example Coverage. **File I/O Support**: Added native support for file system operations via the `File` static object.</description>
+    <pubDate>Mon, 29 Dec 2025 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.1.2</title>
+    <link>https://www.arden-lang.dev/changelog#1-1-2</link>
+    <guid>https://www.arden-lang.dev/changelog#1-1-2</guid>
+    <description>Runtime Stability Fixes. **Critical Runtime Crash**: Fixed a bug where classes starting with &quot;List&quot; (e.g., `ListNode`) were incorrectly compiled as generic lists, causing stack corruption and runtime crashes.</description>
+    <pubDate>Sun, 28 Dec 2025 00:00:00 GMT</pubDate>
+  </item>
+  <item>
+    <title>v1.1.1</title>
+    <link>https://www.arden-lang.dev/changelog#1-1-1</link>
+    <guid>https://www.arden-lang.dev/changelog#1-1-1</guid>
+    <description>Documentation Rebuild. **Complete Documentation Refactor**: The documentation has been completely overhauled and moved to a dedicated `docs/` directory.</description>
+    <pubDate>Sat, 27 Dec 2025 00:00:00 GMT</pubDate>
+  </item>
+</channel>
+</rss>

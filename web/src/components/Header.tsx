@@ -1,4 +1,6 @@
+import { Search } from 'lucide-react';
 import { useState } from 'react';
+import { openSiteSearch } from '../lib/search-events';
 import { GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
 
 const navLinks = [
@@ -12,7 +14,7 @@ export function Header() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     return (
-        <header className="fixed top-0 left-0 z-50 w-full border-b border-white/10 bg-[rgba(17,15,13,0.94)]">
+        <header className="fixed top-0 left-0 z-50 w-full border-b border-white/10 bg-[#1f1d1a]">
             <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-6">
                 <div className="flex items-center gap-4">
                     <a href="/" className="inline-flex items-center gap-3 text-base font-semibold tracking-tight text-white" onClick={() => setIsMenuOpen(false)}>
@@ -24,12 +26,7 @@ export function Header() {
                             decoding="async"
                             className="h-8 w-8 rounded-xl border border-white/10"
                         />
-                        <span className="flex items-center gap-2">
-                            Arden
-                            <span className="hidden rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.2em] text-white/55 sm:inline-flex">
-                                Future
-                            </span>
-                        </span>
+                        <span>Arden</span>
                     </a>
                 </div>
 
@@ -39,6 +36,17 @@ export function Header() {
                             {link.label}
                         </a>
                     ))}
+                    <button
+                        type="button"
+                        onClick={() => openSiteSearch()}
+                        className="inline-flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition-colors hover:bg-white/10"
+                    >
+                        <Search className="h-4 w-4" />
+                        Search
+                        <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/42">
+                            Ctrl K
+                        </span>
+                    </button>
                     <a
                         href={GITHUB_REPO_URL}
                         target="_blank"
@@ -50,20 +58,31 @@ export function Header() {
                     </a>
                 </nav>
 
-                <button
-                    className="text-white/65 transition-colors hover:text-white md:hidden"
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                >
-                    {isMenuOpen ? (
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    ) : (
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-                    )}
-                </button>
+                <div className="flex items-center gap-2 md:hidden">
+                    <button
+                        type="button"
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition-colors hover:bg-white/10"
+                        onClick={() => openSiteSearch()}
+                        aria-label="Open search"
+                    >
+                        <Search className="h-4 w-4" />
+                        Search
+                    </button>
+                    <button
+                        className="text-white/65 transition-colors hover:text-white"
+                        onClick={() => setIsMenuOpen(!isMenuOpen)}
+                    >
+                        {isMenuOpen ? (
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        ) : (
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                        )}
+                    </button>
+                </div>
             </div>
 
             {isMenuOpen && (
-                <div className="fixed left-0 top-16 z-40 flex w-full flex-col gap-5 border-b border-white/10 bg-[#11100d] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] md:hidden">
+                <div className="fixed left-0 top-16 z-40 flex w-full flex-col gap-5 border-b border-white/10 bg-[#1f1d1a] p-6 shadow-[0_24px_60px_rgba(0,0,0,0.35)] md:hidden">
                     {navLinks.map((link) => (
                         <a key={link.href} href={link.href} className="text-base font-medium text-white hover:text-[var(--accent-soft)]" onClick={() => setIsMenuOpen(false)}>
                             {link.label}

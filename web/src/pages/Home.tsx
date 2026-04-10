@@ -1,7 +1,7 @@
 import { ArrowRight, BookOpen, Gauge, MoveRight, ShieldCheck, TerminalSquare } from 'lucide-react';
 import { InstallationExperience } from '../components/InstallationExperience';
 import { FLATTENED_DOCS, NAV_ITEMS } from '../lib/docs';
-import { CURRENT_VERSION, GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
+import { GITHUB_REPO_URL } from '../lib/site';
 
 const operatingPrinciples = [
     {
@@ -53,22 +53,9 @@ const groupedDocs = NAV_ITEMS.filter(
 export function Home() {
     return (
         <div className="overflow-x-hidden pt-16 text-[var(--text)]">
-            <section className="site-grid relative overflow-hidden">
-                <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-[rgba(184,92,56,0.12)] to-transparent" />
-                <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-8 lg:grid-cols-[1.12fr_0.88fr] lg:items-end lg:pb-20 lg:pt-12">
+            <section className="site-grid relative min-h-[calc(100vh-4rem)] overflow-hidden">
+                <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-16 pt-10 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.12fr_0.88fr] lg:items-end lg:pb-20 lg:pt-14">
                     <div className="relative z-10">
-                        <div className="mb-5 inline-flex items-center gap-3 rounded-full border border-[rgba(57,52,46,0.12)] bg-white/80 px-4 py-2 text-xs font-medium uppercase tracking-[0.22em] text-[var(--text-muted)]">
-                            <img
-                                src={UI_LOGO_SRC}
-                                alt=""
-                                width="18"
-                                height="18"
-                                decoding="async"
-                                className="h-[18px] w-[18px] rounded-md"
-                                aria-hidden="true"
-                            />
-                            Arden {CURRENT_VERSION}
-                        </div>
                         <h1 className="max-w-4xl font-display text-5xl font-bold leading-[0.92] tracking-[-0.05em] text-[var(--text)] md:text-7xl">
                             Build native software with a sharper workflow and cleaner feedback.
                         </h1>
@@ -107,7 +94,7 @@ export function Home() {
                                         <p className="mt-2 text-lg font-semibold">Fast path from zero to project mode</p>
                                     </div>
                                     <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white/55">
-                                        v{CURRENT_VERSION.replace(/^v/, '')}
+                                        Native workflow
                                     </span>
                                 </div>
                             </div>

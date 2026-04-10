@@ -25,3 +25,4 @@ export const OG_LOGO_SRC = '/logo.png';
 export const FAVICON_SRC = '/favicon-32.png';
 export const APPLE_TOUCH_ICON_SRC = '/apple-touch-icon.png';
 export const WEB_MANIFEST_SRC = '/site.webmanifest';
+export const RSS_FEED_SRC = '/rss.xml';

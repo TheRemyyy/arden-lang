@@ -1,5 +1,6 @@
 import { Apple, Download, ExternalLink, Github, MonitorDown, MonitorSmartphone, ShieldCheck, TerminalSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { CURRENT_VERSION } from '../lib/site';
 import {
     detectPreferredInstallTarget,
     fetchLatestReleaseSummary,
@@ -176,9 +177,17 @@ function PlatformCard({
 }
 
 export function InstallationExperience({ compact = false }: InstallationExperienceProps) {
-    const [preferredTargetId, setPreferredTargetId] = useState<InstallTargetId | null>(null);
-    const [releaseSummary, setReleaseSummary] = useState<InstallReleaseSummary | null>(null);
-    const [releaseState, setReleaseState] = useState<'idle' | 'ready' | 'failed'>('idle');
+    const [preferredTargetId, setPreferredTargetId] = useState<InstallTargetId | null>(() =>
+        typeof window === 'undefined' ? null : detectPreferredInstallTarget(window.navigator),
+    );
+    const [releaseSummary, setReleaseSummary] = useState<InstallReleaseSummary | null>({
+        versionLabel: CURRENT_VERSION,
+        publishedAt: null,
+        releaseUrl: getFallbackReleaseUrl(),
+        checksumsUrl: getLatestChecksumsDownloadUrl(),
+        availableAssets: [],
+    });
+    const [releaseState, setReleaseState] = useState<'idle' | 'ready' | 'failed'>('ready');
 
     useEffect(() => {
         setPreferredTargetId(detectPreferredInstallTarget(window.navigator));

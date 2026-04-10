@@ -2,8 +2,10 @@ import { usePageContext } from 'vike-react/usePageContext';
 import { getDocBreadcrumbs } from '../src/lib/docs';
 import {
     CURRENT_VERSION,
+    FAVICON_SRC,
     GITHUB_REPO_URL,
     OG_LOGO_SRC,
+    RSS_FEED_SRC,
     SITE_CREATOR_NAME,
     SITE_DESCRIPTION,
     SITE_LOCALE,
@@ -166,6 +168,9 @@ export default function Head() {
     return (
         <>
             <link rel="canonical" href={canonicalUrl} />
+            <link rel="alternate" type="application/rss+xml" title={`${SITE_NAME} releases`} href={RSS_FEED_SRC} />
+            <link rel="icon" type="image/png" href={FAVICON_SRC} />
+            <link rel="shortcut icon" href={FAVICON_SRC} />
             <link rel="preload" href={UI_LOGO_SRC} as="image" type="image/png" />
             <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
             <meta property="og:type" content="website" />

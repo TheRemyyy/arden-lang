@@ -3,7 +3,7 @@ import { GITHUB_REPO_URL, UI_LOGO_SRC } from '../lib/site';
 export function Footer() {
     return (
         <footer className="border-t border-[rgba(57,52,46,0.14)] bg-[#1f1d1a] py-16 text-[#d8cdc1]">
-            <div className="mx-auto grid max-w-7xl gap-10 px-6 md:grid-cols-4">
+            <div className="mx-auto grid max-w-7xl gap-10 px-6 md:grid-cols-5">
                 <div className="col-span-2">
                     <a href="/" className="mb-4 inline-flex items-center gap-3 text-lg font-semibold text-white">
                         <img
@@ -37,7 +37,15 @@ export function Footer() {
                     <ul className="space-y-3 text-sm">
                         <li><a href={GITHUB_REPO_URL} className="transition-colors hover:text-white">GitHub Repository</a></li>
                         <li><a href="/docs/compiler/architecture" className="transition-colors hover:text-white">Compiler Architecture</a></li>
-                        <li><a href="/docs/features/testing" className="transition-colors hover:text-white">Testing Workflow</a></li>
+                        <li><a href="/docs/overview" className="transition-colors hover:text-white">Overview</a></li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-white/70">Legal</h3>
+                    <ul className="space-y-3 text-sm">
+                        <li><a href="/terms" className="transition-colors hover:text-white">Terms of Use</a></li>
+                        <li><a href="/privacy" className="transition-colors hover:text-white">Privacy Policy</a></li>
                     </ul>
                 </div>
             </div>

@@ -1,12 +1,46 @@
-@import "@fontsource/space-grotesk/400.css";
-@import "@fontsource/space-grotesk/500.css";
-@import "@fontsource/space-grotesk/700.css";
-@import "@fontsource/instrument-serif/400.css";
-@import "@fontsource/instrument-serif/400-italic.css";
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('@fontsource/space-grotesk/files/space-grotesk-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  src: url('@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  src: url('@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
 
 :root {
   --bg: #f2ede3;
@@ -42,24 +76,28 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    radial-gradient(circle at top, rgba(184, 92, 56, 0.08), transparent 28%),
     linear-gradient(180deg, #f6f1e8 0%, #f2ede3 48%, #ece5d8 100%);
   color: var(--text);
   overflow-x: hidden;
 }
 
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
-.custom-scrollbar::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: none;
+  z-index: 0;
 }
 
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar,
 .prose pre::-webkit-scrollbar,
 .prose table::-webkit-scrollbar,
 .custom-scrollbar-x::-webkit-scrollbar {
   width: 0;
-  height: 2px;
+  height: 0;
 }
 
 html::-webkit-scrollbar-track,
@@ -71,8 +109,7 @@ body::-webkit-scrollbar-track,
 .prose pre::-webkit-scrollbar-track,
 .prose table::-webkit-scrollbar-track,
 .custom-scrollbar-x::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 999px;
+  background: transparent;
 }
 
 html::-webkit-scrollbar-thumb,
@@ -86,8 +123,7 @@ body::-webkit-scrollbar-thumb,
 .prose pre::-webkit-scrollbar-thumb,
 .prose table::-webkit-scrollbar-thumb,
 .custom-scrollbar-x::-webkit-scrollbar-thumb {
-  background: rgba(217, 178, 158, 0.42);
-  border-radius: 999px;
+  background: transparent;
 }
 
 html::-webkit-scrollbar-thumb:hover,
@@ -99,11 +135,13 @@ body::-webkit-scrollbar-thumb:hover,
 .prose pre::-webkit-scrollbar-thumb:hover,
 .prose table::-webkit-scrollbar-thumb:hover,
 .custom-scrollbar-x::-webkit-scrollbar-thumb:hover {
-  background: rgba(217, 178, 158, 0.62);
+  background: transparent;
 }
 
 #root {
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
 /* Remove default focus outline for all buttons */
@@ -126,9 +164,9 @@ a {
 
 .site-grid {
   background-image:
-    linear-gradient(rgba(96, 87, 77, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(96, 87, 77, 0.08) 1px, transparent 1px);
-  background-size: 36px 36px;
+    linear-gradient(135deg, rgba(57, 52, 46, 0.04) 0%, rgba(57, 52, 46, 0.01) 100%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0));
+  background-size: auto, auto;
   background-position: center;
 }
 

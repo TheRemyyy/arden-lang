@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
+import { slugifyRss } from '../src/lib/rss.ts';
 
 const siteUrl = 'https://www.arden-lang.dev';
 const projectRoot = path.resolve(process.cwd(), '..');
@@ -326,9 +327,66 @@ function buildLlmsTxt() {
   ].join('\n');
 }
 
+function escapeXml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function parseChangelogEntries(markdown) {
+  const headings = Array.from(markdown.matchAll(/^##\s+\[(.+?)\](?: - (.*?))?(?: - (\d{4}-\d{2}-\d{2}))?$/gm));
+
+  return headings.map((match, index) => {
+    const title = match[1].trim();
+    const subtitle = match[2]?.trim() ?? '';
+    const date = match[3] ?? new Date().toISOString().slice(0, 10);
+    const bodyStart = (match.index ?? 0) + match[0].length;
+    const bodyEnd = headings[index + 1]?.index ?? markdown.length;
+    const body = markdown.slice(bodyStart, bodyEnd).trim();
+    const firstBullet = body
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.startsWith('- '))
+      ?.replace(/^- /, '') ?? 'Release notes updated.';
+
+    return {
+      title: title === 'Unreleased' ? 'Unreleased' : `v${title}`,
+      link: `${siteUrl}/changelog#${slugifyRss(title)}`,
+      description: subtitle ? `${subtitle}. ${firstBullet}` : firstBullet,
+      pubDate: new Date(`${date}T00:00:00Z`).toUTCString(),
+    };
+  });
+}
+
+function buildRss(entries) {
+  const items = entries.slice(0, 20).map((entry) => `  <item>
+    <title>${escapeXml(entry.title)}</title>
+    <link>${escapeXml(entry.link)}</link>
+    <guid>${escapeXml(entry.link)}</guid>
+    <description>${escapeXml(entry.description)}</description>
+    <pubDate>${entry.pubDate}</pubDate>
+  </item>`);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Arden Changelog</title>
+  <link>${siteUrl}/changelog</link>
+  <description>Release notes and changelog updates for Arden.</description>
+  <language>en-us</language>
+${items.join('\n')}
+</channel>
+</rss>
+`;
+}
+
 async function main() {
   const docRoutes = await collectDocMetadata(docsRoot);
   const docsNavigation = buildDocsNavigation(docRoutes);
+  const changelogMarkdown = await fs.readFile(changelogPath, 'utf8');
   const [rootStat, changelogStat, logoStat] = await Promise.all([
     fs.stat(path.join(projectRoot, 'README.md')),
     fs.stat(changelogPath),
@@ -345,11 +403,13 @@ async function main() {
   const sitemap = buildSitemap(routes);
   const manifest = buildManifest();
   const llmsTxt = buildLlmsTxt();
+  const rss = buildRss(parseChangelogEntries(changelogMarkdown));
 
   await fs.writeFile(path.join(publicRoot, 'robots.txt'), robots, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'sitemap.xml'), sitemap, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'site.webmanifest'), manifest, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'llms.txt'), llmsTxt, 'utf8');
+  await fs.writeFile(path.join(publicRoot, 'rss.xml'), rss, 'utf8');
   await fs.copyFile(changelogPath, path.join(publicRoot, 'CHANGELOG.md'));
   await generateLogoAssets();
   await fs.writeFile(generatedDocsManifestPath, `${JSON.stringify(docsNavigation, null, 2)}\n`, 'utf8');

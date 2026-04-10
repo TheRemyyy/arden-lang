@@ -31,7 +31,7 @@ function TableOfContents({ headings }: { headings: PageHeading[] }) {
     if (headings.length === 0) return null;
 
     return (
-        <div className="custom-scrollbar fixed right-0 top-0 hidden h-full w-64 overflow-y-auto border-l border-white/10 bg-[#11100d] p-8 pt-24 xl:block">
+        <div className="custom-scrollbar fixed right-0 top-0 hidden h-full w-64 overflow-y-auto border-l border-white/10 bg-[#171411] p-8 pt-24 xl:block">
             <h5 className="mb-4 text-xs font-bold uppercase tracking-widest text-white/45">On This Page</h5>
             <ul className="space-y-3">
                 {headings.map((heading) => (
@@ -66,13 +66,13 @@ export function DocsContent({
 
     return (
         <div className="flex min-h-screen min-w-0 flex-col overflow-x-hidden bg-[#0f0d0b] pt-16 font-sans text-[#f3ece3] selection:bg-[rgba(184,92,56,0.28)] selection:text-white lg:flex-row lg:pt-16">
-            <div className="fixed left-0 right-0 top-16 z-40 border-b border-white/10 bg-[#11100d] lg:hidden">
+            <div className="fixed left-0 right-0 top-16 z-40 border-b border-white/10 bg-[#171411] lg:hidden">
                 <div className="relative flex h-16 items-center gap-3 px-4">
                     <div className="relative min-w-0 flex-1">
                         <input
                             value={searchQuery}
                             onChange={(event) => setSearchQuery(event.target.value)}
-                            type="search"
+                            type="text"
                             placeholder={`Search docs in ${currentSectionTitle}`}
                             className="h-11 w-full rounded-full border border-white/10 bg-white/[0.04] px-4 pr-10 text-sm text-white outline-none placeholder:text-white/35"
                         />
@@ -118,7 +118,7 @@ export function DocsContent({
             </div>
 
             <nav
-                className={`fixed bottom-0 left-0 top-32 z-30 flex w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-white/10 bg-[#11100d] transition-transform duration-300 lg:top-16 lg:h-[calc(100vh-4rem)] ${
+                className={`fixed bottom-0 left-0 top-32 z-30 flex w-[min(18rem,88vw)] flex-col overflow-hidden border-r border-white/10 bg-[#171411] transition-transform duration-300 lg:top-16 lg:h-[calc(100vh-4rem)] ${
                     isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
                 }`}
             >

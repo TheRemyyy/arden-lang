@@ -263,38 +263,6 @@ fn escape_display_text(value: &str) -> String {
     escaped
 }
 
-/// Generate test runner code for compilation
-#[cfg(test)]
-pub fn generate_test_runner(discovery: &TestDiscovery) -> String {
-    let mut code = String::new();
-
-    code.push_str("// Auto-generated test runner\n");
-    code.push_str("import std.io.*;\n");
-    code.push_str("import std.string.*;\n\n");
-
-    // Generate main test runner function
-    code.push_str("function main(): None {\n");
-
-    // Local test counters
-    code.push_str("    // Test execution tracking\n");
-    code.push_str("    mut tests_total: Integer = 0;\n");
-    code.push_str("    mut tests_passed: Integer = 0;\n");
-    code.push_str("    mut tests_failed: Integer = 0;\n");
-    code.push_str("    mut tests_ignored: Integer = 0;\n\n");
-
-    for suite in &discovery.suites {
-        generate_suite_runner(&mut code, suite);
-    }
-
-    code.push_str("    if (tests_failed > 0) {\n");
-    code.push_str("        exit(1);\n"); // Use exit directly
-    code.push_str("    }\n");
-    code.push_str("    return None;\n");
-    code.push_str("}\n");
-
-    code
-}
-
 /// Generate test runner that includes the original source code
 pub fn generate_test_runner_with_source(
     discovery: &TestDiscovery,
@@ -534,74 +502,6 @@ fn filter_out_main_function(source: &str) -> String {
 
 /// Generate runner code with mutable counters
 fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
-    code.push_str(&format!("    // Test Suite: {}\n", suite.name));
-
-    // BeforeAll
-    if let Some(ref before_all_fn) = suite.before_all {
-        code.push_str(&format!("    // @BeforeAll: {}\n", before_all_fn.name));
-        code.push_str(&format!("    {}();\n", before_all_fn.name));
-    }
-
-    // Each test
-    for test in &suite.tests {
-        code.push_str("    tests_total = tests_total + 1;\n");
-
-        if test.ignored {
-            // Report ignore inline
-            code.push_str(&format!("    // @Test: {}\n", test.name));
-            code.push_str("    tests_ignored = tests_ignored + 1;\n");
-            code.push_str(&format!(
-                "    println(\"__ARDEN_TEST_SKIP__ {}\");\n",
-                escape_arden_string_literal(&test.name)
-            ));
-            if let Some(reason) = test
-                .ignore_reason
-                .as_ref()
-                .filter(|reason| !reason.is_empty())
-            {
-                code.push_str(&format!(
-                    "    println(\"__ARDEN_TEST_SKIP_REASON__ {}\");\n",
-                    escape_arden_string_literal(reason)
-                ));
-            }
-        } else {
-            // BeforeEach
-            if let Some(ref before_each_fn) = suite.before_each {
-                code.push_str(&format!("    // @Before: {}\n", before_each_fn.name));
-                code.push_str(&format!("    {}();\n", before_each_fn.name));
-            }
-
-            // Test itself
-            code.push_str(&format!("    // @Test: {}\n", test.name));
-            code.push_str(&format!(
-                "    println(\"__ARDEN_TEST_START__ {}\");\n",
-                escape_arden_string_literal(&test.name)
-            ));
-            code.push_str(&format!("    {}();\n", test.name));
-            code.push_str("    tests_passed = tests_passed + 1;\n");
-            code.push_str(&format!(
-                "    println(\"__ARDEN_TEST_PASS__ {}\");\n",
-                escape_arden_string_literal(&test.name)
-            ));
-
-            // AfterEach
-            if let Some(ref after_each_fn) = suite.after_each {
-                code.push_str(&format!("    // @After: {}\n", after_each_fn.name));
-                code.push_str(&format!("    {}();\n", after_each_fn.name));
-            }
-        }
-    }
-
-    // AfterAll
-    if let Some(ref after_all_fn) = suite.after_all {
-        code.push_str(&format!("    // @AfterAll: {}\n", after_all_fn.name));
-        code.push_str(&format!("    {}();\n", after_all_fn.name));
-    }
-}
-
-/// Generate runner code for a single test suite
-#[cfg(test)]
-fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
     code.push_str(&format!("    // Test Suite: {}\n", suite.name));
 
     // BeforeAll
