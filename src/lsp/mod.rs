@@ -502,7 +502,7 @@ impl<'a> ScopedSymbolResolver<'a> {
     }
 }
 
-fn offset_to_position_impl(text: &str, target: usize) -> Position {
+pub(crate) fn offset_to_position_impl(text: &str, target: usize) -> Position {
     let bounded_target = target.min(text.len());
     let mut line = 0u32;
     let mut col = 0u32;
@@ -522,7 +522,7 @@ fn offset_to_position_impl(text: &str, target: usize) -> Position {
     Position::new(line, col)
 }
 
-fn position_to_offset_impl(text: &str, pos: Position) -> usize {
+pub(crate) fn position_to_offset_impl(text: &str, pos: Position) -> usize {
     let mut line = 0u32;
     let mut col = 0u32;
 
@@ -549,7 +549,7 @@ fn is_ident_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
-fn word_at_position_impl(text: &str, pos: Position) -> Option<String> {
+pub(crate) fn word_at_position_impl(text: &str, pos: Position) -> Option<String> {
     let offset = position_to_offset_impl(text, pos).min(text.len());
     let bytes = text.as_bytes();
     if bytes.is_empty() {
@@ -585,7 +585,7 @@ fn word_at_position_impl(text: &str, pos: Position) -> Option<String> {
         .map(ToString::to_string)
 }
 
-fn find_nth_name_occurrence_in_span(
+pub(crate) fn find_nth_name_occurrence_in_span(
     text: &str,
     name: &str,
     span: &std::ops::Range<usize>,
@@ -1572,6 +1572,3 @@ pub async fn run_lsp_server() {
     Server::new(stdin, stdout, socket).serve(service).await;
     stderr_log("server stopped");
 }
-
-#[cfg(test)]
-mod tests;

@@ -570,7 +570,7 @@ fn write_link_response_file(path: &Path, args: &[String]) -> Result<(), String> 
 }
 
 #[cfg(any(test, windows))]
-fn windows_machine_flag(target: Option<&str>) -> &'static str {
+pub(crate) fn windows_machine_flag(target: Option<&str>) -> &'static str {
     let target = target
         .unwrap_or("x86_64-pc-windows-msvc")
         .to_ascii_lowercase();
@@ -829,25 +829,5 @@ pub(crate) fn link_objects(
                 link_with_lld_link(objects, output_path, link)
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::windows_machine_flag;
-
-    #[test]
-    fn windows_machine_flag_prefers_x64_over_x86_substring() {
-        assert_eq!(windows_machine_flag(Some("x86_64-pc-windows-msvc")), "x64");
-        assert_eq!(windows_machine_flag(Some("amd64-pc-windows-msvc")), "x64");
-    }
-
-    #[test]
-    fn windows_machine_flag_keeps_other_windows_arches() {
-        assert_eq!(windows_machine_flag(Some("i686-pc-windows-msvc")), "x86");
-        assert_eq!(
-            windows_machine_flag(Some("aarch64-pc-windows-msvc")),
-            "arm64"
-        );
     }
 }

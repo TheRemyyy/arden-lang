@@ -388,20 +388,18 @@ fn project_multi_file_import_graph_tracks_real_parsed_owner_file() {
         }
     }
 
-    let symbol_lookup = Arc::new(build_project_symbol_lookup(
-        &crate::dependency::ProjectSymbolMaps {
-            function_map: &global_function_map,
-            function_file_map: &global_function_file_map,
-            class_map: &global_class_map,
-            class_file_map: &global_class_file_map,
-            interface_map: empty_global_interface_map(),
-            interface_file_map: empty_global_interface_file_map(),
-            enum_map: &global_enum_map,
-            enum_file_map: &global_enum_file_map,
-            module_map: &global_module_map,
-            module_file_map: &global_module_file_map,
-        },
-    ));
+    let symbol_lookup = Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+        function_map: &global_function_map,
+        function_file_map: &global_function_file_map,
+        class_map: &global_class_map,
+        class_file_map: &global_class_file_map,
+        interface_map: empty_global_interface_map(),
+        interface_file_map: empty_global_interface_file_map(),
+        enum_map: &global_enum_map,
+        enum_file_map: &global_enum_file_map,
+        module_map: &global_module_map,
+        module_file_map: &global_module_file_map,
+    }));
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
         global_function_map: &global_function_map,
@@ -509,20 +507,18 @@ fn project_multi_file_dependency_graph_tracks_same_namespace_enum_reference_owne
         }
     }
 
-    let symbol_lookup = Arc::new(build_project_symbol_lookup(
-        &crate::dependency::ProjectSymbolMaps {
-            function_map: &global_function_map,
-            function_file_map: &global_function_file_map,
-            class_map: &global_class_map,
-            class_file_map: &global_class_file_map,
-            interface_map: &global_interface_map,
-            interface_file_map: &global_interface_file_map,
-            enum_map: &global_enum_map,
-            enum_file_map: &global_enum_file_map,
-            module_map: &global_module_map,
-            module_file_map: &global_module_file_map,
-        },
-    ));
+    let symbol_lookup = Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+        function_map: &global_function_map,
+        function_file_map: &global_function_file_map,
+        class_map: &global_class_map,
+        class_file_map: &global_class_file_map,
+        interface_map: &global_interface_map,
+        interface_file_map: &global_interface_file_map,
+        enum_map: &global_enum_map,
+        enum_file_map: &global_enum_file_map,
+        module_map: &global_module_map,
+        module_file_map: &global_module_file_map,
+    }));
     let ctx = DependencyResolutionContext {
         namespace_files_map: &namespace_files_map,
         global_function_map: &global_function_map,
@@ -8781,20 +8777,18 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         global_module_file_map: &symbol_maps_before.global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints_before,
         file_api_fingerprints: &file_api_fingerprints_before,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &symbol_maps_before.global_function_map,
-                function_file_map: &symbol_maps_before.global_function_file_map,
-                class_map: &symbol_maps_before.global_class_map,
-                class_file_map: &symbol_maps_before.global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &symbol_maps_before.global_enum_map,
-                enum_file_map: &symbol_maps_before.global_enum_file_map,
-                module_map: &symbol_maps_before.global_module_map,
-                module_file_map: &symbol_maps_before.global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &symbol_maps_before.global_function_map,
+            function_file_map: &symbol_maps_before.global_function_file_map,
+            class_map: &symbol_maps_before.global_class_map,
+            class_file_map: &symbol_maps_before.global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &symbol_maps_before.global_enum_map,
+            enum_file_map: &symbol_maps_before.global_enum_file_map,
+            module_map: &symbol_maps_before.global_module_map,
+            module_file_map: &symbol_maps_before.global_module_file_map,
+        })),
     };
     let main_before = parsed_before
         .iter()
@@ -8876,20 +8870,18 @@ fn project_rewrite_fingerprint_ignores_body_only_dependency_change() {
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
         file_api_fingerprints: &file_api_fingerprints,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map,
-                function_file_map: &global_function_file_map,
-                class_map: &global_class_map,
-                class_file_map: &global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map,
-                enum_file_map: &global_enum_file_map,
-                module_map: &global_module_map,
-                module_file_map: &global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map,
+            function_file_map: &global_function_file_map,
+            class_map: &global_class_map,
+            class_file_map: &global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map,
+            enum_file_map: &global_enum_file_map,
+            module_map: &global_module_map,
+            module_file_map: &global_module_file_map,
+        })),
     };
     let main_unit = parsed_files
         .iter()
@@ -8992,20 +8984,18 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         global_module_file_map: &global_module_file_map_before,
         namespace_api_fingerprints: &namespace_api_fingerprints_before,
         file_api_fingerprints: &file_api_fingerprints_before,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map_before,
-                function_file_map: &global_function_file_map_before,
-                class_map: &global_class_map_before,
-                class_file_map: &global_class_file_map_before,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map_before,
-                enum_file_map: &global_enum_file_map_before,
-                module_map: &global_module_map_before,
-                module_file_map: &global_module_file_map_before,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map_before,
+            function_file_map: &global_function_file_map_before,
+            class_map: &global_class_map_before,
+            class_file_map: &global_class_file_map_before,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map_before,
+            enum_file_map: &global_enum_file_map_before,
+            module_map: &global_module_map_before,
+            module_file_map: &global_module_file_map_before,
+        })),
     };
     let main_before = parsed_before
         .iter()
@@ -9074,20 +9064,18 @@ fn project_rewrite_fingerprint_changes_on_import_breaking_api_change() {
         global_module_file_map: &symbol_maps.global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
         file_api_fingerprints: &file_api_fingerprints,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &symbol_maps.global_function_map,
-                function_file_map: &symbol_maps.global_function_file_map,
-                class_map: &symbol_maps.global_class_map,
-                class_file_map: &symbol_maps.global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &symbol_maps.global_enum_map,
-                enum_file_map: &symbol_maps.global_enum_file_map,
-                module_map: &symbol_maps.global_module_map,
-                module_file_map: &symbol_maps.global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &symbol_maps.global_function_map,
+            function_file_map: &symbol_maps.global_function_file_map,
+            class_map: &symbol_maps.global_class_map,
+            class_file_map: &symbol_maps.global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &symbol_maps.global_enum_map,
+            enum_file_map: &symbol_maps.global_enum_file_map,
+            module_map: &symbol_maps.global_module_map,
+            module_file_map: &symbol_maps.global_module_file_map,
+        })),
     };
     let main_unit = parsed_files
         .iter()
@@ -9236,20 +9224,18 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
         global_module_file_map: &global_module_file_map_before,
         namespace_api_fingerprints: &namespace_api_fingerprints_before,
         file_api_fingerprints: &file_api_fingerprints_before,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map_before,
-                function_file_map: &global_function_file_map_before,
-                class_map: &global_class_map_before,
-                class_file_map: &global_class_file_map_before,
-                interface_map: &global_interface_map_before,
-                interface_file_map: &global_interface_file_map_before,
-                enum_map: &global_enum_map_before,
-                enum_file_map: &global_enum_file_map_before,
-                module_map: &global_module_map_before,
-                module_file_map: &global_module_file_map_before,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map_before,
+            function_file_map: &global_function_file_map_before,
+            class_map: &global_class_map_before,
+            class_file_map: &global_class_file_map_before,
+            interface_map: &global_interface_map_before,
+            interface_file_map: &global_interface_file_map_before,
+            enum_map: &global_enum_map_before,
+            enum_file_map: &global_enum_file_map_before,
+            module_map: &global_module_map_before,
+            module_file_map: &global_module_file_map_before,
+        })),
     };
     let main_before = parsed_before
         .iter()
@@ -9375,20 +9361,18 @@ fn project_rewrite_fingerprint_changes_on_nested_namespace_aliased_interface_imp
         global_module_file_map: &global_module_file_map_after,
         namespace_api_fingerprints: &namespace_api_fingerprints_after,
         file_api_fingerprints: &file_api_fingerprints_after,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map_after,
-                function_file_map: &global_function_file_map_after,
-                class_map: &global_class_map_after,
-                class_file_map: &global_class_file_map_after,
-                interface_map: &global_interface_map_after,
-                interface_file_map: &global_interface_file_map_after,
-                enum_map: &global_enum_map_after,
-                enum_file_map: &global_enum_file_map_after,
-                module_map: &global_module_map_after,
-                module_file_map: &global_module_file_map_after,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map_after,
+            function_file_map: &global_function_file_map_after,
+            class_map: &global_class_map_after,
+            class_file_map: &global_class_file_map_after,
+            interface_map: &global_interface_map_after,
+            interface_file_map: &global_interface_file_map_after,
+            enum_map: &global_enum_map_after,
+            enum_file_map: &global_enum_file_map_after,
+            module_map: &global_module_map_after,
+            module_file_map: &global_module_file_map_after,
+        })),
     };
     let main_after = parsed_after
         .iter()
@@ -9491,20 +9475,18 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
         global_module_file_map: &global_module_file_map_before,
         namespace_api_fingerprints: &namespace_api_fingerprints_before,
         file_api_fingerprints: &file_api_fingerprints_before,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map_before,
-                function_file_map: &global_function_file_map_before,
-                class_map: &global_class_map_before,
-                class_file_map: &global_class_file_map_before,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map_before,
-                enum_file_map: &global_enum_file_map_before,
-                module_map: &global_module_map_before,
-                module_file_map: &global_module_file_map_before,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map_before,
+            function_file_map: &global_function_file_map_before,
+            class_map: &global_class_map_before,
+            class_file_map: &global_class_file_map_before,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map_before,
+            enum_file_map: &global_enum_file_map_before,
+            module_map: &global_module_map_before,
+            module_file_map: &global_module_file_map_before,
+        })),
     };
     let main_before = parsed_before
         .iter()
@@ -9583,20 +9565,18 @@ fn project_rewrite_fingerprint_changes_on_keyword_import_alias_target_change() {
         global_module_file_map: &global_module_file_map_after,
         namespace_api_fingerprints: &namespace_api_fingerprints_after,
         file_api_fingerprints: &file_api_fingerprints_after,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map_after,
-                function_file_map: &global_function_file_map_after,
-                class_map: &global_class_map_after,
-                class_file_map: &global_class_file_map_after,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map_after,
-                enum_file_map: &global_enum_file_map_after,
-                module_map: &global_module_map_after,
-                module_file_map: &global_module_file_map_after,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map_after,
+            function_file_map: &global_function_file_map_after,
+            class_map: &global_class_map_after,
+            class_file_map: &global_class_file_map_after,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map_after,
+            enum_file_map: &global_enum_file_map_after,
+            module_map: &global_module_map_after,
+            module_file_map: &global_module_file_map_after,
+        })),
     };
     let main_after = parsed_after
         .iter()
@@ -9855,20 +9835,18 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_module_file_map: &global_module_file_map_before,
             namespace_api_fingerprints: &namespace_api_fingerprints_before,
             file_api_fingerprints: &file_api_fingerprints_before,
-            symbol_lookup: Arc::new(build_project_symbol_lookup(
-                &crate::dependency::ProjectSymbolMaps {
-                    function_map: &global_function_map_before,
-                    function_file_map: &global_function_file_map_before,
-                    class_map: &global_class_map_before,
-                    class_file_map: &global_class_file_map_before,
-                    interface_map: empty_global_interface_map(),
-                    interface_file_map: empty_global_interface_file_map(),
-                    enum_map: &global_enum_map_before,
-                    enum_file_map: &global_enum_file_map_before,
-                    module_map: &global_module_map_before,
-                    module_file_map: &global_module_file_map_before,
-                },
-            )),
+            symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+                function_map: &global_function_map_before,
+                function_file_map: &global_function_file_map_before,
+                class_map: &global_class_map_before,
+                class_file_map: &global_class_file_map_before,
+                interface_map: empty_global_interface_map(),
+                interface_file_map: empty_global_interface_file_map(),
+                enum_map: &global_enum_map_before,
+                enum_file_map: &global_enum_file_map_before,
+                module_map: &global_module_map_before,
+                module_file_map: &global_module_file_map_before,
+            })),
         };
         let main_before = parsed_before
             .iter()
@@ -9944,20 +9922,18 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_module_file_map: &global_module_file_map_after,
             namespace_api_fingerprints: &namespace_api_fingerprints_after,
             file_api_fingerprints: &file_api_fingerprints_after,
-            symbol_lookup: Arc::new(build_project_symbol_lookup(
-                &crate::dependency::ProjectSymbolMaps {
-                    function_map: &global_function_map_after,
-                    function_file_map: &global_function_file_map_after,
-                    class_map: &global_class_map_after,
-                    class_file_map: &global_class_file_map_after,
-                    interface_map: empty_global_interface_map(),
-                    interface_file_map: empty_global_interface_file_map(),
-                    enum_map: &global_enum_map_after,
-                    enum_file_map: &global_enum_file_map_after,
-                    module_map: &global_module_map_after,
-                    module_file_map: &global_module_file_map_after,
-                },
-            )),
+            symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+                function_map: &global_function_map_after,
+                function_file_map: &global_function_file_map_after,
+                class_map: &global_class_map_after,
+                class_file_map: &global_class_file_map_after,
+                interface_map: empty_global_interface_map(),
+                interface_file_map: empty_global_interface_file_map(),
+                enum_map: &global_enum_map_after,
+                enum_file_map: &global_enum_file_map_after,
+                module_map: &global_module_map_after,
+                module_file_map: &global_module_file_map_after,
+            })),
         };
         let main_after = parsed_after
             .iter()
@@ -10058,20 +10034,18 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_module_file_map: &global_module_file_map_before,
             namespace_api_fingerprints: &namespace_api_fingerprints_before,
             file_api_fingerprints: &file_api_fingerprints_before,
-            symbol_lookup: Arc::new(build_project_symbol_lookup(
-                &crate::dependency::ProjectSymbolMaps {
-                    function_map: &global_function_map_before,
-                    function_file_map: &global_function_file_map_before,
-                    class_map: &global_class_map_before,
-                    class_file_map: &global_class_file_map_before,
-                    interface_map: empty_global_interface_map(),
-                    interface_file_map: empty_global_interface_file_map(),
-                    enum_map: &global_enum_map_before,
-                    enum_file_map: &global_enum_file_map_before,
-                    module_map: &global_module_map_before,
-                    module_file_map: &global_module_file_map_before,
-                },
-            )),
+            symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+                function_map: &global_function_map_before,
+                function_file_map: &global_function_file_map_before,
+                class_map: &global_class_map_before,
+                class_file_map: &global_class_file_map_before,
+                interface_map: empty_global_interface_map(),
+                interface_file_map: empty_global_interface_file_map(),
+                enum_map: &global_enum_map_before,
+                enum_file_map: &global_enum_file_map_before,
+                module_map: &global_module_map_before,
+                module_file_map: &global_module_file_map_before,
+            })),
         };
         let main_before = parsed_before
             .iter()
@@ -10147,20 +10121,18 @@ fn generated_project_rewrite_fingerprint_matrix_matches_expected_invalidation() 
             global_module_file_map: &global_module_file_map_after,
             namespace_api_fingerprints: &namespace_api_fingerprints_after,
             file_api_fingerprints: &file_api_fingerprints_after,
-            symbol_lookup: Arc::new(build_project_symbol_lookup(
-                &crate::dependency::ProjectSymbolMaps {
-                    function_map: &global_function_map_after,
-                    function_file_map: &global_function_file_map_after,
-                    class_map: &global_class_map_after,
-                    class_file_map: &global_class_file_map_after,
-                    interface_map: empty_global_interface_map(),
-                    interface_file_map: empty_global_interface_file_map(),
-                    enum_map: &global_enum_map_after,
-                    enum_file_map: &global_enum_file_map_after,
-                    module_map: &global_module_map_after,
-                    module_file_map: &global_module_file_map_after,
-                },
-            )),
+            symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+                function_map: &global_function_map_after,
+                function_file_map: &global_function_file_map_after,
+                class_map: &global_class_map_after,
+                class_file_map: &global_class_file_map_after,
+                interface_map: empty_global_interface_map(),
+                interface_file_map: empty_global_interface_file_map(),
+                enum_map: &global_enum_map_after,
+                enum_file_map: &global_enum_file_map_after,
+                module_map: &global_module_map_after,
+                module_file_map: &global_module_file_map_after,
+            })),
         };
         let main_after = parsed_after
             .iter()
@@ -10274,20 +10246,18 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints,
         file_api_fingerprints: &file_api_fingerprints,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map,
-                function_file_map: &global_function_file_map,
-                class_map: &global_class_map,
-                class_file_map: &global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map,
-                enum_file_map: &global_enum_file_map,
-                module_map: &global_module_map,
-                module_file_map: &global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map,
+            function_file_map: &global_function_file_map,
+            class_map: &global_class_map,
+            class_file_map: &global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map,
+            enum_file_map: &global_enum_file_map,
+            module_map: &global_module_map,
+            module_file_map: &global_module_file_map,
+        })),
     };
 
     let fp_a = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_a);
@@ -10318,20 +10288,18 @@ fn rewrite_context_for_specific_import_ignores_unrelated_namespace_api_changes()
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints_b,
         file_api_fingerprints: &file_api_fingerprints_b,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map,
-                function_file_map: &global_function_file_map,
-                class_map: &global_class_map,
-                class_file_map: &global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map,
-                enum_file_map: &global_enum_file_map,
-                module_map: &global_module_map,
-                module_file_map: &global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map,
+            function_file_map: &global_function_file_map,
+            class_map: &global_class_map,
+            class_file_map: &global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map,
+            enum_file_map: &global_enum_file_map,
+            module_map: &global_module_map,
+            module_file_map: &global_module_file_map,
+        })),
     };
     let fp_b = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_b);
 
@@ -10388,20 +10356,18 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints_a,
         file_api_fingerprints: &HashMap::new(),
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map,
-                function_file_map: &global_function_file_map,
-                class_map: &global_class_map,
-                class_file_map: &global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map,
-                enum_file_map: &global_enum_file_map,
-                module_map: &global_module_map,
-                module_file_map: &global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map,
+            function_file_map: &global_function_file_map,
+            class_map: &global_class_map,
+            class_file_map: &global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map,
+            enum_file_map: &global_enum_file_map,
+            module_map: &global_module_map,
+            module_file_map: &global_module_file_map,
+        })),
     };
     let fp_a = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_a);
     let namespace_api_fingerprints_b = HashMap::from([("lib".to_string(), "ns-v2".to_string())]);
@@ -10421,20 +10387,18 @@ fn rewrite_context_for_wildcard_import_tracks_namespace_api_changes() {
         global_module_file_map: &global_module_file_map,
         namespace_api_fingerprints: &namespace_api_fingerprints_b,
         file_api_fingerprints: &HashMap::new(),
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map,
-                function_file_map: &global_function_file_map,
-                class_map: &global_class_map,
-                class_file_map: &global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map,
-                enum_file_map: &global_enum_file_map,
-                module_map: &global_module_map,
-                module_file_map: &global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map,
+            function_file_map: &global_function_file_map,
+            class_map: &global_class_map,
+            class_file_map: &global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map,
+            enum_file_map: &global_enum_file_map,
+            module_map: &global_module_map,
+            module_file_map: &global_module_file_map,
+        })),
     };
     let fp_b = compute_rewrite_context_fingerprint_for_unit(&unit, "app", &ctx_b);
 
@@ -10493,20 +10457,18 @@ fn dependency_graph_tracks_specific_symbol_owner_file_only() {
         global_enum_file_map: &global_enum_file_map,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map,
-                function_file_map: &global_function_file_map,
-                class_map: &global_class_map,
-                class_file_map: &global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map,
-                enum_file_map: &global_enum_file_map,
-                module_map: &global_module_map,
-                module_file_map: &global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map,
+            function_file_map: &global_function_file_map,
+            class_map: &global_class_map,
+            class_file_map: &global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map,
+            enum_file_map: &global_enum_file_map,
+            module_map: &global_module_map,
+            module_file_map: &global_module_file_map,
+        })),
     };
     let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
 
@@ -10557,20 +10519,18 @@ fn dependency_graph_tracks_same_namespace_symbol_references() {
         global_enum_file_map: &global_enum_file_map,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map,
-                function_file_map: &global_function_file_map,
-                class_map: &global_class_map,
-                class_file_map: &global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map,
-                enum_file_map: &global_enum_file_map,
-                module_map: &global_module_map,
-                module_file_map: &global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map,
+            function_file_map: &global_function_file_map,
+            class_map: &global_class_map,
+            class_file_map: &global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map,
+            enum_file_map: &global_enum_file_map,
+            module_map: &global_module_map,
+            module_file_map: &global_module_file_map,
+        })),
     };
 
     let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -10630,26 +10590,24 @@ fn dependency_graph_limits_wildcard_imports_to_used_owner_files() {
         global_enum_file_map: &HashMap::new(),
         global_module_map: &HashMap::new(),
         global_module_file_map: &HashMap::new(),
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &HashMap::from([
-                    ("foo".to_string(), "lib".to_string()),
-                    ("bar".to_string(), "lib".to_string()),
-                ]),
-                function_file_map: &HashMap::from([
-                    ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
-                    ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
-                ]),
-                class_map: &HashMap::new(),
-                class_file_map: &HashMap::new(),
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &HashMap::new(),
-                enum_file_map: &HashMap::new(),
-                module_map: &HashMap::new(),
-                module_file_map: &HashMap::new(),
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &HashMap::from([
+                ("foo".to_string(), "lib".to_string()),
+                ("bar".to_string(), "lib".to_string()),
+            ]),
+            function_file_map: &HashMap::from([
+                ("foo".to_string(), PathBuf::from("src/lib_foo.arden")),
+                ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
+            ]),
+            class_map: &HashMap::new(),
+            class_file_map: &HashMap::new(),
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &HashMap::new(),
+            enum_file_map: &HashMap::new(),
+            module_map: &HashMap::new(),
+            module_file_map: &HashMap::new(),
+        })),
     };
 
     let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -10703,26 +10661,24 @@ fn dependency_graph_keeps_wildcard_namespace_dependencies_when_symbol_disappears
         global_enum_file_map: &HashMap::new(),
         global_module_map: &HashMap::new(),
         global_module_file_map: &HashMap::new(),
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &HashMap::from([
-                    ("other".to_string(), "lib".to_string()),
-                    ("bar".to_string(), "lib".to_string()),
-                ]),
-                function_file_map: &HashMap::from([
-                    ("other".to_string(), PathBuf::from("src/lib_foo.arden")),
-                    ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
-                ]),
-                class_map: &HashMap::new(),
-                class_file_map: &HashMap::new(),
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &HashMap::new(),
-                enum_file_map: &HashMap::new(),
-                module_map: &HashMap::new(),
-                module_file_map: &HashMap::new(),
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &HashMap::from([
+                ("other".to_string(), "lib".to_string()),
+                ("bar".to_string(), "lib".to_string()),
+            ]),
+            function_file_map: &HashMap::from([
+                ("other".to_string(), PathBuf::from("src/lib_foo.arden")),
+                ("bar".to_string(), PathBuf::from("src/lib_bar.arden")),
+            ]),
+            class_map: &HashMap::new(),
+            class_file_map: &HashMap::new(),
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &HashMap::new(),
+            enum_file_map: &HashMap::new(),
+            module_map: &HashMap::new(),
+            module_file_map: &HashMap::new(),
+        })),
     };
 
     let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -10771,20 +10727,18 @@ fn dependency_graph_keeps_nested_module_wildcard_namespace_dependencies_when_sym
         global_enum_file_map: &HashMap::new(),
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &HashMap::new(),
-                function_file_map: &HashMap::new(),
-                class_map: &HashMap::new(),
-                class_file_map: &HashMap::new(),
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &HashMap::new(),
-                enum_file_map: &HashMap::new(),
-                module_map: &global_module_map,
-                module_file_map: &global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &HashMap::new(),
+            function_file_map: &HashMap::new(),
+            class_map: &HashMap::new(),
+            class_file_map: &HashMap::new(),
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &HashMap::new(),
+            enum_file_map: &HashMap::new(),
+            module_map: &global_module_map,
+            module_file_map: &global_module_file_map,
+        })),
     };
 
     let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -10840,20 +10794,18 @@ fn parsed_dependency_graph_tracks_nested_module_wildcard_import_owner_files() {
         global_enum_file_map: &global_enum_file_map,
         global_module_map: &global_module_map,
         global_module_file_map: &global_module_file_map,
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &global_function_map,
-                function_file_map: &global_function_file_map,
-                class_map: &global_class_map,
-                class_file_map: &global_class_file_map,
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &global_enum_map,
-                enum_file_map: &global_enum_file_map,
-                module_map: &global_module_map,
-                module_file_map: &global_module_file_map,
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &global_function_map,
+            function_file_map: &global_function_file_map,
+            class_map: &global_class_map,
+            class_file_map: &global_class_file_map,
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &global_enum_map,
+            enum_file_map: &global_enum_file_map,
+            module_map: &global_module_map,
+            module_file_map: &global_module_file_map,
+        })),
     };
 
     let (graph, _) = build_file_dependency_graph_incremental(&parsed_files, &ctx, None, None);
@@ -11753,23 +11705,21 @@ fn dependency_graph_recomputes_direct_neighbors_after_api_change() {
         global_enum_file_map: &HashMap::new(),
         global_module_map: &HashMap::new(),
         global_module_file_map: &HashMap::new(),
-        symbol_lookup: Arc::new(build_project_symbol_lookup(
-            &crate::dependency::ProjectSymbolMaps {
-                function_map: &HashMap::from([("foo".to_string(), "lib".to_string())]),
-                function_file_map: &HashMap::from([(
-                    "foo".to_string(),
-                    PathBuf::from("src/lib_foo.arden"),
-                )]),
-                class_map: &HashMap::new(),
-                class_file_map: &HashMap::new(),
-                interface_map: empty_global_interface_map(),
-                interface_file_map: empty_global_interface_file_map(),
-                enum_map: &HashMap::new(),
-                enum_file_map: &HashMap::new(),
-                module_map: &HashMap::new(),
-                module_file_map: &HashMap::new(),
-            },
-        )),
+        symbol_lookup: Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+            function_map: &HashMap::from([("foo".to_string(), "lib".to_string())]),
+            function_file_map: &HashMap::from([(
+                "foo".to_string(),
+                PathBuf::from("src/lib_foo.arden"),
+            )]),
+            class_map: &HashMap::new(),
+            class_file_map: &HashMap::new(),
+            interface_map: empty_global_interface_map(),
+            interface_file_map: empty_global_interface_file_map(),
+            enum_map: &HashMap::new(),
+            enum_file_map: &HashMap::new(),
+            module_map: &HashMap::new(),
+            module_file_map: &HashMap::new(),
+        })),
     };
 
     let (_, reused) =

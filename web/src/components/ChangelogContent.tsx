@@ -242,7 +242,7 @@ function MobileReleaseRail({
     }, [activeReleaseId]);
 
     return (
-        <div className="fixed left-0 right-0 top-16 z-30 border-b border-white/10 bg-white/[0.04] lg:hidden">
+        <div className="fixed left-0 right-0 top-16 z-30 border-b border-white/10 bg-[#11100d] lg:hidden">
             <div ref={containerRef} className="custom-scrollbar overflow-x-auto px-4 py-3">
                 <div className="flex min-w-max gap-2">
                     {releases.map((release) => (
@@ -316,9 +316,6 @@ function CategoryCard({
                         prose-blockquote:border-l-[var(--accent-soft)] prose-blockquote:text-white"
                     dangerouslySetInnerHTML={{ __html: category.html }}
                 />
-                {!isExpanded && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[rgba(255,255,255,0.04)] via-[rgba(255,255,255,0.035)] to-transparent" />
-                )}
             </div>
             {shouldCollapseByDefault && (
                 <div className="mt-4">

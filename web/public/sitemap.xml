@@ -2,217 +2,217 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://www.arden-lang.dev/</loc>
-    <lastmod>2026-04-08T22:56:05.257Z</lastmod>
+    <lastmod>2026-04-09T18:25:02.133Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/install</loc>
-    <lastmod>2026-04-08T22:56:05.257Z</lastmod>
+    <lastmod>2026-04-09T18:25:02.133Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/changelog</loc>
-    <lastmod>2026-04-08T22:56:05.257Z</lastmod>
+    <lastmod>2026-04-10T20:33:26.765Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/overview</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-10T17:32:42.509Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/getting_started/installation</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-10T17:47:23.392Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/getting_started/quick_start</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-10T17:47:23.392Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/getting_started/editor_setup</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T17:24:05.425Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/basics/syntax</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-08T11:13:15.437Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/basics/variables</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.902Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/basics/types</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T20:00:03.121Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/basics/control_flow</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.903Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/functions</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-08T11:13:15.431Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/classes</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.901Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/interfaces</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T11:48:28.889Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/enums</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.901Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/ranges</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.901Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/modules</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.901Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/projects</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-10T17:32:42.510Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/projects/README</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-10T17:32:42.510Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/features/testing</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-08T11:13:15.437Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/overview</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-07T11:48:28.890Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/math</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/string</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-03-27T15:07:07.375Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/time</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.898Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/args</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/collections</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-07T16:53:45.777Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/io</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/stdlib/system</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.898Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/advanced/ownership</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/advanced/generics</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-08T12:32:29.510Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/advanced/async</loc>
-    <lastmod>2026-04-08T22:56:05.259Z</lastmod>
+    <lastmod>2026-04-07T19:02:57.269Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/advanced/error_handling</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T11:41:21.899Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/advanced/memory_management</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-07T16:53:45.777Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/compiler/cli</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-10T17:33:17.526Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/compiler/architecture</loc>
-    <lastmod>2026-04-08T22:56:05.260Z</lastmod>
+    <lastmod>2026-04-10T17:32:42.509Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://www.arden-lang.dev/docs/projects</loc>
-    <lastmod>2026-04-08T22:56:05.261Z</lastmod>
+    <lastmod>2026-04-07T11:40:15.913Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>

@@ -1,4 +1,4 @@
-use super::{
+use crate::lsp::{
     find_nth_name_occurrence_in_span, offset_to_position_impl, position_to_offset_impl,
     word_at_position_impl,
 };

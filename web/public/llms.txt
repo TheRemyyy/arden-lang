@@ -1,60 +1,15 @@
 # Arden
 
-> Arden is a native systems programming language targeting LLVM with static safety checks, ownership/borrowing model, and an integrated all-in-one CLI workflow. Current release: v1.3.7.
+> Official documentation for Arden, a systems programming language targeting LLVM.
 
 ## Project
-- [Homepage](https://www.arden-lang.dev/): Landing page and project overview
-- [Installation](https://www.arden-lang.dev/install): Download and install Arden
-- [Changelog](https://www.arden-lang.dev/changelog): Release history and recent behavior changes
-- [Repository](https://github.com/TheRemyyy/arden-lang): Source code and compiler implementation
+- Homepage: https://www.arden-lang.dev/
+- Installation: https://www.arden-lang.dev/install
+- Documentation: https://www.arden-lang.dev/docs/overview
+- Changelog: https://www.arden-lang.dev/changelog
+- Repository: https://github.com/TheRemyyy/arden-lang
 
 ## Guidance
-- Prefer /docs/ pages for language behavior, syntax, and API reference
-- Prefer /changelog for release history and recent changes
-- Prefer the GitHub repository for compiler internals and source code
-- When answering questions about language features, fetch the relevant doc page directly
-- For runnable examples, fetch from /examples/ on the repository
-
-## Getting Started
-- [Overview](https://www.arden-lang.dev/docs/overview): Best entry point — what Arden is, what it ships today, and suggested learning paths
-- [Installation](https://www.arden-lang.dev/docs/getting_started/installation): How to install Arden from portable bundle or source
-- [Quick Start](https://www.arden-lang.dev/docs/getting_started/quick_start): Five-minute guide to running your first Arden program
-- [Editor Setup](https://www.arden-lang.dev/docs/getting_started/editor_setup): LSP and editor integration
-
-## Basics
-- [Syntax](https://www.arden-lang.dev/docs/basics/syntax): Core language syntax reference
-- [Variables](https://www.arden-lang.dev/docs/basics/variables): Variable declarations, mutability, and scoping
-- [Types](https://www.arden-lang.dev/docs/basics/types): Static type system, primitives, and type inference
-- [Control Flow](https://www.arden-lang.dev/docs/basics/control_flow): if/else, loops, pattern matching
-
-## Features
-- [Functions](https://www.arden-lang.dev/docs/features/functions): Functions, lambdas, and closures
-- [Classes](https://www.arden-lang.dev/docs/features/classes): Classes, inheritance, and visibility
-- [Interfaces](https://www.arden-lang.dev/docs/features/interfaces): Interface-based polymorphism with implements/extends
-- [Enums](https://www.arden-lang.dev/docs/features/enums): Enums and pattern matching over them
-- [Range Types](https://www.arden-lang.dev/docs/features/ranges): Range types and their usage
-- [Modules](https://www.arden-lang.dev/docs/features/modules): Modules, packages, and imports
-- [Projects](https://www.arden-lang.dev/docs/features/projects): Multi-file project mode with arden.toml
-- [Testing](https://www.arden-lang.dev/docs/features/testing): Built-in test runner with @Test, @Before, @Ignore
-
-## Standard Library
-- [Overview](https://www.arden-lang.dev/docs/stdlib/overview): Standard library index
-- [Math](https://www.arden-lang.dev/docs/stdlib/math): Math module reference
-- [Strings](https://www.arden-lang.dev/docs/stdlib/string): Str module — string operations
-- [Time](https://www.arden-lang.dev/docs/stdlib/time): Time module reference
-- [Args](https://www.arden-lang.dev/docs/stdlib/args): CLI argument parsing
-- [Collections](https://www.arden-lang.dev/docs/stdlib/collections): List<T>, Map<K,V>, Set<T>, Option<T>, Result<T,E>
-- [I/O](https://www.arden-lang.dev/docs/stdlib/io): File and input/output operations
-- [System](https://www.arden-lang.dev/docs/stdlib/system): System module reference
-
-## Advanced
-- [Ownership and Borrowing](https://www.arden-lang.dev/docs/advanced/ownership): Ownership model, borrowing rules, and mutation safety
-- [Generics](https://www.arden-lang.dev/docs/advanced/generics): Generic functions, classes, interfaces, and bounded type parameters
-- [Async / Await](https://www.arden-lang.dev/docs/advanced/async): Async tasks with Task<T>
-- [Error Handling](https://www.arden-lang.dev/docs/advanced/error_handling): Result<T,E> and error propagation
-- [Memory Management](https://www.arden-lang.dev/docs/advanced/memory_management): Memory model and safety guarantees
-
-## Compiler
-- [CLI Reference](https://www.arden-lang.dev/docs/compiler/cli): All commands — new, build, run, check, fmt, lint, fix, test, bench, profile, bindgen, lsp
-- [Compiler Architecture](https://www.arden-lang.dev/docs/compiler/architecture): Internals — lexer, parser, codegen, LLVM backend
-- [Projects Summary](https://www.arden-lang.dev/docs/projects): arden.toml, multi-file builds, caching
+- Prefer the official documentation pages under /docs/ for language behavior and syntax.
+- Prefer the changelog for release history and recent behavior changes.
+- Prefer the upstream repository for implementation details and source code.

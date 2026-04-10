@@ -1,13 +1,14 @@
 use crate::ast::Program;
 use crate::borrowck::BorrowChecker;
+use crate::cache::ProjectSymbolLookup;
 pub(crate) use crate::cli::paths::process_current_dir_lock as cli_test_lock;
+use crate::dependency::insert_symbol_lookup_entry;
 use crate::formatter::format_program_canonical;
 use crate::parser::Parser;
 use crate::typeck::TypeChecker;
 use crate::{
-    build_project_symbol_lookup, compute_namespace_api_fingerprints,
-    compute_rewrite_context_fingerprint_for_unit, semantic_program_fingerprint, ParsedProjectUnit,
-    RewriteFingerprintContext,
+    compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
+    semantic_program_fingerprint, ParsedProjectUnit, RewriteFingerprintContext,
 };
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -29,6 +30,19 @@ pub(crate) struct ProjectSymbolMaps {
     pub(crate) global_enum_file_map: HashMap<String, PathBuf>,
     pub(crate) global_module_map: HashMap<String, String>,
     pub(crate) global_module_file_map: HashMap<String, PathBuf>,
+}
+
+pub(crate) struct ProjectSymbolLookupMaps<'a> {
+    pub(crate) function_map: &'a HashMap<String, String>,
+    pub(crate) function_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) class_map: &'a HashMap<String, String>,
+    pub(crate) class_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) interface_map: &'a HashMap<String, String>,
+    pub(crate) interface_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) enum_map: &'a HashMap<String, String>,
+    pub(crate) enum_file_map: &'a HashMap<String, PathBuf>,
+    pub(crate) module_map: &'a HashMap<String, String>,
+    pub(crate) module_file_map: &'a HashMap<String, PathBuf>,
 }
 
 impl ProjectSymbolMaps {
@@ -68,6 +82,79 @@ type ProjectSymbolMapsParts = (
     GlobalSymbolMap,
     GlobalSymbolFileMap,
 );
+
+pub(crate) fn build_project_symbol_lookup(
+    maps: &ProjectSymbolLookupMaps<'_>,
+) -> ProjectSymbolLookup {
+    let symbol_count = maps.function_map.len()
+        + maps.class_map.len()
+        + maps.interface_map.len()
+        + maps.enum_map.len()
+        + maps.module_map.len();
+    let mut exact = HashMap::with_capacity(symbol_count);
+    let mut wildcard_members = HashMap::with_capacity(symbol_count);
+
+    for (symbol_name, owner_namespace) in maps.function_map {
+        if let Some(owner_file) = maps.function_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
+        }
+    }
+    for (symbol_name, owner_namespace) in maps.class_map {
+        if let Some(owner_file) = maps.class_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
+        }
+    }
+    for (symbol_name, owner_namespace) in maps.interface_map {
+        if let Some(owner_file) = maps.interface_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
+        }
+    }
+    for (symbol_name, owner_namespace) in maps.enum_map {
+        if let Some(owner_file) = maps.enum_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
+        }
+    }
+    for (symbol_name, owner_namespace) in maps.module_map {
+        if let Some(owner_file) = maps.module_file_map.get(symbol_name) {
+            insert_symbol_lookup_entry(
+                &mut exact,
+                &mut wildcard_members,
+                owner_namespace,
+                symbol_name,
+                owner_file,
+            );
+        }
+    }
+
+    ProjectSymbolLookup {
+        exact,
+        wildcard_members,
+    }
+}
 
 pub(crate) fn parse_program(source: &str) -> Program {
     let tokens = crate::lexer::tokenize(source).expect("tokenize");
@@ -120,20 +207,18 @@ pub(crate) fn rewrite_fingerprint_for_test_unit(
         .collect::<HashMap<_, _>>();
     let global_interface_map: HashMap<String, String> = HashMap::new();
     let global_interface_file_map: HashMap<String, PathBuf> = HashMap::new();
-    let symbol_lookup = Arc::new(build_project_symbol_lookup(
-        &crate::dependency::ProjectSymbolMaps {
-            function_map: &symbol_maps.global_function_map,
-            function_file_map: &symbol_maps.global_function_file_map,
-            class_map: &symbol_maps.global_class_map,
-            class_file_map: &symbol_maps.global_class_file_map,
-            interface_map: &global_interface_map,
-            interface_file_map: &global_interface_file_map,
-            enum_map: &symbol_maps.global_enum_map,
-            enum_file_map: &symbol_maps.global_enum_file_map,
-            module_map: &symbol_maps.global_module_map,
-            module_file_map: &symbol_maps.global_module_file_map,
-        },
-    ));
+    let symbol_lookup = Arc::new(build_project_symbol_lookup(&ProjectSymbolLookupMaps {
+        function_map: &symbol_maps.global_function_map,
+        function_file_map: &symbol_maps.global_function_file_map,
+        class_map: &symbol_maps.global_class_map,
+        class_file_map: &symbol_maps.global_class_file_map,
+        interface_map: &global_interface_map,
+        interface_file_map: &global_interface_file_map,
+        enum_map: &symbol_maps.global_enum_map,
+        enum_file_map: &symbol_maps.global_enum_file_map,
+        module_map: &symbol_maps.global_module_map,
+        module_file_map: &symbol_maps.global_module_file_map,
+    }));
     let rewrite_ctx = RewriteFingerprintContext {
         namespace_functions: &namespace_functions,
         global_function_map: &symbol_maps.global_function_map,
