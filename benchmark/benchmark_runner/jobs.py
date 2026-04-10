@@ -41,6 +41,7 @@ def compile_arden(
 
 def compile_rust(root: Path, bench: str, out: Path) -> None:
     src = root / "benchmark" / "rust" / f"{bench}.rs"
+    out = exe_path(out)
     print(f"  [build] rust {bench}", flush=True)
     proc = run_cmd(
         ["rustc", "-C", "opt-level=3", "-C", "target-cpu=native", str(src), "-o", str(out)],
@@ -52,6 +53,7 @@ def compile_rust(root: Path, bench: str, out: Path) -> None:
 
 def compile_go(root: Path, bench: str, out: Path) -> None:
     src = root / "benchmark" / "go" / f"{bench}.go"
+    out = exe_path(out)
     print(f"  [build] go {bench}", flush=True)
     proc = run_cmd(
         ["go", "build", "-trimpath", "-ldflags", "-s -w", "-o", str(out), str(src)],
@@ -125,7 +127,7 @@ def make_compile_jobs(
                 "target-cpu=native",
                 "main.rs",
                 "-o",
-                str(compile_projects["rust"]["binary"]),
+                str(exe_path(compile_projects["rust"]["binary"])),
             ],
             "cwd": compile_projects["rust"]["project_dir"],
             "env": None,
@@ -139,7 +141,7 @@ def make_compile_jobs(
             "api_main_file": compile_projects["rust"].get("api_main_file"),
         },
         "go": {
-            "cmd": ["go", "build", "-trimpath", "-o", str(compile_projects["go"]["binary"]), "."],
+            "cmd": ["go", "build", "-trimpath", "-o", str(exe_path(compile_projects["go"]["binary"])), "."],
             "cwd": compile_projects["go"]["project_dir"],
             "env": {
                 "GO111MODULE": "on",

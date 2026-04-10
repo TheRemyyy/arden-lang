@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed macOS SDK probing to fall back to `/usr/bin/xcrun` when PATH gets scrubbed inside nested CI test runners.
 - Fixed Windows `lld-link` CRT selection so Arden no longer mixes static `libcmt`/`libucrt` style libraries with the import CRT provided by the MSVC toolchain, eliminating duplicate-symbol link failures in project builds and benchmark CI.
 - Fixed the quick CI benchmark job to install Go on every platform, matching the benchmark runner requirements already used by the fuller linker benchmark workflow.
+- Fixed Windows benchmark harness output naming so Rust/Go compile jobs and Arden project builds all agree on `.exe` artifact paths.
 - Corrected Windows `lld-link` machine detection so `x86_64` targets no longer get mislinked as `x86`.
 - Replaced several build-path panic-style invariants with explicit user-facing errors and warnings, including parse cache reuse, typecheck cache reuse, object cache path lookup, and invalid object shard env overrides.
 

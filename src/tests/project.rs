@@ -8696,7 +8696,12 @@ fn project_build_creates_missing_nested_output_parent_directory() {
             .expect("project build should create missing nested output directories");
     });
 
-    assert!(temp_root.join("build/bin/smoke").exists());
+    #[cfg(windows)]
+    let built_output = temp_root.join("build/bin/smoke.exe");
+    #[cfg(not(windows))]
+    let built_output = temp_root.join("build/bin/smoke");
+
+    assert!(built_output.exists());
 
     let _ = fs::remove_dir_all(temp_root);
 }
