@@ -18,11 +18,10 @@ pub(crate) fn configure_cli_colors() {
 pub(crate) fn cli_accent(text: impl AsRef<str>) -> String {
     #[cfg(windows)]
     {
-        return text
-            .as_ref()
+        text.as_ref()
             .truecolor(CLI_WHITE_RGB.0, CLI_WHITE_RGB.1, CLI_WHITE_RGB.2)
             .bold()
-            .to_string();
+            .to_string()
     }
 
     #[cfg(not(windows))]
@@ -34,10 +33,9 @@ pub(crate) fn cli_accent(text: impl AsRef<str>) -> String {
 pub(crate) fn cli_soft(text: impl AsRef<str>) -> String {
     #[cfg(windows)]
     {
-        return text
-            .as_ref()
+        text.as_ref()
             .truecolor(CLI_SOFT_RGB.0, CLI_SOFT_RGB.1, CLI_SOFT_RGB.2)
-            .to_string();
+            .to_string()
     }
 
     #[cfg(not(windows))]
@@ -49,10 +47,9 @@ pub(crate) fn cli_soft(text: impl AsRef<str>) -> String {
 pub(crate) fn cli_tertiary(text: impl AsRef<str>) -> String {
     #[cfg(windows)]
     {
-        return text
-            .as_ref()
+        text.as_ref()
             .truecolor(CLI_TERTIARY_RGB.0, CLI_TERTIARY_RGB.1, CLI_TERTIARY_RGB.2)
-            .to_string();
+            .to_string()
     }
 
     #[cfg(not(windows))]
@@ -77,6 +74,7 @@ pub(crate) fn cli_path(path: &Path) -> String {
     cli_soft(format_cli_path(path))
 }
 
+#[cfg(not(windows))]
 fn ansi_truecolor(text: &str, rgb: (u8, u8, u8), bold: bool) -> String {
     let bold_prefix = if bold { "\x1b[1m" } else { "" };
     format!(

@@ -1,4 +1,3 @@
-pub(crate) use crate::cli::test_discovery::find_test_files;
 pub(crate) use crate::{
     api_program_fingerprint, build_file_dependency_graph_incremental, build_project,
     build_project_symbol_lookup, build_reverse_dependency_graph, can_reuse_safe_rewrite_cache,

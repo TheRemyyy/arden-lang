@@ -1,7 +1,10 @@
-use std::fs;
 use std::path::Path;
 
-use super::*;
+#[cfg(unix)]
+use std::fs;
+
+#[cfg(unix)]
+use super::make_temp_project_root;
 
 #[test]
 fn is_test_like_file_matches_test_and_spec_suffixes() {

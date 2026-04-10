@@ -751,6 +751,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, fn_type, None)
     }
 
+    #[cfg(not(windows))]
     pub fn get_or_declare_usleep(&self) -> FunctionValue<'ctx> {
         let name = "usleep";
         if let Some(f) = self.module.get_function(name) {
@@ -3731,6 +3732,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, realloc_type, None)
     }
 
+    #[cfg(not(windows))]
     pub fn get_or_declare_pthread_create(&self) -> FunctionValue<'ctx> {
         let name = "pthread_create";
         if let Some(f) = self.module.get_function(name) {
@@ -3745,6 +3747,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, pthread_create_type, None)
     }
 
+    #[cfg(not(windows))]
     pub fn get_or_declare_pthread_join(&self) -> FunctionValue<'ctx> {
         let name = "pthread_join";
         if let Some(f) = self.module.get_function(name) {
@@ -3759,6 +3762,7 @@ impl<'ctx> Codegen<'ctx> {
         self.module.add_function(name, pthread_join_type, None)
     }
 
+    #[cfg(not(windows))]
     pub fn get_or_declare_pthread_cancel(&self) -> FunctionValue<'ctx> {
         let name = "pthread_cancel";
         if let Some(f) = self.module.get_function(name) {
