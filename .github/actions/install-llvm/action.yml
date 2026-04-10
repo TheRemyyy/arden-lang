@@ -19,7 +19,8 @@ runs:
           mv "${RUNNER_TEMP}/llvm-extract/LLVM-${LLVM_VERSION}-Linux-X64" "${LLVM_PREFIX}"
         fi
         sudo apt-get update
-        sudo apt-get install -y mold
+        sudo apt-get install -y clang mold
+        command -v clang
         command -v mold
         echo "LLVM_SYS_221_PREFIX=${LLVM_PREFIX}" >> "$GITHUB_ENV"
         echo "${LLVM_PREFIX}/bin" >> "$GITHUB_PATH"

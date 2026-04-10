@@ -56,12 +56,12 @@ link_args = ["-Wl,--as-needed"]
 | `entry` | Yes | Entry point file (contains `main()`) |
 | `files` | Yes | List of all source files to compile |
 | `output` | No | Output binary name (default: project name) |
-| `opt_level` | No | Final Clang optimization level: `0`, `1`, `2`, `3`, `s`, `z`, or `fast` (default: `3`) |
+| `opt_level` | No | Final native backend optimization level: `0`, `1`, `2`, `3`, `s`, `z`, or `fast` (default: `3`) |
 | `target` | No | Target triple (optional) |
 | `output_kind` | No | Final artifact kind: `bin`, `shared`, or `static` (default: `bin`) |
-| `link_libs` | No | Extra libraries passed to Clang as `-l<name>` |
+| `link_libs` | No | Extra libraries passed to the native linker backend |
 | `link_search` | No | Extra library search paths passed as `-L<path>` |
-| `link_args` | No | Extra raw linker arguments forwarded to Clang |
+| `link_args` | No | Extra raw linker arguments forwarded to the native linker backend |
 
 Path safety:
 - `entry` and every path in `files` must resolve inside the project root.
@@ -132,7 +132,7 @@ Source Files:
 - Valid values are: `0`, `1`, `2`, `3`, `s`, `z`, `fast`.
 - If `opt_level` is missing, Arden defaults to `3`.
 - If `opt_level` is present but invalid, Arden now rejects the config with a direct validation error instead of silently changing optimization behavior.
-- If `target` is set in `arden.toml`, Arden forwards it to Clang as `--target <triple>`.
+- If `target` is set in `arden.toml`, Arden forwards it to the LLVM/native backend toolchain for that build.
 - When `target` is set, host-native tuning flags are skipped to keep target/toolchain compatibility.
 - `output_kind = "shared"` emits a shared library, and `output_kind = "static"` emits a static archive.
 - `link_libs`, `link_search`, and `link_args` let project builds declare native link requirements in `arden.toml`.

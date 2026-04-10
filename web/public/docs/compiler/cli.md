@@ -81,7 +81,7 @@ Options:
 Notes:
 
 - project optimization is controlled by `opt_level` in `arden.toml`
-- project builds use explicit linker policy: Linux uses `mold`, macOS/Windows use LLVM `lld`
+- project builds use explicit linker policy: Linux uses direct `mold`, macOS uses LLVM `lld`, Windows uses `lld-link`
 - build cache metadata lives in `.ardencache/` in the project root
 - `--timings` is the fastest way to inspect build phases and cache reuse
 

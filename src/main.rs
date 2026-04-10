@@ -129,7 +129,7 @@ enum Commands {
         /// Optimization level: 0, 1, 2, 3, s, z, or fast
         #[arg(long)]
         opt_level: Option<String>,
-        /// Target triple passed through to clang
+        /// Target triple passed through to the native backend/linker
         #[arg(long)]
         target: Option<String>,
         /// Write LLVM IR instead of a final artifact
@@ -3971,10 +3971,20 @@ fn compile_program_ast(
         codegen.write_ir(&ll_path)?;
         println!("{} {}", cli_success("Wrote LLVM IR"), cli_path(&ll_path));
     } else {
-        let ir_path = output_path.with_extension("ll");
-        codegen.write_ir(&ir_path)?;
-        compile_ir(&ir_path, output_path, link)?;
-        let _ = fs::remove_file(&ir_path);
+        let object_path = output_path.with_extension(format!("arden-tmp.{}", object_ext()));
+        codegen
+            .write_object_with_config(&object_path, link.opt_level, link.target, &link.output_kind)
+            .map_err(|e| {
+                format!(
+                    "{}: Failed to emit object for '{}': {}",
+                    "error".red().bold(),
+                    source_path.display(),
+                    e
+                )
+            })?;
+        let link_result = link_objects(std::slice::from_ref(&object_path), output_path, link);
+        let _ = fs::remove_file(&object_path);
+        link_result?;
     }
 
     Ok(())
@@ -4292,9 +4302,6 @@ fn compile_source(
         codegen.write_ir(&ll_path)?;
         println!("{} {}", cli_success("Wrote LLVM IR"), cli_path(&ll_path));
     } else {
-        let ir_path = output_path.with_extension("ll");
-        codegen.write_ir(&ir_path)?;
-
         let link = LinkConfig {
             opt_level,
             target,
@@ -4303,8 +4310,20 @@ fn compile_source(
             link_libs: &[],
             link_args: &[],
         };
-        compile_ir(&ir_path, output_path, &link)?;
-        let _ = fs::remove_file(&ir_path);
+        let object_path = output_path.with_extension(format!("arden-tmp.{}", object_ext()));
+        codegen
+            .write_object_with_config(&object_path, opt_level, target, &OutputKind::Bin)
+            .map_err(|e| {
+                format!(
+                    "{}: Failed to emit object for '{}': {}",
+                    "error".red().bold(),
+                    source_path.display(),
+                    e
+                )
+            })?;
+        let link_result = link_objects(std::slice::from_ref(&object_path), output_path, &link);
+        let _ = fs::remove_file(&object_path);
+        link_result?;
     }
 
     Ok(())

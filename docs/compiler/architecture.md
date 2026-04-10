@@ -74,13 +74,13 @@ Related docs:
 
 ## Native Toolchain
 
-Arden lowers through LLVM and links through Clang.
+Arden lowers through LLVM object emission and links through explicit platform linkers.
 
 Current linker policy is explicit:
 
-- Linux requires `mold`
+- Linux requires direct `mold`
 - macOS requires LLVM `lld`
-- Windows requires LLVM `lld`
+- Windows requires LLVM `lld-link`
 
 This is also reflected in CI and release workflows.
 
@@ -110,4 +110,3 @@ The main CLI entrypoint is:
 That command surface is documented in:
 
 - [CLI reference](cli.md)
-

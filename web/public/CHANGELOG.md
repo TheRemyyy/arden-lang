@@ -4,6 +4,12 @@ All notable changes to the Arden will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### ♻️ Changed
+
+- Reworked native artifact production around direct LLVM object emission plus stricter platform linker backends, so Arden now links Linux outputs through `mold` directly, Windows outputs through `lld-link`, and repository Cargo builds pin the intended `mold`/`lld` policy in `.cargo/config.toml`.
+
 ## [1.3.7] - 2026-04-10
 
 ### ♻️ Changed

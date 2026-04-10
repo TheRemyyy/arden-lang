@@ -1,8 +1,12 @@
 use crate::project::OutputKind;
 use colored::*;
+use std::env;
+#[cfg(windows)]
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
 pub(crate) fn validate_opt_level(opt_level: Option<&str>) -> Result<(), String> {
     let Some(raw) = opt_level else {
         return Ok(());
@@ -23,6 +27,7 @@ pub(crate) fn validate_opt_level(opt_level: Option<&str>) -> Result<(), String> 
     ))
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn resolve_clang_opt_flag(opt_level: Option<&str>) -> &'static str {
     let normalized = opt_level
         .map(str::trim)
@@ -49,24 +54,28 @@ pub(crate) struct LinkConfig<'a> {
     pub(crate) link_args: &'a [String],
 }
 
-pub(crate) fn shutil_which(tool: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|paths| {
-        std::env::split_paths(&paths).any(|dir| {
+fn find_tool_in_path(tool: &str) -> Option<PathBuf> {
+    env::var_os("PATH").and_then(|paths| {
+        env::split_paths(&paths).find_map(|dir| {
             let candidate = dir.join(tool);
             if candidate.is_file() {
-                return true;
+                return Some(candidate);
             }
             #[cfg(windows)]
             {
-                let exe = dir.join(format!("{}.exe", tool));
-                exe.is_file()
+                let exe = dir.join(format!("{tool}.exe"));
+                if exe.is_file() {
+                    return Some(exe);
+                }
             }
-            #[cfg(not(windows))]
-            {
-                false
-            }
+            None
         })
     })
+}
+
+#[allow(dead_code)]
+pub(crate) fn shutil_which(tool: &str) -> bool {
+    find_tool_in_path(tool).is_some()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -78,7 +87,7 @@ pub(crate) enum LinkerFlavor {
 }
 
 impl LinkerFlavor {
-    pub(crate) fn clang_fuse_ld(self) -> &'static str {
+    pub(crate) fn cache_key(self) -> &'static str {
         match self {
             #[cfg(target_os = "linux")]
             LinkerFlavor::Mold => "mold",
@@ -86,45 +95,44 @@ impl LinkerFlavor {
             LinkerFlavor::Lld => "lld",
         }
     }
-
-    pub(crate) fn cache_key(self) -> &'static str {
-        self.clang_fuse_ld()
-    }
 }
 
 pub(crate) fn detect_linker_flavor() -> Result<LinkerFlavor, String> {
     #[cfg(target_os = "linux")]
-    if shutil_which("mold") || shutil_which("ld.mold") {
-        return Ok(LinkerFlavor::Mold);
-    }
-
-    #[cfg(target_os = "linux")]
-    return Err(format!(
-        "{}: Required linker 'mold' not found in PATH. Install mold and retry.",
-        "error".red().bold()
-    ));
-
-    #[cfg(target_os = "macos")]
-    if shutil_which("ld64.lld") || shutil_which("ld.lld") || shutil_which("lld") {
-        return Ok(LinkerFlavor::Lld);
+    {
+        if find_tool_in_path("mold").is_some() || find_tool_in_path("ld.mold").is_some() {
+            return Ok(LinkerFlavor::Mold);
+        }
+        return Err(format!(
+            "{}: Required linker 'mold' not found in PATH. Install mold and retry.",
+            "error".red().bold()
+        ));
     }
 
     #[cfg(target_os = "macos")]
-    return Err(format!(
-        "{}: Required LLVM linker not found in PATH. Install lld/ld64.lld and retry.",
-        "error".red().bold()
-    ));
-
-    #[cfg(windows)]
-    if shutil_which("lld-link") || shutil_which("ld.lld") || shutil_which("lld") {
-        return Ok(LinkerFlavor::Lld);
+    {
+        if find_tool_in_path("ld64.lld").is_some()
+            || find_tool_in_path("ld.lld").is_some()
+            || find_tool_in_path("lld").is_some()
+        {
+            return Ok(LinkerFlavor::Lld);
+        }
+        return Err(format!(
+            "{}: Required LLVM linker not found in PATH. Install lld/ld64.lld and retry.",
+            "error".red().bold()
+        ));
     }
 
     #[cfg(windows)]
-    return Err(format!(
-        "{}: Required LLVM linker not found in PATH. Install LLVM lld and retry.",
-        "error".red().bold()
-    ));
+    {
+        if find_tool_in_path("lld-link").is_some() {
+            return Ok(LinkerFlavor::Lld);
+        }
+        return Err(format!(
+            "{}: Required LLVM linker 'lld-link' not found in PATH. Install LLVM lld and retry.",
+            "error".red().bold()
+        ));
+    }
 
     #[allow(unreachable_code)]
     Err(format!(
@@ -151,11 +159,47 @@ pub(crate) fn should_force_no_pie(link: &LinkConfig<'_>) -> bool {
     }
 }
 
+fn linker_thread_count() -> usize {
+    std::thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(1)
+}
+
+fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String> {
+    let output = command.output().map_err(|error| {
+        format!(
+            "{}: Failed to launch {}: {}",
+            "error".red().bold(),
+            tool_label,
+            error
+        )
+    })?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let details = if stderr.trim().is_empty() {
+        stdout.trim()
+    } else {
+        stderr.trim()
+    };
+    Err(format!(
+        "{}: {} failed: {}",
+        "error".red().bold(),
+        tool_label,
+        details
+    ))
+}
+
+#[allow(dead_code)]
 pub(crate) fn escape_response_file_arg(arg: &str) -> String {
     let escaped = arg.replace('\\', "\\\\").replace('"', "\\\"");
     format!("\"{}\"", escaped)
 }
 
+#[allow(dead_code)]
 pub(crate) fn write_link_response_file(path: &Path, objects: &[PathBuf]) -> Result<(), String> {
     let mut contents = String::new();
     for object in objects {
@@ -173,135 +217,452 @@ pub(crate) fn write_link_response_file(path: &Path, objects: &[PathBuf]) -> Resu
     })
 }
 
-/// Compile LLVM IR using clang
-pub(crate) fn compile_ir(
-    ir_path: &Path,
-    output_path: &Path,
-    link: &LinkConfig<'_>,
-) -> Result<(), String> {
-    let linker = detect_linker_flavor()?;
-    let opt_flag = resolve_clang_opt_flag(link.opt_level);
-    let run_clang = |march_native: bool, mtune_native: bool| {
-        let mut cmd = Command::new("clang");
-        cmd.arg(ir_path)
-            .arg("-o")
-            .arg(output_path)
-            .arg("-Wno-override-module")
-            .arg(opt_flag)
-            .arg(format!("-fuse-ld={}", linker.clang_fuse_ld()));
+#[cfg(target_os = "linux")]
+struct LinuxLinkContext {
+    dynamic_linker: PathBuf,
+    crt1: Option<PathBuf>,
+    crti: PathBuf,
+    crtn: PathBuf,
+    crtbegin: Option<PathBuf>,
+    crtend: Option<PathBuf>,
+    system_lib_dirs: Vec<PathBuf>,
+}
 
-        match link.output_kind {
-            OutputKind::Bin => {}
-            OutputKind::Shared => {
-                cmd.arg("-shared");
-            }
-            OutputKind::Static => {
-                cmd.arg("-c");
-            }
-        }
-
-        if let Some(target_triple) = link.target {
-            cmd.arg("--target").arg(target_triple);
-        }
-
-        if link.target.is_none() {
-            if march_native {
-                cmd.arg("-march=native");
-            }
-            if mtune_native {
-                cmd.arg("-mtune=native");
-            }
-        }
-
-        // Safe performance tweak: keep less frame bookkeeping in optimized binaries.
-        cmd.arg("-fomit-frame-pointer");
-
-        #[cfg(windows)]
-        cmd.arg("-llegacy_stdio_definitions").arg("-lkernel32");
-
-        #[cfg(not(windows))]
-        cmd.arg("-lm").arg("-pthread");
-
-        // GitHub Actions Ubuntu links executables as PIE by default; Arden bin objects/IR are
-        // regular executable codegen, so request non-PIE explicitly on ELF toolchains.
-        #[cfg(all(unix, not(target_os = "macos")))]
-        if should_force_no_pie(link) {
-            cmd.arg("-no-pie");
-        }
-
-        for path in link.link_search {
-            cmd.arg(format!("-L{}", path));
-        }
-
-        for lib in link.link_libs {
-            cmd.arg(format!("-l{}", lib));
-        }
-
-        for arg in link.link_args {
-            cmd.arg(arg);
-        }
-
-        cmd.output()
-    };
-
-    // Keep aggressive native tuning, but degrade gracefully if one native flag is unsupported.
-    let mut attempts: Vec<(bool, bool)> = vec![(true, true), (true, false), (false, false)];
-    if link.target.is_some() {
-        attempts = vec![(false, false)];
+#[cfg(target_os = "linux")]
+fn linux_target_descriptor(
+    target: Option<&str>,
+) -> Result<(&'static str, &'static [&'static str]), String> {
+    let target = target.unwrap_or(env::consts::ARCH).to_ascii_lowercase();
+    if target.contains("x86_64") {
+        return Ok((
+            "x86_64-linux-gnu",
+            &[
+                "/lib64/ld-linux-x86-64.so.2",
+                "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+            ],
+        ));
     }
-
-    let mut last_stderr = String::new();
-    for (march_native, mtune_native) in attempts {
-        match run_clang(march_native, mtune_native) {
-            Ok(output) if output.status.success() => {
-                if link.output_kind == OutputKind::Static {
-                    let object_path = output_path.with_extension("o");
-                    fs::rename(output_path, &object_path).map_err(|e| {
-                        format!(
-                            "{}: Failed to stage object file for static archive: {}",
-                            "error".red().bold(),
-                            e
-                        )
-                    })?;
-                    let status = Command::new("ar")
-                        .arg("rcs")
-                        .arg(output_path)
-                        .arg(&object_path)
-                        .status()
-                        .map_err(|e| {
-                            format!(
-                                "{}: Failed to run ar for static library creation: {}",
-                                "error".red().bold(),
-                                e
-                            )
-                        })?;
-                    let _ = fs::remove_file(&object_path);
-                    if !status.success() {
-                        return Err(format!(
-                            "{}: ar failed while creating static library",
-                            "error".red().bold()
-                        ));
-                    }
-                }
-                return Ok(());
-            }
-            Ok(output) => {
-                last_stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            }
-            Err(_) => {
-                return Err(format!(
-                    "{}: Clang not found. Install clang to compile.",
-                    "error".red().bold()
-                ));
-            }
-        }
+    if target.contains("aarch64") || target.contains("arm64") {
+        return Ok((
+            "aarch64-linux-gnu",
+            &[
+                "/lib/ld-linux-aarch64.so.1",
+                "/lib64/ld-linux-aarch64.so.1",
+                "/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1",
+            ],
+        ));
     }
 
     Err(format!(
-        "{}: Clang failed: {}",
+        "{}: Unsupported Linux link target '{}'. Arden currently supports direct mold linking for x86_64 and aarch64 GNU Linux targets.",
         "error".red().bold(),
-        last_stderr
+        target
     ))
+}
+
+#[cfg(target_os = "linux")]
+fn first_existing_path(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates.iter().find(|path| path.exists()).cloned()
+}
+
+#[cfg(target_os = "linux")]
+fn collect_existing_dirs(candidates: &[PathBuf]) -> Vec<PathBuf> {
+    let mut collected = Vec::new();
+    for candidate in candidates {
+        if candidate.is_dir() && !collected.contains(candidate) {
+            collected.push(candidate.clone());
+        }
+    }
+    collected
+}
+
+#[cfg(target_os = "linux")]
+fn collect_gcc_version_dirs() -> Vec<PathBuf> {
+    let mut version_dirs = Vec::new();
+    for root in [Path::new("/usr/lib/gcc"), Path::new("/usr/lib64/gcc")] {
+        let Ok(triples) = fs::read_dir(root) else {
+            continue;
+        };
+        for triple in triples.filter_map(Result::ok) {
+            if !triple.path().is_dir() {
+                continue;
+            }
+            let Ok(versions) = fs::read_dir(triple.path()) else {
+                continue;
+            };
+            for version in versions.filter_map(Result::ok) {
+                if version.path().is_dir() {
+                    version_dirs.push(version.path());
+                }
+            }
+        }
+    }
+    version_dirs.sort();
+    version_dirs.reverse();
+    version_dirs
+}
+
+#[cfg(target_os = "linux")]
+fn find_gcc_support_object(name: &str) -> Option<PathBuf> {
+    for version_dir in collect_gcc_version_dirs() {
+        let candidate = version_dir.join(name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn linux_link_context(link: &LinkConfig<'_>) -> Result<LinuxLinkContext, String> {
+    let (triple, dynamic_linker_candidates) = linux_target_descriptor(link.target)?;
+    let arch_lib_dirs = collect_existing_dirs(&[
+        PathBuf::from(format!("/usr/lib/{triple}")),
+        PathBuf::from(format!("/lib/{triple}")),
+        PathBuf::from("/usr/lib64"),
+        PathBuf::from("/lib64"),
+        PathBuf::from("/usr/lib"),
+        PathBuf::from("/lib"),
+        PathBuf::from("/usr/local/lib64"),
+        PathBuf::from("/usr/local/lib"),
+    ]);
+    let dynamic_linker = first_existing_path(
+        &dynamic_linker_candidates
+            .iter()
+            .map(PathBuf::from)
+            .collect::<Vec<_>>(),
+    )
+    .ok_or_else(|| {
+        format!(
+            "{}: Failed to locate the Linux dynamic loader for target '{}'.",
+            "error".red().bold(),
+            triple
+        )
+    })?;
+
+    let crti = first_existing_path(
+        &arch_lib_dirs
+            .iter()
+            .map(|dir| dir.join("crti.o"))
+            .collect::<Vec<_>>(),
+    )
+    .ok_or_else(|| {
+        format!(
+            "{}: Failed to locate crti.o for target '{}'.",
+            "error".red().bold(),
+            triple
+        )
+    })?;
+    let crtn = first_existing_path(
+        &arch_lib_dirs
+            .iter()
+            .map(|dir| dir.join("crtn.o"))
+            .collect::<Vec<_>>(),
+    )
+    .ok_or_else(|| {
+        format!(
+            "{}: Failed to locate crtn.o for target '{}'.",
+            "error".red().bold(),
+            triple
+        )
+    })?;
+
+    let crt1 = if link.output_kind == OutputKind::Bin {
+        first_existing_path(
+            &arch_lib_dirs
+                .iter()
+                .flat_map(|dir| [dir.join("crt1.o"), dir.join("Scrt1.o")])
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        None
+    };
+    let crtbegin_name = if link.output_kind == OutputKind::Shared {
+        "crtbeginS.o"
+    } else {
+        "crtbegin.o"
+    };
+    let crtend_name = if link.output_kind == OutputKind::Shared {
+        "crtendS.o"
+    } else {
+        "crtend.o"
+    };
+    let crtbegin = find_gcc_support_object(crtbegin_name);
+    let crtend = find_gcc_support_object(crtend_name);
+
+    let mut system_lib_dirs = arch_lib_dirs;
+    if let Some(parent) = crtbegin.as_ref().and_then(|path| path.parent()) {
+        let parent = parent.to_path_buf();
+        if !system_lib_dirs.contains(&parent) {
+            system_lib_dirs.push(parent);
+        }
+    }
+
+    Ok(LinuxLinkContext {
+        dynamic_linker,
+        crt1,
+        crti,
+        crtn,
+        crtbegin,
+        crtend,
+        system_lib_dirs,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn append_unix_link_inputs(command: &mut Command, link: &LinkConfig<'_>) {
+    for path in link.link_search {
+        command.arg("-L").arg(path);
+    }
+    for lib in link.link_libs {
+        command.arg(format!("-l{lib}"));
+    }
+    command
+        .arg("-lm")
+        .arg("-lpthread")
+        .arg("-lc")
+        .arg("-lgcc_s")
+        .arg("-lgcc");
+    for arg in link.link_args {
+        command.arg(arg);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn link_with_mold(
+    objects: &[PathBuf],
+    output_path: &Path,
+    link: &LinkConfig<'_>,
+) -> Result<(), String> {
+    let linker_path = find_tool_in_path("mold")
+        .or_else(|| find_tool_in_path("ld.mold"))
+        .ok_or_else(|| {
+            format!(
+                "{}: Required linker 'mold' not found in PATH. Install mold and retry.",
+                "error".red().bold()
+            )
+        })?;
+    let context = linux_link_context(link)?;
+    let mut command = Command::new(linker_path);
+    command
+        .arg(format!("--thread-count={}", linker_thread_count()))
+        .arg("--build-id=fast")
+        .arg("--as-needed")
+        .arg("-o")
+        .arg(output_path);
+
+    if link.output_kind == OutputKind::Shared {
+        command.arg("--shared");
+    } else if should_force_no_pie(link) {
+        command.arg("--no-pie");
+    }
+
+    if link.output_kind == OutputKind::Bin {
+        command.arg("--dynamic-linker").arg(&context.dynamic_linker);
+        if let Some(crt1) = &context.crt1 {
+            command.arg(crt1);
+        }
+    }
+
+    command.arg(&context.crti);
+    if let Some(crtbegin) = &context.crtbegin {
+        command.arg(crtbegin);
+    }
+
+    for object in objects {
+        command.arg(object);
+    }
+    for dir in &context.system_lib_dirs {
+        command.arg("-L").arg(dir);
+    }
+    append_unix_link_inputs(&mut command, link);
+    if let Some(crtend) = &context.crtend {
+        command.arg(crtend);
+    }
+    command.arg(&context.crtn);
+
+    run_link_command(command, "mold")
+}
+
+#[cfg(windows)]
+fn windows_machine_flag(target: Option<&str>) -> &'static str {
+    let target = target
+        .unwrap_or("x86_64-pc-windows-msvc")
+        .to_ascii_lowercase();
+    if target.contains("aarch64") || target.contains("arm64") {
+        "arm64"
+    } else if target.contains("i686") || target.contains("x86") {
+        "x86"
+    } else {
+        "x64"
+    }
+}
+
+#[cfg(windows)]
+fn windows_search_paths(link: &LinkConfig<'_>) -> Vec<PathBuf> {
+    let mut paths = link
+        .link_search
+        .iter()
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
+    if let Some(lib_env) = env::var_os("LIB") {
+        paths.extend(env::split_paths(&lib_env));
+    }
+    paths
+}
+
+#[cfg(windows)]
+fn maybe_find_windows_builtins() -> Option<PathBuf> {
+    let prefixes = [
+        env::var_os("ARDEN_LLVM_REAL_PREFIX"),
+        env::var_os("LLVM_SYS_221_PREFIX"),
+    ];
+    for prefix in prefixes.into_iter().flatten() {
+        let root = PathBuf::from(prefix);
+        let clang_lib_root = root.join("lib").join("clang");
+        let Ok(entries) = fs::read_dir(clang_lib_root) else {
+            continue;
+        };
+        let mut versions = entries
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().is_dir())
+            .collect::<Vec<_>>();
+        versions.sort_by_key(|entry| entry.file_name());
+        versions.reverse();
+        for version in versions {
+            let candidate = version
+                .path()
+                .join("lib")
+                .join("windows")
+                .join("clang_rt.builtins-x86_64.lib");
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn normalize_windows_lib_name(lib: &str) -> OsString {
+    if lib.ends_with(".lib") {
+        return OsString::from(lib);
+    }
+    OsString::from(format!("{lib}.lib"))
+}
+
+#[cfg(windows)]
+fn link_with_lld_link(
+    objects: &[PathBuf],
+    output_path: &Path,
+    link: &LinkConfig<'_>,
+) -> Result<(), String> {
+    let linker_path = find_tool_in_path("lld-link").ok_or_else(|| {
+        format!(
+            "{}: Required LLVM linker 'lld-link' not found in PATH. Install LLVM lld and retry.",
+            "error".red().bold()
+        )
+    })?;
+    let mut command = Command::new(linker_path);
+    command
+        .arg(format!("/out:{}", output_path.display()))
+        .arg(format!("/machine:{}", windows_machine_flag(link.target)))
+        .arg(format!("/threads:{}", linker_thread_count()))
+        .arg("/incremental:no")
+        .arg("/opt:ref")
+        .arg("/opt:icf")
+        .arg("/Brepro")
+        .arg("/release")
+        .arg("/dynamicbase")
+        .arg("/nxcompat");
+
+    match link.output_kind {
+        OutputKind::Bin => {
+            command
+                .arg("/subsystem:console")
+                .arg("/entry:mainCRTStartup");
+        }
+        OutputKind::Shared => {
+            command.arg("/dll");
+            command.arg(format!(
+                "/implib:{}",
+                output_path.with_extension("lib").display()
+            ));
+        }
+        OutputKind::Static => {}
+    }
+
+    for object in objects {
+        command.arg(object);
+    }
+    for path in windows_search_paths(link) {
+        command.arg(format!("/libpath:{}", path.display()));
+    }
+    if let Some(builtins) = maybe_find_windows_builtins() {
+        command.arg(builtins);
+    }
+
+    for lib in [
+        "libcmt",
+        "oldnames",
+        "vcruntime",
+        "ucrt",
+        "legacy_stdio_definitions",
+        "kernel32",
+    ] {
+        command.arg(normalize_windows_lib_name(lib));
+    }
+    for lib in link.link_libs {
+        command.arg(normalize_windows_lib_name(lib));
+    }
+    for arg in link.link_args {
+        command.arg(arg);
+    }
+
+    run_link_command(command, "lld-link")
+}
+
+#[cfg(target_os = "macos")]
+fn link_with_clang_driver(
+    objects: &[PathBuf],
+    output_path: &Path,
+    link: &LinkConfig<'_>,
+) -> Result<(), String> {
+    let _ = detect_linker_flavor()?;
+    let response_path = output_path.with_extension("link.rsp");
+    write_link_response_file(&response_path, objects)?;
+    let mut command = Command::new("clang");
+    command
+        .arg(format!("@{}", response_path.display()))
+        .arg("-o")
+        .arg(output_path)
+        .arg(resolve_clang_opt_flag(link.opt_level))
+        .arg("-fuse-ld=lld");
+
+    if link.output_kind == OutputKind::Shared {
+        command.arg("-shared");
+    }
+    if let Some(target_triple) = link.target {
+        command.arg("--target").arg(target_triple);
+    } else {
+        command.arg("-march=native").arg("-mtune=native");
+    }
+
+    command.arg("-fomit-frame-pointer");
+    command.arg("-lm").arg("-pthread");
+    for path in link.link_search {
+        command.arg(format!("-L{}", path));
+    }
+    for lib in link.link_libs {
+        command.arg(format!("-l{}", lib));
+    }
+    for arg in link.link_args {
+        command.arg(arg);
+    }
+
+    let result = run_link_command(command, "clang + lld");
+    let _ = fs::remove_file(&response_path);
+    result
 }
 
 pub(crate) fn link_objects(
@@ -309,7 +670,6 @@ pub(crate) fn link_objects(
     output_path: &Path,
     link: &LinkConfig<'_>,
 ) -> Result<(), String> {
-    let linker = detect_linker_flavor()?;
     if objects.is_empty() {
         return Err(format!(
             "{}: No object files generated for project build.",
@@ -317,7 +677,6 @@ pub(crate) fn link_objects(
         ));
     }
 
-    let opt_flag = resolve_clang_opt_flag(link.opt_level);
     match link.output_kind {
         OutputKind::Static => {
             let status = Command::new("ar")
@@ -341,64 +700,17 @@ pub(crate) fn link_objects(
             Ok(())
         }
         OutputKind::Bin | OutputKind::Shared => {
-            let response_path = output_path.with_extension("link.rsp");
-            write_link_response_file(&response_path, objects)?;
-            let mut cmd = Command::new("clang");
-            cmd.arg(format!("@{}", response_path.display()))
-                .arg("-o")
-                .arg(output_path)
-                .arg(opt_flag)
-                .arg(format!("-fuse-ld={}", linker.clang_fuse_ld()));
-
-            if link.output_kind == OutputKind::Shared {
-                cmd.arg("-shared");
+            #[cfg(target_os = "linux")]
+            {
+                link_with_mold(objects, output_path, link)
             }
-            if let Some(target_triple) = link.target {
-                cmd.arg("--target").arg(target_triple);
-            } else {
-                cmd.arg("-march=native").arg("-mtune=native");
+            #[cfg(target_os = "macos")]
+            {
+                link_with_clang_driver(objects, output_path, link)
             }
-
-            cmd.arg("-fomit-frame-pointer");
-
             #[cfg(windows)]
-            cmd.arg("-llegacy_stdio_definitions").arg("-lkernel32");
-
-            #[cfg(not(windows))]
-            cmd.arg("-lm").arg("-pthread");
-
-            // Avoid distro-dependent default PIE linking for normal executables on ELF hosts.
-            #[cfg(all(unix, not(target_os = "macos")))]
-            if should_force_no_pie(link) {
-                cmd.arg("-no-pie");
-            }
-
-            for path in link.link_search {
-                cmd.arg(format!("-L{}", path));
-            }
-            for lib in link.link_libs {
-                cmd.arg(format!("-l{}", lib));
-            }
-            for arg in link.link_args {
-                cmd.arg(arg);
-            }
-
-            let output = cmd.output().map_err(|_| {
-                format!(
-                    "{}: Clang not found. Install clang to compile.",
-                    "error".red().bold()
-                )
-            })?;
-            let _ = fs::remove_file(&response_path);
-            if output.status.success() {
-                Ok(())
-            } else {
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                Err(format!(
-                    "{}: Clang failed while linking objects: {}",
-                    "error".red().bold(),
-                    stderr
-                ))
+            {
+                link_with_lld_link(objects, output_path, link)
             }
         }
     }

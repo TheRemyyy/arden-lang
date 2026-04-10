@@ -85,7 +85,7 @@ link_args = ["-Wl,--as-needed"]
 | `opt_level` | no | `0`, `1`, `2`, `3`, `s`, `z`, or `fast` |
 | `target` | no | Optional target triple |
 | `output_kind` | no | `bin`, `shared`, or `static` |
-| `link_libs` | no | Extra libraries passed to Clang |
+| `link_libs` | no | Extra libraries passed to the native linker backend |
 | `link_search` | no | Extra library search paths |
 | `link_args` | no | Extra raw linker args |
 

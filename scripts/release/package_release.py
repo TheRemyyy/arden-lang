@@ -80,14 +80,7 @@ def copy_selected_paths(source_root: Path, destination_root: Path, relative_path
 
 
 def copy_linux_llvm_runtime(source_root: Path, destination_root: Path) -> None:
-    copy_selected_paths(
-        source_root,
-        destination_root,
-        [
-            Path("bin") / "clang",
-            Path("lib") / "clang",
-        ],
-    )
+    destination_root.mkdir(parents=True, exist_ok=True)
 
 
 def copy_llvm_prefix(platform_name: str, source_root: Path, destination_root: Path) -> None:
@@ -112,12 +105,12 @@ def copy_file(source: Path, destination: Path) -> None:
 
 
 def collect_linux_runtime_libraries(bundle_dir: Path) -> None:
-    runtime_prefixes = ("libclang", "libLLVM", "libLTO", "libRemarks", "libPolly")
+    runtime_prefixes = ("libLLVM", "libLTO", "libRemarks", "libPolly")
     bundle_root = bundle_dir.resolve()
     inspect_queue: list[Path] = []
-    bundled_clang = bundle_dir / "toolchain" / "llvm" / "bin" / "clang"
-    if bundled_clang.exists():
-        inspect_queue.append(bundled_clang)
+    bundled_binary = bundle_dir / "bin" / "arden-real"
+    if bundled_binary.exists():
+        inspect_queue.append(bundled_binary)
     extra_bin_dir = bundle_dir / "toolchain" / "extra" / "bin"
     if extra_bin_dir.exists():
         inspect_queue.extend(path for path in extra_bin_dir.iterdir() if path.is_file())
@@ -425,7 +418,7 @@ Asset: {asset_name}
 
 What is included:
 - Arden compiler binary
-- Bundled LLVM/Clang toolchain files needed by Arden
+- Bundled LLVM runtime files needed by Arden
 - Bundled linker helper binaries required by Arden on this platform
 
 How to run:

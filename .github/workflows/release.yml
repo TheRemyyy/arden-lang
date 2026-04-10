@@ -209,7 +209,7 @@ jobs:
 
             Each archive now includes:
             - the Arden compiler
-            - a bundled LLVM/Clang toolchain layout
+            - a bundled LLVM toolchain layout
             - the linker helper binaries Arden expects on that platform
             - a small launcher script (`arden` or `arden.cmd`)
             - a small install script for adding the launcher to PATH

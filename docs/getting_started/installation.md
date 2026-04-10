@@ -64,7 +64,7 @@ You need:
 
 - Rust `1.85+`
 - LLVM `22.1+`
-- Clang
+- Clang on Linux/macOS for Cargo-driven compiler builds
 - Git
 - a supported linker setup
 
@@ -140,7 +140,7 @@ Typical things to verify:
 
 #### Windows
 
-Windows builds use the MSVC toolchain plus LLVM tooling. CI also installs `libxml2` through `vcpkg`, which is a useful reference if you are reproducing the GitHub Actions environment locally.
+Windows builds use LLVM `lld-link` together with the VC/UCRT/Windows SDK import libraries available from Visual Studio and the Windows SDK. CI also installs `libxml2` through `vcpkg`, which is a useful reference if you are reproducing the GitHub Actions environment locally.
 
 The simplest path is usually:
 

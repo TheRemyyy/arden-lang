@@ -120,7 +120,7 @@ Arden intentionally keeps common tasks under one CLI instead of expecting separa
 
 ### Native Toolchain Output
 
-Arden lowers to LLVM IR and then produces native artifacts using Clang plus a platform-specific linker policy.
+Arden lowers through LLVM object emission and then produces native artifacts with explicit platform linker policy.
 
 Relevant docs:
 
