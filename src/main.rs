@@ -1224,7 +1224,7 @@ fn build_project(
     });
     build_timings.record_counts("source file discovery", &[("files", files.len())]);
 
-    let output_path = project_root.join(&config.output);
+    let output_path = resolve_project_output_path(&project_root, &config);
     if !check_only {
         ensure_output_parent_dir(&output_path)?;
     }
@@ -3939,7 +3939,7 @@ fn run_project(
 
     build_project(release, false, do_check, false, show_timings)?;
 
-    let output_path = project_root.join(&config.output);
+    let output_path = resolve_project_output_path(&project_root, &config);
 
     println!("{} {}", cli_accent("Running"), cli_path(&output_path));
     println!();
@@ -3957,6 +3957,17 @@ fn ensure_project_is_runnable(output_kind: &OutputKind) -> Result<(), String> {
         "error".red().bold(),
         output_kind
     ))
+}
+
+fn resolve_project_output_path(project_root: &Path, config: &ProjectConfig) -> PathBuf {
+    let output_path = project_root.join(&config.output);
+    #[cfg(windows)]
+    {
+        if config.output_kind == OutputKind::Bin && output_path.extension().is_none() {
+            return output_path.with_extension("exe");
+        }
+    }
+    output_path
 }
 
 /// Run a single file (legacy mode)

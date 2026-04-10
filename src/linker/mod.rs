@@ -94,10 +94,10 @@ pub(crate) fn detect_linker_flavor() -> Result<LinkerFlavor, String> {
         {
             return Ok(LinkerFlavor::Lld);
         }
-        return Err(format!(
+        Err(format!(
             "{}: Required LLVM linker not found in PATH. Install lld/ld64.lld and retry.",
             "error".red().bold()
-        ));
+        ))
     }
 
     #[cfg(windows)]
@@ -105,10 +105,10 @@ pub(crate) fn detect_linker_flavor() -> Result<LinkerFlavor, String> {
         if find_tool_in_path("lld-link").is_some() {
             return Ok(LinkerFlavor::Lld);
         }
-        return Err(format!(
+        Err(format!(
             "{}: Required LLVM linker 'lld-link' not found in PATH. Install LLVM lld and retry.",
             "error".red().bold()
-        ));
+        ))
     }
 
     #[cfg(not(any(windows, unix)))]
@@ -153,7 +153,6 @@ fn apply_stable_command_dir(command: &mut Command, anchor_path: &Path) {
 }
 
 fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String> {
-    apply_fallback_current_dir(&mut command);
     let output = command.output().map_err(|error| {
         format!(
             "{}: Failed to launch {}: {}",
@@ -408,6 +407,7 @@ fn link_with_mold(
         })?;
     let context = linux_link_context(link)?;
     let mut command = Command::new(linker_path);
+    apply_fallback_current_dir(&mut command);
     let thread_count = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(1);
@@ -659,6 +659,7 @@ fn link_with_lld_link(
         )
     })?;
     let mut command = Command::new(linker_path);
+    apply_fallback_current_dir(&mut command);
     let thread_count = std::thread::available_parallelism()
         .map(|value| value.get())
         .unwrap_or(1);
@@ -774,6 +775,7 @@ fn link_with_macos_lld(
 
     write_link_response_file(&response_path, &response_args)?;
     let mut command = Command::new(linker_path);
+    apply_fallback_current_dir(&mut command);
     command.arg(format!("@{}", response_path.display()));
     apply_stable_command_dir(&mut command, output_path);
     let result = run_link_command(command, "ld64.lld");

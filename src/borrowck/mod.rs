@@ -6,8 +6,6 @@
 //! - Mutable borrow exclusivity
 //! - Use-after-move detection
 
-#![allow(dead_code)]
-
 use crate::ast::*;
 use crate::diagnostics::{render_source_diagnostic, span_to_location, SourceDiagnostic};
 use crate::stdlib::stdlib_registry;
@@ -69,8 +67,6 @@ struct VarState {
     state: OwnershipState,
     /// Is this variable mutable?
     mutable: bool,
-    /// Where was this variable declared?
-    declared_at: Span,
     /// Type of the variable (for drop checking)
     needs_drop: bool,
     /// Optional declared type (for method resolution in borrow checking)
@@ -430,7 +426,7 @@ impl BorrowChecker {
                 mutable,
             } => {
                 // Check the value expression (may involve moves)
-                self.check_expr(&value.node, value.span.clone(), false);
+                self.check_expr(&value.node, value.span.clone());
 
                 // If a reference is initialized from a call that borrows an argument,
                 // keep that borrow alive for the lifetime of this scope.
@@ -450,7 +446,7 @@ impl BorrowChecker {
                 };
 
                 // Check value first
-                self.check_expr(&value.node, value.span.clone(), false);
+                self.check_expr(&value.node, value.span.clone());
 
                 if matches!(value.node, Expr::AsyncBlock(_) | Expr::Lambda { .. }) {
                     if let Some(scope_depth) = target_scope_depth {
@@ -465,12 +461,12 @@ impl BorrowChecker {
             }
 
             Stmt::Expr(expr) => {
-                self.check_expr(&expr.node, expr.span.clone(), false);
+                self.check_expr(&expr.node, expr.span.clone());
             }
 
             Stmt::Return(expr) => {
                 if let Some(e) = expr {
-                    self.check_expr(&e.node, e.span.clone(), false);
+                    self.check_expr(&e.node, e.span.clone());
                 }
             }
 
@@ -479,7 +475,7 @@ impl BorrowChecker {
                 then_block,
                 else_block,
             } => {
-                self.check_expr(&condition.node, condition.span.clone(), false);
+                self.check_expr(&condition.node, condition.span.clone());
                 match Self::literal_bool(&condition.node) {
                     Some(true) => self.check_block(then_block),
                     Some(false) => {
@@ -497,7 +493,7 @@ impl BorrowChecker {
             }
 
             Stmt::While { condition, body } => {
-                self.check_expr(&condition.node, condition.span.clone(), false);
+                self.check_expr(&condition.node, condition.span.clone());
                 if !matches!(Self::literal_bool(&condition.node), Some(false)) {
                     self.check_block(body);
                 }
@@ -509,7 +505,7 @@ impl BorrowChecker {
                 iterable,
                 body,
             } => {
-                self.check_expr(&iterable.node, iterable.span.clone(), false);
+                self.check_expr(&iterable.node, iterable.span.clone());
                 self.enter_scope();
                 let needs_drop = var_type
                     .as_ref()
@@ -526,7 +522,7 @@ impl BorrowChecker {
             }
 
             Stmt::Match { expr, arms } => {
-                self.check_expr(&expr.node, expr.span.clone(), false);
+                self.check_expr(&expr.node, expr.span.clone());
                 for arm in arms {
                     self.enter_scope();
                     self.bind_pattern(&arm.pattern, span.clone());
@@ -600,17 +596,17 @@ impl BorrowChecker {
             Expr::Field { object, field: _ } => {
                 self.check_owner_mutability_for_assignment(&object.node, span.clone());
                 self.check_owner_borrow_state_for_assignment(&object.node, span.clone());
-                self.check_expr(&object.node, object.span.clone(), false);
+                self.check_expr(&object.node, object.span.clone());
             }
             Expr::Index { object, index } => {
                 self.check_owner_mutability_for_assignment(&object.node, span.clone());
                 self.check_owner_borrow_state_for_assignment(&object.node, span.clone());
-                self.check_expr(&object.node, object.span.clone(), false);
-                self.check_expr(&index.node, index.span.clone(), false);
+                self.check_expr(&object.node, object.span.clone());
+                self.check_expr(&index.node, index.span.clone());
             }
             Expr::Deref(inner) => {
                 self.check_owner_mutability_for_assignment(target, span.clone());
-                self.check_expr(&inner.node, inner.span.clone(), true);
+                self.check_place_expr(&inner.node, inner.span.clone());
             }
             _ => {
                 self.errors.push(BorrowError::new(
@@ -701,8 +697,7 @@ impl BorrowChecker {
         }
     }
 
-    #[allow(clippy::only_used_in_recursion)]
-    fn check_expr(&mut self, expr: &Expr, span: Span, need_mut: bool) {
+    fn check_expr(&mut self, expr: &Expr, span: Span) {
         match expr {
             Expr::Ident(name) => {
                 // Using a variable - check if it's valid
@@ -716,22 +711,22 @@ impl BorrowChecker {
             }
 
             Expr::Binary { left, right, op } => {
-                self.check_expr(&left.node, left.span.clone(), false);
+                self.check_expr(&left.node, left.span.clone());
                 let should_check_right = !matches!(
                     (op, Self::literal_bool(&left.node)),
                     (BinOp::Or, Some(true)) | (BinOp::And, Some(false))
                 );
                 if should_check_right {
-                    self.check_expr(&right.node, right.span.clone(), false);
+                    self.check_expr(&right.node, right.span.clone());
                 }
             }
 
             Expr::Unary { expr: inner, .. } => {
-                self.check_expr(&inner.node, inner.span.clone(), false);
+                self.check_expr(&inner.node, inner.span.clone());
             }
 
             Expr::Call { callee, args, .. } => {
-                self.check_expr(&callee.node, callee.span.clone(), false);
+                self.check_expr(&callee.node, callee.span.clone());
 
                 // Borrows created to satisfy receiver/argument modes are
                 // temporary for this call expression.
@@ -744,7 +739,7 @@ impl BorrowChecker {
                 let param_modes = self.resolve_call_param_modes(&callee.node, args.len());
 
                 for (i, arg) in args.iter().enumerate() {
-                    self.check_expr(&arg.node, arg.span.clone(), false);
+                    self.check_expr(&arg.node, arg.span.clone());
 
                     let mode = param_modes.get(i).unwrap_or(&ParamMode::Owned);
                     match mode {
@@ -780,16 +775,16 @@ impl BorrowChecker {
             }
 
             Expr::GenericFunctionValue { callee, .. } => {
-                self.check_expr(&callee.node, callee.span.clone(), false);
+                self.check_expr(&callee.node, callee.span.clone());
             }
 
             Expr::Field { object, field: _ } => {
-                self.check_expr(&object.node, object.span.clone(), need_mut);
+                self.check_expr(&object.node, object.span.clone());
             }
 
             Expr::Index { object, index } => {
-                self.check_expr(&object.node, object.span.clone(), need_mut);
-                self.check_expr(&index.node, index.span.clone(), false);
+                self.check_expr(&object.node, object.span.clone());
+                self.check_expr(&index.node, index.span.clone());
             }
 
             Expr::Construct { ty, args } => {
@@ -801,7 +796,7 @@ impl BorrowChecker {
                     .unwrap_or_default();
 
                 for (i, arg) in args.iter().enumerate() {
-                    self.check_expr(&arg.node, arg.span.clone(), false);
+                    self.check_expr(&arg.node, arg.span.clone());
 
                     let mode = param_modes.get(i).unwrap_or(&ParamMode::Owned);
                     match mode {
@@ -850,7 +845,7 @@ impl BorrowChecker {
                     );
                 }
 
-                self.check_expr(&body.node, body.span.clone(), false);
+                self.check_expr(&body.node, body.span.clone());
                 // Mark owned captures as moved after body analysis to avoid false
                 // use-after-move reports inside the lambda expression itself.
                 for ident in moved_captures {
@@ -864,7 +859,7 @@ impl BorrowChecker {
                 if let Expr::Ident(name) = &inner.node {
                     self.create_borrow(name, false, span.clone());
                 } else {
-                    self.check_expr(&inner.node, inner.span.clone(), false);
+                    self.check_expr(&inner.node, inner.span.clone());
                 }
             }
 
@@ -873,28 +868,28 @@ impl BorrowChecker {
                 if let Expr::Ident(name) = &inner.node {
                     self.create_borrow(name, true, span.clone());
                 } else {
-                    self.check_expr(&inner.node, inner.span.clone(), true);
+                    self.check_place_expr(&inner.node, inner.span.clone());
                 }
             }
 
             Expr::Deref(inner) => {
-                self.check_expr(&inner.node, inner.span.clone(), need_mut);
+                self.check_expr(&inner.node, inner.span.clone());
             }
 
             Expr::Try(inner) => {
-                self.check_expr(&inner.node, inner.span.clone(), false);
+                self.check_expr(&inner.node, inner.span.clone());
             }
 
             Expr::StringInterp(parts) => {
                 for part in parts {
                     if let StringPart::Expr(e) = part {
-                        self.check_expr(&e.node, e.span.clone(), false);
+                        self.check_expr(&e.node, e.span.clone());
                     }
                 }
             }
 
             Expr::Match { expr: inner, arms } => {
-                self.check_expr(&inner.node, inner.span.clone(), false);
+                self.check_expr(&inner.node, inner.span.clone());
                 for arm in arms {
                     self.enter_scope();
                     self.bind_pattern(&arm.pattern, span.clone());
@@ -906,7 +901,7 @@ impl BorrowChecker {
             }
 
             Expr::Await(inner) => {
-                self.check_expr(&inner.node, inner.span.clone(), false);
+                self.check_expr(&inner.node, inner.span.clone());
             }
 
             Expr::AsyncBlock(body) => {
@@ -961,9 +956,9 @@ impl BorrowChecker {
             }
 
             Expr::Require { condition, message } => {
-                self.check_expr(&condition.node, condition.span.clone(), false);
+                self.check_expr(&condition.node, condition.span.clone());
                 if let Some(msg) = message {
-                    self.check_expr(&msg.node, msg.span.clone(), false);
+                    self.check_expr(&msg.node, msg.span.clone());
                 }
             }
 
@@ -973,10 +968,10 @@ impl BorrowChecker {
                 inclusive: _,
             } => {
                 if let Some(s) = start {
-                    self.check_expr(&s.node, s.span.clone(), false);
+                    self.check_expr(&s.node, s.span.clone());
                 }
                 if let Some(e) = end {
-                    self.check_expr(&e.node, e.span.clone(), false);
+                    self.check_expr(&e.node, e.span.clone());
                 }
             }
 
@@ -985,7 +980,7 @@ impl BorrowChecker {
                 then_branch,
                 else_branch,
             } => {
-                self.check_expr(&condition.node, condition.span.clone(), false);
+                self.check_expr(&condition.node, condition.span.clone());
                 self.enter_scope();
                 for stmt in then_branch {
                     self.check_stmt(&stmt.node, stmt.span.clone());
@@ -1139,6 +1134,18 @@ impl BorrowChecker {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn check_place_expr(&mut self, expr: &Expr, span: Span) {
+        match expr {
+            Expr::Field { object, .. } => self.check_place_expr(&object.node, object.span.clone()),
+            Expr::Index { object, index } => {
+                self.check_place_expr(&object.node, object.span.clone());
+                self.check_expr(&index.node, index.span.clone());
+            }
+            Expr::Deref(inner) => self.check_place_expr(&inner.node, inner.span.clone()),
+            _ => self.check_expr(expr, span),
         }
     }
 
@@ -2510,7 +2517,6 @@ impl BorrowChecker {
         let var = VarState {
             state: OwnershipState::Owned,
             mutable,
-            declared_at: span.clone(),
             needs_drop,
             ty,
         };

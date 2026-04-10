@@ -147,7 +147,6 @@ fn resolves_generic_exact_import_alias_nominal_reference_names() {
             visibility: Visibility::Public,
             extends: None,
             implements: Vec::new(),
-            span: 0..0,
         },
     );
     checker.classes.insert(
@@ -161,7 +160,6 @@ fn resolves_generic_exact_import_alias_nominal_reference_names() {
             visibility: Visibility::Public,
             extends: None,
             implements: Vec::new(),
-            span: 0..0,
         },
     );
 

@@ -31,7 +31,7 @@ impl TypeChecker {
                     self.insert_interface_info(interface, &interface.name, decl.span.clone());
                 }
                 Decl::Enum(en) => {
-                    self.insert_enum_info(en, &en.name, decl.span.clone());
+                    self.insert_enum_info(en, &en.name);
                 }
                 Decl::Module(module) => {
                     self.collect_module_declarations(module, &module.name, decl.span.clone());
@@ -66,7 +66,6 @@ impl TypeChecker {
                     visibility: class.visibility,
                     extends: class.extends.clone(),
                     implements: class.implements.clone(),
-                    span: span.clone(),
                 });
             }
             Decl::Enum(en) => {
@@ -75,7 +74,6 @@ impl TypeChecker {
                     .unwrap_or_else(|| en.name.clone());
                 self.enums.entry(key).or_insert_with(|| EnumInfo {
                     variants: HashMap::new(),
-                    span: span.clone(),
                 });
             }
             Decl::Interface(interface) => {
@@ -283,7 +281,6 @@ impl TypeChecker {
                 visibility: class.visibility,
                 extends: class.extends.clone(),
                 implements: class.implements.clone(),
-                span,
             },
         );
     }
@@ -350,7 +347,7 @@ impl TypeChecker {
         );
     }
 
-    pub(crate) fn insert_enum_info(&mut self, en: &EnumDecl, key: &str, span: Span) {
+    pub(crate) fn insert_enum_info(&mut self, en: &EnumDecl, key: &str) {
         let mut variants = HashMap::new();
         for variant in &en.variants {
             let fields = variant
@@ -362,8 +359,7 @@ impl TypeChecker {
             self.enum_variant_to_enum
                 .insert(variant.name.clone(), key.to_string());
         }
-        self.enums
-            .insert(key.to_string(), EnumInfo { variants, span });
+        self.enums.insert(key.to_string(), EnumInfo { variants });
     }
 
     pub(crate) fn collect_module_declarations(
@@ -395,7 +391,7 @@ impl TypeChecker {
                 }
                 Decl::Enum(en) => {
                     let prefixed_name = format!("{}__{}", prefix, en.name);
-                    self.insert_enum_info(en, &prefixed_name, inner_decl.span.clone());
+                    self.insert_enum_info(en, &prefixed_name);
                 }
                 Decl::Module(nested) => {
                     let nested_prefix = format!("{}__{}", prefix, nested.name);
@@ -460,26 +456,5 @@ impl TypeChecker {
             },
         );
         self.register_function_leaf_name(key);
-    }
-
-    pub(crate) fn collect_module_function_signatures(&mut self, module: &ModuleDecl, prefix: &str) {
-        for inner_decl in &module.declarations {
-            match &inner_decl.node {
-                Decl::Function(func) => {
-                    let prefixed_name = format!("{}__{}", prefix, func.name);
-                    self.insert_function_signature(
-                        func,
-                        &prefixed_name,
-                        inner_decl.span.clone(),
-                        Some(format!("Function '{}'", prefixed_name)),
-                    );
-                }
-                Decl::Module(nested) => {
-                    let nested_prefix = format!("{}__{}", prefix, nested.name);
-                    self.collect_module_function_signatures(nested, &nested_prefix);
-                }
-                Decl::Class(_) | Decl::Enum(_) | Decl::Interface(_) | Decl::Import(_) => {}
-            }
-        }
     }
 }

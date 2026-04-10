@@ -4,89 +4,92 @@ fn sp<T>(node: T) -> ast::Spanned<T> {
     ast::Spanned::new(node, 0..0)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn rewrite_program_for_project(
-    program: &Program,
-    current_namespace: &str,
-    entry_namespace: &str,
-    namespace_functions: &HashMap<String, HashSet<String>>,
-    global_function_map: &HashMap<String, String>,
-    namespace_classes: &HashMap<String, HashSet<String>>,
-    global_class_map: &HashMap<String, String>,
-    namespace_enums: &HashMap<String, HashSet<String>>,
-    global_enum_map: &HashMap<String, String>,
-    namespace_modules: &HashMap<String, HashSet<String>>,
-    global_module_map: &HashMap<String, String>,
-    imports: &[ImportDecl],
-) -> Program {
-    super::rewrite_program_for_project(
-        program,
-        &super::ProjectRewriteContext {
-            current_namespace,
-            entry_namespace,
-            namespace_functions,
-            global_function_map,
-            namespace_classes,
-            global_class_map,
-            namespace_interfaces: namespace_modules,
-            global_interface_map: global_module_map,
-            namespace_enums,
-            global_enum_map,
-            namespace_modules,
-            global_module_map,
-            imports,
-        },
-    )
+macro_rules! rewrite_program_for_project {
+    (
+        $program:expr,
+        $current_namespace:expr,
+        $entry_namespace:expr,
+        $namespace_functions:expr,
+        $global_function_map:expr,
+        $namespace_classes:expr,
+        $global_class_map:expr,
+        $namespace_enums:expr,
+        $global_enum_map:expr,
+        $namespace_modules:expr,
+        $global_module_map:expr,
+        $imports:expr $(,)?
+    ) => {
+        super::rewrite_program_for_project(
+            $program,
+            &super::ProjectRewriteContext {
+                current_namespace: $current_namespace,
+                entry_namespace: $entry_namespace,
+                namespace_functions: $namespace_functions,
+                global_function_map: $global_function_map,
+                namespace_classes: $namespace_classes,
+                global_class_map: $global_class_map,
+                namespace_interfaces: $namespace_modules,
+                global_interface_map: $global_module_map,
+                namespace_enums: $namespace_enums,
+                global_enum_map: $global_enum_map,
+                namespace_modules: $namespace_modules,
+                global_module_map: $global_module_map,
+                imports: $imports,
+            },
+        )
+    };
 }
 
-#[allow(clippy::too_many_arguments)]
-fn fix_module_local_expr(
-    expr: &Expr,
-    current_namespace: &str,
-    entry_namespace: &str,
-    module_prefix: &str,
-    local_functions: &HashSet<String>,
-    local_classes: &HashSet<String>,
-    local_interfaces: &HashSet<String>,
-    local_enums: &HashSet<String>,
-    local_modules: &HashSet<String>,
-    imported_classes: &HashMap<String, (String, String)>,
-    global_class_map: &HashMap<String, String>,
-    imported_enums: &HashMap<String, (String, String)>,
-    global_enum_map: &HashMap<String, String>,
-    imported_modules: &HashMap<String, (String, String)>,
-    global_interface_map: &HashMap<String, String>,
-) -> Expr {
-    let class_symbol_names = super::collect_global_class_symbols(global_class_map, entry_namespace);
-    super::fix_module_local_expr(
-        expr,
-        super::ModuleRewriteContext {
-            module_prefix,
-            call_ctx: super::CallRewriteContext {
-                local_functions,
-                local_modules,
-                class_symbol_names: &class_symbol_names,
-                imported_map: &HashMap::new(),
-                global_function_map: &HashMap::new(),
-                global_module_map: &HashMap::new(),
-                expected_return_type: None,
-                type_ctx: super::RewriteTypeContext {
-                    current_namespace,
-                    local_classes,
-                    imported_classes,
-                    global_class_map,
-                    local_interfaces,
-                    imported_interfaces: &HashMap::new(),
-                    global_interface_map,
-                    local_enums,
-                    imported_enums,
-                    global_enum_map,
-                    imported_modules,
-                    entry_namespace,
+macro_rules! fix_module_local_expr {
+    (
+        $expr:expr,
+        $current_namespace:expr,
+        $entry_namespace:expr,
+        $module_prefix:expr,
+        $local_functions:expr,
+        $local_classes:expr,
+        $local_interfaces:expr,
+        $local_enums:expr,
+        $local_modules:expr,
+        $imported_classes:expr,
+        $global_class_map:expr,
+        $imported_enums:expr,
+        $global_enum_map:expr,
+        $imported_modules:expr,
+        $global_interface_map:expr $(,)?
+    ) => {{
+        let class_symbol_names =
+            super::collect_global_class_symbols($global_class_map, $entry_namespace);
+        super::fix_module_local_expr(
+            $expr,
+            super::ModuleRewriteContext {
+                module_prefix: $module_prefix,
+                call_ctx: super::CallRewriteContext {
+                    local_functions: $local_functions,
+                    local_modules: $local_modules,
+                    class_symbol_names: &class_symbol_names,
+                    imported_map: &HashMap::new(),
+                    global_function_map: &HashMap::new(),
+                    global_module_map: &HashMap::new(),
+                    expected_return_type: None,
+                    type_ctx: super::RewriteTypeContext {
+                        current_namespace: $current_namespace,
+                        local_classes: $local_classes,
+                        imported_classes: $imported_classes,
+                        global_class_map: $global_class_map,
+                        local_interfaces: $local_interfaces,
+                        imported_interfaces: &HashMap::new(),
+                        global_interface_map: $global_interface_map,
+                        local_enums: $local_enums,
+                        imported_enums: $imported_enums,
+                        global_enum_map: $global_enum_map,
+                        imported_modules: $imported_modules,
+                        entry_namespace: $entry_namespace,
+                    },
                 },
             },
-        },
-    )
+        )
+    }};
 }
 
 #[test]
@@ -131,7 +134,7 @@ fn keeps_shadowed_function_call_unmangled() {
     ]);
     let global_function_map = HashMap::from([("foo".to_string(), "lib".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -218,7 +221,7 @@ fn rewrites_imported_class_construct_and_module_field() {
     let global_class_map = HashMap::from([("Widget".to_string(), "lib".to_string())]);
     let global_module_map = HashMap::from([("Utils".to_string(), "lib".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -293,7 +296,7 @@ fn rewrites_namespace_alias_class_constructor_calls() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -358,7 +361,7 @@ fn rewrites_exact_imported_class_alias_constructor_calls() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -429,7 +432,7 @@ fn rewrites_namespace_alias_enum_variant_calls() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -505,7 +508,7 @@ fn rewrites_exact_imported_enum_alias_variant_calls() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -585,7 +588,7 @@ fn rewrites_exact_imported_enum_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -658,7 +661,7 @@ fn rewrites_exact_imported_enum_variant_alias_calls() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -740,7 +743,7 @@ fn rewrites_exact_imported_enum_variant_alias_patterns() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -813,7 +816,7 @@ fn rewrites_namespace_alias_enum_variant_patterns() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -886,7 +889,7 @@ fn rewrites_root_namespace_alias_builtin_variant_patterns() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -995,7 +998,7 @@ fn rewrites_local_enum_types_and_variant_calls_inside_function_bodies() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1107,7 +1110,7 @@ fn rewrites_namespace_alias_qualified_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1183,7 +1186,7 @@ fn rewrites_namespace_alias_qualified_call_type_args() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1262,7 +1265,7 @@ fn rewrites_namespace_alias_nested_module_function_call_type_args() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1374,7 +1377,7 @@ fn rewrites_local_module_function_call_type_args() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1451,7 +1454,7 @@ fn rewrites_namespace_alias_qualified_construct_type_strings() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1524,7 +1527,7 @@ fn rewrites_namespace_alias_nested_function_interface_types_inside_construct_str
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1615,7 +1618,7 @@ fn keeps_shadowed_module_ident_unmangled() {
         HashMap::from([("lib".to_string(), HashSet::from(["Utils".to_string()]))]);
     let global_module_map = HashMap::from([("Utils".to_string(), "lib".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1696,7 +1699,7 @@ fn rewrites_wildcard_imported_function_and_class_symbols() {
         HashMap::from([("lib".to_string(), HashSet::from(["Widget".to_string()]))]);
     let global_class_map = HashMap::from([("Widget".to_string(), "lib".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1786,7 +1789,7 @@ fn rewrites_aliased_imported_symbols() {
     let global_function_map = HashMap::from([("make".to_string(), "lib".to_string())]);
     let global_module_map = HashMap::from([("Tools".to_string(), "lib".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1870,7 +1873,7 @@ fn rewrites_namespace_alias_module_style_calls() {
     ]);
     let global_function_map = HashMap::from([("factorial".to_string(), "math_utils".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -1940,7 +1943,7 @@ fn rewrites_nested_namespace_alias_module_style_calls() {
     ]);
     let global_function_map = HashMap::from([("M__add1".to_string(), "util".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2007,7 +2010,7 @@ fn rewrites_dotted_module_alias_module_style_calls() {
     ]);
     let global_function_map = HashMap::from([("A__X__f".to_string(), "lib".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2080,7 +2083,7 @@ fn rewrites_namespace_alias_nested_module_dot_calls() {
     ]);
     let global_function_map = HashMap::from([("Tools__ping".to_string(), "lib".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2153,7 +2156,7 @@ fn rewrites_namespace_alias_deep_nested_module_dot_calls() {
     ]);
     let global_function_map = HashMap::from([("A__X__f".to_string(), "lib".to_string())]);
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2231,7 +2234,7 @@ fn rewrites_aliased_stdlib_module_calls() {
         },
     ];
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2309,7 +2312,7 @@ fn rewrites_exact_stdlib_value_alias_method_receivers_to_canonical_builtin_ident
         alias: Some("CurrentDir".to_string()),
     }];
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2375,7 +2378,7 @@ fn rewrites_builtin_exact_value_alias_method_receivers_to_materialized_values() 
         alias: Some("Empty".to_string()),
     }];
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2480,7 +2483,7 @@ fn rewrites_function_value_identifiers_outside_call_positions() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2587,7 +2590,7 @@ fn rewrites_if_expression_function_value_branches() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2679,7 +2682,7 @@ fn rewrites_module_alias_function_values_outside_call_positions() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2757,7 +2760,7 @@ fn rewrites_nested_module_alias_function_values_outside_call_positions() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2836,7 +2839,7 @@ fn rewrites_namespace_alias_nested_module_generic_class_types_and_constructors()
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -2878,7 +2881,7 @@ fn rewrites_namespace_alias_nested_module_generic_class_types_and_constructors()
 
 #[test]
 fn rewrites_module_local_generic_function_value_type_args() {
-    let rewritten = fix_module_local_expr(
+    let rewritten = fix_module_local_expr!(
         &Expr::GenericFunctionValue {
             callee: Box::new(sp(Expr::Ident("id".to_string()))),
             type_args: vec![ast::Type::Named("Box".to_string())],
@@ -2911,7 +2914,7 @@ fn rewrites_module_local_generic_function_value_type_args() {
 
 #[test]
 fn rewrites_already_mangled_module_local_nested_module_members() {
-    let rewritten_ctor = fix_module_local_expr(
+    let rewritten_ctor = fix_module_local_expr!(
         &Expr::Call {
             callee: Box::new(sp(Expr::Field {
                 object: Box::new(sp(Expr::Ident("app__M__N".to_string()))),
@@ -2942,7 +2945,7 @@ fn rewrites_already_mangled_module_local_nested_module_members() {
     assert_eq!(ty, "app__M__N__Box");
     assert_eq!(args.len(), 1);
 
-    let rewritten_fn_value = fix_module_local_expr(
+    let rewritten_fn_value = fix_module_local_expr!(
         &Expr::GenericFunctionValue {
             callee: Box::new(sp(Expr::Field {
                 object: Box::new(sp(Expr::Ident("app__M__N".to_string()))),
@@ -3078,7 +3081,7 @@ fn rewrites_program_for_project_module_local_nested_module_members() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3136,7 +3139,7 @@ fn rewrites_program_for_project_module_local_nested_module_members() {
 
 #[test]
 fn rewrites_module_local_lambda_parameter_types() {
-    let rewritten = fix_module_local_expr(
+    let rewritten = fix_module_local_expr!(
         &Expr::Lambda {
             params: vec![ast::Parameter {
                 name: "value".to_string(),
@@ -3224,7 +3227,7 @@ fn rewrites_root_namespace_alias_builtin_static_constructor_calls() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3310,7 +3313,7 @@ fn preserves_root_namespace_alias_builtin_function_values() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3391,7 +3394,7 @@ fn rewrites_top_level_generic_classes_that_shadow_builtin_names() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3451,7 +3454,7 @@ fn rewrites_class_extends_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3503,7 +3506,7 @@ fn rewrites_class_extends_nested_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3555,7 +3558,7 @@ fn rewrites_class_implements_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3607,7 +3610,7 @@ fn rewrites_class_implements_nested_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3662,7 +3665,7 @@ fn rewrites_class_implements_multiple_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3719,7 +3722,7 @@ fn rewrites_interface_extends_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3767,7 +3770,7 @@ fn rewrites_interface_extends_nested_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3818,7 +3821,7 @@ fn rewrites_interface_extends_generic_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3872,7 +3875,7 @@ fn rewrites_interface_extends_generic_exact_import_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3926,7 +3929,7 @@ fn rewrites_interface_extends_multiple_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -3990,7 +3993,7 @@ fn rewrites_nested_module_class_extends_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4044,7 +4047,7 @@ fn rewrites_nested_module_interface_extends_namespace_alias_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4124,7 +4127,7 @@ fn rewrites_nested_module_construct_type_strings_with_local_function_interface_t
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4232,7 +4235,7 @@ fn rewrites_nested_module_constructor_type_args_with_local_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4301,7 +4304,7 @@ fn rewrites_module_class_implements_local_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4360,7 +4363,7 @@ fn rewrites_module_interface_extends_local_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4437,7 +4440,7 @@ fn rewrites_module_class_implements_local_generic_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4513,7 +4516,7 @@ fn rewrites_module_interface_extends_local_generic_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4582,7 +4585,7 @@ fn rewrites_module_class_implements_local_nested_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4644,7 +4647,7 @@ fn rewrites_module_interface_extends_local_nested_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4714,7 +4717,7 @@ fn rewrites_module_class_implements_multiple_local_interfaces() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4783,7 +4786,7 @@ fn rewrites_module_interface_extends_multiple_local_interfaces() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4852,7 +4855,7 @@ fn rewrites_nested_module_class_implements_local_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -4925,7 +4928,7 @@ fn rewrites_nested_module_interface_extends_local_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5005,7 +5008,7 @@ fn rewrites_nested_module_class_implements_local_nested_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5081,7 +5084,7 @@ fn rewrites_nested_module_interface_extends_local_nested_interface_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5165,7 +5168,7 @@ fn rewrites_nested_module_class_implements_multiple_local_interfaces() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5248,7 +5251,7 @@ fn rewrites_nested_module_interface_extends_multiple_local_interfaces() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5323,7 +5326,7 @@ fn rewrites_module_enum_field_namespace_alias_class_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5390,7 +5393,7 @@ fn rewrites_module_enum_field_namespace_alias_nested_class_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5457,7 +5460,7 @@ fn rewrites_module_enum_field_namespace_alias_enum_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5534,7 +5537,7 @@ fn rewrites_module_enum_field_local_nested_class_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5603,7 +5606,7 @@ fn rewrites_module_enum_field_local_nested_enum_types() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5670,7 +5673,7 @@ fn rewrites_module_enum_field_generic_namespace_alias_class_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5737,7 +5740,7 @@ fn rewrites_module_enum_named_field_namespace_alias_class_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5813,7 +5816,7 @@ fn rewrites_module_enum_multiple_variant_field_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5887,7 +5890,7 @@ fn rewrites_nested_module_enum_field_namespace_alias_class_types() {
         ],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -5979,7 +5982,7 @@ fn renames_module_local_exact_import_alias_shadow_in_return() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -6057,7 +6060,7 @@ fn renames_module_local_exact_import_alias_shadowed_param_in_return() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -6155,7 +6158,7 @@ fn renames_module_local_exact_import_alias_shadowed_for_var_in_lambda() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",
@@ -6256,7 +6259,7 @@ fn renames_module_local_exact_import_alias_shadowed_match_binding_in_lambda() {
         }))],
     };
 
-    let rewritten = rewrite_program_for_project(
+    let rewritten = rewrite_program_for_project!(
         &program,
         "app",
         "app",

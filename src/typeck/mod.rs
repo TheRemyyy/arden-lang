@@ -6,8 +6,6 @@
 //! - Scope tracking
 //! - Type error reporting with source locations
 
-#![allow(dead_code)]
-
 use crate::ast::*;
 use crate::parse_type_source;
 use crate::stdlib::stdlib_registry;
@@ -74,19 +72,6 @@ impl ResolvedType {
     pub fn supports_ordered_comparison_with(&self, other: &ResolvedType) -> bool {
         (self.is_numeric() && other.is_numeric())
             || matches!((self, other), (ResolvedType::Char, ResolvedType::Char))
-    }
-
-    pub fn is_reference(&self) -> bool {
-        matches!(self, ResolvedType::Ref(_) | ResolvedType::MutRef(_))
-    }
-
-    pub fn inner_type(&self) -> Option<&ResolvedType> {
-        match self {
-            ResolvedType::Ref(inner) | ResolvedType::MutRef(inner) => Some(inner),
-            ResolvedType::Option(inner) | ResolvedType::List(inner) => Some(inner),
-            ResolvedType::Ptr(inner) => Some(inner),
-            _ => None,
-        }
     }
 
     pub fn contains_function_type(&self) -> bool {
@@ -222,8 +207,6 @@ impl NumericConst {
 pub struct VarInfo {
     pub ty: ResolvedType,
     pub mutable: bool,
-    pub initialized: bool,
-    pub span: Span,
 }
 
 /// Function signature
@@ -255,14 +238,12 @@ pub struct ClassInfo {
     pub visibility: Visibility,
     pub extends: Option<String>,
     pub implements: Vec<String>,
-    pub span: Span,
 }
 
 /// Enum metadata used for type checking variant constructors and pattern matching
 #[derive(Debug, Clone)]
 pub struct EnumInfo {
     pub variants: HashMap<String, Vec<ResolvedType>>,
-    pub span: Span,
 }
 
 /// Interface metadata
@@ -303,8 +284,6 @@ pub struct TypeChecker {
     enum_variant_to_enum: HashMap<String, String>,
     /// Type variable counter for inference
     type_var_counter: usize,
-    /// Type variable substitutions
-    substitutions: HashMap<usize, ResolvedType>,
     /// Collected errors
     errors: Vec<TypeError>,
     /// Current function return type (for checking returns)
@@ -488,7 +467,6 @@ impl TypeChecker {
             interfaces: HashMap::new(),
             enum_variant_to_enum: HashMap::new(),
             type_var_counter: 0,
-            substitutions: HashMap::new(),
             errors: Vec::new(),
             current_return_type: None,
             current_async_return_type: None,
@@ -502,7 +480,6 @@ impl TypeChecker {
             current_module_prefix: None,
         }
     }
-    #[allow(clippy::only_used_in_recursion)]
     fn validate_extern_signature(&mut self, func: &FunctionDecl, span: Span) {
         if !func.is_extern {
             return;
@@ -1350,10 +1327,6 @@ impl TypeChecker {
         }
     }
 
-    fn expr_mentions_ident(expr: &Expr, ident: &str) -> bool {
-        Self::expr_mentions_ident_with_shadowing(expr, ident, &std::collections::HashSet::new())
-    }
-
     fn stmt_mentions_ident_with_shadowing(
         stmt: &Stmt,
         ident: &str,
@@ -1423,10 +1396,6 @@ impl TypeChecker {
             }
             Stmt::Break | Stmt::Continue => false,
         }
-    }
-
-    fn stmt_mentions_ident(stmt: &Stmt, ident: &str) -> bool {
-        Self::stmt_mentions_ident_with_shadowing(stmt, ident, &mut std::collections::HashSet::new())
     }
 
     /// Check a declaration
@@ -1657,11 +1626,6 @@ impl TypeChecker {
         self.current_allow_any = saved_any;
         self.exit_scope();
         self.current_generic_type_bindings = saved_generic_bindings;
-    }
-
-    /// Check a class
-    fn check_class(&mut self, class: &ClassDecl, span: Span) {
-        self.check_class_named(class, span, &class.name);
     }
 
     fn check_class_named(&mut self, class: &ClassDecl, span: Span, class_key: &str) {
@@ -2385,16 +2349,6 @@ impl TypeChecker {
         }
     }
 
-    fn infer_block_expression_type(&mut self, block: &Block) -> ResolvedType {
-        let mut ty = ResolvedType::None;
-        for stmt in block {
-            if let Stmt::Expr(expr) = &stmt.node {
-                ty = self.check_expr(&expr.node, expr.span.clone());
-            }
-        }
-        ty
-    }
-
     fn match_expression_exhaustive(&self, match_type: &ResolvedType, arms: &[MatchArm]) -> bool {
         let imported_unit_variant = |name: &str| -> Option<(String, String)> {
             let (enum_name, variant_name) = self.resolve_import_alias_variant(name)?;
@@ -2558,13 +2512,6 @@ impl TypeChecker {
             _ => None,
         }
     }
-    fn is_contextual_static_container_function_value(name: &str) -> bool {
-        matches!(
-            name,
-            "Option__some" | "Option__none" | "Result__ok" | "Result__error"
-        )
-    }
-
     fn builtin_matches_expected_function_type(name: &str, expected: &ResolvedType) -> bool {
         let ResolvedType::Function(params, ret) = expected else {
             return matches!(
@@ -7590,7 +7537,6 @@ impl TypeChecker {
     }
 
     /// Check if two types are compatible
-    #[allow(clippy::only_used_in_recursion)]
     fn types_compatible(&self, expected: &ResolvedType, actual: &ResolvedType) -> bool {
         if expected == actual {
             return true;
@@ -7805,12 +7751,8 @@ impl TypeChecker {
 
     /// Declare a variable in current scope
     fn declare_variable(&mut self, name: &str, ty: ResolvedType, mutable: bool, span: Span) {
-        let var = VarInfo {
-            ty,
-            mutable,
-            initialized: true,
-            span,
-        };
+        let _ = span;
+        let var = VarInfo { ty, mutable };
         self.scopes[self.current_scope]
             .variables
             .insert(name.to_string(), var);

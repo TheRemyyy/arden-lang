@@ -2627,7 +2627,6 @@ impl<'ctx> Codegen<'ctx> {
     }
 
     /// Extract class name from a Type (handles Named, Ref, MutRef, etc.)
-    #[allow(clippy::only_used_in_recursion)]
     pub fn type_to_class_name(&self, ty: &Type) -> Option<String> {
         let normalized = self.normalize_codegen_type(ty);
         match &normalized {
