@@ -62,14 +62,18 @@ def copy_tree(source: Path, destination: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
     destination.mkdir(parents=True, exist_ok=True)
-    copy_path(source, destination, set())
+    if not source.is_dir():
+        raise NotADirectoryError(f"expected directory to copy: {source}")
+    visited_dirs: set[Path] = set()
+    for child in source.iterdir():
+        copy_path(child, destination / child.name, visited_dirs)
 
 
 def copy_selected_paths(source_root: Path, destination_root: Path, relative_paths: list[Path]) -> None:
     visited_dirs: set[Path] = set()
     for relative_path in relative_paths:
         source_path = source_root / relative_path
-        if not source_path.exists() and not source_path.is_symlink():
+        if not (source_path.exists() or source_path.is_symlink()):
             raise FileNotFoundError(f"required packaging path not found: {source_path}")
         copy_path(source_path, destination_root / relative_path, visited_dirs)
 
