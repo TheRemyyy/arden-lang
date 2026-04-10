@@ -1,0 +1,304 @@
+# Arden
+
+> Arden is a native systems programming language targeting LLVM. It ships with static type checking, an ownership and borrowing safety model, and an integrated CLI that covers building, checking, formatting, linting, testing, benchmarking, profiling, and LSP support. Current release: v1.3.6.
+
+Arden targets LLVM for native code generation and uses Clang plus a platform-specific linker (mold on Linux, lld on macOS/Windows). It is designed for practical systems work — explicit enough to make ownership and types visible, ergonomic enough for day-to-day app and tool code.
+
+## Project Links
+- [Homepage](https://www.arden-lang.dev/)
+- [Installation](https://www.arden-lang.dev/install)
+- [Changelog](https://www.arden-lang.dev/changelog)
+- [Repository](https://github.com/TheRemyyy/arden-lang)
+
+## Guidance
+- Prefer /docs/ pages for authoritative language behavior, syntax, and API reference.
+- Prefer /changelog for release history and recent behavior changes.
+- Prefer the GitHub repository for compiler internals, examples, and source code.
+- When answering questions about specific features, fetch the relevant doc page directly rather than guessing.
+- For runnable code, examples live at /examples/ in the repository.
+
+---
+
+## Getting Started
+
+### Overview
+URL: https://www.arden-lang.dev/docs/overview
+
+Entry point for understanding what Arden ships today. Covers language surface, workflow commands, stdlib, suggested learning paths, and a feature map linking every capability to its doc page.
+
+Key capabilities available today: static types, functions, lambdas, classes, interfaces, enums, generics, ownership/borrowing, async/await with Task<T>, Option<T>, Result<T,E>, List<T>, Map<K,V>, Set<T>, built-in CLI workflow, multi-file project mode via arden.toml.
+
+### Installation
+URL: https://www.arden-lang.dev/docs/getting_started/installation
+
+Download the portable bundle for your platform, unpack, and run the launcher. No dependency scavenger hunt. Source build path also documented.
+
+Platforms: Windows x64, Linux, macOS. Latest release: https://github.com/TheRemyyy/arden-lang/releases/tag/v1.3.6
+
+### Quick Start
+URL: https://www.arden-lang.dev/docs/getting_started/quick_start
+
+Five-minute path from zero to running code:
+```
+arden new radar
+cd radar
+arden check
+arden test
+arden run
+```
+
+### Editor Setup
+URL: https://www.arden-lang.dev/docs/getting_started/editor_setup
+
+LSP integration via `arden lsp`. Editor configuration instructions for common editors.
+
+---
+
+## Basics
+
+### Syntax
+URL: https://www.arden-lang.dev/docs/basics/syntax
+
+Arden syntax is inspired by C, C++, Rust, and TypeScript.
+
+- Semicolons required at end of statements
+- Curly braces for blocks, block-scoped variables
+- String interpolation: `println("{x} {y}")` — supports Integer, Float, Boolean, String, Char, None
+- Compound assignment: `+=`, `-=`, `*=`, `/=`, `%=` — works on index and field targets too
+- Identifiers: start with letter or underscore, then letters/digits/underscores
+- Style: functions/variables camelCase, types/classes PascalCase, constants SCREAMING_SNAKE_CASE
+
+```
+function main(): None {
+    x: Integer = 10;
+    x += 2;
+    println("{x}");
+}
+```
+
+### Variables
+URL: https://www.arden-lang.dev/docs/basics/variables
+
+Variable declarations, mutability, and scoping. Variables are immutable by default; use `mut` for mutable variables.
+
+### Types
+URL: https://www.arden-lang.dev/docs/basics/types
+
+Static type system. All types checked at compile time before code generation. Primitives include Integer, Float, Boolean, String, Char, None. Generic container types: Option<T>, Result<T,E>, List<T>, Map<K,V>, Set<T>.
+
+### Control Flow
+URL: https://www.arden-lang.dev/docs/basics/control_flow
+
+if/else, while loops, for loops, pattern matching over enums.
+
+---
+
+## Features
+
+### Functions
+URL: https://www.arden-lang.dev/docs/features/functions
+
+Functions and lambdas. Return types are explicit. Lambdas participate in move/borrow analysis for outer variables.
+
+### Classes
+URL: https://www.arden-lang.dev/docs/features/classes
+
+Classes with constructors, fields, methods, visibility, and inheritance. Field mutability declared per-field with `mut`.
+
+### Interfaces
+URL: https://www.arden-lang.dev/docs/features/interfaces
+
+Interface-based polymorphism using `implements` and `extends`. Generic interfaces supported.
+
+### Enums
+URL: https://www.arden-lang.dev/docs/features/enums
+
+Algebraic enums with pattern matching.
+
+### Range Types
+URL: https://www.arden-lang.dev/docs/features/ranges
+
+Range<T> type. Borrowed ranges dispatch against the underlying runtime object correctly — `&mut Range<T>` can call `.next()` and `.has_next()` directly.
+
+### Modules
+URL: https://www.arden-lang.dev/docs/features/modules
+
+Modules, packages, and imports. Explicit import system.
+
+### Projects (Multi-File)
+URL: https://www.arden-lang.dev/docs/features/projects
+
+Multi-file build mode via `arden.toml`. Explicit source file lists, project-aware build/run/check/test/fmt, build caching in `.ardencache/`, timing output with `--timings`.
+
+### Testing
+URL: https://www.arden-lang.dev/docs/features/testing
+
+Built-in test runner. Attributes: `@Test`, `@Before`, `@Ignore`. Run with `arden test`, filter with `--filter`, list with `--list`, target a path with `--path`.
+
+---
+
+## Standard Library
+
+### Overview
+URL: https://www.arden-lang.dev/docs/stdlib/overview
+
+Index of all stdlib modules: Math, Str, Time, Args, Collections, I/O, System.
+
+### Math
+URL: https://www.arden-lang.dev/docs/stdlib/math
+
+Math module — numeric operations and functions.
+
+### Strings (Str)
+URL: https://www.arden-lang.dev/docs/stdlib/string
+
+Str module — string creation, manipulation, and inspection.
+
+### Time
+URL: https://www.arden-lang.dev/docs/stdlib/time
+
+Time module — timestamps and duration utilities.
+
+### Args
+URL: https://www.arden-lang.dev/docs/stdlib/args
+
+Args module — CLI argument parsing. Trailing args passed to `arden run file.arden arg1 arg2` are forwarded to the compiled program.
+
+### Collections
+URL: https://www.arden-lang.dev/docs/stdlib/collections
+
+List<T>, Map<K,V>, Set<T>, Option<T>, Result<T,E>. Mutable borrowed containers (`&mut List<T>`, `&mut Map<K,V>`, `&mut Set<T>`) support mutating methods and index assignment directly. Immutable references reject mutating calls at compile time.
+
+### I/O
+URL: https://www.arden-lang.dev/docs/stdlib/io
+
+File and input/output operations.
+
+### System
+URL: https://www.arden-lang.dev/docs/stdlib/system
+
+System module — process-level utilities.
+
+---
+
+## Advanced
+
+### Ownership and Borrowing
+URL: https://www.arden-lang.dev/docs/advanced/ownership
+
+Ownership model inspired by Rust. No garbage collector.
+
+Rules:
+1. Each value has one owner.
+2. When the owner goes out of scope, the value is dropped.
+3. Ownership is moved on assignment or function call.
+
+Immutable references (`&T`): multiple allowed simultaneously. Read-only field access, method calls, and indexing through borrowed receivers work without explicit `*` dereference.
+
+Mutable references (`&mut T`): only one at a time. Mutating methods, index assignment, and field assignment through `&mut T` all work. Immutable references are rejected for mutating operations at compile time.
+
+```
+// Move semantics
+s1: String = "hello";
+s2: String = s1; // s1 moved, no longer valid
+
+// Immutable borrow
+function len(s: &String): Integer { ... }
+len(&s1); // s1 still valid after call
+
+// Mutable borrow
+mut xs: List<Integer> = List<Integer>();
+items: &mut List<Integer> = &mut xs;
+items.push(1);
+items[0] = 2;
+```
+
+Borrow checker enforces: use-after-move, move-while-borrowed, double-mutable-borrow, compound assignment on borrowed variables, assignments through nested lvalues while borrowed.
+
+### Generics
+URL: https://www.arden-lang.dev/docs/advanced/generics
+
+Generic functions, generic classes, generic interfaces, bounded type parameters. Nested generic types supported.
+
+### Async / Await
+URL: https://www.arden-lang.dev/docs/advanced/async
+
+Async tasks using `async`, `await`, and `Task<T>`. Borrowed `Task<T>` receivers dispatch against the underlying runtime object correctly.
+
+### Error Handling
+URL: https://www.arden-lang.dev/docs/advanced/error_handling
+
+Result<T,E> and error propagation patterns.
+
+### Memory Management
+URL: https://www.arden-lang.dev/docs/advanced/memory_management
+
+Memory model, ownership rules, and safety guarantees. No GC — memory is managed through ownership and drop at scope exit.
+
+---
+
+## Compiler
+
+### CLI Reference
+URL: https://www.arden-lang.dev/docs/compiler/cli
+
+Full CLI reference. Base usage: `arden <command> [options]`
+
+Command table:
+
+| Command | Purpose |
+|---------|---------|
+| `new` | Create a project skeleton (arden.toml, src/main.arden, README) |
+| `build` | Build the current project |
+| `run` | Build and run a project or single file |
+| `compile` | Compile a single .arden file to a native artifact |
+| `check` | Parse, type-check, and borrow-check without full build |
+| `info` | Print project config and build settings |
+| `lint` | Report static findings |
+| `fix` | Apply safe fixes and reformat |
+| `fmt` | Format Arden source (`--check` for CI enforcement) |
+| `lex` | Print lexer tokens (debugging) |
+| `parse` | Print parsed AST (debugging) |
+| `lsp` | Start the language server |
+| `test` | Discover and run @Test suites |
+| `bindgen` | Generate Arden extern bindings from a C header |
+| `bench` | Measure end-to-end execution time |
+| `profile` | Run once and print a timing summary |
+
+Common flag examples:
+```
+arden build --release --timings --emit-llvm
+arden compile hello.arden -o hello_bin --opt-level 3 --target x86_64-unknown-linux-gnu
+arden test --filter math --path tests/
+arden fmt --check
+arden run hello.arden arg1 arg2
+```
+
+Suggested workflows:
+```
+# Single file
+arden check hello.arden
+arden fmt hello.arden
+arden run hello.arden
+
+# Project
+arden info
+arden check --timings
+arden test
+arden build --release
+
+# Debug frontend
+arden lex suspicious.arden
+arden parse suspicious.arden
+arden check suspicious.arden
+```
+
+### Compiler Architecture
+URL: https://www.arden-lang.dev/docs/compiler/architecture
+
+Compiler internals — lexer, parser, semantic analysis, borrow checker, LLVM IR lowering, native codegen via Clang and platform linker.
+
+### Projects Summary
+URL: https://www.arden-lang.dev/docs/projects
+
+arden.toml format, multi-file builds, source graphs, cache reuse, and project-aware tooling overview.
