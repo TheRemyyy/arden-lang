@@ -1502,15 +1502,6 @@ pub(crate) fn compute_rewrite_context_fingerprint_for_unit_impl(
     format!("{:016x}", hasher.finish())
 }
 
-#[cfg(test)]
-pub(crate) fn compute_rewrite_context_fingerprint_for_unit(
-    unit: &ParsedProjectUnit,
-    entry_namespace: &str,
-    ctx: &RewriteFingerprintContext<'_>,
-) -> String {
-    compute_rewrite_context_fingerprint_for_unit_impl(unit, entry_namespace, ctx, None)
-}
-
 pub(crate) fn compute_semantic_project_fingerprint(
     config: &ProjectConfig,
     parsed_files: &[ParsedProjectUnit],

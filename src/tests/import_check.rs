@@ -1,8 +1,13 @@
-use super::*;
+use crate::ast::Decl;
 use crate::diagnostics::span_to_location;
+use crate::import_check::{
+    extract_function_namespaces, extract_known_namespace_paths, ImportChecker, ImportError,
+};
 use crate::lexer::tokenize;
 use crate::parser::Parser;
 use crate::stdlib::stdlib_registry;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 fn check_import_errors(source: &str) -> Vec<ImportError> {
     let tokens = tokenize(source).expect("tokenize");

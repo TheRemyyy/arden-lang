@@ -1,12 +1,11 @@
 pub(crate) use crate::{
     api_program_fingerprint, build_file_dependency_graph_incremental, build_project,
     build_reverse_dependency_graph, can_reuse_safe_rewrite_cache, check_command, check_file,
-    codegen_program_for_unit, compile_file, compile_source, component_fingerprint,
-    compute_link_fingerprint, compute_namespace_api_fingerprints,
-    compute_rewrite_context_fingerprint_for_unit, dedupe_link_inputs, escape_response_file_arg,
-    fix_target, format_targets, lex_file, lint_target, load_cached_fingerprint,
-    load_link_manifest_cache, load_object_shard_cache_hit, load_semantic_cached_fingerprint,
-    new_project, object_shard_cache_key, object_shard_cache_paths, parse_file, parse_project_unit,
+    compile_file, compile_source, component_fingerprint, compute_link_fingerprint,
+    compute_namespace_api_fingerprints, dedupe_link_inputs, escape_response_file_arg, fix_target,
+    format_targets, lex_file, lint_target, load_cached_fingerprint, load_link_manifest_cache,
+    load_object_shard_cache_hit, load_semantic_cached_fingerprint, new_project,
+    object_shard_cache_key, object_shard_cache_paths, parse_file, parse_project_unit,
     precompute_all_transitive_dependencies, read_cache_blob, reusable_component_fingerprints,
     run_project, run_tests, save_object_shard_cache_meta, semantic_program_fingerprint,
     should_skip_final_link, show_project_info, transitive_dependencies_from_precomputed,
@@ -18,22 +17,28 @@ pub(crate) use crate::{
 };
 pub(crate) use helpers::{
     assert_frontend_pipeline_ok, build_project_symbol_lookup, cli_test_lock,
-    collect_project_symbol_maps, fingerprint_for, make_temp_project_root,
+    codegen_program_for_unit, collect_project_symbol_maps,
+    compute_rewrite_context_fingerprint_for_unit, fingerprint_for, make_temp_project_root,
     normalize_nested_cargo_linker_env, normalize_output, parse_program,
     rewrite_fingerprint_for_test_unit, with_current_dir, write_test_project_config,
     ProjectSymbolLookupMaps,
 };
 
 mod bindgen;
+mod borrowck;
 mod cli;
 mod cli_output;
 mod cli_test_discovery;
 mod compile_source;
 mod diagnostics;
+mod formatter;
 mod helpers;
+mod import_check;
 mod lexer;
 mod linker;
+mod lint;
 mod lsp;
+mod parser;
 mod project;
 mod project_config;
 mod typeck_frontend;

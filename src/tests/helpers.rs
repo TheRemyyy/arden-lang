@@ -5,10 +5,11 @@ pub(crate) use crate::cli::paths::process_current_dir_lock as cli_test_lock;
 use crate::dependency::insert_symbol_lookup_entry;
 use crate::formatter::format_program_canonical;
 use crate::parser::Parser;
+use crate::specialization::codegen_program_for_units;
 use crate::typeck::TypeChecker;
 use crate::{
-    compute_namespace_api_fingerprints, compute_rewrite_context_fingerprint_for_unit,
-    semantic_program_fingerprint, ParsedProjectUnit, RewriteFingerprintContext,
+    compute_namespace_api_fingerprints, semantic_program_fingerprint, ParsedProjectUnit,
+    RewriteFingerprintContext, RewrittenProjectUnit,
 };
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -154,6 +155,35 @@ pub(crate) fn build_project_symbol_lookup(
         exact,
         wildcard_members,
     }
+}
+
+pub(crate) fn codegen_program_for_unit(
+    rewritten_files: &[RewrittenProjectUnit],
+    rewritten_file_indices: &HashMap<PathBuf, usize>,
+    active_file: &Path,
+    dependency_closure: Option<&HashSet<PathBuf>>,
+    declaration_symbols: Option<&HashSet<String>>,
+) -> Program {
+    codegen_program_for_units(
+        rewritten_files,
+        rewritten_file_indices,
+        &[active_file.to_path_buf()],
+        dependency_closure,
+        declaration_symbols,
+    )
+}
+
+pub(crate) fn compute_rewrite_context_fingerprint_for_unit(
+    unit: &ParsedProjectUnit,
+    entry_namespace: &str,
+    ctx: &RewriteFingerprintContext<'_>,
+) -> String {
+    crate::cache::compute_rewrite_context_fingerprint_for_unit_impl(
+        unit,
+        entry_namespace,
+        ctx,
+        None,
+    )
 }
 
 pub(crate) fn parse_program(source: &str) -> Program {

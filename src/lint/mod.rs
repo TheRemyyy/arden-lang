@@ -1300,6 +1300,3 @@ fn collect_type_names(ty: &Type, used: &mut HashSet<String>) {
         Type::Integer | Type::Float | Type::Boolean | Type::String | Type::Char | Type::None => {}
     }
 }
-
-#[cfg(test)]
-mod tests;

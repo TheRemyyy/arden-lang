@@ -3,8 +3,6 @@ use crate::cache::*;
 use crate::formatter;
 use crate::parser::parse_type_source;
 use std::collections::{HashMap, HashSet};
-#[cfg(test)]
-use std::path::Path;
 use std::path::PathBuf;
 pub(crate) fn empty_block() -> Block {
     Vec::new()
@@ -628,23 +626,6 @@ pub(crate) fn program_has_codegen_specialization_demand(program: &Program) -> bo
         .declarations
         .iter()
         .any(|decl| decl_has_codegen_specialization_demand(&decl.node))
-}
-
-#[cfg(test)]
-pub(crate) fn codegen_program_for_unit(
-    rewritten_files: &[RewrittenProjectUnit],
-    rewritten_file_indices: &HashMap<PathBuf, usize>,
-    active_file: &Path,
-    _dependency_closure: Option<&HashSet<PathBuf>>,
-    declaration_symbols: Option<&HashSet<String>>,
-) -> Program {
-    codegen_program_for_units(
-        rewritten_files,
-        rewritten_file_indices,
-        &[active_file.to_path_buf()],
-        _dependency_closure,
-        declaration_symbols,
-    )
 }
 
 pub(crate) fn codegen_program_for_units(

@@ -1,4 +1,5 @@
 use super::*;
+#[cfg(unix)]
 use crate::cli::test_discovery::find_test_files;
 #[cfg(unix)]
 use crate::collect_arden_files;

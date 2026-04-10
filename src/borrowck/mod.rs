@@ -2647,6 +2647,3 @@ pub fn format_borrow_errors(errors: &[BorrowError], source: &str, filename: &str
 
     output
 }
-
-#[cfg(test)]
-mod tests;

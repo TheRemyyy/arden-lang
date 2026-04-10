@@ -1251,6 +1251,3 @@ fn find_package_offset(source: &str) -> Option<usize> {
         .starts_with("package ")
         .then_some(offset + (source[offset..].len() - trimmed.len()))
 }
-
-#[cfg(test)]
-mod tests;

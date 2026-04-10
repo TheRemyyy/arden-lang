@@ -1,4 +1,4 @@
-use super::{format_borrow_errors, BorrowChecker, BorrowError};
+use crate::borrowck::{format_borrow_errors, BorrowChecker, BorrowError};
 use crate::parser::Parser;
 use crate::{ast::Program, lexer};
 

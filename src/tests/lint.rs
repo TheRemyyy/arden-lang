@@ -1,4 +1,4 @@
-use super::lint_source;
+use crate::lint::lint_source;
 
 #[test]
 fn detects_duplicate_and_unsorted_imports() {

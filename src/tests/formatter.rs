@@ -1,4 +1,4 @@
-use super::format_source;
+use crate::formatter::format_source;
 use crate::lexer::tokenize;
 use crate::parser::Parser;
 

@@ -1,6 +1,7 @@
-use super::*;
+use crate::ast::*;
 use crate::formatter::format_program_canonical;
 use crate::lexer::tokenize;
+use crate::parser::{ParseError, Parser};
 
 fn parse_source(source: &str) -> Result<Program, ParseError> {
     let tokens = tokenize(source).map_err(|e| ParseError::new(e, 0..0))?;

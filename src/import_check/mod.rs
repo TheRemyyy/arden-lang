@@ -1825,6 +1825,3 @@ pub fn extract_known_namespace_paths(program: &Program, namespace: &str) -> Hash
 
     result
 }
-
-#[cfg(test)]
-mod tests;

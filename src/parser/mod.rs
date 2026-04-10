@@ -3141,6 +3141,3 @@ pub fn parse_type_source(source: &str) -> Result<Type, ParseError> {
     }
     Ok(ty)
 }
-
-#[cfg(test)]
-mod tests;
