@@ -23,10 +23,13 @@ pub(crate) use helpers::{
     rewrite_fingerprint_for_test_unit, with_current_dir, write_test_project_config,
 };
 
+mod bindgen;
 mod cli;
 mod cli_output;
 mod cli_test_discovery;
 mod compile_source;
 mod helpers;
+mod lexer;
 mod project;
+mod project_config;
 mod typeck_frontend;

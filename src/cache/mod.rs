@@ -1502,7 +1502,7 @@ pub(crate) fn compute_rewrite_context_fingerprint_for_unit_impl(
     format!("{:016x}", hasher.finish())
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 pub(crate) fn compute_rewrite_context_fingerprint_for_unit(
     unit: &ParsedProjectUnit,
     entry_namespace: &str,

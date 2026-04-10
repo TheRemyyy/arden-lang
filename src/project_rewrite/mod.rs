@@ -5894,8 +5894,9 @@ fn rewrite_expr_calls_for_project(
                         }
                         if member_parts.len() > 1 {
                             let receiver_parts = &member_parts[..member_parts.len() - 1];
-                            let receiver_field =
-                                member_parts.last().expect("member_parts length checked");
+                            let Some(receiver_field) = member_parts.last() else {
+                                return rewrite_expr_calls_for_project(&callee.node, ctx, scopes);
+                            };
                             if let Some(receiver_value) =
                                 builtin_module_alias_value_expr(ns, symbol_name, receiver_parts)
                             {
@@ -6075,8 +6076,9 @@ fn rewrite_expr_calls_for_project(
                         && flatten_field_chain(&object.node)
                             .is_some_and(|parts| !parts.is_empty()) =>
                 {
-                    let chain_parts =
-                        flatten_field_chain(&object.node).expect("guarded by is_some");
+                    let Some(chain_parts) = flatten_field_chain(&object.node) else {
+                        return self::rewrite_expr_calls_for_project(&callee.node, ctx, scopes);
+                    };
                     let alias_ident = &chain_parts[0];
 
                     if is_shadowed(alias_ident, scopes) {
@@ -6207,7 +6209,13 @@ fn rewrite_expr_calls_for_project(
                                         scopes,
                                     );
                                 }
-                                let field = member_parts.last().expect("non-empty member parts");
+                                let Some(field) = member_parts.last() else {
+                                    return rewrite_expr_calls_for_project(
+                                        &callee.node,
+                                        ctx,
+                                        scopes,
+                                    );
+                                };
                                 if let Some((owner_ns, class_name)) =
                                     resolve_module_alias_class_candidate(
                                         ns,
@@ -6342,7 +6350,9 @@ fn rewrite_expr_calls_for_project(
                             if member_parts.is_empty() {
                                 return rewrite_expr_calls_for_project(&callee.node, ctx, scopes);
                             }
-                            let field = member_parts.last().expect("non-empty member parts");
+                            let Some(field) = member_parts.last() else {
+                                return rewrite_expr_calls_for_project(&callee.node, ctx, scopes);
+                            };
                             if let Some((owner_ns, class_name)) =
                                 resolve_module_alias_class_candidate(
                                     ns,
@@ -6680,7 +6690,9 @@ fn rewrite_expr_calls_for_project(
                                 &class_name,
                             ));
                         }
-                        let field = member_parts.last().expect("non-empty member parts");
+                        let Some(field) = member_parts.last() else {
+                            return rewrite_expr_calls_for_project(expr, ctx, scopes);
+                        };
                         let namespace_path = if symbol_name.is_empty() {
                             ns.clone()
                         } else {

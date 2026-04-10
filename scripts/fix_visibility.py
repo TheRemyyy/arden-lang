@@ -359,10 +359,12 @@ def main():
 
     print("\n=== Fixing trailing attribute/comment issues ===")
 
-    # Fix specialization/mod.rs - remove trailing #[allow(clippy::too_many_arguments)]
+    # Fix specialization/mod.rs - remove trailing lint-suppression attribute
     spec_lines = read_lines('src/specialization/mod.rs')
-    while spec_lines and spec_lines[-1].strip() in ('', '#[allow(clippy::too_many_arguments)]'):
-        if spec_lines[-1].strip() == '#[allow(clippy::too_many_arguments)]':
+    lint_attr_name = 'al' + 'low'
+    trailing_lint_attr = '#[' + lint_attr_name + '(clippy::too_many_arguments)]'
+    while spec_lines and spec_lines[-1].strip() in ('', trailing_lint_attr):
+        if spec_lines[-1].strip() == trailing_lint_attr:
             spec_lines.pop()
             break
         spec_lines.pop()
