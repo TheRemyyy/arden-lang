@@ -9,6 +9,27 @@ use crate::stdlib::stdlib_registry;
 
 type ImportedMap = HashMap<String, (String, String)>;
 
+struct ImportMapSources<'a> {
+    namespace_functions: &'a HashMap<String, HashSet<String>>,
+    global_function_map: &'a HashMap<String, String>,
+    namespace_classes: &'a HashMap<String, HashSet<String>>,
+    global_class_map: &'a HashMap<String, String>,
+    namespace_interfaces: &'a HashMap<String, HashSet<String>>,
+    global_interface_map: &'a HashMap<String, String>,
+    namespace_enums: &'a HashMap<String, HashSet<String>>,
+    global_enum_map: &'a HashMap<String, String>,
+    namespace_modules: &'a HashMap<String, HashSet<String>>,
+    global_module_map: &'a HashMap<String, String>,
+}
+
+struct ImportedMapsMut<'a> {
+    imported_map: &'a mut ImportedMap,
+    imported_classes: &'a mut ImportedMap,
+    imported_interfaces: &'a mut ImportedMap,
+    imported_enums: &'a mut ImportedMap,
+    imported_modules: &'a mut ImportedMap,
+}
+
 pub struct ProjectRewriteContext<'a> {
     pub current_namespace: &'a str,
     pub entry_namespace: &'a str,
@@ -830,25 +851,30 @@ fn insert_namespace_members_from_global_map(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn extend_import_maps_with_imports(
     imports: &[ImportDecl],
-    namespace_functions: &HashMap<String, HashSet<String>>,
-    global_function_map: &HashMap<String, String>,
-    namespace_classes: &HashMap<String, HashSet<String>>,
-    global_class_map: &HashMap<String, String>,
-    namespace_interfaces: &HashMap<String, HashSet<String>>,
-    global_interface_map: &HashMap<String, String>,
-    namespace_enums: &HashMap<String, HashSet<String>>,
-    global_enum_map: &HashMap<String, String>,
-    namespace_modules: &HashMap<String, HashSet<String>>,
-    global_module_map: &HashMap<String, String>,
-    imported_map: &mut ImportedMap,
-    imported_classes: &mut ImportedMap,
-    imported_interfaces: &mut ImportedMap,
-    imported_enums: &mut ImportedMap,
-    imported_modules: &mut ImportedMap,
+    sources: ImportMapSources<'_>,
+    imported: ImportedMapsMut<'_>,
 ) {
+    let ImportMapSources {
+        namespace_functions,
+        global_function_map,
+        namespace_classes,
+        global_class_map,
+        namespace_interfaces,
+        global_interface_map,
+        namespace_enums,
+        global_enum_map,
+        namespace_modules,
+        global_module_map,
+    } = sources;
+    let ImportedMapsMut {
+        imported_map,
+        imported_classes,
+        imported_interfaces,
+        imported_enums,
+        imported_modules,
+    } = imported;
     for import in imports {
         let import_key = import
             .alias
@@ -1190,21 +1216,25 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
     let mut imported_modules: ImportedMap = HashMap::new();
     extend_import_maps_with_imports(
         imports,
-        namespace_functions,
-        global_function_map,
-        namespace_classes,
-        global_class_map,
-        namespace_interfaces,
-        global_interface_map,
-        namespace_enums,
-        global_enum_map,
-        namespace_modules,
-        global_module_map,
-        &mut imported_map,
-        &mut imported_classes,
-        &mut imported_interfaces,
-        &mut imported_enums,
-        &mut imported_modules,
+        ImportMapSources {
+            namespace_functions,
+            global_function_map,
+            namespace_classes,
+            global_class_map,
+            namespace_interfaces,
+            global_interface_map,
+            namespace_enums,
+            global_enum_map,
+            namespace_modules,
+            global_module_map,
+        },
+        ImportedMapsMut {
+            imported_map: &mut imported_map,
+            imported_classes: &mut imported_classes,
+            imported_interfaces: &mut imported_interfaces,
+            imported_enums: &mut imported_enums,
+            imported_modules: &mut imported_modules,
+        },
     );
     REWRITE_INTERNAL_TIMING_TOTALS
         .import_map_build_ns
@@ -1423,21 +1453,25 @@ pub fn rewrite_program_for_project(program: &Program, ctx: &ProjectRewriteContex
                         let mut module_imported_modules = imported_modules.clone();
                         extend_import_maps_with_imports(
                             &module_imports,
-                            namespace_functions,
-                            global_function_map,
-                            namespace_classes,
-                            global_class_map,
-                            namespace_interfaces,
-                            global_interface_map,
-                            namespace_enums,
-                            global_enum_map,
-                            namespace_modules,
-                            global_module_map,
-                            &mut module_imported_map,
-                            &mut module_imported_classes,
-                            &mut module_imported_interfaces,
-                            &mut module_imported_enums,
-                            &mut module_imported_modules,
+                            ImportMapSources {
+                                namespace_functions,
+                                global_function_map,
+                                namespace_classes,
+                                global_class_map,
+                                namespace_interfaces,
+                                global_interface_map,
+                                namespace_enums,
+                                global_enum_map,
+                                namespace_modules,
+                                global_module_map,
+                            },
+                            ImportedMapsMut {
+                                imported_map: &mut module_imported_map,
+                                imported_classes: &mut module_imported_classes,
+                                imported_interfaces: &mut module_imported_interfaces,
+                                imported_enums: &mut module_imported_enums,
+                                imported_modules: &mut module_imported_modules,
+                            },
                         );
                         let module_resolved_ctx = ResolvedRewriteContext {
                             current_namespace,
@@ -2964,21 +2998,25 @@ fn rewrite_nested_module_decl_for_project(
     let mut module_imported_modules = imported_modules.clone();
     extend_import_maps_with_imports(
         &module_imports,
-        &HashMap::new(),
-        global_function_map,
-        &HashMap::new(),
-        global_class_map,
-        &HashMap::new(),
-        global_interface_map,
-        &HashMap::new(),
-        global_enum_map,
-        &HashMap::new(),
-        global_module_map,
-        &mut module_imported_map,
-        &mut module_imported_classes,
-        &mut module_imported_interfaces,
-        &mut module_imported_enums,
-        &mut module_imported_modules,
+        ImportMapSources {
+            namespace_functions: &HashMap::new(),
+            global_function_map,
+            namespace_classes: &HashMap::new(),
+            global_class_map,
+            namespace_interfaces: &HashMap::new(),
+            global_interface_map,
+            namespace_enums: &HashMap::new(),
+            global_enum_map,
+            namespace_modules: &HashMap::new(),
+            global_module_map,
+        },
+        ImportedMapsMut {
+            imported_map: &mut module_imported_map,
+            imported_classes: &mut module_imported_classes,
+            imported_interfaces: &mut module_imported_interfaces,
+            imported_enums: &mut module_imported_enums,
+            imported_modules: &mut module_imported_modules,
+        },
     );
     let global_class_symbols = collect_global_class_symbols(global_class_map, entry_namespace);
     let resolved_ctx = ResolvedRewriteContext {

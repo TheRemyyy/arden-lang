@@ -1635,18 +1635,30 @@ pub(crate) fn load_rewritten_file_cache_if_semantic_matches(
     Ok(Some(entry))
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(crate) struct RewrittenFileCachePayload<'a> {
+    pub(crate) semantic_fingerprint: &'a str,
+    pub(crate) rewrite_context_fingerprint: &'a str,
+    pub(crate) rewritten_program: &'a Program,
+    pub(crate) api_program: &'a Program,
+    pub(crate) specialization_projection: &'a Program,
+    pub(crate) active_symbols: &'a HashSet<String>,
+    pub(crate) has_specialization_demand: bool,
+}
+
 pub(crate) fn save_rewritten_file_cache(
     project_root: &Path,
     file: &Path,
-    semantic_fingerprint: &str,
-    rewrite_context_fingerprint: &str,
-    rewritten_program: &Program,
-    api_program: &Program,
-    specialization_projection: &Program,
-    active_symbols: &HashSet<String>,
-    has_specialization_demand: bool,
+    payload: RewrittenFileCachePayload<'_>,
 ) -> Result<(), String> {
+    let RewrittenFileCachePayload {
+        semantic_fingerprint,
+        rewrite_context_fingerprint,
+        rewritten_program,
+        api_program,
+        specialization_projection,
+        active_symbols,
+        has_specialization_demand,
+    } = payload;
     let path = rewritten_file_cache_path(project_root, file);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {

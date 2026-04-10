@@ -299,7 +299,6 @@ pub(crate) fn import_path_owner_file<'a>(
     None
 }
 
-#[allow(dead_code)]
 pub(crate) struct RewriteFingerprintContext<'a> {
     pub(crate) namespace_functions: &'a HashMap<String, HashSet<String>>,
     pub(crate) global_function_map: &'a HashMap<String, String>,
@@ -319,7 +318,6 @@ pub(crate) struct RewriteFingerprintContext<'a> {
     pub(crate) symbol_lookup: Arc<ProjectSymbolLookup>,
 }
 
-#[allow(dead_code)]
 pub(crate) struct DependencyResolutionContext<'a> {
     pub(crate) namespace_files_map: &'a HashMap<String, Vec<PathBuf>>,
     pub(crate) global_function_map: &'a HashMap<String, String>,

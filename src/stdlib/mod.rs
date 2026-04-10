@@ -115,7 +115,6 @@ impl StdLib {
     }
 
     /// Get all std functions as a map
-    #[allow(dead_code)]
     pub fn get_functions(&self) -> &HashMap<String, String> {
         &self.functions
     }

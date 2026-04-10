@@ -101,17 +101,29 @@ pub(crate) struct CodegenReferenceMetadata {
     pub(crate) api_referenced_symbols: Vec<String>,
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn extend_declaration_symbols_for_reference(
-    current_file: &Path,
+pub(crate) struct ReferenceExpansion<'a> {
+    current_file: &'a Path,
     prefer_local_owner: bool,
-    symbol: &str,
-    entry_namespace: &str,
-    declaration_symbols: &mut HashSet<String>,
-    stack: &mut Vec<PathBuf>,
-    closure_files: &HashSet<PathBuf>,
+    symbol: &'a str,
+    entry_namespace: &'a str,
+    declaration_symbols: &'a mut HashSet<String>,
+    stack: &'a mut Vec<PathBuf>,
+    closure_files: &'a HashSet<PathBuf>,
+}
+
+pub(crate) fn extend_declaration_symbols_for_reference(
+    expansion: ReferenceExpansion<'_>,
     maps: &GlobalSymbolMaps<'_>,
 ) {
+    let ReferenceExpansion {
+        current_file,
+        prefer_local_owner,
+        symbol,
+        entry_namespace,
+        declaration_symbols,
+        stack,
+        closure_files,
+    } = expansion;
     let mut push_owner = |owner_ns: &str, owner_file: &Path| {
         if closure_files.contains(owner_file) {
             insert_declaration_symbol_for_owner(
@@ -343,17 +355,29 @@ pub(crate) struct DeclarationClosure {
     pub(crate) files: HashSet<PathBuf>,
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(crate) struct DeclarationClosureRequest<'a> {
+    pub(crate) root_file: &'a Path,
+    pub(crate) root_active_symbols: &'a HashSet<String>,
+    pub(crate) precomputed_dependency_closures: &'a PrecomputedDependencyClosures,
+    pub(crate) reference_metadata: &'a HashMap<PathBuf, CodegenReferenceMetadata>,
+    pub(crate) entry_namespace: &'a str,
+    pub(crate) symbol_lookup: &'a ProjectSymbolLookup,
+    pub(crate) timings: Option<&'a DeclarationClosureTimingTotals>,
+}
+
 pub(crate) fn declaration_symbols_for_unit(
-    root_file: &Path,
-    root_active_symbols: &HashSet<String>,
-    precomputed_dependency_closures: &PrecomputedDependencyClosures,
-    reference_metadata: &HashMap<PathBuf, CodegenReferenceMetadata>,
-    entry_namespace: &str,
-    symbol_lookup: &ProjectSymbolLookup,
+    request: DeclarationClosureRequest<'_>,
     maps: &GlobalSymbolMaps<'_>,
-    timings: Option<&DeclarationClosureTimingTotals>,
 ) -> DeclarationClosure {
+    let DeclarationClosureRequest {
+        root_file,
+        root_active_symbols,
+        precomputed_dependency_closures,
+        reference_metadata,
+        entry_namespace,
+        symbol_lookup,
+        timings,
+    } = request;
     let closure_seed_started_at = Instant::now();
     let mut closure_files =
         transitive_dependencies_from_precomputed(precomputed_dependency_closures, root_file);
@@ -505,13 +529,15 @@ pub(crate) fn declaration_symbols_for_unit(
                     .fetch_add(1, Ordering::Relaxed);
             }
             extend_declaration_symbols_for_reference(
-                &file,
-                file != root_file,
-                symbol,
-                entry_namespace,
-                &mut declaration_symbols,
-                &mut stack,
-                &closure_files,
+                ReferenceExpansion {
+                    current_file: &file,
+                    prefer_local_owner: file != root_file,
+                    symbol,
+                    entry_namespace,
+                    declaration_symbols: &mut declaration_symbols,
+                    stack: &mut stack,
+                    closure_files: &closure_files,
+                },
                 maps,
             );
         }

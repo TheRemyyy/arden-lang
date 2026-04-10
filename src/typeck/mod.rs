@@ -2279,7 +2279,7 @@ impl TypeChecker {
                 }
             }
             Pattern::Literal(lit) => {
-                let lit_type = self.literal_type(lit);
+                let lit_type = Self::literal_type(lit);
                 if self
                     .common_compatible_type(expected_type, &lit_type)
                     .is_none()
@@ -3847,7 +3847,7 @@ impl TypeChecker {
 
     fn check_expr(&mut self, expr: &Expr, span: Span) -> ResolvedType {
         match expr {
-            Expr::Literal(lit) => self.literal_type(lit),
+            Expr::Literal(lit) => Self::literal_type(lit),
 
             Expr::Ident(name) => {
                 if let Some(var) = self.lookup_variable(name) {
@@ -7577,9 +7577,8 @@ impl TypeChecker {
     }
 
     /// Resolve AST type to checked type
-    #[allow(clippy::only_used_in_recursion)]
     /// Get type of a literal
-    fn literal_type(&self, lit: &Literal) -> ResolvedType {
+    fn literal_type(lit: &Literal) -> ResolvedType {
         match lit {
             Literal::Integer(_) => ResolvedType::Integer,
             Literal::Float(_) => ResolvedType::Float,

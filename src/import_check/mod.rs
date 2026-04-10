@@ -13,7 +13,6 @@ pub struct ImportError {
     pub function_name: String,
     pub defined_in: String,
     pub used_in: String,
-    #[allow(dead_code)]
     pub span: Span,
     pub suggestion: Option<String>,
 }
@@ -272,7 +271,6 @@ pub struct ImportChecker<'a> {
     /// Imported functions in current file (just the name, e.g., "factorial")
     imported_functions: HashSet<String>,
     /// All imports (for wildcard resolution)
-    #[allow(dead_code)]
     wildcard_imports: Vec<String>, // e.g., ["utils.math", "utils.strings"]
     /// Namespace aliases from imports (`import std.io as io`)
     namespace_aliases: HashMap<String, String>,
@@ -1727,7 +1725,6 @@ fn parse_alias_member_path(name: &str) -> Option<Vec<String>> {
 }
 
 /// Extract all function definitions from a program with their namespace
-#[allow(dead_code)]
 pub fn extract_function_namespaces(program: &Program, namespace: &str) -> HashMap<String, String> {
     let mut result = HashMap::new();
 

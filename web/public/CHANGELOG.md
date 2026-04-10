@@ -21,8 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed macOS portable release bundles after the LLVM 22 upgrade by collecting transitive non-system dylib dependencies such as `libz3`, so packaged `arden-real` no longer aborts during smoke tests on clean runners.
 - Fixed nested Cargo test runs and CLI/test-runner cwd recovery across Linux/macOS CI.
 - Fixed a parallel-test cwd race in `arden test` project runners that could leave the process inside a deleted temp workspace and randomly break later Linux links with mold.
+- Fixed direct linker invocations to anchor their working directory to the output location instead of inheriting the process cwd, which avoids CI-only `mold` crashes after unrelated tests delete temporary directories.
 - Fixed macOS SDK probing to fall back to `/usr/bin/xcrun` when PATH gets scrubbed inside nested CI test runners.
 - Fixed Windows `lld-link` CRT selection so Arden no longer mixes static `libcmt`/`libucrt` style libraries with the import CRT provided by the MSVC toolchain, eliminating duplicate-symbol link failures in project builds and benchmark CI.
+- Fixed the quick CI benchmark job to install Go on every platform, matching the benchmark runner requirements already used by the fuller linker benchmark workflow.
 - Corrected Windows `lld-link` machine detection so `x86_64` targets no longer get mislinked as `x86`.
 - Replaced several build-path panic-style invariants with explicit user-facing errors and warnings, including parse cache reuse, typecheck cache reuse, object cache path lookup, and invalid object shard env overrides.
 

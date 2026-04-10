@@ -2356,13 +2356,15 @@ fn build_project(
                         save_rewritten_file_cache(
                             &project_root,
                             &unit.file,
-                            &unit.semantic_fingerprint,
-                            &rewrite_context_fingerprint,
-                            &rewritten,
-                            &api_program,
-                            &specialization_projection,
-                            &active_symbols,
-                            has_specialization_demand,
+                            RewrittenFileCachePayload {
+                                semantic_fingerprint: &unit.semantic_fingerprint,
+                                rewrite_context_fingerprint: &rewrite_context_fingerprint,
+                                rewritten_program: &rewritten,
+                                api_program: &api_program,
+                                specialization_projection: &specialization_projection,
+                                active_symbols: &active_symbols,
+                                has_specialization_demand,
+                            },
                         )?;
                         rewrite_timing_totals
                             .cache_save_ns
@@ -3168,14 +3170,17 @@ fn build_project(
                         for index in &shard.member_indices {
                             let unit = &rewritten_files[*index];
                             let declaration_closure = declaration_symbols_for_unit(
-                                &unit.file,
-                                &unit.active_symbols,
-                                &precomputed_dependency_closures,
-                                &codegen_reference_metadata,
-                                &entry_namespace,
-                                &project_symbol_lookup,
+                                DeclarationClosureRequest {
+                                    root_file: &unit.file,
+                                    root_active_symbols: &unit.active_symbols,
+                                    precomputed_dependency_closures:
+                                        &precomputed_dependency_closures,
+                                    reference_metadata: &codegen_reference_metadata,
+                                    entry_namespace: &entry_namespace,
+                                    symbol_lookup: &project_symbol_lookup,
+                                    timings: Some(declaration_closure_timing_totals.as_ref()),
+                                },
                                 &global_maps,
-                                Some(declaration_closure_timing_totals.as_ref()),
                             );
                             batch_active_symbols.extend(unit.active_symbols.iter().cloned());
                             batch_declaration_symbols.extend(declaration_closure.symbols);

@@ -427,8 +427,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Format a Type as a string for use in generic type names
-    #[allow(clippy::only_used_in_recursion)]
-    fn format_type(&self, ty: &Type) -> String {
+    fn format_type(ty: &Type) -> String {
         match ty {
             Type::Integer => "Integer".to_string(),
             Type::Float => "Float".to_string(),
@@ -437,35 +436,37 @@ impl<'src> Parser<'src> {
             Type::Char => "Char".to_string(),
             Type::None => "None".to_string(),
             Type::Named(name) => name.clone(),
-            Type::Option(inner) => format!("Option<{}>", self.format_type(inner)),
+            Type::Option(inner) => format!("Option<{}>", Self::format_type(inner)),
             Type::Result(ok, err) => format!(
                 "Result<{}, {}>",
-                self.format_type(ok),
-                self.format_type(err)
+                Self::format_type(ok),
+                Self::format_type(err)
             ),
-            Type::List(inner) => format!("List<{}>", self.format_type(inner)),
-            Type::Map(k, v) => format!("Map<{}, {}>", self.format_type(k), self.format_type(v)),
-            Type::Set(inner) => format!("Set<{}>", self.format_type(inner)),
-            Type::Ref(inner) => format!("&{}", self.format_type(inner)),
-            Type::MutRef(inner) => format!("&mut {}", self.format_type(inner)),
-            Type::Box(inner) => format!("Box<{}>", self.format_type(inner)),
-            Type::Rc(inner) => format!("Rc<{}>", self.format_type(inner)),
-            Type::Arc(inner) => format!("Arc<{}>", self.format_type(inner)),
-            Type::Ptr(inner) => format!("Ptr<{}>", self.format_type(inner)),
-            Type::Task(inner) => format!("Task<{}>", self.format_type(inner)),
-            Type::Range(inner) => format!("Range<{}>", self.format_type(inner)),
+            Type::List(inner) => format!("List<{}>", Self::format_type(inner)),
+            Type::Map(k, v) => {
+                format!("Map<{}, {}>", Self::format_type(k), Self::format_type(v))
+            }
+            Type::Set(inner) => format!("Set<{}>", Self::format_type(inner)),
+            Type::Ref(inner) => format!("&{}", Self::format_type(inner)),
+            Type::MutRef(inner) => format!("&mut {}", Self::format_type(inner)),
+            Type::Box(inner) => format!("Box<{}>", Self::format_type(inner)),
+            Type::Rc(inner) => format!("Rc<{}>", Self::format_type(inner)),
+            Type::Arc(inner) => format!("Arc<{}>", Self::format_type(inner)),
+            Type::Ptr(inner) => format!("Ptr<{}>", Self::format_type(inner)),
+            Type::Task(inner) => format!("Task<{}>", Self::format_type(inner)),
+            Type::Range(inner) => format!("Range<{}>", Self::format_type(inner)),
             Type::Function(params, ret) => {
                 let params_str = params
                     .iter()
-                    .map(|p| self.format_type(p))
+                    .map(Self::format_type)
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("({}) -> {}", params_str, self.format_type(ret))
+                format!("({}) -> {}", params_str, Self::format_type(ret))
             }
             Type::Generic(name, args) => {
                 let args_str = args
                     .iter()
-                    .map(|a| self.format_type(a))
+                    .map(Self::format_type)
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("{}<{}>", name, args_str)
@@ -1281,7 +1282,7 @@ impl<'src> Parser<'src> {
     fn parse_nominal_type_source(&mut self) -> ParseResult<String> {
         let ty = self.parse_type()?;
         match ty {
-            Type::Named(_) | Type::Generic(_, _) => Ok(self.format_type(&ty)),
+            Type::Named(_) | Type::Generic(_, _) => Ok(Self::format_type(&ty)),
             _ => Err(ParseError::new(
                 "Expected interface or class name",
                 self.current_span(),
@@ -2454,7 +2455,7 @@ impl<'src> Parser<'src> {
                             {
                                 let formatted = type_args
                                     .iter()
-                                    .map(|t| self.format_type(t))
+                                    .map(Self::format_type)
                                     .collect::<Vec<_>>()
                                     .join(", ");
                                 Some(Expr::Construct {
@@ -2601,7 +2602,7 @@ impl<'src> Parser<'src> {
                 if has_explicit_type_args {
                     let formatted = explicit_type_args
                         .iter()
-                        .map(|t| self.format_type(t))
+                        .map(Self::format_type)
                         .collect::<Vec<_>>()
                         .join(", ");
                     full_name = format!("{}<{}>", name, formatted);
@@ -2676,7 +2677,7 @@ impl<'src> Parser<'src> {
                                     if is_ctor_fallback {
                                         let formatted = type_args
                                             .iter()
-                                            .map(|t| self.format_type(t))
+                                            .map(Self::format_type)
                                             .collect::<Vec<_>>()
                                             .join(", ");
                                         Expr::Construct {

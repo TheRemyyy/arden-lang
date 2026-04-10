@@ -384,12 +384,6 @@ pub fn find_project_root(start_dir: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Check if path is inside a project
-#[allow(dead_code)]
-pub fn is_in_project(path: &Path) -> bool {
-    find_project_root(path).is_some()
-}
-
 #[cfg(test)]
 mod tests {
     use super::{OutputKind, ProjectConfig};
@@ -766,7 +760,7 @@ output = "demo"
         std::fs::write(&source_file, "function main(): None { return None; }\n")
             .expect("source file should be written");
 
-        let result = super::is_in_project(&source_file);
+        let result = super::find_project_root(&source_file).is_some();
 
         let _ = std::fs::remove_dir_all(&project_root);
 

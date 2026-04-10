@@ -13,10 +13,8 @@ use colored::*;
 
 /// Represents a discovered test
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct Test {
     pub name: String,
-    pub function: FunctionDecl,
     pub ignored: bool,
     pub ignore_reason: Option<String>,
 }
@@ -40,43 +38,36 @@ pub struct TestDiscovery {
     pub ignored_tests: usize,
 }
 
-/// Test execution result
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct TestResult {
-    pub suite_name: String,
-    pub test_name: String,
-    pub passed: bool,
-    pub error_message: Option<String>,
-    pub duration_ms: u64,
-}
-
-/// Overall test run summary
-#[derive(Debug)]
-#[allow(dead_code)]
-pub struct TestSummary {
-    pub total: usize,
-    pub passed: usize,
-    pub failed: usize,
-    pub ignored: usize,
-    pub results: Vec<TestResult>,
-}
-
 /// Discover all tests in a program
 pub fn discover_tests(program: &Program) -> TestDiscovery {
+    struct SuiteState {
+        tests: Vec<Test>,
+        before_all: Option<FunctionDecl>,
+        before_each: Option<FunctionDecl>,
+        after_each: Option<FunctionDecl>,
+        after_all: Option<FunctionDecl>,
+    }
+
+    impl SuiteState {
+        fn new() -> Self {
+            Self {
+                tests: Vec::new(),
+                before_all: None,
+                before_each: None,
+                after_each: None,
+                after_all: None,
+            }
+        }
+    }
+
     let mut suites = Vec::new();
     let mut total_tests = 0;
     let mut ignored_tests = 0;
 
-    #[allow(clippy::too_many_arguments)]
     fn collect_function_into_suite(
         func: &FunctionDecl,
         qualified_name: String,
-        suite_tests: &mut Vec<Test>,
-        before_all: &mut Option<FunctionDecl>,
-        before_each: &mut Option<FunctionDecl>,
-        after_each: &mut Option<FunctionDecl>,
-        after_all: &mut Option<FunctionDecl>,
+        state: &mut SuiteState,
         total_tests: &mut usize,
         ignored_tests: &mut usize,
     ) {
@@ -84,19 +75,19 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
         qualified_func.name = qualified_name.clone();
 
         if has_attribute(&func.attributes, Attribute::BeforeAll) {
-            *before_all = Some(qualified_func);
+            state.before_all = Some(qualified_func);
             return;
         }
         if has_attribute(&func.attributes, Attribute::Before) {
-            *before_each = Some(qualified_func);
+            state.before_each = Some(qualified_func);
             return;
         }
         if has_attribute(&func.attributes, Attribute::After) {
-            *after_each = Some(qualified_func);
+            state.after_each = Some(qualified_func);
             return;
         }
         if has_attribute(&func.attributes, Attribute::AfterAll) {
-            *after_all = Some(qualified_func);
+            state.after_all = Some(qualified_func);
             return;
         }
 
@@ -104,9 +95,8 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
             let ignored = has_ignore_attribute(&func.attributes);
             let ignore_reason = get_ignore_reason(&func.attributes);
 
-            suite_tests.push(Test {
+            state.tests.push(Test {
                 name: qualified_name,
-                function: qualified_func,
                 ignored,
                 ignore_reason,
             });
@@ -125,11 +115,7 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
         ignored_tests: &mut usize,
         suites: &mut Vec<TestSuite>,
     ) {
-        let mut suite_tests = Vec::new();
-        let mut before_all = None;
-        let mut before_each = None;
-        let mut after_each = None;
-        let mut after_all = None;
+        let mut state = SuiteState::new();
 
         for decl in declarations {
             match &decl.node {
@@ -138,11 +124,7 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
                     collect_function_into_suite(
                         func,
                         qualified_name,
-                        &mut suite_tests,
-                        &mut before_all,
-                        &mut before_each,
-                        &mut after_each,
-                        &mut after_all,
+                        &mut state,
                         total_tests,
                         ignored_tests,
                     );
@@ -161,23 +143,19 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
             }
         }
 
-        if !suite_tests.is_empty() {
+        if !state.tests.is_empty() {
             suites.push(TestSuite {
                 name: suite_name,
-                tests: suite_tests,
-                before_all,
-                before_each,
-                after_each,
-                after_all,
+                tests: state.tests,
+                before_all: state.before_all,
+                before_each: state.before_each,
+                after_each: state.after_each,
+                after_all: state.after_all,
             });
         }
     }
 
-    let mut default_tests = Vec::new();
-    let mut before_all = None;
-    let mut before_each = None;
-    let mut after_each = None;
-    let mut after_all = None;
+    let mut default_suite = SuiteState::new();
 
     for decl in &program.declarations {
         match &decl.node {
@@ -185,11 +163,7 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
                 collect_function_into_suite(
                     func,
                     func.name.clone(),
-                    &mut default_tests,
-                    &mut before_all,
-                    &mut before_each,
-                    &mut after_each,
-                    &mut after_all,
+                    &mut default_suite,
                     &mut total_tests,
                     &mut ignored_tests,
                 );
@@ -207,16 +181,16 @@ pub fn discover_tests(program: &Program) -> TestDiscovery {
         }
     }
 
-    if !default_tests.is_empty() {
+    if !default_suite.tests.is_empty() {
         suites.insert(
             0,
             TestSuite {
                 name: "default".to_string(),
-                tests: default_tests,
-                before_all,
-                before_each,
-                after_each,
-                after_all,
+                tests: default_suite.tests,
+                before_all: default_suite.before_all,
+                before_each: default_suite.before_each,
+                after_each: default_suite.after_each,
+                after_all: default_suite.after_all,
             },
         );
     }
@@ -290,7 +264,7 @@ fn escape_display_text(value: &str) -> String {
 }
 
 /// Generate test runner code for compilation
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn generate_test_runner(discovery: &TestDiscovery) -> String {
     let mut code = String::new();
 
@@ -558,10 +532,6 @@ fn filter_out_main_function(source: &str) -> String {
     result
 }
 
-#[cfg(test)]
-#[allow(clippy::items_after_test_module)]
-mod tests;
-
 /// Generate runner code with mutable counters
 fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
     code.push_str(&format!("    // Test Suite: {}\n", suite.name));
@@ -630,7 +600,7 @@ fn generate_suite_runner_with_mut(code: &mut String, suite: &TestSuite) {
 }
 
 /// Generate runner code for a single test suite
-#[allow(dead_code)]
+#[cfg(test)]
 fn generate_suite_runner(code: &mut String, suite: &TestSuite) {
     code.push_str(&format!("    // Test Suite: {}\n", suite.name));
 
@@ -757,47 +727,5 @@ pub fn print_discovery(discovery: &TestDiscovery) {
     );
 }
 
-/// Print test summary
-#[allow(dead_code)]
-pub fn print_summary(summary: &TestSummary) {
-    println!();
-    println!(
-        "{}",
-        "+======================================+"
-            .truecolor(217, 178, 158)
-            .bold()
-    );
-    println!(
-        "{}",
-        "| Test Summary                         |"
-            .truecolor(255, 255, 255)
-            .bold()
-    );
-    println!(
-        "{}",
-        "+======================================+"
-            .truecolor(217, 178, 158)
-            .bold()
-    );
-
-    println!("Total:   {}", summary.total.to_string().cyan().bold());
-    println!("Passed:  {}", summary.passed.to_string().green().bold());
-    println!(
-        "Failed:  {}",
-        if summary.failed > 0 {
-            summary.failed.to_string().red().bold()
-        } else {
-            summary.failed.to_string().green()
-        }
-    );
-    println!("Ignored: {}", summary.ignored.to_string().yellow());
-
-    println!();
-    if summary.failed > 0 {
-        println!("{}", "SOME TESTS FAILED".red().bold());
-    } else if summary.passed > 0 {
-        println!("{}", "ALL TESTS PASSED".green().bold());
-    } else {
-        println!("{}", "NO TESTS RUN".yellow());
-    }
-}
+#[cfg(test)]
+mod tests;

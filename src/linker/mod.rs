@@ -80,10 +80,10 @@ pub(crate) fn detect_linker_flavor() -> Result<LinkerFlavor, String> {
         if find_tool_in_path("mold").is_some() || find_tool_in_path("ld.mold").is_some() {
             return Ok(LinkerFlavor::Mold);
         }
-        return Err(format!(
+        Err(format!(
             "{}: Required linker 'mold' not found in PATH. Install mold and retry.",
             "error".red().bold()
-        ));
+        ))
     }
 
     #[cfg(target_os = "macos")]
@@ -111,11 +111,13 @@ pub(crate) fn detect_linker_flavor() -> Result<LinkerFlavor, String> {
         ));
     }
 
-    #[allow(unreachable_code)]
-    Err(format!(
-        "{}: Unsupported host platform for linker detection.",
-        "error".red().bold()
-    ))
+    #[cfg(not(any(windows, unix)))]
+    {
+        Err(format!(
+            "{}: Unsupported host platform for linker detection.",
+            "error".red().bold()
+        ))
+    }
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -136,14 +138,17 @@ pub(crate) fn should_force_no_pie(link: &LinkConfig<'_>) -> bool {
     }
 }
 
-fn linker_thread_count() -> usize {
-    std::thread::available_parallelism()
-        .map(|value| value.get())
-        .unwrap_or(1)
-}
-
 fn apply_fallback_current_dir(command: &mut Command) {
     let working_dir = env::current_dir().unwrap_or_else(|_| env::temp_dir());
+    command.current_dir(working_dir);
+}
+
+fn apply_stable_command_dir(command: &mut Command, anchor_path: &Path) {
+    let working_dir = anchor_path
+        .parent()
+        .filter(|dir| dir.is_dir())
+        .map(Path::to_path_buf)
+        .unwrap_or_else(env::temp_dir);
     command.current_dir(working_dir);
 }
 
@@ -403,8 +408,11 @@ fn link_with_mold(
         })?;
     let context = linux_link_context(link)?;
     let mut command = Command::new(linker_path);
+    let thread_count = std::thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(1);
     command
-        .arg(format!("--thread-count={}", linker_thread_count()))
+        .arg(format!("--thread-count={thread_count}"))
         .arg("--build-id")
         .arg("--as-needed")
         .arg("-o")
@@ -439,6 +447,7 @@ fn link_with_mold(
         command.arg(crtend);
     }
     command.arg(&context.crtn);
+    apply_stable_command_dir(&mut command, output_path);
 
     run_link_command(command, "mold")
 }
@@ -650,10 +659,13 @@ fn link_with_lld_link(
         )
     })?;
     let mut command = Command::new(linker_path);
+    let thread_count = std::thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(1);
     command
         .arg(format!("/out:{}", output_path.display()))
         .arg(format!("/machine:{}", windows_machine_flag(link.target)))
-        .arg(format!("/threads:{}", linker_thread_count()))
+        .arg(format!("/threads:{thread_count}"))
         .arg("/incremental:no")
         .arg("/opt:ref")
         .arg("/opt:icf")
@@ -699,6 +711,7 @@ fn link_with_lld_link(
     for arg in link.link_args {
         command.arg(arg);
     }
+    apply_stable_command_dir(&mut command, output_path);
 
     run_link_command(command, "lld-link")
 }
@@ -762,6 +775,7 @@ fn link_with_macos_lld(
     write_link_response_file(&response_path, &response_args)?;
     let mut command = Command::new(linker_path);
     command.arg(format!("@{}", response_path.display()));
+    apply_stable_command_dir(&mut command, output_path);
     let result = run_link_command(command, "ld64.lld");
     let _ = fs::remove_file(&response_path);
     result
