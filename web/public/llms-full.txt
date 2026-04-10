@@ -2,7 +2,7 @@
 
 > Arden is a native systems programming language targeting LLVM. It ships with static type checking, an ownership and borrowing safety model, and an integrated CLI that covers building, checking, formatting, linting, testing, benchmarking, profiling, and LSP support. Current release: v1.3.7.
 
-Arden targets LLVM for native code generation and uses Clang plus a platform-specific linker (mold on Linux, lld on macOS/Windows). It is designed for practical systems work — explicit enough to make ownership and types visible, ergonomic enough for day-to-day app and tool code.
+Arden targets LLVM for native code generation and uses explicit platform linkers directly (`mold` on Linux, `lld` on macOS/Windows). It is designed for practical systems work — explicit enough to make ownership and types visible, ergonomic enough for day-to-day app and tool code.
 
 ## Project Links
 - [Homepage](https://www.arden-lang.dev/)
@@ -296,7 +296,7 @@ arden check suspicious.arden
 ### Compiler Architecture
 URL: https://www.arden-lang.dev/docs/compiler/architecture
 
-Compiler internals — lexer, parser, semantic analysis, borrow checker, LLVM IR lowering, native codegen via Clang and platform linker.
+Compiler internals — lexer, parser, semantic analysis, borrow checker, LLVM IR lowering, direct LLVM object emission, and native linking via explicit platform linkers.
 
 ### Projects Summary
 URL: https://www.arden-lang.dev/docs/projects

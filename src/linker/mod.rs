@@ -27,24 +27,6 @@ pub(crate) fn validate_opt_level(opt_level: Option<&str>) -> Result<(), String> 
     ))
 }
 
-#[cfg(target_os = "macos")]
-pub(crate) fn resolve_clang_opt_flag(opt_level: Option<&str>) -> &'static str {
-    let normalized = opt_level
-        .map(str::trim)
-        .map(str::to_ascii_lowercase)
-        .unwrap_or_default();
-    match normalized.as_str() {
-        "" | "3" => "-O3",
-        "0" => "-O0",
-        "1" => "-O1",
-        "2" => "-O2",
-        "s" => "-Os",
-        "z" => "-Oz",
-        "fast" => "-Ofast",
-        _ => "-O3",
-    }
-}
-
 pub(crate) struct LinkConfig<'a> {
     pub(crate) opt_level: Option<&'a str>,
     pub(crate) target: Option<&'a str>,
@@ -71,11 +53,6 @@ fn find_tool_in_path(tool: &str) -> Option<PathBuf> {
             None
         })
     })
-}
-
-#[allow(dead_code)]
-pub(crate) fn shutil_which(tool: &str) -> bool {
-    find_tool_in_path(tool).is_some()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -191,30 +168,6 @@ fn run_link_command(mut command: Command, tool_label: &str) -> Result<(), String
         tool_label,
         details
     ))
-}
-
-#[allow(dead_code)]
-pub(crate) fn escape_response_file_arg(arg: &str) -> String {
-    let escaped = arg.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("\"{}\"", escaped)
-}
-
-#[allow(dead_code)]
-pub(crate) fn write_link_response_file(path: &Path, objects: &[PathBuf]) -> Result<(), String> {
-    let mut contents = String::new();
-    for object in objects {
-        contents.push_str(&escape_response_file_arg(&object.display().to_string()));
-        contents.push('\n');
-    }
-
-    fs::write(path, contents).map_err(|e| {
-        format!(
-            "{}: Failed to write link response file '{}': {}",
-            "error".red().bold(),
-            path.display(),
-            e
-        )
-    })
 }
 
 #[cfg(target_os = "linux")]
@@ -484,6 +437,125 @@ fn link_with_mold(
     run_link_command(command, "mold")
 }
 
+#[cfg(target_os = "macos")]
+fn macos_target_arch(target: Option<&str>) -> Result<&'static str, String> {
+    let resolved_target = target
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| env::consts::ARCH.to_ascii_lowercase());
+    if resolved_target.contains("aarch64") || resolved_target.contains("arm64") {
+        return Ok("arm64");
+    }
+    if resolved_target.contains("x86_64") {
+        return Ok("x86_64");
+    }
+
+    Err(format!(
+        "{}: Unsupported macOS link target '{}'. Arden currently supports direct LLVM lld linking for x86_64 and arm64 macOS targets.",
+        "error".red().bold(),
+        resolved_target
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_sdk_root() -> Result<PathBuf, String> {
+    if let Some(root) = env::var_os("SDKROOT").filter(|value| !value.is_empty()) {
+        let path = PathBuf::from(root);
+        if path.is_dir() {
+            return Ok(path);
+        }
+    }
+
+    let output = Command::new("xcrun")
+        .arg("--sdk")
+        .arg("macosx")
+        .arg("--show-sdk-path")
+        .output()
+        .map_err(|error| {
+            format!(
+                "{}: Failed to launch xcrun to resolve the macOS SDK path: {}",
+                "error".red().bold(),
+                error
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "{}: Failed to resolve macOS SDK path with xcrun.",
+            "error".red().bold()
+        ));
+    }
+
+    let sdk_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if sdk_path.is_empty() {
+        return Err(format!(
+            "{}: xcrun did not return a usable macOS SDK path.",
+            "error".red().bold()
+        ));
+    }
+
+    Ok(PathBuf::from(sdk_path))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_sdk_version() -> Result<String, String> {
+    if let Some(version) = env::var_os("MACOSX_DEPLOYMENT_TARGET").filter(|value| !value.is_empty())
+    {
+        return Ok(version.to_string_lossy().into_owned());
+    }
+
+    let output = Command::new("xcrun")
+        .arg("--sdk")
+        .arg("macosx")
+        .arg("--show-sdk-version")
+        .output()
+        .map_err(|error| {
+            format!(
+                "{}: Failed to launch xcrun to resolve the macOS SDK version: {}",
+                "error".red().bold(),
+                error
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "{}: Failed to resolve the macOS SDK version with xcrun.",
+            "error".red().bold()
+        ));
+    }
+
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if version.is_empty() {
+        return Err(format!(
+            "{}: xcrun did not return a usable macOS SDK version.",
+            "error".red().bold()
+        ));
+    }
+
+    Ok(version)
+}
+
+#[cfg(any(test, target_os = "macos"))]
+pub(crate) fn escape_response_file_arg(arg: &str) -> String {
+    let escaped = arg.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{}\"", escaped)
+}
+
+#[cfg(target_os = "macos")]
+fn write_link_response_file(path: &Path, args: &[String]) -> Result<(), String> {
+    let mut contents = String::new();
+    for arg in args {
+        contents.push_str(&escape_response_file_arg(arg));
+        contents.push('\n');
+    }
+
+    fs::write(path, contents).map_err(|error| {
+        format!(
+            "{}: Failed to write link response file '{}': {}",
+            "error".red().bold(),
+            path.display(),
+            error
+        )
+    })
+}
+
 #[cfg(windows)]
 fn windows_machine_flag(target: Option<&str>) -> &'static str {
     let target = target
@@ -623,44 +695,65 @@ fn link_with_lld_link(
 }
 
 #[cfg(target_os = "macos")]
-fn link_with_clang_driver(
+fn link_with_macos_lld(
     objects: &[PathBuf],
     output_path: &Path,
     link: &LinkConfig<'_>,
 ) -> Result<(), String> {
-    let _ = detect_linker_flavor()?;
+    let linker_path = find_tool_in_path("ld64.lld")
+        .or_else(|| find_tool_in_path("ld.lld"))
+        .or_else(|| find_tool_in_path("lld"))
+        .ok_or_else(|| {
+            format!(
+                "{}: Required LLVM Mach-O linker not found in PATH. Install ld64.lld and retry.",
+                "error".red().bold()
+            )
+        })?;
+    let target_arch = macos_target_arch(link.target)?;
+    let sdk_root = macos_sdk_root()?;
+    let sdk_version = macos_sdk_version()?;
     let response_path = output_path.with_extension("link.rsp");
-    write_link_response_file(&response_path, objects)?;
-    let mut command = Command::new("clang");
-    command
-        .arg(format!("@{}", response_path.display()))
-        .arg("-o")
-        .arg(output_path)
-        .arg(resolve_clang_opt_flag(link.opt_level))
-        .arg("-fuse-ld=lld");
+    let mut response_args = vec![
+        "-arch".to_string(),
+        target_arch.to_string(),
+        "-platform_version".to_string(),
+        "macos".to_string(),
+        sdk_version.clone(),
+        sdk_version,
+        "-syslibroot".to_string(),
+        sdk_root.display().to_string(),
+        "-o".to_string(),
+        output_path.display().to_string(),
+        "-dead_strip".to_string(),
+        "-demangle".to_string(),
+        "-adhoc_codesign".to_string(),
+    ];
 
     if link.output_kind == OutputKind::Shared {
-        command.arg("-shared");
-    }
-    if let Some(target_triple) = link.target {
-        command.arg("--target").arg(target_triple);
-    } else {
-        command.arg("-march=native").arg("-mtune=native");
+        response_args.push("-dylib".to_string());
     }
 
-    command.arg("-fomit-frame-pointer");
-    command.arg("-lm").arg("-pthread");
+    for object in objects {
+        response_args.push(object.display().to_string());
+    }
+
     for path in link.link_search {
-        command.arg(format!("-L{}", path));
+        response_args.push("-L".to_string());
+        response_args.push(path.clone());
     }
     for lib in link.link_libs {
-        command.arg(format!("-l{}", lib));
+        response_args.push(format!("-l{lib}"));
     }
     for arg in link.link_args {
-        command.arg(arg);
+        response_args.push(arg.clone());
     }
+    response_args.push("-lSystem".to_string());
+    response_args.push("-lm".to_string());
 
-    let result = run_link_command(command, "clang + lld");
+    write_link_response_file(&response_path, &response_args)?;
+    let mut command = Command::new(linker_path);
+    command.arg(format!("@{}", response_path.display()));
+    let result = run_link_command(command, "ld64.lld");
     let _ = fs::remove_file(&response_path);
     result
 }
@@ -706,7 +799,7 @@ pub(crate) fn link_objects(
             }
             #[cfg(target_os = "macos")]
             {
-                link_with_clang_driver(objects, output_path, link)
+                link_with_macos_lld(objects, output_path, link)
             }
             #[cfg(windows)]
             {

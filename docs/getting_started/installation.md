@@ -64,7 +64,6 @@ You need:
 
 - Rust `1.85+`
 - LLVM `22.1+`
-- Clang on Linux/macOS for Cargo-driven compiler builds
 - Git
 - a supported linker setup
 
@@ -117,7 +116,7 @@ On Windows:
 Example package install:
 
 ```bash
-sudo dnf install -y git clang mold cmake ninja-build make gcc gcc-c++ llvm llvm-devel llvm-libs
+sudo dnf install -y git mold cmake ninja-build make gcc gcc-c++ llvm llvm-devel llvm-libs
 ```
 
 If `llvm-sys` does not auto-detect LLVM correctly, point it at the installed prefix:
@@ -134,8 +133,8 @@ If LLVM is not on your shell path by default, export the appropriate prefix befo
 
 Typical things to verify:
 
-- `clang --version`
-- `ld.lld --version` or equivalent LLVM linker path
+- `llvm-config --version`
+- `ld64.lld --version` or `ld.lld --version`
 - the active Rust toolchain can build normal Rust crates successfully
 
 #### Windows

@@ -210,7 +210,7 @@ That sequence exercises the main project commands without requiring any extra re
 
 The most common setup problems are toolchain related:
 
-- LLVM or Clang missing
+- LLVM or the required linker missing
 - linker mismatch (`mold` on Linux, `lld` on macOS/Windows)
 - `arden` not on your shell path yet
 

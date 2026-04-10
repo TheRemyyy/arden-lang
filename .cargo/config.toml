@@ -1,35 +1,33 @@
 [target.x86_64-unknown-linux-gnu]
-linker = "clang"
+linker = ".cargo/linkers/linux-x86_64-mold.sh"
 rustflags = [
   "-C", "target-cpu=native",
-  "-C", "link-arg=-fuse-ld=mold",
-  "-C", "link-arg=-Wl,--threads",
-  "-C", "link-arg=-Wl,--as-needed",
-  "-C", "link-arg=-Wl,--build-id=fast",
+  "-C", "link-arg=--as-needed",
+  "-C", "link-arg=--build-id=fast",
 ]
 
 [target.aarch64-unknown-linux-gnu]
-linker = "clang"
+linker = ".cargo/linkers/linux-aarch64-mold.sh"
 rustflags = [
   "-C", "target-cpu=native",
-  "-C", "link-arg=-fuse-ld=mold",
-  "-C", "link-arg=-Wl,--threads",
-  "-C", "link-arg=-Wl,--as-needed",
-  "-C", "link-arg=-Wl,--build-id=fast",
+  "-C", "link-arg=--as-needed",
+  "-C", "link-arg=--build-id=fast",
 ]
 
 [target.aarch64-apple-darwin]
-linker = "clang"
+linker = ".cargo/linkers/macos-aarch64-lld.sh"
 rustflags = [
   "-C", "target-cpu=native",
-  "-C", "link-arg=-fuse-ld=lld",
+  "-C", "link-arg=-dead_strip",
+  "-C", "link-arg=-adhoc_codesign",
 ]
 
 [target.x86_64-apple-darwin]
-linker = "clang"
+linker = ".cargo/linkers/macos-x86_64-lld.sh"
 rustflags = [
   "-C", "target-cpu=native",
-  "-C", "link-arg=-fuse-ld=lld",
+  "-C", "link-arg=-dead_strip",
+  "-C", "link-arg=-adhoc_codesign",
 ]
 
 [target.x86_64-pc-windows-msvc]

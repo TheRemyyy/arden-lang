@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### ♻️ Changed
 
-- Reworked native artifact production around direct LLVM object emission plus stricter platform linker backends, so Arden now links Linux outputs through `mold` directly, Windows outputs through `lld-link`, and repository Cargo builds pin the intended `mold`/`lld` policy in `.cargo/config.toml`.
+- Reworked native artifact production and Cargo self-builds around explicit linker-only backends, so Arden now emits objects directly from LLVM, links Linux outputs through `mold`, links macOS/Windows outputs through LLVM `lld`, and pins dedicated Cargo wrapper scripts instead of `clang` in `.cargo/config.toml`.
 
 ## [1.3.7] - 2026-04-10
 
