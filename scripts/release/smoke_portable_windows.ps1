@@ -20,7 +20,8 @@ if (-not $BundleDir) {
 $RequiredBundledLibs = @(
     (Join-Path $BundleDir.FullName "toolchain\windows-libs\vc\legacy_stdio_definitions.lib"),
     (Join-Path $BundleDir.FullName "toolchain\windows-libs\ucrt\ucrt.lib"),
-    (Join-Path $BundleDir.FullName "toolchain\windows-libs\um\kernel32.lib")
+    (Join-Path $BundleDir.FullName "toolchain\windows-libs\um\kernel32.lib"),
+    (Join-Path $BundleDir.FullName "toolchain\windows-libs\builtins\clang_rt.builtins-x86_64.lib")
 )
 foreach ($RequiredBundledLib in $RequiredBundledLibs) {
     if (-not (Test-Path $RequiredBundledLib)) {

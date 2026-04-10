@@ -585,6 +585,14 @@ fn windows_search_paths(link: &LinkConfig<'_>) -> Vec<PathBuf> {
 
 #[cfg(windows)]
 fn maybe_find_windows_builtins() -> Option<PathBuf> {
+    if let Some(explicit_path) = env::var_os("ARDEN_WINDOWS_BUILTINS_LIB")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+    {
+        return Some(explicit_path);
+    }
+
     let prefixes = [
         env::var_os("ARDEN_LLVM_REAL_PREFIX"),
         env::var_os("LLVM_SYS_221_PREFIX"),

@@ -69,6 +69,10 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
         env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.platform == 'linux' && '.cargo/linkers/linux-x86_64-mold.sh' || '' }}
+          CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER: ${{ matrix.target == 'aarch64-apple-darwin' && '.cargo/linkers/macos-aarch64-lld.sh' || '' }}
+          CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER: ${{ matrix.target == 'x86_64-apple-darwin' && '.cargo/linkers/macos-x86_64-lld.sh' || '' }}
+          CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: ${{ matrix.platform == 'windows' && 'lld-link' || '' }}
           RUSTFLAGS: ${{ matrix.os == 'windows-latest' && format('-C link-arg=/LIBPATH:{0}', env.LIBXML2_LIB_PATH) || '' }}
 
       - name: Strip binary (Linux/macOS)

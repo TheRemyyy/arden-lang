@@ -19,6 +19,8 @@ jobs:
     name: Build Portable (linux-x64)
     if: ${{ inputs.platform == 'all' || inputs.platform == 'linux-x64' }}
     runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: .cargo/linkers/linux-x86_64-mold.sh
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -67,6 +69,8 @@ jobs:
     name: Build Portable (macos-arm64)
     if: ${{ inputs.platform == 'all' || inputs.platform == 'macos-arm64' }}
     runs-on: macos-latest
+    env:
+      CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER: .cargo/linkers/macos-aarch64-lld.sh
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -115,6 +119,8 @@ jobs:
     name: Build Portable (windows-x64)
     if: ${{ inputs.platform == 'all' || inputs.platform == 'windows-x64' }}
     runs-on: windows-latest
+    env:
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: lld-link
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

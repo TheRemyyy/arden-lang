@@ -278,6 +278,7 @@ set "ROOT=%~dp0"
 set "PATH=%ROOT%toolchain\\llvm\\bin;%PATH%"
 set "LIB=%ROOT%toolchain\\windows-libs\\vc;%ROOT%toolchain\\windows-libs\\ucrt;%ROOT%toolchain\\windows-libs\\um;%LIB%"
 set "LIBPATH=%ROOT%toolchain\\windows-libs\\vc;%ROOT%toolchain\\windows-libs\\ucrt;%ROOT%toolchain\\windows-libs\\um;%LIBPATH%"
+set "ARDEN_WINDOWS_BUILTINS_LIB=%ROOT%toolchain\\windows-libs\\builtins\\clang_rt.builtins-x86_64.lib"
 "%ROOT%bin\\arden-real.exe" %*
 """
 
@@ -349,6 +350,7 @@ set "ROOT=$Root"
 set "PATH=%ROOT%\\toolchain\\llvm\\bin;%PATH%"
 set "LIB=%ROOT%\\toolchain\\windows-libs\\vc;%ROOT%\\toolchain\\windows-libs\\ucrt;%ROOT%\\toolchain\\windows-libs\\um;%LIB%"
 set "LIBPATH=%ROOT%\\toolchain\\windows-libs\\vc;%ROOT%\\toolchain\\windows-libs\\ucrt;%ROOT%\\toolchain\\windows-libs\\um;%LIBPATH%"
+set "ARDEN_WINDOWS_BUILTINS_LIB=%ROOT%\\toolchain\\windows-libs\\builtins\\clang_rt.builtins-x86_64.lib"
 "%ROOT%\\bin\\arden-real.exe" %*
 "@
 Set-Content -Path $Target -Value $Launcher -Encoding ASCII
@@ -495,6 +497,17 @@ def package_release() -> None:
     for extra_lib_dir_raw in args.extra_lib_dir:
         lib_name, lib_dir = parse_named_windows_lib_dir(extra_lib_dir_raw)
         copy_tree(lib_dir, bundle_dir / "toolchain" / "windows-libs" / lib_name)
+
+    if args.platform == "windows":
+        builtins_candidates = sorted(
+            (bundle_dir / "toolchain" / "llvm" / "lib" / "clang").glob("*/lib/windows/clang_rt.builtins-x86_64.lib"),
+            reverse=True,
+        )
+        if builtins_candidates:
+            copy_file(
+                builtins_candidates[0],
+                bundle_dir / "toolchain" / "windows-libs" / "builtins" / builtins_candidates[0].name,
+            )
 
     if args.platform == "windows":
         write_text_file(bundle_dir / "arden.cmd", build_windows_wrapper())

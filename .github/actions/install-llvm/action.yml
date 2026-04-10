@@ -141,6 +141,12 @@ runs:
           throw "Windows SDK UM lib directory not found: $umLibDir"
         }
 
+        $builtinsLib = Get-ChildItem -Path (Join-Path $llvmLib "clang") -Filter "clang_rt.builtins-x86_64.lib" -Recurse -File |
+          Select-Object -First 1 -ExpandProperty FullName
+        if (-not $builtinsLib) {
+          throw "Windows LLVM builtins library not found under $llvmLib\\clang"
+        }
+
         if (Test-Path $shimRoot) {
           Remove-Item -Recurse -Force $shimRoot
         }
@@ -213,6 +219,7 @@ runs:
         echo "ARDEN_WINDOWS_VC_LIB_DIR=$vcLibDir" >> $env:GITHUB_ENV
         echo "ARDEN_WINDOWS_UCRT_LIB_DIR=$ucrtLibDir" >> $env:GITHUB_ENV
         echo "ARDEN_WINDOWS_UM_LIB_DIR=$umLibDir" >> $env:GITHUB_ENV
+        echo "ARDEN_WINDOWS_BUILTINS_LIB=$builtinsLib" >> $env:GITHUB_ENV
         echo "LLVM_SYS_221_PREFIX=$shimRoot" >> $env:GITHUB_ENV
         echo "LLVM_CONFIG_PATH=$llvmConfig" >> $env:GITHUB_ENV
         echo "$llvmBin" >> $env:GITHUB_PATH
