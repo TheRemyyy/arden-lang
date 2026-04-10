@@ -4,8 +4,14 @@
   "description": "Official documentation for Arden, a systems programming language targeting LLVM.",
   "start_url": "/",
   "display": "standalone",
+  "lang": "en",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
+  "categories": [
+    "developer tools",
+    "documentation",
+    "programming"
+  ],
   "icons": [
     {
       "src": "/favicon-32.png",

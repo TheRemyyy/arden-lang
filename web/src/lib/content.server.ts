@@ -16,6 +16,7 @@ export type DocsPageData = {
     normalizedPath: string;
     content: string;
     headings: PageHeading[];
+    lastUpdated: string;
     prevDoc: { title: string; path: string } | null;
     nextDoc: { title: string; path: string } | null;
 };
@@ -24,6 +25,7 @@ export type ChangelogPageData = {
     title: string;
     description: string;
     content: string;
+    lastUpdated: string;
     releases: ChangelogRelease[];
 };
 
@@ -81,6 +83,7 @@ export async function loadDocPage(urlPathname: string): Promise<DocsPageData> {
     const normalizedPath = normalizeDocsPath(urlPathname);
     const docPath = normalizedPath.replace(/^\/docs\/?/, '');
     const markdownPath = path.join(DOCS_ROOT, `${docPath}.md`);
+    const stat = await fs.stat(markdownPath);
     const markdown = await loadMarkdownFile(markdownPath);
     const rendered = await renderMarkdown(markdown);
     const content = rewriteInternalDocLinks(rendered, normalizedPath);
@@ -93,16 +96,19 @@ export async function loadDocPage(urlPathname: string): Promise<DocsPageData> {
         normalizedPath,
         content,
         headings: extractHeadingsFromHtml(content),
+        lastUpdated: stat.mtime.toISOString(),
         ...getDocNeighbors(normalizedPath),
     };
 }
 
 export async function loadChangelogPage(): Promise<ChangelogPageData> {
     const markdown = await loadMarkdownFile(CHANGELOG_PATH);
+    const stat = await fs.stat(CHANGELOG_PATH);
     return {
         title: 'Changelog',
         description: 'Tracking the latest improvements to Arden.',
         content: await renderMarkdown(markdown),
+        lastUpdated: stat.mtime.toISOString(),
         releases: await parseChangelogMarkdown(markdown),
     };
 }

@@ -5,6 +5,7 @@
     "type": "module",
     "scripts": {
         "seo": "node ./scripts/generate-seo.mjs",
+        "indexnow": "node ./scripts/indexnow.mjs",
         "prepare": "npm run seo",
         "predev": "npm run seo",
         "precheck": "npm run seo",

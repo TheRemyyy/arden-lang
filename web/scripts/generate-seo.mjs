@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { slugifyRss } from '../src/lib/rss.ts';
 
 const siteUrl = 'https://www.arden-lang.dev';
+const indexNowKey = '5f16d52efed72638de1a80329fd512fb';
 const projectRoot = path.resolve(process.cwd(), '..');
 const docsRoot = path.join(projectRoot, 'docs');
 const publicRoot = path.join(process.cwd(), 'public');
@@ -12,6 +13,7 @@ const publicDocsRoot = path.join(publicRoot, 'docs');
 const changelogPath = path.join(projectRoot, 'CHANGELOG.md');
 const logoPath = path.join(projectRoot, 'LOGO.png');
 const generatedDocsManifestPath = path.join(process.cwd(), 'src', 'lib', 'generated-docs.json');
+const generatedOgManifestPath = path.join(process.cwd(), 'src', 'lib', 'generated-og-images.ts');
 const execFileAsync = promisify(execFile);
 
 const SECTION_LABELS = {
@@ -131,8 +133,152 @@ async function generateLogoAssets() {
   );
 }
 
+function createOgSvg() {
+  return `
+  <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="bg" x1="120" y1="40" x2="1120" y2="610" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#1f1d1a" />
+        <stop offset="1" stop-color="#0a0a0a" />
+      </linearGradient>
+    </defs>
+    <rect width="1200" height="630" rx="0" fill="url(#bg)" />
+    <rect x="64" y="64" width="1072" height="502" rx="34" fill="#161412" stroke="rgba(255,255,255,0.08)" />
+    <rect x="120" y="118" width="112" height="112" rx="28" fill="#241f18" stroke="rgba(255,255,255,0.08)" />
+    <text x="280" y="170" fill="#F5EFE8" font-size="60" font-family="Arial, sans-serif" font-weight="700">Arden</text>
+    <text x="120" y="318" fill="#F5EFE8" font-size="66" font-family="Arial, sans-serif" font-weight="700">Systems programming language</text>
+    <text x="120" y="388" fill="#D8CDC1" font-size="34" font-family="Arial, sans-serif">Fast feedback, strong static checks, practical tooling.</text>
+    <text x="120" y="470" fill="#D8B29E" font-size="24" font-family="Arial, sans-serif">arden-lang.dev</text>
+    <text x="120" y="510" fill="#8F8478" font-size="24" font-family="Arial, sans-serif">Docs, changelog, install guides, and workflow in one place.</text>
+  </svg>
+  `.trim();
+}
+
+async function generateOgCard() {
+  const { default: sharp } = await import('sharp');
+  const ogCardPath = path.join(publicRoot, 'og-card.png');
+  const logoBuffer = await sharp(logoPath)
+    .resize(76, 76, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+  const svgBuffer = Buffer.from(createOgSvg());
+
+  await sharp({
+    create: {
+      width: 1200,
+      height: 630,
+      channels: 4,
+      background: '#0a0a0a',
+    },
+  })
+    .composite([
+      { input: svgBuffer, top: 0, left: 0 },
+      { input: logoBuffer, top: 140, left: 138, blend: 'over' },
+    ])
+    .png()
+    .toFile(ogCardPath);
+}
+
+function createPageOgSvg({ eyebrow, title, description, href }) {
+  const escape = (value) => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  return `
+  <svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="bg" x1="88" y1="44" x2="1128" y2="610" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#1f1d1a" />
+        <stop offset="1" stop-color="#0a0a0a" />
+      </linearGradient>
+    </defs>
+    <rect width="1200" height="630" fill="url(#bg)" />
+    <rect x="58" y="58" width="1084" height="514" rx="34" fill="#141210" stroke="rgba(255,255,255,0.08)" />
+    <text x="110" y="144" fill="#D8B29E" font-size="22" font-family="Arial, sans-serif" font-weight="700" letter-spacing="4">${escape(eyebrow.toUpperCase())}</text>
+    <text x="110" y="236" fill="#F5EFE8" font-size="62" font-family="Arial, sans-serif" font-weight="700">${escape(title)}</text>
+    <foreignObject x="110" y="270" width="910" height="160">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="color:#D8CDC1;font-family:Arial,sans-serif;font-size:30px;line-height:1.45;">
+        ${escape(description)}
+      </div>
+    </foreignObject>
+    <text x="110" y="508" fill="#8F8478" font-size="24" font-family="Arial, sans-serif">${escape(href)}</text>
+    <text x="110" y="548" fill="#C7BCB0" font-size="24" font-family="Arial, sans-serif">arden-lang.dev</text>
+  </svg>
+  `.trim();
+}
+
+async function generateRouteOgImages(docRoutes, changelogMarkdown) {
+  const { default: sharp } = await import('sharp');
+  const ogDir = path.join(publicRoot, 'og');
+  await fs.mkdir(ogDir, { recursive: true });
+
+  const routeDefinitions = [
+    {
+      path: '/',
+      title: 'Arden',
+      description: 'Official documentation for Arden. A modern, safe, and efficient systems programming language targeting LLVM.',
+      eyebrow: 'Home',
+    },
+    {
+      path: '/install',
+      title: 'Installation',
+      description: 'Download the latest Arden portable bundle for Windows, Linux, or macOS and start with a working toolchain immediately.',
+      eyebrow: 'Install',
+    },
+    {
+      path: '/changelog',
+      title: 'Changelog',
+      description: extractDescription(changelogMarkdown, 'Tracking the latest improvements to Arden.'),
+      eyebrow: 'Release Notes',
+    },
+    {
+      path: '/terms',
+      title: 'Terms of Use',
+      description: 'Terms of use for the Arden website and related project materials.',
+      eyebrow: 'Legal',
+    },
+    {
+      path: '/privacy',
+      title: 'Privacy Policy',
+      description: 'Privacy policy for the Arden website, including the no-tracking and open-source project context.',
+      eyebrow: 'Legal',
+    },
+    ...docRoutes.map((doc) => ({
+      path: doc.path,
+      title: doc.title,
+      description: doc.description,
+      eyebrow: doc.path.startsWith('/docs/compiler/') ? 'Compiler Docs' : 'Documentation',
+    })),
+  ];
+
+  const ogMap = {};
+  await Promise.all(routeDefinitions.map(async (route) => {
+    const assetName = `${slugifyAsset(route.path === '/' ? 'home' : route.path)}.png`;
+    const outputPath = path.join(ogDir, assetName);
+    const svg = Buffer.from(createPageOgSvg({
+      eyebrow: route.eyebrow,
+      title: route.title,
+      description: route.description,
+      href: `${siteUrl}${route.path}`,
+    }));
+    await sharp(svg).png().toFile(outputPath);
+    ogMap[route.path] = `/og/${assetName}`;
+  }));
+
+  const source = `export const ROUTE_OG_IMAGES = ${JSON.stringify(ogMap, null, 2)} as const;\n`;
+  await fs.writeFile(generatedOgManifestPath, source, 'utf8');
+}
+
 function getDocRoute(relativePath) {
   return `/docs/${relativePath.replace(/\\/g, '/').replace(/\.md$/, '')}`;
+}
+
+function slugifyAsset(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '') || 'page';
 }
 
 function humanizeSlug(value) {
@@ -153,6 +299,34 @@ function getFallbackTitle(relativePath) {
 function extractTitle(markdown, fallback) {
   const match = markdown.match(/^#\s+(.+)$/m);
   return match?.[1]?.trim() ?? fallback;
+}
+
+function stripMarkdown(markdown) {
+  return markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^#+\s+/gm, '')
+    .replace(/[*_>~-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractDescription(markdown, fallback) {
+  const title = extractTitle(markdown, fallback);
+  const blocks = markdown
+    .split(/\n\s*\n/)
+    .map((block) => stripMarkdown(block))
+    .filter((block) => block.length > 0);
+
+  const firstParagraph = blocks.find((block) => {
+    if (block === title) return false;
+    if (!/[a-z].*[.?!]/i.test(block) && block.split(' ').length < 8) return false;
+    return true;
+  });
+
+  return (firstParagraph ?? fallback).slice(0, 180);
 }
 
 function getOrderIndex(routePath) {
@@ -192,6 +366,7 @@ async function collectDocMetadata(dir) {
       path: routePath,
       relativePath,
       title: extractTitle(markdown, fallbackTitle),
+      description: extractDescription(markdown, 'Arden documentation.'),
       lastmod: stat.mtime.toISOString(),
     });
   }
@@ -271,8 +446,28 @@ function buildRobots() {
     'User-agent: ChatGPT-User',
     'Allow: /',
     '',
+    'User-agent: OAI-SearchBot',
+    'Allow: /',
+    '',
+    'User-agent: ClaudeBot',
+    'Allow: /',
+    '',
+    'User-agent: anthropic-ai',
+    'Allow: /',
+    '',
+    'User-agent: Google-Extended',
+    'Allow: /',
+    '',
     'User-agent: Googlebot',
     'Allow: /',
+    '',
+    'User-agent: Bingbot',
+    'Allow: /',
+    '',
+    'User-agent: PerplexityBot',
+    'Allow: /',
+    '',
+    `Host: ${siteUrl.replace(/^https?:\/\//, '')}`,
     '',
     `Sitemap: ${siteUrl}/sitemap.xml`,
   ].join('\n') + '\n';
@@ -286,8 +481,10 @@ function buildManifest() {
       description: 'Official documentation for Arden, a systems programming language targeting LLVM.',
       start_url: '/',
       display: 'standalone',
+      lang: 'en',
       background_color: '#0a0a0a',
       theme_color: '#0a0a0a',
+      categories: ['developer tools', 'documentation', 'programming'],
       icons: [
         {
           src: '/favicon-32.png',
@@ -317,12 +514,51 @@ function buildLlmsTxt() {
     `- Installation: ${siteUrl}/install`,
     `- Documentation: ${siteUrl}/docs/overview`,
     `- Changelog: ${siteUrl}/changelog`,
+    `- Search: ${siteUrl}/search`,
+    `- RSS: ${siteUrl}/rss.xml`,
+    `- Sitemap: ${siteUrl}/sitemap.xml`,
     `- Repository: https://github.com/TheRemyyy/arden-lang`,
     '',
     '## Guidance',
     '- Prefer the official documentation pages under /docs/ for language behavior and syntax.',
     '- Prefer the changelog for release history and recent behavior changes.',
     '- Prefer the upstream repository for implementation details and source code.',
+    '',
+  ].join('\n');
+}
+
+function buildLlmsFullTxt(docRoutes) {
+  const seen = new Set();
+  const docLines = docRoutes
+    .filter((doc) => {
+      const key = `${doc.title}|${doc.path}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((doc) => `- ${doc.title}: ${siteUrl}${doc.path}`);
+
+  return [
+    '# Arden Full Index',
+    '',
+    '> Expanded machine-readable index for Arden documentation and site resources.',
+    '',
+    '## Core Pages',
+    `- Homepage: ${siteUrl}/`,
+    `- Installation: ${siteUrl}/install`,
+    `- Documentation Overview: ${siteUrl}/docs/overview`,
+    `- Changelog: ${siteUrl}/changelog`,
+    `- Search: ${siteUrl}/search`,
+    `- Terms of Use: ${siteUrl}/terms`,
+    `- Privacy Policy: ${siteUrl}/privacy`,
+    '',
+    '## Documentation',
+    ...docLines,
+    '',
+    '## Machine Endpoints',
+    `- Sitemap: ${siteUrl}/sitemap.xml`,
+    `- RSS: ${siteUrl}/rss.xml`,
+    `- llms.txt: ${siteUrl}/llms.txt`,
     '',
   ].join('\n');
 }
@@ -396,6 +632,8 @@ async function main() {
     { path: '/', lastmod: rootStat.mtime.toISOString() },
     { path: '/install', lastmod: rootStat.mtime.toISOString() },
     { path: '/changelog', lastmod: changelogStat.mtime.toISOString() },
+    { path: '/terms', lastmod: rootStat.mtime.toISOString() },
+    { path: '/privacy', lastmod: rootStat.mtime.toISOString() },
     ...docRoutes,
   ];
 
@@ -403,15 +641,20 @@ async function main() {
   const sitemap = buildSitemap(routes);
   const manifest = buildManifest();
   const llmsTxt = buildLlmsTxt();
+  const llmsFullTxt = buildLlmsFullTxt(docRoutes);
   const rss = buildRss(parseChangelogEntries(changelogMarkdown));
 
   await fs.writeFile(path.join(publicRoot, 'robots.txt'), robots, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'sitemap.xml'), sitemap, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'site.webmanifest'), manifest, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'llms.txt'), llmsTxt, 'utf8');
+  await fs.writeFile(path.join(publicRoot, 'llms-full.txt'), llmsFullTxt, 'utf8');
+  await fs.writeFile(path.join(publicRoot, `${indexNowKey}.txt`), `${indexNowKey}\n`, 'utf8');
   await fs.writeFile(path.join(publicRoot, 'rss.xml'), rss, 'utf8');
   await fs.copyFile(changelogPath, path.join(publicRoot, 'CHANGELOG.md'));
   await generateLogoAssets();
+  await generateOgCard();
+  await generateRouteOgImages(docRoutes, changelogMarkdown);
   await fs.writeFile(generatedDocsManifestPath, `${JSON.stringify(docsNavigation, null, 2)}\n`, 'utf8');
   await ensureCleanDir(publicDocsRoot);
   await copyDirectory(docsRoot, publicDocsRoot);

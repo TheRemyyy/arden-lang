@@ -1,0 +1,87 @@
+name: IndexNow
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'web/**'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: 'Optional newline- or comma-separated URLs to submit. Leave empty to submit the sitemap.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: indexnow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  submit:
+    name: Submit IndexNow URLs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Generate SEO assets
+        run: npm run seo
+
+      - name: Wait for production site to expose latest key and sitemap
+        shell: bash
+        run: |
+          for attempt in {1..20}; do
+            if curl -fsS "https://www.arden-lang.dev/5f16d52efed72638de1a80329fd512fb.txt" >/dev/null \
+              && curl -fsS "https://www.arden-lang.dev/sitemap.xml" >/dev/null; then
+              echo "Production site is reachable."
+              exit 0
+            fi
+            echo "Production site not ready yet, waiting..."
+            sleep 15
+          done
+          echo "Production site did not become ready in time." >&2
+          exit 1
+
+      - name: Build IndexNow argument list
+        id: args
+        shell: bash
+        env:
+          INPUT_URLS: ${{ github.event.inputs.urls }}
+        run: |
+          if [[ -n "${INPUT_URLS}" ]]; then
+            : > indexnow-urls.txt
+            while IFS= read -r line; do
+              for candidate in ${line//,/ }; do
+                trimmed="$(echo "${candidate}" | xargs)"
+                if [[ -n "${trimmed}" ]]; then
+                  echo "${trimmed}" >> indexnow-urls.txt
+                fi
+              done
+            done <<< "${INPUT_URLS}"
+            echo "args=--file indexnow-urls.txt" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=--sitemap" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Submit to IndexNow
+        run: npm run indexnow -- ${{ steps.args.outputs.args }}

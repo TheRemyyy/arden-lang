@@ -7,6 +7,9 @@
 - Installation: https://www.arden-lang.dev/install
 - Documentation: https://www.arden-lang.dev/docs/overview
 - Changelog: https://www.arden-lang.dev/changelog
+- Search: https://www.arden-lang.dev/search
+- RSS: https://www.arden-lang.dev/rss.xml
+- Sitemap: https://www.arden-lang.dev/sitemap.xml
 - Repository: https://github.com/TheRemyyy/arden-lang
 
 ## Guidance

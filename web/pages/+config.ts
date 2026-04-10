@@ -24,6 +24,9 @@ export default {
       <meta name="theme-color" content="#0a0a0a" />
       <meta name="keywords" content="${SITE_KEYWORDS.join(', ')}" />
       <meta name="author" content="${SITE_NAME}" />
+      <meta name="application-name" content="${SITE_NAME}" />
+      <meta name="apple-mobile-web-app-title" content="${SITE_NAME}" />
+      <meta name="format-detection" content="telephone=no" />
       <link rel="apple-touch-icon" sizes="180x180" href="${APPLE_TOUCH_ICON_SRC}" />
       <link rel="manifest" href="${WEB_MANIFEST_SRC}" />
     `,
